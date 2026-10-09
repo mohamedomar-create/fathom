@@ -12,6 +12,7 @@ export function IconRail() {
   const pathname = usePathname();
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
+  if (pathname.includes("/settings") || pathname.includes("/reports")) return null;
   return (
     <>
       {/* desktop rail */}
