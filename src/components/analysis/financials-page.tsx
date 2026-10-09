@@ -9,6 +9,7 @@ import { SentenceSelect } from "@/components/ui/sentence-select";
 import { MiniPie } from "@/components/charts/spark";
 import { cn } from "@/lib/cn";
 import { NeedsOpening, Notes } from "./common";
+import { SourceDrawer, type SourceLine } from "./source-drawer";
 
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly";
@@ -48,7 +49,11 @@ export function FinancialsPage() {
   const [view, setView] = useState<View>("pl");
   const [layout, setLayout] = useState<"summary" | "detailed">("summary");
   const [cmp, setCmp] = useState<Cmp>("prior");
+  const [src, setSrc] = useState<SourceLine | null>(null);
   if (!a) return null;
+  const trace = (key: string, label: string, statement: "PL" | "BS", v: number) => (
+    <button type="button" onClick={() => setSrc({ key, label, statement, periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title="Show the accounts and source file behind this figure" data-testid={`trace-${key}`}>{m(v)}</button>
+  );
   const cur = c.settings.currency;
   const m = (v: number) => money(v, cur);
   const comp = cmp === "prior" ? a.view.prior : a.view.ly;
@@ -90,7 +95,7 @@ export function FinancialsPage() {
             <tbody>
               {PL_ROWS.map((r) => [
                 <tr key={r.k} className={cn("row", r.tot && "tot")}>
-                  <td>{r.l}</td><td>{m(P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
+                  <td>{r.l}</td><td>{trace(r.k, r.l, "PL", P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
                   <td>{P.revenue ? <><MiniPie p={((P[r.k] as number) / P.revenue) * 100} /> {pct(((P[r.k] as number) / P.revenue) * 100, 0)}</> : "–"}</td>
                   <td>{m(ytd[r.k] as number)}</td>
                 </tr>,
@@ -122,7 +127,7 @@ export function FinancialsPage() {
                 const classes = r.typ === 0 ? [k as ClassKey] : undefined;
                 return [
                   <tr key={r.l} className={cn("row", r.typ === 1 && "tot")}>
-                    <td>{r.l}</td><td>{m(v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
+                    <td>{r.l}</td><td>{trace(k, r.l, "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
                     <td className={dv === null ? "text-mute" : dv >= 0 ? "text-green-d" : "text-red"}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0)}
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
@@ -136,6 +141,7 @@ export function FinancialsPage() {
           <Notes findings={a.findings.filter((f) => f.section === "bs")} comment={comments("bs")} />
         </div>
       )}
+      <SourceDrawer line={src} onClose={() => setSrc(null)} />
       {view === "cf" && (!B0 ? <NeedsOpening /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={a.view.window.short} />)}
     </>
   );

@@ -113,6 +113,35 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
   }
 }
 
+export interface Provenance { file: string; at: string | null; kind: string; sheet?: string; row?: number; label?: string }
+
+/** Where the figures of some accounts came from, for the given months (file, upload time, sheet and row). */
+export async function loadProvenance(companyId: string, accountIds: string[], periods: string[]): Promise<Record<string, Record<string, Provenance>>> {
+  const ids = z.array(z.string().uuid()).max(400).safeParse(accountIds);
+  const ps = z.array(Period).max(36).safeParse(periods);
+  if (!z.string().uuid().safeParse(companyId).success || !ids.success || !ps.success || !ids.data.length) return {};
+  const { supabase, user } = await getUser();
+  if (!user) return {};
+  const out: Record<string, Record<string, Provenance>> = {};
+  for (let i = 0; i < ids.data.length; i += 100) {
+    const chunk = ids.data.slice(i, i + 100);
+    const [{ data: bal }, { data: acc }] = await Promise.all([
+      supabase.from("account_balances").select("account_id, period, import_id").eq("company_id", companyId).in("account_id", chunk).in("period", ps.data),
+      supabase.from("source_accounts").select("id, refs").eq("company_id", companyId).in("id", chunk),
+    ]);
+    const impIds = [...new Set((bal ?? []).map((b) => b.import_id).filter(Boolean) as string[])];
+    const { data: imps } = impIds.length ? await supabase.from("imports").select("id, filename, created_at, kind").in("id", impIds) : { data: [] };
+    const impById = new Map((imps ?? []).map((x) => [x.id, x]));
+    const refs = new Map((acc ?? []).map((a) => [a.id, (a.refs ?? {}) as Record<string, { sheet?: string; row?: number; label?: string }>]));
+    for (const b of bal ?? []) {
+      const imp = b.import_id ? impById.get(b.import_id) : undefined;
+      const ref = b.import_id ? refs.get(b.account_id)?.[b.import_id] : undefined;
+      (out[b.account_id] ??= {})[b.period] = { file: imp?.filename ?? (imp?.kind === "odoo" ? "Odoo sync" : imp ? "Upload" : "Earlier import"), at: imp?.created_at ?? null, kind: imp?.kind ?? "upload", ...ref };
+    }
+  }
+  return out;
+}
+
 /** Undo: make an earlier kept version current again. */
 export async function restoreVersion(companyId: string, version: number): Promise<{ ok: boolean; error?: string }> {
   if (!z.string().uuid().safeParse(companyId).success || !Number.isInteger(version) || version < 1) return { ok: false, error: "Invalid version." };
