@@ -2,7 +2,7 @@
 import sample from "../../reference/sample.json";
 import { spreadAccounts } from "@/lib/company/demo";
 import { isPL, toRaw } from "@/lib/company/build";
-import type { MonthData } from "@/lib/engine";
+import { plCalc, type MonthData } from "@/lib/engine";
 import type { Grid } from "@/lib/ingest/extract";
 import type { Cell } from "@/lib/ingest/parse";
 
@@ -38,7 +38,8 @@ export function odooReports(opts: { ytd?: boolean; arabicHeadings?: boolean; unc
     })]);
     plRows.push([`Total ${g}`, ...ps.map((p) => accs.reduce((s, a) => s + (a.amounts[p] ?? 0), 0))]);
   }
-  plRows.push(["Net Profit", ...ps.map(() => 0)]);
+  const ni = (p: string) => plCalc(months.find((m) => m.period === p)!.pl).net_income;
+  plRows.push(["Net Profit", ...ps.map((p, i) => (opts.ytd ? ps.slice(0, i + 1).filter((q) => q.slice(0, 4) === p.slice(0, 4)).reduce((s, q) => s + ni(q), 0) : ni(p)))]);
   const fyNI = (p: string) => months.filter((m) => m.period.slice(0, 4) === p.slice(0, 4) && m.period <= p).reduce((s, m) => {
     const q = m.pl as Record<string, number>;
     return s + q.revenue - q.cos_variable - q.cos_depreciation - q.exp_variable - q.exp_fixed + q.other_income - q.other_expenses + q.interest_income - q.interest_expenses - q.tax_expenses;

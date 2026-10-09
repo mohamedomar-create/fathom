@@ -58,7 +58,8 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(current: VersionAccount[], incoming: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[] }): ImportPlan {
+export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number> }): ImportPlan {
+  const { incoming, rangeChecks } = deriveRanges(current, incomingIn, opts);
   const inc: Record<Statement, Set<string>> = { PL: new Set(opts.slices.PL), BS: new Set(opts.slices.BS) };
   // Every month the file has a figure for is covered, whatever the caller declared.
   for (const n of incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
@@ -133,9 +134,53 @@ export function planImport(current: VersionAccount[], incoming: IncomingAccount[
   // Checks run on the merged result. In a merge, failures in months this file doesn't touch are existing issues and don't block it.
   const touched = new Set<string>();
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
-  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: opts.extra })
+  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks };
+}
+
+/**
+ * A P&L figure covering several months (a range or year-to-date column) becomes its last month by subtracting the
+ * earlier months of the range, taken from this file or from the data already loaded. When they are not all available
+ * the figure is kept as a whole and a blocking check says so (accepting it stores the range total as one month).
+ */
+function deriveRanges(current: VersionAccount[], incoming: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; ranges?: Record<string, number> }) {
+  const rangeChecks: Check[] = [];
+  const ranges = Object.entries(opts.ranges ?? {}).filter(([, k]) => k > 1);
+  if (!ranges.length) return { incoming, rangeChecks };
+  const fileMonths = new Set([...opts.slices.PL, ...incoming.filter((a) => isPL(a.cls)).flatMap((a) => Object.keys(a.amounts))]);
+  const stored = opts.mode === "merge" ? current.filter((a) => isPL(a.cls)) : [];
+  const storedCov = coverageOf(stored).pl;
+  const out = incoming.map((a) => ({ ...a, amounts: { ...a.amounts } }));
+  const byKey = new Map(out.filter((a) => isPL(a.cls)).map((a) => [accountIdentity(a), a]));
+  const storedByKey = new Map(stored.map((a) => [accountIdentity(a), a]));
+  for (const [p, k] of ranges) {
+    const earlier = Array.from({ length: k - 1 }, (_, i) => addMonths(p, i - (k - 1)));
+    // A month the file itself reports is a single month unless it is also a range end.
+    const fromFile = (q: string) => fileMonths.has(q) && !(opts.ranges?.[q] && opts.ranges[q] > 1);
+    const missing = earlier.filter((q) => !fromFile(q) && !storedCov.has(q));
+    if (missing.length) {
+      rangeChecks.push({ id: "multi_month", severity: "block", period: p, statement: "PL", title: `P&L figure covers ${k} months, not one`,
+        detail: `The ${p} column holds ${k} months (${earlier[0]} to ${p}). To store ${p} on its own, the earlier months must be loaded first (missing: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}). Upload the monthly P&L, change the column's month under "How the file was read", or accept to store the ${k}-month total as ${p}.` });
+      continue;
+    }
+    const prior = (key: string, cls: ClassKey) => earlier.reduce((s, q) => {
+      if (fromFile(q)) { const a = byKey.get(key); return s + (a ? a.amounts[q] ?? 0 : 0); }
+      const st = storedByKey.get(key);
+      return s + (st && st.amounts[q] ? recast(st.cls, cls, st.amounts[q]) : 0);
+    }, 0);
+    const keys = new Set([...byKey.keys(), ...[...storedByKey.entries()].filter(([, a]) => earlier.some((q) => a.amounts[q])).map(([key]) => key)]);
+    for (const key of keys) {
+      let a = byKey.get(key);
+      if (!a) { // in the earlier months but not in this file: its total for the range is zero
+        const st = storedByKey.get(key)!;
+        a = { code: st.code, name: st.name, cls: st.cls, amounts: {}, mapped_by: st.mapped_by, confidence: st.confidence };
+        out.push(a); byKey.set(key, a);
+      }
+      a.amounts[p] = Math.round(((a.amounts[p] ?? 0) - prior(key, a.cls)) * 100) / 100;
+    }
+  }
+  return { incoming: out, rangeChecks };
 }
 
 const asLine = (a: VersionAccount): AccountLine => ({ id: accountIdentity(a), code: a.code, name: a.name, cls: a.cls, amounts: a.amounts });
