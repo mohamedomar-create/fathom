@@ -31,6 +31,7 @@ const PlanSchema = z.object({
   })).min(1).max(5000),
   controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(200) })).max(3000).default([]),
   extra: z.array(CheckSchema).max(500).default([]),
+  ranges: z.record(Period, z.number().int().min(1).max(60)).default({}),
 });
 const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),
@@ -54,7 +55,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
     supabase.from("imports").select("report").eq("company_id", d.companyId).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra });
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges });
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
 }
 

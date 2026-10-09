@@ -121,12 +121,14 @@ describe("Odoo exports reproduce the source numbers", () => {
     for (const k of BS_KEYS) expect(Math.round(got.bs[k] ?? 0), k).toBe(Math.round((want.bs as Record<string, number>)[k] ?? 0));
   });
 
-  it("a multi-month date-range column is accepted with a clear warning", () => {
+  it("a multi-month date-range column is flagged as a range, never silently stored as one month", () => {
     const g = trialBalanceSinglePeriod(3);
-    g[0].rows[2][3] = `From 01/01/${months[3].period.slice(0, 4)} to 30/${months[3].period.slice(5)}/${months[3].period.slice(0, 4)}`;
+    const [y, m] = months[3].period.split("-");
+    g[0].rows[2][3] = `From 01/01/${y} to 30/${m}/${y}`;
     const res = ingest(g, OPTS);
     expect(res.periods).toEqual([months[3].period]);
-    expect(res.issues.warnings.some((w) => /covers \d+ months/.test(w))).toBe(true);
+    expect(res.ranges).toEqual({ [months[3].period]: Number(m) });
+    expect(res.issues.notes.some((w) => /cover several months/.test(w))).toBe(true);
   });
 
   it("an unrecognised sheet explains which Odoo exports work", () => {
@@ -208,9 +210,9 @@ describe("Odoo report column headers", () => {
     expect(res.periods).toEqual(["2025-09"]);
     expect(res.totals.revenue["2025-09"]).toBe(1500);
   });
-  it("year-labelled P&L imports with a warning", () => {
+  it("year-labelled P&L is read as a 12-month range", () => {
     const res = ingest(odooPL([["Profit and Loss"], ["", "2025"]]), OPTS);
     expect(res.periods).toEqual(["2025-12"]);
-    expect(res.issues.warnings.some((w) => /covers 12 months/.test(w))).toBe(true);
+    expect(res.ranges).toEqual({ "2025-12": 12 });
   });
 });

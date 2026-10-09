@@ -4,11 +4,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { mlabel, money, type ClassKey } from "@/lib/engine";
 import { CLASS_LABEL, CLASS_OPTIONS, extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
-import type { RawLine } from "@/lib/ingest/extract";
+import type { Grid, Overrides } from "@/lib/ingest/extract";
+import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { readWorkbook } from "@/lib/ingest/read";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
-import { checkKey, type Check } from "@/lib/company/checks";
+import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
@@ -18,7 +19,8 @@ type Filter = "review" | "all" | "excluded";
 export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [raw, setRaw] = useState<{ lines: RawLine[]; issues: { skippedCols: string[]; warnings: string[] } } | null>(null);
+  const [grids, setGrids] = useState<Grid[] | null>(null);
+  const [overrides, setOverrides] = useState<Overrides>({});
   const [diag, setDiag] = useState<Diagnostic | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -45,18 +47,21 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       const { raw: lines, issues } = extractAll(grids);
       setDiag(diagnostic(f, grids, issues));
       if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-      setRaw({ lines, issues });
+      setOverrides({}); setGrids(grids);
     } catch (e) {
       console.error("upload read failed", e);
-      setErr((e as Error).message || "The file could not be read."); setRaw(null);
+      setErr((e as Error).message || "The file could not be read."); setGrids(null);
     } finally { setBusy(false); }
   }, []);
 
+  // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
   const [res, ingestErr]: [IngestResult | null, string | null] = useMemo(() => {
-    if (!raw) return [null, null];
-    try { return [runIngest(raw.lines, raw.issues, { ...opts, mapping }), null]; }
-    catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed."]; }
-  }, [raw, opts, mapping]);
+    if (!grids) return [null, null];
+    try {
+      const { raw, issues } = extractAll(grids, overrides);
+      return [runIngest(raw, issues, { ...opts, mapping }), null];
+    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed."]; }
+  }, [grids, overrides, opts, mapping]);
 
   const setCls = (labelKey: string, cls: ClassKey | "") => setMapping((m) => ({ ...m, [labelKey]: cls }));
   const lines = res?.lines.filter((l) => !l.system) ?? [];
@@ -64,19 +69,26 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const shown = filter === "review" ? review : filter === "excluded" ? lines.filter((l) => l.excluded) : lines;
   const lastP = res?.periods[res.periods.length - 1];
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
+  // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
+  const fileChecks = useMemo(() => {
+    if (!res) return [];
+    const accts = toAccountInputs(res).map((a, i) => ({ ...a, id: String(i) }));
+    return runChecks({ accounts: accts, controls: res.controls, extra: res.checks }).filter((c) => c.id === "control_total" || c.id === "duplicate" || c.id === "tb_zero");
+  }, [res]);
+  const controlCount = res?.controls.length ?? 0;
 
   /** Everything the server needs to plan this import (the merge itself and the checks run on the server). */
   function payload(m: ImportMode) {
     if (!res) return null;
     const accounts = toAccountInputs(res);
     if (!accounts.length) return null;
-    const extra: Check[] = [];
+    const extra: Check[] = [...res.checks];
     const unm = materialUnmapped(res);
     for (const st of ["PL", "BS"] as const) {
       const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
       if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} material line${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
     }
-    return { companyId, mode: m, slices: res.slices, accounts, extra };
+    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges };
   }
 
   async function runPreview(m: ImportMode = mode) {
@@ -190,14 +202,17 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <FileSpreadsheet className="h-5 w-5 text-green-d" />
         <span className="font-medium">{file?.name}</span>
-        <button onClick={() => { setRaw(null); setFile(null); }} className="text-sm text-mute underline">Choose another file</button>
+        <button onClick={() => { setGrids(null); setFile(null); }} className="text-sm text-mute underline">Choose another file</button>
       </div>
+      <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
       <div className="mb-5 grid gap-4 sm:grid-cols-4">
         <Stat label="Months" value={res.periods.length ? `${res.periods.length}` : "0"} sub={res.periods.length ? `${mlabel(res.periods[0])} – ${mlabel(lastP!)}` : ""} />
         <Stat label="Accounts mapped" value={`${lines.filter((l) => l.cls && !l.excluded).length} / ${lines.length}`} sub={`${review.length} to review`} tone={review.length ? "warn" : "ok"} />
         <Stat label={`Revenue ${lastP ? mlabel(lastP) : ""}`} value={lastP ? money(res.totals.revenue[lastP] ?? 0, currency) : "–"} sub="compare with your Odoo report" />
         <Stat label="Balance sheet" value={maxImb < 1 ? "Balances" : `Out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} sub={lastP ? `cash ${money(res.totals.cash[lastP] ?? 0, currency)}` : ""} />
       </div>
+      {fileChecks.length > 0 && <div className="mb-5"><CheckList checks={fileChecks} /></div>}
+      {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="mb-5 flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals printed in the file ({controlCount} total{controlCount > 1 ? "s" : ""} checked: net profit, total assets…).</p>}
       {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
         <div className="mb-5 space-y-1.5 text-[13px]">
           {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{w}</div>)}

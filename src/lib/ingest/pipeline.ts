@@ -3,7 +3,8 @@ import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/buil
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 import { classify, CONTRA_REVENUE } from "./classify";
-import { extractGrid, type Grid, type RawLine } from "./extract";
+import { extractGrid, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
+import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normLabel } from "./parse";
 
 export interface IngestOptions {
@@ -44,11 +45,19 @@ export interface IngestResult {
   totals: { revenue: Record<string, number>; cash: Record<string, number>; assets: Record<string, number> };
   /** Months this file covers, per statement (an import replaces exactly these months). */
   slices: { PL: string[]; BS: string[] };
+  /** P&L months whose figures cover several months (a range or year-to-date column): month → number of months. */
+  ranges: Record<string, number>;
+  /** Total rows printed in the file (single-month columns only), to verify the imported figures. */
+  controls: ControlTotal[];
+  /** File-level checks: the same account in two sheets, debits not equal to credits. */
+  checks: Check[];
+  layouts: SheetLayout[];
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
 const SUBTOTAL = /^\s*(total|sub.?total|grand total|gross (profit|margin|loss)|net (income|profit|loss|earnings|sales)|operating (profit|income|loss)|ebit(da)?\b|profit (before|after)|(income|earnings) before|working capital|check|difference|balance check|الإجمالي|اجمالي|إجمالي|مجموع|صافي (الربح|الدخل|الخسارة)|مجمل (الربح|الخسارة))/i;
 
+const monthsFrom = (a: string, b: string) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
 const fyOf = (p: string, fy: number) => { const [y, m] = p.split("-").map(Number); return m >= fy ? y : y - 1; };
 function continuous(ps: string[]) {
   const s = [...new Set(ps)].sort();
@@ -58,13 +67,15 @@ function continuous(ps: string[]) {
   return out;
 }
 
-export function extractAll(grids: Grid[]) {
-  const issues = { skippedCols: [] as string[], warnings: [] as string[] };
-  const raw = grids.flatMap((g) => extractGrid(g, issues));
+export type ExtractResult = { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[] };
+
+export function extractAll(grids: Grid[], overrides: Overrides = {}) {
+  const issues: Required<ExtractResult> = { skippedCols: [], warnings: [], layouts: [], controls: [] };
+  const raw = grids.flatMap((g) => extractGrid(g, issues, overrides[g.name]));
   return { raw, issues };
 }
 
-export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]; warnings: string[] }, opts: IngestOptions): IngestResult {
+export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
   const issues = { warnings: [...extractIssues.warnings], notes: [] as string[], flips: [] as string[], subtotals: [] as string[], skippedCols: [...extractIssues.skippedCols] };
   // ---- subtotal removal (natural lines only; movement exports are per account)
   const skip = new Set<string>();
@@ -235,6 +246,70 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
     if (unm) issues.warnings.push(`${unm} line${unm > 1 ? "s are" : " is"} not mapped and will be left out until you choose a class.`);
   }
 
+  // P&L figures that cover more than one month: range columns, and the first month of a year-to-date file.
+  const ranges: Record<string, number> = {};
+  for (const l of [...nat, ...mov]) if (isPL(l.cls!) && l.r.spans) for (const [p, k] of Object.entries(l.r.spans)) if (periods.includes(p)) ranges[p] = Math.max(ranges[p] ?? 1, k);
+  if (decum) for (const p of plP) {
+    const prev = addMonths(p, -1);
+    const fy0 = Number(p.slice(5)) >= opts.fyStart ? `${p.slice(0, 4)}-${String(opts.fyStart).padStart(2, "0")}` : `${Number(p.slice(0, 4)) - 1}-${String(opts.fyStart).padStart(2, "0")}`;
+    if (!plP.includes(prev) || fyOf(prev, opts.fyStart) !== fyOf(p, opts.fyStart)) { const k = monthsFrom(fy0, p); if (k > 1) ranges[p] = Math.max(ranges[p] ?? 1, k); }
+  }
+  if (Object.keys(ranges).length) issues.notes.push(`Some P&L columns cover several months (${Object.entries(ranges).map(([p, k]) => `${p}: ${k} months`).join(", ")}). Each is turned into its last month by subtracting the months already loaded; if they are not loaded, the import asks what to do.`);
+
+  // Total rows from the file. P&L totals only verify single-month columns (year-to-date totals are converted like the lines).
+  const controls: ControlTotal[] = [];
+  // A total row that is zero in every month is a placeholder (a heading or an empty formula), not a figure to check against.
+  const ctl = (extractIssues.controls ?? []).filter((c, _, all) => all.some((x) => x.metric === c.metric && x.source.split(" row ")[0] === c.source.split(" row ")[0] && Math.abs(x.value) > 0.005));
+  for (const c of ctl) {
+    if (!periods.includes(c.period)) continue;
+    const pl = c.metric === "net_income" || c.metric === "gross_profit";
+    if (pl && (c.months > 1 || ranges[c.period])) continue;
+    let value = c.value;
+    if (pl && decum) {
+      const prev = addMonths(c.period, -1);
+      const before = ctl.find((x) => x.metric === c.metric && x.period === prev);
+      if (fyOf(prev, opts.fyStart) === fyOf(c.period, opts.fyStart)) { if (!before) continue; value -= before.value; }
+    }
+    controls.push({ metric: c.metric, period: c.period, value, source: c.source });
+  }
+
+  // The same account read from two sheets would be counted twice (e.g. a Trial Balance and a P&L in one workbook).
+  const fileChecks: Check[] = [];
+  const seen = new Map<string, { bySheet: Map<string, Set<string>>; name: string; stmt: "PL" | "BS" }>();
+  for (const l of result) {
+    if (l.excluded || !l.cls || l.system) continue;
+    const stmt = isPL(l.cls) ? "PL" : "BS";
+    const id = l.code ? `c:${l.code.toLowerCase()}` : `n:${stmt}:${normLabel(l.name)}`;
+    const e = seen.get(id) ?? { bySheet: new Map<string, Set<string>>(), name: l.name, stmt };
+    const ps = e.bySheet.get(l.sheet) ?? new Set<string>();
+    for (const p of Object.keys(l.values)) ps.add(p);
+    e.bySheet.set(l.sheet, ps);
+    seen.set(id, e);
+  }
+  const dups = [...seen.values()].map((e) => {
+    const sheets = [...e.bySheet.entries()];
+    const clash = sheets.filter(([sh, ps]) => sheets.some(([sh2, ps2]) => sh2 !== sh && [...ps].some((p) => ps2.has(p)))).map(([sh]) => sh);
+    return { ...e, clash };
+  }).filter((e) => e.clash.length > 1);
+  for (const st of ["PL", "BS"] as const) {
+    const ds = dups.filter((d) => d.stmt === st);
+    if (!ds.length) continue;
+    const sheets = [...new Set(ds.flatMap((d) => d.clash))];
+    fileChecks.push({ id: "duplicate", severity: "block", statement: st, title: `${ds.length} account${ds.length > 1 ? "s appear" : " appears"} in more than one sheet`, detail: `${ds.slice(0, 3).map((d) => `'${d.name}'`).join(", ")}${ds.length > 3 ? "…" : ""} ${ds.length > 1 ? "are" : "is"} in ${sheets.map((x) => `'${x}'`).join(" and ")}, so ${ds.length > 1 ? "they" : "it"} would be counted twice. Leave out one of the sheets under "How the file was read".` });
+  }
+
+  // Trial balances, ledgers and journals: debits must equal credits.
+  if (mov.length) {
+    const allMov = used.filter((r) => r.kind === "movement");
+    const big = Math.max(1, ...allMov.flatMap((r) => [Math.abs(r.opening), ...Object.values(r.values).map(Math.abs)]));
+    const tol = Math.max(1, big * 1e-6);
+    const off: string[] = [];
+    const open = allMov.reduce((a, r) => a + r.opening, 0);
+    if (Math.abs(open) > tol) off.push(`opening balances ${Math.round(open).toLocaleString("en-GB")}`);
+    for (const p of periods) { const t = allMov.reduce((a, r) => a + (r.values[p] ?? 0), 0); if (Math.abs(t) > tol) off.push(`${p} ${Math.round(t).toLocaleString("en-GB")}`); }
+    if (off.length) fileChecks.push({ id: "tb_zero", severity: "block", title: "Debits do not equal credits", detail: `The movements in the file do not net to zero (${off.slice(0, 4).join("; ")}${off.length > 4 ? "…" : ""}). The export is probably filtered to some accounts or journals, or rows are missing. Export all accounts, posted entries only.` });
+  }
+
   const months = buildMonths(result.filter((l) => !l.excluded && l.cls).map((l) => ({ id: l.key, code: l.code, name: l.name, cls: l.cls!, amounts: l.values })));
   const pick = (k: "revenue" | "cash" | "assets") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : k === "cash" ? m.bs.cash ?? 0 : bsCalc(m.bs).ta]));
   const movPL = mov.some((l) => isPL(l.cls!)), movBS = mov.length > 0;
@@ -248,6 +323,7 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : [])])].filter((p) => periods.includes(p)).sort(),
     },
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [],
   };
 }
 
@@ -255,8 +331,8 @@ function sys(key: string, name: string, cls: ClassKey, values: Record<string, nu
   return { key, sheet: "", row: 0, code: "", name, label: name, section: "", stmt: "BS", cls, conf: 1, why: "computed", excluded: false, system: true, values };
 }
 
-export function ingest(grids: Grid[], opts: IngestOptions): IngestResult {
-  const { raw, issues } = extractAll(grids);
+export function ingest(grids: Grid[], opts: IngestOptions, overrides: Overrides = {}): IngestResult {
+  const { raw, issues } = extractAll(grids, overrides);
   return runIngest(raw, issues, opts);
 }
 

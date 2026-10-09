@@ -52,6 +52,7 @@ test("Odoo export importer maps and balances a real file", async ({ page }) => {
   await expect(page.getByTestId("review")).toContainText("36 / 36");
   await expect(page.getByTestId("review")).toContainText("Balances");
   await expect(page.getByTestId("review")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("file-reading")).toContainText("Profit and Loss: 28 lines");
 });
 
 test("demo report downloads as a PDF", async ({ page }) => {

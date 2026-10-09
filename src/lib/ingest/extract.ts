@@ -16,9 +16,71 @@ export interface RawLine {
   values: Record<string, number>;
   /** Raw (debit − credit) opening balance before the first period, movement lines only. */
   opening: number;
+  /** Months covered by the column a value came from, when more than one (e.g. "From 01/01/2025 to 30/09/2025"). */
+  spans?: Record<string, number>;
 }
 
-export interface ExtractIssues { skippedCols: string[]; warnings: string[] }
+/** How one column of a sheet was read. */
+export interface ColumnInfo { col: number; header: string; period: string | null; months: number; used: boolean; reason?: string }
+/** How one sheet was read: shown to the user, who can correct it with overrides. */
+export interface SheetLayout {
+  sheet: string;
+  kind: "columns" | "trial-balance" | "list" | "ledger" | "none" | "skipped";
+  headerRow: number | null;
+  columns: ColumnInfo[];
+  scale: number;
+  scaleFrom: string | null;
+  decimal: "." | ",";
+  lines: number;
+}
+/** User corrections for one sheet. periods: column index → month ("YYYY-MM") or null to leave the column out. */
+export interface SheetOverride { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null> }
+export type Overrides = Record<string, SheetOverride>;
+
+/** A total row printed in the file, used to verify the imported figures. */
+export interface ControlRow { metric: "gross_profit" | "net_income" | "ta" | "tle"; period: string; value: number; months: number; source: string }
+
+export interface ExtractIssues { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[] }
+
+const CONTROL_ROWS: [ControlRow["metric"], RegExp][] = [
+  ["net_income", /^(net (profit|income|earnings)( ?(\/|and|&) ?\(?loss\)?)?|net (loss|profit ?\/ ?loss)|profit (\(loss\) )?for the (year|period)|صافي (الربح|الدخل)( ?\/ ?\(?الخسارة\)?)?|صافي الربح \(الخسارة\))$/i],
+  ["gross_profit", /^(gross (profit|margin)|مجمل (الربح|الدخل))$/i],
+  ["ta", /^(total )?assets$|^(إجمالي|اجمالي|مجموع) (الأصول|الاصول)$|^(الأصول|الاصول)$/i],
+  ["tle", /^(total )?liabilities ?(\+|and|&) ?(equity|shareholders'? equity)$|^(إجمالي|اجمالي|مجموع) (الخصوم|الالتزامات) و ?حقوق (الملكية|المساهمين)$|^(الخصوم|الالتزامات) ?\+ ?حقوق الملكية$/i],
+];
+export const controlMetric = (label: string) => CONTROL_ROWS.find(([, rx]) => rx.test(label.trim()))?.[0] ?? null;
+
+/** "Amounts in thousands" style notes in the first rows. */
+function detectScale(rows: Cell[][]): { scale: number; from: string | null } {
+  for (const r of rows.slice(0, 8)) for (const v of r) {
+    const t = str(v);
+    if (!t || t.length > 120) continue;
+    if (/in millions|\(m\)|بالملايين|بالمليون/i.test(t)) return { scale: 1e6, from: t };
+    if (/in thousands|\(000\)|'000|000s|\bk\b ?(egp|usd|eur|sar|aed)|بالآلاف|بالالاف|بالألف/i.test(t)) return { scale: 1000, from: t };
+  }
+  return { scale: 1, from: null };
+}
+
+/** Text amounts like "1.234.567,89" mean a comma decimal; Excel numbers are unaffected. */
+function detectDecimal(rows: Cell[][]): "." | "," {
+  let eu = 0, us = 0;
+  for (const r of rows) for (const v of r) {
+    if (typeof v !== "string") continue;
+    const t = v.trim();
+    if (/^\(?-?\d{1,3}(\.\d{3})+(,\d+)?\)?-?$/.test(t) || /^\(?-?\d+,\d{1,2}\)?-?$/.test(t)) eu++;
+    else if (/^\(?-?\d{1,3}(,\d{3})+(\.\d+)?\)?-?$/.test(t) || /^\(?-?\d+\.\d{1,2}\)?-?$/.test(t)) us++;
+  }
+  return eu > us ? "," : ".";
+}
+
+/** Number parser bound to a sheet's units and decimal mark. */
+function numReader(scale: number, decimal: "." | ",") {
+  return (v: Cell) => {
+    if (decimal === "," && typeof v === "string") v = v.replace(/\./g, "").replace(",", ".");
+    const n = cleanNum(v);
+    return n === null ? null : n * scale;
+  };
+}
 
 const BUDGET_WORDS = /budget|forecast|\bplan\b|\btarget|variance|\bvar\b|%|\bprior|last year|\b(py|ly)\b|\bdiff|موازنة|تقديري|مخطط/i;
 const isText = (v: Cell) => typeof v === "string" && v.trim() !== "";
@@ -101,14 +163,16 @@ function headingDepth(label: string) {
   return /^(assets?|liabilit\w*|equity|income|revenue|expenses?)(\s|$)/i.test(t) || /^(الأصول|الاصول|الخصوم|الالتزامات|حقوق|الإيرادات|الايرادات|المصروفات|المصاريف)/.test(t) ? 0 : 1;
 }
 
-export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols: Map<number, string> }, issues: ExtractIssues): RawLine[] {
+export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols: Map<number, string>; spans?: Map<number, number>; forced?: Set<number> }, issues: ExtractIssues, num: (v: Cell) => number | null = cleanNum, info: ColumnInfo[] = []): RawLine[] {
   const rows = rowsIn;
+  const span = (c: number) => hdr.spans?.get(c) ?? 1;
+  const head = (c: number) => str(rows[hdr.row][c]).slice(0, 80);
   const hint = stmtFromText(g.name);
   const sub = rows[hdr.row + 1] ?? [];
   const isDC = (v: Cell) => /^(debit|credit|مدين|دائن|débit|crédit)$/i.test(str(v));
   const dcMode = sub.filter(isDC).length >= 2;
   const periodCols = [...hdr.cols.entries()].sort((a, b) => a[0] - b[0]);
-  type Col = { p: string; deb?: number; cred?: number; val?: number };
+  type Col = { p: string; deb?: number; cred?: number; val?: number; c: number };
   const cols: Col[] = [];
   let openDeb: number | undefined, openCred: number | undefined;
   if (dcMode) {
@@ -126,18 +190,21 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
       }
       if (gp.p === "__open") { openDeb = deb; openCred = cred; }
       else if (deb !== undefined && cred !== undefined) {
-        if (cols.some((x) => x.p === gp.p)) issues.skippedCols.push(`${g.name}: duplicate columns for ${gp.p} ignored`);
-        else cols.push({ p: gp.p, deb, cred });
+        if (cols.some((x) => x.p === gp.p)) { issues.skippedCols.push(`${g.name}: duplicate columns for ${gp.p} ignored`); info.push({ col: gp.c, header: head(gp.c), period: gp.p, months: span(gp.c), used: false, reason: "same month as an earlier column" }); }
+        else { cols.push({ p: gp.p, deb, cred, c: gp.c }); info.push({ col: gp.c, header: head(gp.c), period: gp.p, months: span(gp.c), used: true }); }
       }
     });
   } else {
     for (const [c, p] of periodCols) {
+      const skip = (reason: string) => { issues.skippedCols.push(`${g.name}: column ${c + 1} (${p}) ${reason}`); info.push({ col: c, header: head(c), period: p, months: span(c), used: false, reason }); };
+      const forced = hdr.forced?.has(c);
       const ctx = [hdr.row - 2, hdr.row - 1].filter((r) => r >= 0).map((r) => rows[r][c]).filter((v) => str(v) && parsePeriod(v) === null).map(str).join(" ");
-      if (BUDGET_WORDS.test(ctx) || BUDGET_WORDS.test(str(rows[hdr.row][c]).replace(/\d{4}/, ""))) { issues.skippedCols.push(`${g.name}: column ${c + 1} (${p}) looks like budget/variance${ctx ? `: '${ctx}'` : ""}`); continue; }
+      if (!forced && (BUDGET_WORDS.test(ctx) || BUDGET_WORDS.test(str(rows[hdr.row][c]).replace(/\d{4}/, "")))) { skip(`looks like budget/variance${ctx ? `: '${ctx}'` : ""}`); continue; }
       const sub2 = str(rows[hdr.row + 1]?.[c]);
-      if (BUDGET_WORDS.test(sub2) && !/actual|فعلي/i.test(sub2)) { issues.skippedCols.push(`${g.name}: column ${c + 1} (${p}) is '${sub2}'`); continue; }
-      if (cols.some((x) => x.p === p)) { issues.skippedCols.push(`${g.name}: duplicate column for ${p} ignored (first one kept)`); continue; }
-      cols.push({ p, val: c });
+      if (!forced && BUDGET_WORDS.test(sub2) && !/actual|فعلي/i.test(sub2)) { skip(`is '${sub2}'`); continue; }
+      if (cols.some((x) => x.p === p)) { skip("has the same month as an earlier column (first one kept)"); continue; }
+      cols.push({ p, val: c, c });
+      info.push({ col: c, header: head(c), period: p, months: span(c), used: true });
     }
   }
   if (!cols.length) return [];
@@ -157,9 +224,9 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
     for (const col of cols) {
       let v: number | null;
       if (dcMode) {
-        const d = cleanNum(rows[r][col.deb!]), c2 = cleanNum(rows[r][col.cred!]);
+        const d = num(rows[r][col.deb!]), c2 = num(rows[r][col.cred!]);
         v = d === null && c2 === null ? null : (d ?? 0) - (c2 ?? 0);
-      } else v = cleanNum(rows[r][col.val!]);
+      } else v = num(rows[r][col.val!]);
       if (v !== null) { values[col.p] = v; any = true; }
     }
     if (!any) {
@@ -169,14 +236,19 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
       heads.push(lab);
       continue;
     }
-    const opening = dcMode && openDeb !== undefined ? (cleanNum(rows[r][openDeb]) ?? 0) - (openCred !== undefined ? cleanNum(rows[r][openCred]) ?? 0 : 0) : 0;
+    const opening = dcMode && openDeb !== undefined ? (num(rows[r][openDeb]) ?? 0) - (openCred !== undefined ? num(rows[r][openCred]) ?? 0 : 0) : 0;
     const { code, name } = splitCode(lab);
-    out.push({ key: `${g.name}|${r + 1}|${lab}`, sheet: g.name, row: r + 1, label: lab, code, name, section: heads.join(" / "), stmt: hint, kind: dcMode ? "movement" : "natural", values, opening });
+    const spans = Object.fromEntries(cols.filter((c) => span(c.c) > 1 && c.p in values).map((c) => [c.p, span(c.c)]));
+    if (!dcMode) {
+      const metric = controlMetric(name);
+      if (metric) for (const col of cols) if (col.p in values && !issues.controls?.some((x) => x.metric === metric && x.period === col.p)) (issues.controls ??= []).push({ metric, period: col.p, value: values[col.p], months: span(col.c), source: `${g.name} row ${r + 1} '${lab.slice(0, 60)}'` });
+    }
+    out.push({ key: `${g.name}|${r + 1}|${lab}`, sheet: g.name, row: r + 1, label: lab, code, name, section: heads.join(" / "), stmt: hint, kind: dcMode ? "movement" : "natural", values, opening, ...(Object.keys(spans).length ? { spans } : {}) });
   }
   return out;
 }
 
-export function extractLong(g: Grid, rows: Cell[][]): RawLine[] | null {
+export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum): RawLine[] | null {
   const hint = stmtFromText(g.name);
   for (let r = 0; r < Math.min(rows.length, 15); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
@@ -197,7 +269,7 @@ export function extractLong(g: Grid, rows: Cell[][]): RawLine[] | null {
       const lab = str(rows[rr][acc]);
       const per = parsePeriod(rows[rr][dat]);
       if (!lab || !per) continue;
-      const v = deb !== undefined && cre !== undefined ? (cleanNum(rows[rr][deb]) ?? 0) - (cleanNum(rows[rr][cre]) ?? 0) : cleanNum(rows[rr][amt!]);
+      const v = deb !== undefined && cre !== undefined ? (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0) : num(rows[rr][amt!]);
       if (v === null) continue;
       const sec = typ !== undefined ? str(rows[rr][typ]) : "";
       const k = `${lab}|${sec}`;
@@ -218,7 +290,7 @@ export function extractLong(g: Grid, rows: Cell[][]): RawLine[] | null {
  * Odoo General Ledger: account headings ("101401 Bank") with dated move lines below them,
  * an optional "Initial Balance" row, and Date / Debit / Credit columns (no account column).
  */
-export function extractLedger(g: Grid, rows: Cell[][]): RawLine[] | null {
+export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/.test(x));
@@ -231,7 +303,7 @@ export function extractLedger(g: Grid, rows: Cell[][]): RawLine[] | null {
     for (let rr = r + 1; rr < rows.length; rr++) {
       const lab = str(rows[rr][lc]);
       const per = parsePeriod(rows[rr][dat]);
-      const amt = (cleanNum(rows[rr][deb]) ?? 0) - (cleanNum(rows[rr][cre]) ?? 0);
+      const amt = (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0);
       if (per) {
         if (cur) cur.values[per] = (cur.values[per] ?? 0) + amt;
         continue;
@@ -256,20 +328,31 @@ const NOTHING_FOUND = (name: string) =>
   `Sheet '${name}': couldn't find month columns, a Date/Debit/Credit ledger, or an Account/Date/Amount list, so it was skipped. ` +
   "From Odoo, export the Trial Balance or Profit and Loss / Balance Sheet with monthly comparison periods, the General Ledger, or Journal Items (Account, Date, Debit, Credit).";
 
-export function extractGrid(g: Grid, issues: ExtractIssues): RawLine[] {
+export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}): RawLine[] {
   const rows = trimGrid(g.rows);
+  const sc = detectScale(rows);
+  const layout: SheetLayout = { sheet: g.name, kind: "none", headerRow: null, columns: [], scale: ov.scale ?? sc.scale, scaleFrom: sc.from, decimal: ov.decimal ?? detectDecimal(rows), lines: 0 };
+  (issues.layouts ??= []).push(layout);
+  if (ov.skip) { layout.kind = "skipped"; return []; }
   if (!rows.length) return [];
-  const hdr = findHeader(rows);
-  const got = hdr ? extractWide(g, rows, hdr, issues) : null;
-  if (got?.length) {
-    const wide = [...hdr!.spans.values()].filter((m) => m > 1);
-    if (wide.length) issues.warnings.push(`Sheet '${g.name}': a period column covers ${Math.max(...wide)} months, so that whole range is shown as its last month. For month-by-month analysis, export with monthly comparison periods.`);
-    return got;
+  const num = numReader(layout.scale, layout.decimal);
+  const done = (kind: SheetLayout["kind"], lines: RawLine[]) => { layout.kind = kind; layout.lines = lines.length; return lines; };
+  const found = findHeader(rows);
+  // Columns the user re-dated or left out; a re-dated column always counts as one month.
+  const hdr = found ? { ...found, cols: new Map(found.cols), spans: new Map(found.spans), forced: new Set<number>() } : null;
+  if (hdr && ov.periods) for (const [k, p] of Object.entries(ov.periods)) {
+    const c = Number(k);
+    if (p === null) { if (hdr.cols.has(c)) layout.columns.push({ col: c, header: str(rows[hdr.row][c]).slice(0, 80), period: hdr.cols.get(c)!, months: hdr.spans.get(c) ?? 1, used: false, reason: "left out by you" }); hdr.cols.delete(c); hdr.spans.delete(c); }
+    else if (/^\d{4}-(0[1-9]|1[0-2])$/.test(p)) { hdr.cols.set(c, p); hdr.spans.set(c, 1); hdr.forced.add(c); }
   }
-  const long = extractLong(g, rows);
-  if (long?.length) return long;
-  const ledger = extractLedger(g, rows);
-  if (ledger?.length) return ledger;
+  if (hdr) layout.headerRow = hdr.row;
+  const got = hdr && hdr.cols.size ? extractWide(g, rows, hdr, issues, num, layout.columns) : null;
+  layout.columns.sort((a, b) => a.col - b.col);
+  if (got?.length) return done(got.some((l) => l.kind === "movement") ? "trial-balance" : "columns", got);
+  const long = extractLong(g, rows, num);
+  if (long?.length) return done("list", long);
+  const ledger = extractLedger(g, rows, num);
+  if (ledger?.length) return done("ledger", ledger);
   issues.warnings.push(NOTHING_FOUND(g.name));
   return [];
 }
