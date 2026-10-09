@@ -65,7 +65,9 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
   // ---- subtotal removal (natural lines only; movement exports are per account)
   const skip = new Set<string>();
   raw.forEach((r) => {
-    if (r.kind === "natural" && SUBTOTAL.test(r.name) && !(r.stmt === "BS" && /^\s*net (profit|income|loss|earnings)/i.test(r.name))) {
+    // Movement exports are per account, but their grand-total row ("Total") must still go.
+    const isTotal = r.kind === "movement" ? !r.code && /^\s*(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(r.name) : SUBTOTAL.test(r.name);
+    if (isTotal && !(r.stmt === "BS" && /^\s*net (profit|income|loss|earnings)/i.test(r.name))) {
       skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (name looks like a computed total)`);
     }
   });
@@ -254,11 +256,13 @@ export function toAccountInputs(res: IngestResult) {
   for (const l of res.lines) {
     if (l.excluded || !l.cls) continue;
     const k = `${l.code}|${l.name}|${l.cls}`;
-    const cur = m.get(k) ?? { code: l.code, name: l.name, cls: l.cls, amounts: {}, confidence: l.conf, mapped_by: l.system ? "system" : l.why === "your mapping" ? "user" : "auto" };
+    const cur = m.get(k) ?? { code: l.code.slice(0, 40), name: (l.name || l.label || l.code || "Unnamed account").slice(0, 300), cls: l.cls, amounts: {}, confidence: l.conf, mapped_by: l.system ? "system" : l.why === "your mapping" ? "user" : "auto" };
     for (const [p, v] of Object.entries(l.values)) cur.amounts[p] = (cur.amounts[p] ?? 0) + v;
     m.set(k, cur);
   }
-  return [...m.values()];
+  // Round to cents and drop zero months: keeps the payload small and the stored data clean.
+  for (const a of m.values()) a.amounts = Object.fromEntries(Object.entries(a.amounts).map(([p, v]) => [p, Math.round(v * 100) / 100] as const).filter(([, v]) => v !== 0));
+  return [...m.values()].filter((a) => Object.keys(a.amounts).length > 0);
 }
 
 export const CLASS_LABEL: Record<ClassKey, string> = {

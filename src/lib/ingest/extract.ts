@@ -1,4 +1,4 @@
-import { cleanNum, parsePeriod, splitCode, stmtFromText, type Cell } from "./parse";
+import { cleanNum, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell } from "./parse";
 
 export interface Grid { name: string; rows: Cell[][] }
 
@@ -31,18 +31,32 @@ function trimGrid(rows: Cell[][]): Cell[][] {
   return nonEmpty.map((r) => keepCols.map((k, c) => (k ? r[c] : undefined)).filter((_, c) => keepCols[c]));
 }
 
-function findHeader(rows: Cell[][]): { row: number; cols: Map<number, string> } | null {
-  let best: { row: number; cols: Map<number, string> } | null = null;
+type Header = { row: number; cols: Map<number, string>; spans: Map<number, number> };
+
+/** A header cell naming a month ("Sep 2025") or a date range ("From 01/09/2025 to 30/09/2025"). */
+function headerPeriod(v: Cell): { p: string; months: number } | null {
+  const p = parsePeriod(v);
+  if (p) return { p, months: 1 };
+  const r = parsePeriodRange(v);
+  return r ? { p: r.end, months: r.months } : null;
+}
+
+function headerAt(row: Cell[]): Omit<Header, "row"> {
+  const cols = new Map<number, string>(), spans = new Map<number, number>();
+  row.forEach((v, c) => { const h = headerPeriod(v); if (h) { cols.set(c, h.p); spans.set(c, h.months); } });
+  return { cols, spans };
+}
+
+function findHeader(rows: Cell[][]): Header | null {
+  let best: Header | null = null;
   for (let r = 0; r < Math.min(rows.length, 40); r++) {
-    const cols = new Map<number, string>();
-    rows[r].forEach((v, c) => { const p = parsePeriod(v); if (p) cols.set(c, p); });
-    if (cols.size >= 2 && (!best || cols.size > best.cols.size)) best = { row: r, cols };
+    const h = headerAt(rows[r]);
+    if (h.cols.size >= 2 && (!best || h.cols.size > best.cols.size)) best = { row: r, ...h };
   }
   // A single period column is only accepted when nothing better exists (e.g. a one-month export)
   if (!best) for (let r = 0; r < Math.min(rows.length, 40); r++) {
-    const cols = new Map<number, string>();
-    rows[r].forEach((v, c) => { const p = parsePeriod(v); if (p) cols.set(c, p); });
-    if (cols.size === 1 && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, cols }; break; }
+    const h = headerAt(rows[r]);
+    if (h.cols.size === 1 && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, ...h }; break; }
   }
   return best;
 }
@@ -184,16 +198,62 @@ export function extractLong(g: Grid, rows: Cell[][]): RawLine[] | null {
   return null;
 }
 
+/**
+ * Odoo General Ledger: account headings ("101401 Bank") with dated move lines below them,
+ * an optional "Initial Balance" row, and Date / Debit / Credit columns (no account column).
+ */
+export function extractLedger(g: Grid, rows: Cell[][]): RawLine[] | null {
+  for (let r = 0; r < Math.min(rows.length, 20); r++) {
+    const cells = rows[r].map((x) => str(x).toLowerCase());
+    const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/.test(x));
+    const deb = cells.findIndex((x) => /^(debit|مدين|débit)$/.test(x));
+    const cre = cells.findIndex((x) => /^(credit|دائن|crédit)$/.test(x));
+    if (dat < 0 || deb < 0 || cre < 0) continue;
+    const lc = dat > 0 ? labelColumn(rows, r + 1, dat).label : 0;
+    const accounts = new Map<string, RawLine>();
+    let cur: RawLine | null = null;
+    for (let rr = r + 1; rr < rows.length; rr++) {
+      const lab = str(rows[rr][lc]);
+      const per = parsePeriod(rows[rr][dat]);
+      const amt = (cleanNum(rows[rr][deb]) ?? 0) - (cleanNum(rows[rr][cre]) ?? 0);
+      if (per) {
+        if (cur) cur.values[per] = (cur.values[per] ?? 0) + amt;
+        continue;
+      }
+      if (!lab) continue;
+      if (/^(initial balance|opening balance|balance forward|solde (initial|d'ouverture)|رصيد افتتاحي|الرصيد الافتتاحي|رصيد أول المدة)/i.test(lab)) {
+        if (cur) cur.opening += amt;
+        continue;
+      }
+      if (/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab)) { cur = null; continue; }
+      const { code, name } = splitCode(lab);
+      cur = accounts.get(lab) ?? { key: `${g.name}|gl|${lab}`, sheet: g.name, row: rr + 1, label: lab, code, name, section: "", stmt: null, kind: "movement", values: {}, opening: 0 };
+      accounts.set(lab, cur);
+    }
+    const out = [...accounts.values()].filter((a) => a.opening || Object.keys(a.values).length);
+    return out.length ? out : null;
+  }
+  return null;
+}
+
+const NOTHING_FOUND = (name: string) =>
+  `Sheet '${name}': couldn't find month columns, a Date/Debit/Credit ledger, or an Account/Date/Amount list, so it was skipped. ` +
+  "From Odoo, export the Trial Balance or Profit and Loss / Balance Sheet with monthly comparison periods, the General Ledger, or Journal Items (Account, Date, Debit, Credit).";
+
 export function extractGrid(g: Grid, issues: ExtractIssues): RawLine[] {
   const rows = trimGrid(g.rows);
   if (!rows.length) return [];
   const hdr = findHeader(rows);
-  const got = hdr ? extractWide(g, rows, hdr, issues) : extractLong(g, rows);
-  if (!got || !got.length) {
-    const long = hdr ? extractLong(g, rows) : null;
-    if (long?.length) return long;
-    issues.warnings.push(`Sheet '${g.name}': no month columns or Account/Date/Amount header found; skipped.`);
-    return [];
+  const got = hdr ? extractWide(g, rows, hdr, issues) : null;
+  if (got?.length) {
+    const wide = [...hdr!.spans.values()].filter((m) => m > 1);
+    if (wide.length) issues.warnings.push(`Sheet '${g.name}': a period column covers ${Math.max(...wide)} months, so that whole range is shown as its last month. For month-by-month analysis, export with monthly comparison periods.`);
+    return got;
   }
-  return got;
+  const long = extractLong(g, rows);
+  if (long?.length) return long;
+  const ledger = extractLedger(g, rows);
+  if (ledger?.length) return ledger;
+  issues.warnings.push(NOTHING_FOUND(g.name));
+  return [];
 }

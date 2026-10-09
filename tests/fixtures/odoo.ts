@@ -112,3 +112,43 @@ export function trialBalanceDebitCredit(): Grid[] {
   }
   return [{ name: "Trial Balance", rows }];
 }
+
+/** Odoo General Ledger export: account headings, an Initial Balance row, then dated move lines (no account column). */
+export function generalLedger(): Grid[] {
+  const [h1, h2, ...body] = trialBalanceDebitCredit()[0].rows.slice(1);
+  const periods = (h1.filter((x) => x && x !== "Initial Balance") as string[]);
+  void h2;
+  const rows: Cell[][] = [["My Company"], ["General Ledger"], [], ["", "Date", "Communication", "Partner", "Currency", "Debit", "Credit", "Balance"]];
+  const iso = (label: string) => { const [m, y] = label.split(" "); return new Date(`${y}-${String(MON.indexOf(m) + 1).padStart(2, "0")}-28T00:00:00`); };
+  let n = 1;
+  for (const r of body) {
+    const [acc, od, oc, ...mv] = r as [string, number, number, ...number[]];
+    rows.push([acc, null, null, null, null, null, null, null]);
+    if (od || oc) rows.push(["Initial Balance", null, null, null, null, od, oc, od - oc]);
+    periods.forEach((p, i) => {
+      const d = mv[i * 2], c = mv[i * 2 + 1];
+      if (d || c) rows.push([`MISC/${n++}`, iso(p), "Monthly posting", "", "", d, c, null]);
+    });
+  }
+  rows.push(["Total", null, null, null, null, 0, 0, 0]);
+  return [{ name: "General Ledger", rows }];
+}
+
+/** Odoo Trial Balance for a single month without comparison: the column header is a date range. */
+export function trialBalanceSinglePeriod(index = 1): Grid[] {
+  const p = months[index].period, prev = months[index - 1].period;
+  const last = new Date(+p.slice(0, 4), +p.slice(5), 0).getDate();
+  const range = `From 01/${p.slice(5)}/${p.slice(0, 4)} to ${last}/${p.slice(5)}/${p.slice(0, 4)}`;
+  const rows: Cell[][] = [["My Company"], ["Trial Balance"], ["", "Initial Balance", null, range, null, "End Balance", null], ["", "Debit", "Credit", "Debit", "Credit", "Debit", "Credit"]];
+  const dc = (v: number): [number, number] => [v > 0 ? v : 0, v < 0 ? -v : 0];
+  const re0 = toRaw("retained_earnings", months[index - 1].bs.retained_earnings ?? 0);
+  rows.push(["999999 Undistributed Profits/Losses", ...dc(re0), 0, 0, ...dc(re0)]);
+  for (const a of accounts) {
+    if (a.cls === "retained_earnings") continue;
+    const open = isPL(a.cls) ? 0 : toRaw(a.cls, a.amounts[prev] ?? 0);
+    const mv = toRaw(a.cls, isPL(a.cls) ? a.amounts[p] ?? 0 : (a.amounts[p] ?? 0) - (a.amounts[prev] ?? 0));
+    rows.push([`${a.code} ${a.name}`, ...dc(open), ...dc(mv), ...dc(open + mv)]);
+  }
+  rows.push(["Total", 0, 0, 0, 0, 0, 0]);
+  return [{ name: "Trial Balance", rows }];
+}

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import "server-only";
 import { notFound } from "next/navigation";
 import type { ClassKey, CompanySettings, Importance } from "@/lib/engine";
@@ -45,7 +46,10 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
   const raw = new Map<string, Record<string, number>>((accts ?? []).map((a) => [a.id, {}]));
   // Page through balances (PostgREST caps responses at 1000 rows by default).
   for (let from = 0; ; from += 1000) {
-    const { data: bal, error: e2 } = await supabase.from("account_balances").select("account_id, period, amount").eq("company_id", companyId).range(from, from + 999);
+    const { data: bal, error: e2 } = await supabase.from("account_balances")
+      .select("account_id, period, amount, source_accounts!inner(version)")
+      .eq("company_id", companyId).eq("source_accounts.version", version)
+      .order("account_id").order("period").range(from, from + 999);
     if (e2) throw e2;
     for (const b of bal ?? []) {
       const r = raw.get(b.account_id);
@@ -56,7 +60,7 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
   return (accts ?? []).map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: raw.get(a.id) ?? {} }));
 }
 
-export async function loadCompanyBundle(id: string): Promise<CompanyBundle & { role: string; orgId: string; dataVersion: number }> {
+export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle & { role: string; orgId: string; dataVersion: number }> => {
   const { supabase, user } = await getUser();
   if (!user) notFound();
   const { data: c } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
@@ -79,4 +83,4 @@ export async function loadCompanyBundle(id: string): Promise<CompanyBundle & { r
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: mem?.role ?? "viewer", orgId: c.org_id, dataVersion: c.data_version,
   };
-}
+});

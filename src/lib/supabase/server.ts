@@ -1,6 +1,7 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { cache } from "react";
 import type { Database } from "./database.types";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./env";
 
@@ -20,8 +21,9 @@ export async function createClient() {
   });
 }
 
-export async function getUser() {
+/** One auth round-trip per request, shared by layouts, pages and metadata. */
+export const getUser = cache(async () => {
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   return { supabase, user: data.user };
-}
+});

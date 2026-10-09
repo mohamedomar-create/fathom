@@ -6,7 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
-  const { data: m } = await supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id).eq("role", "admin").limit(1).maybeSingle();
+  const { data: m } = await supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
   if (!m) redirect("/companies");
   return (
     <>
