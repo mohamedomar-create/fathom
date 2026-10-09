@@ -99,3 +99,13 @@ function shiftEnd(end: string, type: "month" | "quarter" | "year") {
   const i = y * 12 + m - 1 - back;
   return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
 }
+
+/** Monthly KPI values for the n months ending at `end` (used for KPI detail charts and rolling averages). */
+export function kpiHistory(months: MonthData[], settings: CompanySettings, end: string, n = 12): { period: string; K: Record<string, number | null> }[] {
+  const ps = [...months].map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
+  return ps.map((p) => {
+    const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth);
+    const W = v.B0 ? cashWaterfall(v.P, v.B, v.B0, settings.taxRate) : null;
+    return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
+  });
+}
