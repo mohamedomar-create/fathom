@@ -1,0 +1,3781 @@
+[
+ {
+  "period": "2025-09",
+  "P": {
+   "revenue": 865625.0,
+   "cos_variable": 471766.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 43281.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 476766.0,
+   "expenses": 288281.0,
+   "gross_profit": 388859.0,
+   "operating_profit": 100578.0,
+   "ebit": 80578.0,
+   "ebt": 60578.0,
+   "eat": 35578.0,
+   "net_income": 35578.0,
+   "retained_income": 35578.0,
+   "da": 5000.0,
+   "ebitda": 85578.0,
+   "net_interest": 20000.0,
+   "variable_costs": 515047.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 473688.0,
+   "ar": 571562.0,
+   "inventory": 451120.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 190000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 244424.0,
+   "ap": 287254.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 73688.0,
+   "other_equity": 1001004.0,
+   "tca": 1496370.0,
+   "tnca": 190000.0,
+   "ta": 1686370.0,
+   "tcl": 611678.0,
+   "tncl": 0.0,
+   "tl": 611678.0,
+   "te": 1074692.0,
+   "tle": 1686370.0,
+   "imbalance": 0.0,
+   "debt": 244424.0,
+   "owc": 735428.0,
+   "tic": 1319116.0,
+   "toi": 925428.0
+  },
+  "W": {
+   "ocf": 91208.0,
+   "fcf": 91208.0,
+   "ncf": 38999.0,
+   "dcash": 35578.0,
+   "ddebt": -3421.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    865625.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -471766.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -318281.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -18702.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    28191.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    25641.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    91208.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    91208.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -36709.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    38999.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 865625.0,
+   "gpm": 44.92233935018051,
+   "opm": 11.619119133574006,
+   "profit_ratio": 9.308649819494585,
+   "npat": 4.1100938628158845,
+   "activity": 7.9839611022331125,
+   "ar_days": 19.808646931407942,
+   "inv_days": 28.386252375379115,
+   "ap_days": 18.07515636601603,
+   "roe": 40.235769886558174,
+   "roce": 74.31989807315404,
+   "gmroi": 1019.7682317739739,
+   "asset_turn": 6.245231374688434,
+   "wca": 6.982947233074525,
+   "current": 2.4463361441804348,
+   "quick": 1.7088239236984164,
+   "int_cover": 4.0289,
+   "cash": 473688.0,
+   "cf_margin": 10.536664259927798,
+   "rev_growth": -0.7171874964157829,
+   "gp_growth": -0.7263137471151686,
+   "ebit_growth": -3.046564793646974,
+   "asset_change": -1.360182121916866,
+   "equity_change": -0.1051288176586669
+  },
+  "status": {
+   "total_revenue": false,
+   "gpm": true,
+   "opm": false,
+   "profit_ratio": false,
+   "npat": false,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": false,
+   "equity_change": false
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "Revenue is 8.9% below target",
+    "text": "EGP 865,625 against a target of EGP 950,000."
+   },
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "3 critical KPIs off target",
+    "text": "Total Revenue, Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 29% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "profitability",
+    "title": "High operating leverage (4.4x)",
+    "text": "A 10% change in revenue moves EBIT by about 44%. Good when sales grow, painful when they fall."
+   }
+  ],
+  "goalseek": {
+   "price": 6.6957060947122535,
+   "volume": 22.319032954786127,
+   "cos_variable": -10.442836067033232,
+   "exp_fixed": -20.1084693877551,
+   "exp_variable": -113.82766109840345,
+   "other_expenses": -164.21916666666667,
+   "other_income": 492.65749999999997
+  },
+  "bep": 617284.1707123665,
+  "mos": 248340.82928763353
+ },
+ {
+  "period": "2025-10",
+  "P": {
+   "revenue": 984022.0,
+   "cos_variable": 536292.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 49201.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 541292.0,
+   "expenses": 294201.0,
+   "gross_profit": 442730.0,
+   "operating_profit": 148529.0,
+   "ebit": 128529.0,
+   "ebt": 108529.0,
+   "eat": 83529.0,
+   "net_income": 83529.0,
+   "retained_income": 83529.0,
+   "da": 5000.0,
+   "ebitda": 133529.0,
+   "net_interest": 20000.0,
+   "variable_costs": 585493.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 557217.0,
+   "ar": 569491.0,
+   "inventory": 473578.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 185000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 238060.0,
+   "ap": 271110.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 157217.0,
+   "other_equity": 1038899.0,
+   "tca": 1600286.0,
+   "tnca": 185000.0,
+   "ta": 1785286.0,
+   "tcl": 589170.0,
+   "tncl": 0.0,
+   "tl": 589170.0,
+   "te": 1196116.0,
+   "tle": 1785286.0,
+   "imbalance": 0.0,
+   "debt": 238060.0,
+   "owc": 771959.0,
+   "tic": 1434176.0,
+   "toi": 956959.0
+  },
+  "W": {
+   "ocf": 67498.0,
+   "fcf": 67498.0,
+   "ncf": 89893.0,
+   "dcash": 83529.0,
+   "ddebt": -6364.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    984022.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -536292.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -324201.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -16144.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    2071.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    -22458.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    67498.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    67498.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    37895.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    89893.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 984022.0,
+   "gpm": 44.99188026283965,
+   "opm": 15.094073099991668,
+   "profit_ratio": 13.061598216300041,
+   "npat": 8.488529727993885,
+   "activity": 8.078552063255115,
+   "ar_days": 17.94088038682062,
+   "inv_days": 27.121993304907516,
+   "ap_days": 15.526573457579273,
+   "roe": 91.51334641955332,
+   "roce": 105.51880121970004,
+   "gmroi": 1127.457550395355,
+   "asset_turn": 6.489753173368843,
+   "wca": 6.662822690538464,
+   "current": 2.7161702055433916,
+   "quick": 1.9123648522497751,
+   "int_cover": 6.42645,
+   "cash": 557217.0,
+   "cf_margin": 6.859399484970864,
+   "rev_growth": 13.67763176895307,
+   "gp_growth": 13.853607605841706,
+   "ebit_growth": 59.50879892774703,
+   "asset_change": 5.865616679613607,
+   "equity_change": 11.298492963565375
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": false,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "1 critical KPI off target",
+    "text": "Profitability Ratio."
+   },
+   {
+    "sev": 2,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 13.7% on last month",
+    "text": "EGP 984,022 against EGP 865,625. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 3.6% above target",
+    "text": "EGP 984,022 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 37% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "profitability",
+    "title": "High operating leverage (3.1x)",
+    "text": "A 10% change in revenue moves EBIT by about 31%. Good when sales grow, painful when they fall."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 2 months in a row",
+    "text": "Cash on hand is EGP 557,217."
+   }
+  ],
+  "goalseek": {
+   "price": 2.2804726867058314,
+   "volume": 7.601572895881126,
+   "cos_variable": -3.556700454230156,
+   "exp_fixed": -7.785428571428567,
+   "exp_variable": -38.76811446921808,
+   "other_expenses": -63.58099999999997,
+   "other_income": 190.74299999999988
+  },
+  "bep": 617283.811215746,
+  "mos": 366738.188784254
+ },
+ {
+  "period": "2025-11",
+  "P": {
+   "revenue": 991403.0,
+   "cos_variable": 540315.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 49570.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 545315.0,
+   "expenses": 294570.0,
+   "gross_profit": 446088.0,
+   "operating_profit": 151518.0,
+   "ebit": 131518.0,
+   "ebt": 111518.0,
+   "eat": 86518.0,
+   "net_income": 86518.0,
+   "retained_income": 86518.0,
+   "da": 5000.0,
+   "ebitda": 136518.0,
+   "net_interest": 20000.0,
+   "variable_costs": 589885.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 643735.0,
+   "ar": 599834.0,
+   "inventory": 467187.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 180000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 240835.0,
+   "ap": 269242.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 243735.0,
+   "other_equity": 1056944.0,
+   "tca": 1710756.0,
+   "tnca": 180000.0,
+   "ta": 1890756.0,
+   "tcl": 590077.0,
+   "tncl": 0.0,
+   "tl": 590077.0,
+   "te": 1300679.0,
+   "tle": 1890756.0,
+   "imbalance": 0.0,
+   "debt": 240835.0,
+   "owc": 797779.0,
+   "tic": 1541514.0,
+   "toi": 977779.0
+  },
+  "W": {
+   "ocf": 81198.0,
+   "fcf": 81198.0,
+   "ncf": 83743.0,
+   "dcash": 86518.0,
+   "ddebt": 2775.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    991403.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -540315.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -324570.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -1868.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    -30343.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    6391.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    81198.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    81198.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    18045.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    83743.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 991403.0,
+   "gpm": 44.99562740883374,
+   "opm": 15.283189580826365,
+   "profit_ratio": 13.265846482207538,
+   "npat": 8.726824510315181,
+   "activity": 7.824820165975355,
+   "ar_days": 18.151064703253873,
+   "inv_days": 25.70186039261711,
+   "ap_days": 14.812099428770527,
+   "roe": 88.0044800560035,
+   "roce": 103.80286307271078,
+   "gmroi": 1153.8277890865413,
+   "asset_turn": 6.379495732571169,
+   "wca": 6.6139477803001165,
+   "current": 2.899208069455342,
+   "quick": 2.107469025228911,
+   "int_cover": 6.5759,
+   "cash": 643735.0,
+   "cf_margin": 8.190211246082573,
+   "rev_growth": 0.7500848558263942,
+   "gp_growth": 0.7584758204774918,
+   "ebit_growth": 2.3255452076963175,
+   "asset_change": 5.9077369116208835,
+   "equity_change": 8.741877878065338
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": false,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "2 critical KPIs off target",
+    "text": "Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 4.4% above target",
+    "text": "EGP 991,403 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 38% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "profitability",
+    "title": "High operating leverage (3.1x)",
+    "text": "A 10% change in revenue moves EBIT by about 31%. Good when sales grow, painful when they fall."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 643,735."
+   }
+  ],
+  "goalseek": {
+   "price": 2.0401806091676002,
+   "volume": 6.800607814125797,
+   "cos_variable": -3.181930910672475,
+   "exp_fixed": -7.017326530612237,
+   "exp_variable": -34.68317530764572,
+   "other_expenses": -57.30816666666661,
+   "other_income": 171.92449999999982
+  },
+  "bep": 617284.2811530243,
+  "mos": 374118.7188469757
+ },
+ {
+  "period": "2025-12",
+  "P": {
+   "revenue": 915262.0,
+   "cos_variable": 498818.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 45763.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 503818.0,
+   "expenses": 290763.0,
+   "gross_profit": 411444.0,
+   "operating_profit": 120681.0,
+   "ebit": 100681.0,
+   "ebt": 80681.0,
+   "eat": 55681.0,
+   "net_income": 55681.0,
+   "retained_income": 55681.0,
+   "da": 5000.0,
+   "ebitda": 105681.0,
+   "net_interest": 20000.0,
+   "variable_costs": 544581.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 699416.0,
+   "ar": 573751.0,
+   "inventory": 454339.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 175000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 231255.0,
+   "ap": 263292.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 299416.0,
+   "other_equity": 1028543.0,
+   "tca": 1727506.0,
+   "tnca": 175000.0,
+   "ta": 1902506.0,
+   "tcl": 574547.0,
+   "tncl": 0.0,
+   "tl": 574547.0,
+   "te": 1327959.0,
+   "tle": 1902506.0,
+   "imbalance": 0.0,
+   "debt": 231255.0,
+   "owc": 764798.0,
+   "tic": 1559214.0,
+   "toi": 939798.0
+  },
+  "W": {
+   "ocf": 109162.0,
+   "fcf": 109162.0,
+   "ncf": 65261.0,
+   "dcash": 55681.0,
+   "ddebt": -9580.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    915262.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -498818.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -320763.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -5950.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    26083.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    12848.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    109162.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    109162.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -28401.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    65261.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 915262.0,
+   "gpm": 44.95368539281648,
+   "opm": 13.185404834899733,
+   "profit_ratio": 11.00023818316504,
+   "npat": 6.083613216761977,
+   "activity": 6.911477151618618,
+   "ar_days": 19.43299404979121,
+   "inv_days": 27.9555494245938,
+   "ap_days": 16.200397762684144,
+   "roe": 50.404355799374166,
+   "roce": 76.02789486530786,
+   "gmroi": 1051.3911252254588,
+   "asset_turn": 5.66435634656809,
+   "wca": 7.096923785248646,
+   "current": 3.006727038867142,
+   "quick": 2.2159492608959757,
+   "int_cover": 5.03405,
+   "cash": 699416.0,
+   "cf_margin": 11.926858101833137,
+   "rev_growth": -7.680126043596802,
+   "gp_growth": -7.76618066390488,
+   "ebit_growth": -23.446980641433115,
+   "asset_change": 0.6214445438755715,
+   "equity_change": 2.0973660680306208
+  },
+  "status": {
+   "total_revenue": false,
+   "gpm": true,
+   "opm": false,
+   "profit_ratio": false,
+   "npat": false,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": false,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "3 critical KPIs off target",
+    "text": "Total Revenue, Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "risk",
+    "section": "trend",
+    "title": "Revenue down 7.7% on last month",
+    "text": "EGP 915,262 against EGP 991,403. Find out which customers or products drove the drop."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "kpis",
+    "title": "Revenue is 3.7% below target",
+    "text": "EGP 915,262 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 33% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "profitability",
+    "title": "High operating leverage (3.7x)",
+    "text": "A 10% change in revenue moves EBIT by about 37%. Good when sales grow, painful when they fall."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 699,416."
+   }
+  ],
+  "goalseek": {
+   "price": 4.705602137452894,
+   "volume": 15.685347850844733,
+   "cos_variable": -7.3390094182647765,
+   "exp_fixed": -14.94216326530612,
+   "exp_variable": -79.99541114000391,
+   "other_expenses": -122.02766666666662,
+   "other_income": 366.0829999999999
+  },
+  "bep": 617284.1337969844,
+  "mos": 297977.86620301555
+ },
+ {
+  "period": "2026-01",
+  "P": {
+   "revenue": 1052952.0,
+   "cos_variable": 573859.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 52648.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 578859.0,
+   "expenses": 297648.0,
+   "gross_profit": 474093.0,
+   "operating_profit": 176445.0,
+   "ebit": 156445.0,
+   "ebt": 136445.0,
+   "eat": 111445.0,
+   "net_income": 111445.0,
+   "retained_income": 111445.0,
+   "da": 5000.0,
+   "ebitda": 161445.0,
+   "net_interest": 20000.0,
+   "variable_costs": 626507.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 810861.0,
+   "ar": 567863.0,
+   "inventory": 476797.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 170000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 224424.0,
+   "ap": 261101.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 410861.0,
+   "other_equity": 1049135.0,
+   "tca": 1855521.0,
+   "tnca": 170000.0,
+   "ta": 2025521.0,
+   "tcl": 565525.0,
+   "tncl": 0.0,
+   "tl": 565525.0,
+   "te": 1459996.0,
+   "tle": 2025521.0,
+   "imbalance": 0.0,
+   "debt": 224424.0,
+   "owc": 783559.0,
+   "tic": 1684420.0,
+   "toi": 953559.0
+  },
+  "W": {
+   "ocf": 113184.0,
+   "fcf": 113184.0,
+   "ncf": 118276.0,
+   "dcash": 111445.0,
+   "ddebt": -6831.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1052952.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -573859.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -327648.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -2191.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    5888.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    -22458.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    113184.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    113184.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    20592.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    118276.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1052952.0,
+   "gpm": 45.02512935062567,
+   "opm": 16.757174116199028,
+   "profit_ratio": 14.85775230019982,
+   "npat": 10.584053214201598,
+   "activity": 7.360195583738788,
+   "ar_days": 16.718476245830768,
+   "inv_days": 25.534209539801576,
+   "ap_days": 13.982906027201789,
+   "roe": 98.81140908717815,
+   "roce": 109.35596286421554,
+   "gmroi": 1198.9790410714406,
+   "asset_turn": 6.120726788397301,
+   "wca": 6.32021655073949,
+   "current": 3.281059192785465,
+   "quick": 2.437954113434419,
+   "int_cover": 7.82225,
+   "cash": 810861.0,
+   "cf_margin": 10.749207941102728,
+   "rev_growth": 15.043779813867506,
+   "gp_growth": 15.22661650188118,
+   "ebit_growth": 55.386815784507505,
+   "asset_change": 6.465945442484807,
+   "equity_change": 9.942852151308887
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "1 critical KPI off target",
+    "text": "Profitability Ratio."
+   },
+   {
+    "sev": 2,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 15.0% on last month",
+    "text": "EGP 1,052,952 against EGP 915,262. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 10.8% above target",
+    "text": "EGP 1,052,952 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 8.7%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 41% before losses start",
+    "text": "Breakeven is EGP 617,285."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 810,861."
+   }
+  ],
+  "goalseek": {
+   "price": 0.16735023505903499,
+   "volume": 0.5578352803068237,
+   "cos_variable": -0.2610048809899275,
+   "exp_fixed": -0.6113469387755055,
+   "exp_variable": -2.8449323810970752,
+   "other_expenses": -4.9926666666666275,
+   "other_income": 14.977999999999883
+  },
+  "bep": 617284.7612236046,
+  "mos": 435667.23877639545
+ },
+ {
+  "period": "2026-02",
+  "P": {
+   "revenue": 943206.0,
+   "cos_variable": 514047.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 47160.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 519047.0,
+   "expenses": 292160.0,
+   "gross_profit": 424159.0,
+   "operating_profit": 131999.0,
+   "ebit": 111999.0,
+   "ebt": 91999.0,
+   "eat": 66999.0,
+   "net_income": 66999.0,
+   "retained_income": 66999.0,
+   "da": 5000.0,
+   "ebitda": 116999.0,
+   "net_interest": 20000.0,
+   "variable_costs": 561207.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 877860.0,
+   "ar": 568475.0,
+   "inventory": 465778.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 165000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 228634.0,
+   "ap": 282190.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 477860.0,
+   "other_equity": 1008429.0,
+   "tca": 1912113.0,
+   "tnca": 165000.0,
+   "ta": 2077113.0,
+   "tcl": 590824.0,
+   "tncl": 0.0,
+   "tl": 590824.0,
+   "te": 1486289.0,
+   "tle": 2077113.0,
+   "imbalance": 0.0,
+   "debt": 228634.0,
+   "owc": 752063.0,
+   "tic": 1714923.0,
+   "toi": 917063.0
+  },
+  "W": {
+   "ocf": 118995.0,
+   "fcf": 118995.0,
+   "ncf": 62789.0,
+   "dcash": 66999.0,
+   "ddebt": 4210.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    943206.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -514047.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -322160.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    21089.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    -612.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    11019.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    118995.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    118995.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -40706.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    62789.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 943206.0,
+   "gpm": 44.969921735018644,
+   "opm": 13.994715894512968,
+   "profit_ratio": 11.874288331499164,
+   "npat": 7.1033263147181005,
+   "activity": 7.169630314930425,
+   "ar_days": 16.87574082437983,
+   "inv_days": 25.126402811306104,
+   "ap_days": 15.222744761071734,
+   "roe": 59.8206996066134,
+   "roce": 85.13425758974101,
+   "gmroi": 1173.214977209089,
+   "asset_turn": 5.9194487389811865,
+   "wca": 6.116638794662994,
+   "current": 3.236349572800022,
+   "quick": 2.4479963576293446,
+   "int_cover": 5.59995,
+   "cash": 877860.0,
+   "cf_margin": 12.616013893041393,
+   "rev_growth": -10.422697330932463,
+   "gp_growth": -10.532532646548251,
+   "ebit_growth": -28.40998433954425,
+   "asset_change": 2.5470977590456974,
+   "equity_change": 1.8008953449187532
+  },
+  "status": {
+   "total_revenue": false,
+   "gpm": true,
+   "opm": false,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "trend",
+    "title": "Revenue down 10.4% on last month",
+    "text": "EGP 943,206 against EGP 1,052,952. Find out which customers or products drove the drop."
+   },
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "3 critical KPIs off target",
+    "text": "Total Revenue, Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "kpis",
+    "title": "Revenue is 0.7% below target",
+    "text": "EGP 943,206 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 35% before losses start",
+    "text": "Breakeven is EGP 617,283."
+   },
+   {
+    "sev": 1,
+    "kind": "watch",
+    "section": "profitability",
+    "title": "High operating leverage (3.4x)",
+    "text": "A 10% change in revenue moves EBIT by about 34%. Good when sales grow, painful when they fall."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 877,860."
+   }
+  ],
+  "goalseek": {
+   "price": 3.677307845295101,
+   "volume": 12.257663768340093,
+   "cos_variable": -5.735253780296353,
+   "exp_fixed": -12.03342857142857,
+   "exp_variable": -62.51463104325698,
+   "other_expenses": -98.27299999999998,
+   "other_income": 294.81899999999996
+  },
+  "bep": 617283.0295367265,
+  "mos": 325922.97046327346
+ },
+ {
+  "period": "2026-03",
+  "P": {
+   "revenue": 1012620.0,
+   "cos_variable": 551878.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 50631.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 556878.0,
+   "expenses": 295631.0,
+   "gross_profit": 455742.0,
+   "operating_profit": 160111.0,
+   "ebit": 140111.0,
+   "ebt": 120111.0,
+   "eat": 95111.0,
+   "net_income": 95111.0,
+   "retained_income": 95111.0,
+   "da": 5000.0,
+   "ebitda": 145111.0,
+   "net_interest": 20000.0,
+   "variable_costs": 602509.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 972971.0,
+   "ar": 539841.0,
+   "inventory": 491142.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 160000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 224162.0,
+   "ap": 301895.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 572971.0,
+   "other_equity": 984926.0,
+   "tca": 2003954.0,
+   "tnca": 160000.0,
+   "ta": 2163954.0,
+   "tcl": 606057.0,
+   "tncl": 0.0,
+   "tl": 606057.0,
+   "te": 1557897.0,
+   "tle": 2163954.0,
+   "imbalance": 0.0,
+   "debt": 224162.0,
+   "owc": 729088.0,
+   "tic": 1782059.0,
+   "toi": 889088.0
+  },
+  "W": {
+   "ocf": 138586.0,
+   "fcf": 138586.0,
+   "ncf": 99583.0,
+   "dcash": 95111.0,
+   "ddebt": -4472.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1012620.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -551878.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -325631.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    19705.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    28634.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    -25364.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    138586.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    138586.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -23503.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    99583.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1012620.0,
+   "gpm": 45.00622148486105,
+   "opm": 15.811558136319645,
+   "profit_ratio": 13.83648357725504,
+   "npat": 9.392565819359682,
+   "activity": 6.690454059583741,
+   "ar_days": 16.526506488119928,
+   "inv_days": 27.3406419359357,
+   "ap_days": 16.805736624538948,
+   "roe": 75.34573172381987,
+   "roce": 92.57235771980974,
+   "gmroi": 1121.5137140260488,
+   "asset_turn": 5.509721496375497,
+   "wca": 6.11508191283536,
+   "current": 3.306543773935455,
+   "quick": 2.4961546521201803,
+   "int_cover": 7.00555,
+   "cash": 972971.0,
+   "cf_margin": 13.685884142126364,
+   "rev_growth": 7.359367942952017,
+   "gp_growth": 7.446028494031719,
+   "ebit_growth": 25.10022410914383,
+   "asset_change": 4.180851017734712,
+   "equity_change": 4.817905535195376
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "1 critical KPI off target",
+    "text": "Profitability Ratio."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 7.4% on last month",
+    "text": "EGP 1,012,620 against EGP 943,206. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 6.6% above target",
+    "text": "EGP 1,012,620 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 4.1%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 39% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 972,971."
+   }
+  ],
+  "goalseek": {
+   "price": 1.3688428502881866,
+   "volume": 4.562811267998359,
+   "cos_variable": -2.1348921319567005,
+   "exp_fixed": -4.808979591836734,
+   "exp_variable": -23.270328454899172,
+   "other_expenses": -39.27333333333333,
+   "other_income": 117.82
+  },
+  "bep": 617284.1011335956,
+  "mos": 395335.89886640443
+ },
+ {
+  "period": "2026-04",
+  "P": {
+   "revenue": 1106082.0,
+   "cos_variable": 602815.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 55304.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 607815.0,
+   "expenses": 300304.0,
+   "gross_profit": 498267.0,
+   "operating_profit": 197963.0,
+   "ebit": 177963.0,
+   "ebt": 157963.0,
+   "eat": 132963.0,
+   "net_income": 132963.0,
+   "retained_income": 132963.0,
+   "da": 5000.0,
+   "ebitda": 182963.0,
+   "net_interest": 20000.0,
+   "variable_costs": 658119.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1105934.0,
+   "ar": 550688.0,
+   "inventory": 494300.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 155000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 217074.0,
+   "ap": 298205.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 705934.0,
+   "other_equity": 1004709.0,
+   "tca": 2150922.0,
+   "tnca": 155000.0,
+   "ta": 2305922.0,
+   "tcl": 595279.0,
+   "tncl": 0.0,
+   "tl": 595279.0,
+   "te": 1710643.0,
+   "tle": 2305922.0,
+   "imbalance": 0.0,
+   "debt": 217074.0,
+   "owc": 746783.0,
+   "tic": 1927717.0,
+   "toi": 901783.0
+  },
+  "W": {
+   "ocf": 135768.0,
+   "fcf": 135768.0,
+   "ncf": 140051.0,
+   "dcash": 132963.0,
+   "ddebt": -7088.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1106082.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -602815.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -330304.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -3690.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    -10847.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    -3158.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    135768.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    135768.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    19783.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    140051.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1106082.0,
+   "gpm": 45.04792592230956,
+   "opm": 17.897678472301333,
+   "profit_ratio": 16.089494268960166,
+   "npat": 12.021079811442553,
+   "activity": 6.980968160782936,
+   "ar_days": 14.936180138543074,
+   "inv_days": 24.397226129661163,
+   "ap_days": 14.71854100343032,
+   "roe": 103.8397596246735,
+   "roce": 112.32024721471046,
+   "gmroi": 1230.361299802525,
+   "asset_turn": 5.835987080222141,
+   "wca": 5.549265303796124,
+   "current": 3.6133006539790586,
+   "quick": 2.782933716794982,
+   "int_cover": 8.89815,
+   "cash": 1105934.0,
+   "cf_margin": 12.274677645961148,
+   "rev_growth": 9.229720921964804,
+   "gp_growth": 9.3309372408073,
+   "ebit_growth": 27.01572324799623,
+   "asset_change": 6.560583080786375,
+   "equity_change": 9.804627648682809
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": true,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 9.2% on last month",
+    "text": "EGP 1,106,082 against EGP 1,012,620. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 16.4% above target",
+    "text": "EGP 1,106,082 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 3.5%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 44% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,105,934."
+   }
+  ],
+  "goalseek": {
+   "price": -1.2817579634825513,
+   "volume": -4.27252972603862,
+   "cos_variable": 1.999071025107207,
+   "exp_fixed": 4.918653061224495,
+   "exp_variable": 21.789924779401147,
+   "other_expenses": 40.16900000000004,
+   "other_income": -120.50700000000012
+  },
+  "bep": 617284.2399930351,
+  "mos": 488797.7600069649
+ },
+ {
+  "period": "2026-05",
+  "P": {
+   "revenue": 1009834.0,
+   "cos_variable": 550360.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 50492.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 555360.0,
+   "expenses": 295492.0,
+   "gross_profit": 454474.0,
+   "operating_profit": 158982.0,
+   "ebit": 138982.0,
+   "ebt": 118982.0,
+   "eat": 93982.0,
+   "net_income": 93982.0,
+   "retained_income": 93982.0,
+   "da": 5000.0,
+   "ebitda": 143982.0,
+   "net_interest": 20000.0,
+   "variable_costs": 600852.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1199916.0,
+   "ar": 572762.0,
+   "inventory": 482649.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 150000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 220474.0,
+   "ap": 284060.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 799916.0,
+   "other_equity": 1020877.0,
+   "tca": 2255327.0,
+   "tnca": 150000.0,
+   "ta": 2405327.0,
+   "tcl": 584534.0,
+   "tncl": 0.0,
+   "tl": 584534.0,
+   "te": 1820793.0,
+   "tle": 2405327.0,
+   "imbalance": 0.0,
+   "debt": 220474.0,
+   "owc": 771351.0,
+   "tic": 2041267.0,
+   "toi": 921351.0
+  },
+  "W": {
+   "ocf": 89914.0,
+   "fcf": 89914.0,
+   "ncf": 90582.0,
+   "dcash": 93982.0,
+   "ddebt": 3400.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1009834.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -550360.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -325492.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -14145.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    -22074.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    11651.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    89914.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    89914.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    16168.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    90582.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1009834.0,
+   "gpm": 45.00482257479943,
+   "opm": 15.743379604964778,
+   "profit_ratio": 13.762856073374435,
+   "npat": 9.30667812729617,
+   "activity": 5.824804382641729,
+   "ar_days": 17.582713594511574,
+   "inv_days": 26.94129753673293,
+   "ap_days": 15.856129357533852,
+   "roe": 64.68691936684137,
+   "roce": 80.16594437385876,
+   "gmroi": 1095.4645204017154,
+   "asset_turn": 4.94318692125517,
+   "wca": 6.487403151381914,
+   "current": 3.8583333048205923,
+   "quick": 3.032634543071917,
+   "int_cover": 6.9491,
+   "cash": 1199916.0,
+   "cf_margin": 8.903839640970695,
+   "rev_growth": -8.701705660159012,
+   "gp_growth": -8.789062891983615,
+   "ebit_growth": -21.903991279086103,
+   "asset_change": 4.310857002101545,
+   "equity_change": 6.439099215908872
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": false,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "2 critical KPIs off target",
+    "text": "Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "risk",
+    "section": "trend",
+    "title": "Revenue down 8.7% on last month",
+    "text": "EGP 1,009,834 against EGP 1,106,082. Find out which customers or products drove the drop."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 6.3% above target",
+    "text": "EGP 1,009,834 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 7.5%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 39% before losses start",
+    "text": "Breakeven is EGP 617,285."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,199,916."
+   }
+  ],
+  "goalseek": {
+   "price": 1.4554634430888997,
+   "volume": 4.851559317439651,
+   "cos_variable": -2.2699869176539003,
+   "exp_fixed": -5.099224489795921,
+   "exp_variable": -24.742731521825252,
+   "other_expenses": -41.64366666666668,
+   "other_income": 124.93100000000005
+  },
+  "bep": 617285.11279225,
+  "mos": 392548.88720775
+ },
+ {
+  "period": "2026-06",
+  "P": {
+   "revenue": 1103560.0,
+   "cos_variable": 601440.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 55178.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 606440.0,
+   "expenses": 300178.0,
+   "gross_profit": 497120.0,
+   "operating_profit": 196942.0,
+   "ebit": 176942.0,
+   "ebt": 156942.0,
+   "eat": 131942.0,
+   "net_income": 131942.0,
+   "retained_income": 131942.0,
+   "da": 5000.0,
+   "ebitda": 181942.0,
+   "net_interest": 20000.0,
+   "variable_costs": 656618.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1331858.0,
+   "ar": 572115.0,
+   "inventory": 453121.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 145000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 219851.0,
+   "ap": 283192.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 931858.0,
+   "other_equity": 987193.0,
+   "tca": 2357094.0,
+   "tnca": 145000.0,
+   "ta": 2502094.0,
+   "tcl": 583043.0,
+   "tncl": 0.0,
+   "tl": 583043.0,
+   "te": 1919051.0,
+   "tle": 2502094.0,
+   "imbalance": 0.0,
+   "debt": 219851.0,
+   "owc": 742044.0,
+   "tic": 2138902.0,
+   "toi": 887044.0
+  },
+  "W": {
+   "ocf": 181749.0,
+   "fcf": 181749.0,
+   "ncf": 132565.0,
+   "dcash": 131942.0,
+   "ddebt": -623.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1103560.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -601440.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -330178.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -868.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    647.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    29528.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    181749.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    181749.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -33684.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    132565.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1103560.0,
+   "gpm": 45.04693899742651,
+   "opm": 17.84606183623908,
+   "profit_ratio": 16.033745333285005,
+   "npat": 11.956033201638334,
+   "activity": 6.2773547673837635,
+   "ar_days": 15.552801841313567,
+   "inv_days": 22.415457423652793,
+   "ap_days": 14.00923421937867,
+   "roe": 88.16457078500045,
+   "roce": 100.64950770691381,
+   "gmroi": 1292.6880180671176,
+   "asset_turn": 5.366163967727298,
+   "wca": 5.526651727882415,
+   "current": 4.04274470322086,
+   "quick": 3.2655790396248645,
+   "int_cover": 8.8471,
+   "cash": 1331858.0,
+   "cf_margin": 16.469335604770016,
+   "rev_growth": 9.281327426091813,
+   "gp_growth": 9.3835951011499,
+   "ebit_growth": 27.312889438920145,
+   "asset_change": 4.023028885469627,
+   "equity_change": 5.396439902833546
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": true,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 9.3% on last month",
+    "text": "EGP 1,103,560 against EGP 1,009,834. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 16.2% above target",
+    "text": "EGP 1,103,560 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 7.0%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 44% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,331,858."
+   }
+  ],
+  "goalseek": {
+   "price": -1.2161709803352998,
+   "volume": -4.053900386627246,
+   "cos_variable": 1.896781058792232,
+   "exp_fixed": 4.656326530612245,
+   "exp_variable": 20.6749066657001,
+   "other_expenses": 38.026666666666664,
+   "other_income": -114.08
+  },
+  "bep": 617283.6743917556,
+  "mos": 486276.3256082444
+ },
+ {
+  "period": "2026-07",
+  "P": {
+   "revenue": 1056726.0,
+   "cos_variable": 575916.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 52836.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 580916.0,
+   "expenses": 297836.0,
+   "gross_profit": 475810.0,
+   "operating_profit": 177974.0,
+   "ebit": 157974.0,
+   "ebt": 137974.0,
+   "eat": 112974.0,
+   "net_income": 112974.0,
+   "retained_income": 112974.0,
+   "da": 5000.0,
+   "ebitda": 162974.0,
+   "net_interest": 20000.0,
+   "variable_costs": 628752.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1444832.0,
+   "ar": 598748.0,
+   "inventory": 435908.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 140000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 216793.0,
+   "ap": 290320.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 1044832.0,
+   "other_equity": 987543.0,
+   "tca": 2479488.0,
+   "tnca": 140000.0,
+   "ta": 2619488.0,
+   "tcl": 587113.0,
+   "tncl": 0.0,
+   "tl": 587113.0,
+   "te": 2032375.0,
+   "tle": 2619488.0,
+   "imbalance": 0.0,
+   "debt": 216793.0,
+   "owc": 744336.0,
+   "tic": 2249168.0,
+   "toi": 884336.0
+  },
+  "W": {
+   "ocf": 131182.0,
+   "fcf": 131182.0,
+   "ncf": 116032.0,
+   "dcash": 112974.0,
+   "ddebt": -3058.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1056726.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -575916.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -327836.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    7128.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    -26633.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    17213.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    131182.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    131182.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    350.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    116032.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1056726.0,
+   "gpm": 45.026809220176276,
+   "opm": 16.842019596375977,
+   "profit_ratio": 14.94938139120264,
+   "npat": 10.69094542956263,
+   "activity": 5.53186620635404,
+   "ar_days": 17.564806771102443,
+   "inv_days": 23.261793443458263,
+   "ap_days": 15.49263576833828,
+   "roe": 69.31435078773227,
+   "roce": 82.69797772389182,
+   "gmroi": 1260.3141252440728,
+   "asset_turn": 4.749819984520983,
+   "wca": 5.982400175844238,
+   "current": 4.22318701851262,
+   "quick": 3.4807268788120855,
+   "int_cover": 7.8987,
+   "cash": 1444832.0,
+   "cf_margin": 12.414003251552437,
+   "rev_growth": -4.243901554967559,
+   "gp_growth": -4.2866913421306725,
+   "ebit_growth": -10.719896915373399,
+   "asset_change": 4.6918301230889,
+   "equity_change": 5.90521043995183
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": false,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "2 critical KPIs off target",
+    "text": "Profitability Ratio, Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 11.2% above target",
+    "text": "EGP 1,056,726 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 3.5%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 42% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,444,832."
+   }
+  ],
+  "goalseek": {
+   "price": 0.059551304467482774,
+   "volume": 0.19850437032476348,
+   "cos_variable": -0.09287812806034113,
+   "exp_fixed": -0.21832653061224253,
+   "exp_variable": -1.012377924142619,
+   "other_expenses": -1.7829999999999804,
+   "other_income": 5.348999999999942
+  },
+  "bep": 617283.9938874792,
+  "mos": 439442.0061125208
+ },
+ {
+  "period": "2026-08",
+  "P": {
+   "revenue": 1147001.0,
+   "cos_variable": 625116.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 57350.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 630116.0,
+   "expenses": 302350.0,
+   "gross_profit": 516885.0,
+   "operating_profit": 214535.0,
+   "ebit": 194535.0,
+   "ebt": 174535.0,
+   "eat": 149535.0,
+   "net_income": 149535.0,
+   "retained_income": 149535.0,
+   "da": 5000.0,
+   "ebitda": 199535.0,
+   "net_interest": 20000.0,
+   "variable_costs": 682466.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1594367.0,
+   "ar": 596523.0,
+   "inventory": 434156.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 135000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 209436.0,
+   "ap": 299901.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 1194367.0,
+   "other_equity": 976342.0,
+   "tca": 2625046.0,
+   "tnca": 135000.0,
+   "ta": 2760046.0,
+   "tcl": 589337.0,
+   "tncl": 0.0,
+   "tl": 589337.0,
+   "te": 2170709.0,
+   "tle": 2760046.0,
+   "imbalance": 0.0,
+   "debt": 209436.0,
+   "owc": 730778.0,
+   "tic": 2380145.0,
+   "toi": 865778.0
+  },
+  "W": {
+   "ocf": 183593.0,
+   "fcf": 183593.0,
+   "ncf": 156892.0,
+   "dcash": 149535.0,
+   "ddebt": -7357.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1147001.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -625116.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -332350.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    9581.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    2225.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    1752.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    183593.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    183593.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    -11201.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    156892.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1147001.0,
+   "gpm": 45.06404092062692,
+   "opm": 18.70399415519254,
+   "profit_ratio": 16.960316512365726,
+   "npat": 13.03704181600539,
+   "activity": 5.674029008398038,
+   "ar_days": 16.122229187245697,
+   "inv_days": 21.359298922738034,
+   "ap_days": 14.75431666550286,
+   "roe": 86.63037245872756,
+   "roce": 96.23332788277537,
+   "gmroi": 1398.9554865522684,
+   "asset_turn": 4.8930386573968505,
+   "wca": 5.4111615170630865,
+   "current": 4.454235861654707,
+   "quick": 3.7175503998561097,
+   "int_cover": 9.72675,
+   "cash": 1594367.0,
+   "cf_margin": 16.006350473975175,
+   "rev_growth": 8.542895698601152,
+   "gp_growth": 8.632647485340787,
+   "ebit_growth": 23.143681871700405,
+   "asset_change": 5.36585775540869,
+   "equity_change": 6.806519466141829
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": true,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": true,
+   "gp_growth": true,
+   "ebit_growth": true,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Revenue up 8.5% on last month",
+    "text": "EGP 1,147,001 against EGP 1,056,726. Check it is repeatable, not a one-off order."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 20.7% above target",
+    "text": "EGP 1,147,001 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "trend",
+    "title": "Last 3 months ahead of the 3 months before by 5.7%",
+    "text": "A trend over three months is more reliable than one month on its own."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 46% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,594,367."
+   }
+  ],
+  "goalseek": {
+   "price": -2.3062547204302666,
+   "volume": -7.687526379571458,
+   "cos_variable": 3.5969084137984,
+   "exp_fixed": 9.177489795918369,
+   "exp_variable": 39.206364428945086,
+   "other_expenses": 74.94950000000003,
+   "other_income": -224.84850000000006
+  },
+  "bep": 617284.4887898652,
+  "mos": 529716.5112101348
+ },
+ {
+  "period": "2026-09",
+  "P": {
+   "revenue": 1066138.0,
+   "cos_variable": 581045.0,
+   "cos_fixed": 0.0,
+   "cos_depreciation": 5000.0,
+   "exp_variable": 53307.0,
+   "exp_fixed": 245000.0,
+   "exp_depreciation": 0.0,
+   "other_income": 10000.0,
+   "other_expenses": 30000.0,
+   "interest_income": 1000.0,
+   "interest_expenses": 21000.0,
+   "tax_expenses": 25000.0,
+   "adjustments": 0.0,
+   "dividends": 0.0,
+   "cos": 586045.0,
+   "expenses": 298307.0,
+   "gross_profit": 480093.0,
+   "operating_profit": 181786.0,
+   "ebit": 161786.0,
+   "ebt": 141786.0,
+   "eat": 116786.0,
+   "net_income": 116786.0,
+   "retained_income": 116786.0,
+   "da": 5000.0,
+   "ebitda": 166786.0,
+   "net_interest": 20000.0,
+   "variable_costs": 634352.0,
+   "fixed_costs": 250000.0
+  },
+  "B": {
+   "cash": 1711153.0,
+   "ar": 596514.0,
+   "inventory": 421172.0,
+   "wip": 0.0,
+   "other_ca": 0.0,
+   "fixed_assets": 130000.0,
+   "intangibles": 0.0,
+   "investments": 0.0,
+   "std": 200764.0,
+   "ap": 282734.0,
+   "tax_liab": 80000.0,
+   "other_cl": 0.0,
+   "ltd": 0.0,
+   "other_ncl": 0.0,
+   "retained_earnings": 1311153.0,
+   "other_equity": 984188.0,
+   "tca": 2728839.0,
+   "tnca": 130000.0,
+   "ta": 2858839.0,
+   "tcl": 563498.0,
+   "tncl": 0.0,
+   "tl": 563498.0,
+   "te": 2295341.0,
+   "tle": 2858839.0,
+   "imbalance": 0.0,
+   "debt": 200764.0,
+   "owc": 734952.0,
+   "tic": 2496105.0,
+   "toi": 864952.0
+  },
+  "W": {
+   "ocf": 133112.0,
+   "fcf": 133112.0,
+   "ncf": 125458.0,
+   "dcash": 116786.0,
+   "ddebt": -8672.0
+  },
+  "rows": [
+   [
+    "Revenue",
+    "ADD",
+    1066138.0
+   ],
+   [
+    "Cost of Sales",
+    "LESS",
+    -581045.0
+   ],
+   [
+    "Expenses",
+    "LESS",
+    -328307.0
+   ],
+   [
+    "Other Income",
+    "ADD",
+    10000.0
+   ],
+   [
+    "Cash Tax Paid",
+    "LESS",
+    -29500.0
+   ],
+   [
+    "Change in Accounts Payable",
+    "ADD",
+    -17167.0
+   ],
+   [
+    "Change in Other Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Change in Accounts Receivable",
+    "LESS",
+    9.0
+   ],
+   [
+    "Change in Inventory",
+    "LESS",
+    12984.0
+   ],
+   [
+    "Change in Work In Progress",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Other Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "OPERATING CASH FLOW",
+    "TOTAL",
+    133112.0
+   ],
+   [
+    "Change in Fixed Assets (ex. Depn & Amortisation)",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Intangible Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Investments or Other Non-Current Assets",
+    "LESS",
+    -0.0
+   ],
+   [
+    "FREE CASH FLOW",
+    "TOTAL",
+    133112.0
+   ],
+   [
+    "Net Interest (after tax)",
+    "LESS",
+    -15500.0
+   ],
+   [
+    "Change in Other Non-Current Liabilities",
+    "ADD",
+    0.0
+   ],
+   [
+    "Dividends",
+    "LESS",
+    -0.0
+   ],
+   [
+    "Change in Retained Earnings and Other Equity",
+    "ADD",
+    7846.0
+   ],
+   [
+    "Change in unbalanced Balance Sheet",
+    "ADD",
+    0.0
+   ],
+   [
+    "Adjustments",
+    "LESS",
+    -0.0
+   ],
+   [
+    "NET CASH FLOW",
+    "TOTAL",
+    125458.0
+   ]
+  ],
+  "K": {
+   "total_revenue": 1066138.0,
+   "gpm": 45.031037257840914,
+   "opm": 17.050888346536752,
+   "profit_ratio": 15.174958588850599,
+   "npat": 10.954116634056755,
+   "activity": 5.196634623409939,
+   "ar_days": 16.78527545214597,
+   "inv_days": 21.560050849337507,
+   "ap_days": 14.473325427228284,
+   "roe": 65.4577068291205,
+   "roce": 78.85871521163305,
+   "gmroi": 1365.8225850200158,
+   "asset_turn": 4.537277428587852,
+   "wca": 5.665965728510769,
+   "current": 4.842677347568226,
+   "quick": 4.095253221839297,
+   "int_cover": 8.0893,
+   "cash": 1711153.0,
+   "cf_margin": 12.485438095255962,
+   "rev_growth": -7.049950261595238,
+   "gp_growth": -7.118024318755623,
+   "ebit_growth": -16.83450278870126,
+   "asset_change": 3.5793968651247114,
+   "equity_change": 5.741534217621984
+  },
+  "status": {
+   "total_revenue": true,
+   "gpm": true,
+   "opm": true,
+   "profit_ratio": true,
+   "npat": true,
+   "activity": true,
+   "ar_days": true,
+   "inv_days": true,
+   "ap_days": false,
+   "roe": true,
+   "roce": true,
+   "gmroi": true,
+   "asset_turn": true,
+   "wca": true,
+   "current": true,
+   "quick": true,
+   "int_cover": true,
+   "cash": null,
+   "cf_margin": true,
+   "rev_growth": false,
+   "gp_growth": false,
+   "ebit_growth": false,
+   "asset_change": true,
+   "equity_change": true
+  },
+  "findings": [
+   {
+    "sev": 2,
+    "kind": "risk",
+    "section": "kpis",
+    "title": "1 critical KPI off target",
+    "text": "Revenue Growth."
+   },
+   {
+    "sev": 1,
+    "kind": "risk",
+    "section": "trend",
+    "title": "Revenue down 7.0% on last month",
+    "text": "EGP 1,066,138 against EGP 1,147,001. Find out which customers or products drove the drop."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "kpis",
+    "title": "Revenue is 12.2% above target",
+    "text": "EGP 1,066,138 against a target of EGP 950,000."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "profitability",
+    "title": "Comfortable cushion: revenue can fall 42% before losses start",
+    "text": "Breakeven is EGP 617,284."
+   },
+   {
+    "sev": 1,
+    "kind": "win",
+    "section": "cashflow",
+    "title": "Cash has grown 3 months in a row",
+    "text": "Cash on hand is EGP 1,711,153."
+   }
+  ],
+  "goalseek": {
+   "price": -0.2058336339418832,
+   "volume": -0.6861118355303222,
+   "cos_variable": 0.3210250496949492,
+   "exp_fixed": 0.7613469387755173,
+   "exp_variable": 3.499165212823865,
+   "other_expenses": 6.217666666666725,
+   "other_income": -18.653000000000176
+  },
+  "bep": 617283.7933605999,
+  "mos": 448854.2066394001
+ }
+]
