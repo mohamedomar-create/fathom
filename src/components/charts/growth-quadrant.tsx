@@ -3,11 +3,13 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { money, quadrantOf, type Quadrant } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
+import { useStaticCharts } from "./static";
 import { niceTicks } from "./util";
 
 export interface GrowthPoint { label: string; x: number; y: number }
 
 export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: string }) {
+  const st = useStaticCharts();
   const w = 760, h = 470, pl = 84, pr = 20, pt = 20, pb = 52;
   const [hover, setHover] = useState<number | null>(null);
   const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
@@ -34,9 +36,9 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
         {q.map(([t, x, y, anchor]) => (
           <text key={t} x={x} y={y} textAnchor={anchor} fontSize={12} letterSpacing=".08em" fill={t === now ? (t === "STRESS" || t === "DECLINE" ? "#D9343A" : "#4F8A41") : "#a5a5a0"} fontWeight={t === now ? 600 : 400}>{t}</text>
         ))}
-        <motion.path initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.4, ease: "easeInOut" }} d={d} fill="none" stroke="#999" strokeWidth={10} opacity={0.2} strokeLinejoin="round" strokeLinecap="round" />
+        <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.4, ease: "easeInOut" }} d={d} fill="none" stroke="#999" strokeWidth={10} opacity={0.2} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
-          <motion.circle key={i} initial={{ r: 0 }} animate={{ r: i === points.length - 1 ? 10 : hover === i ? 8 : 5.5 }} transition={{ delay: 0.1 * i }}
+          <motion.circle key={i} initial={st ? false : { r: 0 }} animate={{ r: i === points.length - 1 ? 10 : hover === i ? 8 : 5.5 }} transition={{ delay: 0.1 * i }}
             cx={X(p.x)} cy={Y(p.y)} fill={i === points.length - 1 ? "#5E9A4F" : "#7CB46B"} stroke="#fff" strokeWidth={2}
             onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} style={{ cursor: "pointer" }} />
         ))}

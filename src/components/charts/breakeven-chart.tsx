@@ -3,11 +3,13 @@ import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { money } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
+import { useStaticCharts } from "./static";
 import { niceTicks } from "./util";
 
 const G = "#7CB46B", R = "#D9343A", K = "#333";
 
 export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: number; fixed: number; vcr: number; bep: number; cur: string }) {
+  const st = useStaticCharts();
   const w = 560, h = 440, pl = 70, pr = 14, pt = 12, pb = 34;
   const xmax = Math.max(revenue, bep) * 1.45;
   const ymax = Math.max(xmax, fixed + vcr * xmax) * 1.05;
@@ -24,7 +26,7 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
   const [lo, hi] = [Math.min(bep, revenue), Math.max(bep, revenue)];
   const wedge = `${X(lo)},${Y(lo)} ${X(hi)},${Y(hi)} ${X(hi)},${Y(fixed + vcr * hi)} ${X(lo)},${Y(fixed + vcr * lo)}`;
   const line = (x0: number, y0: number, x1: number, y1: number, col: string, delay: number) => (
-    <motion.line initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.8, delay }} x1={X(x0)} y1={Y(y0)} x2={X(x1)} y2={Y(y1)} stroke={col} strokeWidth={2.4} strokeLinecap="round" />
+    <motion.line initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.8, delay }} x1={X(x0)} y1={Y(y0)} x2={X(x1)} y2={Y(y1)} stroke={col} strokeWidth={2.4} strokeLinecap="round" />
   );
   const pill = (x: number, y: number, txt: string, col: string) => (
     <g>
@@ -42,7 +44,7 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
           <text key={t} x={X(t)} y={h - 12} className="ax" textAnchor="middle">{money(t, cur, true)}</text>
         ))}
         <rect x={pl} y={Y(fixed)} width={w - pl - pr} height={Y(0) - Y(fixed)} fill="#000" opacity={0.035} />
-        <motion.polygon initial={{ opacity: 0 }} animate={{ opacity: 0.2 }} transition={{ delay: 0.9 }} points={wedge} fill={revenue >= bep ? G : R} />
+        <motion.polygon initial={st ? false : { opacity: 0 }} animate={{ opacity: 0.2 }} transition={{ delay: 0.9 }} points={wedge} fill={revenue >= bep ? G : R} />
         {line(0, fixed, xmax, fixed, K, 0)}
         {line(0, fixed, xmax, fixed + vcr * xmax, R, 0.15)}
         {line(0, 0, xmax, xmax, G, 0.3)}

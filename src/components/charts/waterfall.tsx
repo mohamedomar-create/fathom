@@ -4,9 +4,11 @@ import { motion } from "motion/react";
 import { money, type WaterfallRow } from "@/lib/engine";
 import { Tip } from "@/components/ui/tooltip";
 import { niceTicks } from "./util";
+import { useStaticCharts } from "./static";
 
 /** Horizontal ADD/LESS waterfall. HTML rows + percentage geometry so it reflows on narrow screens. */
 export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string }) {
+  const st = useStaticCharts();
   const spans = waterfallSpans(rows);
   const all = spans.flat().concat(0);
   let lo = Math.min(...all), hi = Math.max(...all);
@@ -33,12 +35,12 @@ export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string
             <div className="flex items-center gap-2 py-[5px]">
               <span className="hidden w-9 shrink-0 text-[10px] tracking-wider text-mute sm:inline">{total ? "" : r.sign}</span>
               <span className={total ? "tracking-wide" : ""}>{r.label}</span>
-              {r.info && <Tip label={r.info} side="top"><button aria-label={`About ${r.label}`} className="text-mute hover:text-ink"><Info className="h-3.5 w-3.5" /></button></Tip>}
+              {r.info && !st && <Tip label={r.info} side="top"><button aria-label={`About ${r.label}`} className="text-mute hover:text-ink"><Info className="h-3.5 w-3.5" /></button></Tip>}
             </div>
             <div className="relative h-5">
               {ticks.map((t) => <span key={t} className="absolute inset-y-[-6px] w-px bg-[#efefeb]" style={{ left: `${X(t)}%` }} />)}
               {Math.abs(r.value) >= 0.5 && <motion.div
-                initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.5, delay: i * 0.03 }}
+                initial={st ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.5, delay: i * 0.03 }}
                 className="absolute inset-y-[2px] origin-left rounded-[2px] group-hover:brightness-95"
                 style={{ left: `${x0}%`, width: `max(${x1 - x0}%, 2px)`, background: pos ? "#7CB46B" : "#D9343A", opacity: total ? 1 : 0.9 }}
               />}

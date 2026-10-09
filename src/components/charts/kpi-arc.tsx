@@ -3,11 +3,13 @@ import { motion } from "motion/react";
 import { useState } from "react";
 import { CAT_COL, type KpiCategory } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
+import { useStaticCharts } from "./static";
 
 export interface ArcItem { key: string; category: KpiCategory; name: string; ok: boolean; detail: string }
 
 /** Semicircular KPI Explorer: one rotated tile per KPI with a result, grouped by category. */
 export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; pctOn: number; period: string; onSelect?: (key: string) => void }) {
+  const st = useStaticCharts();
   const w = 1000, h = 560, cx = w / 2, cy = h - 50, R = 280;
   const [hover, setHover] = useState<number | null>(null);
   const n = items.length;
@@ -43,7 +45,7 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
           const nm = it.name.length <= 28 ? it.name : it.name.slice(0, 27) + "…";
           return (
             <g key={it.key} onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} onClick={() => onSelect?.(it.key)} style={{ cursor: onSelect ? "pointer" : "default" }}>
-              <motion.g initial={{ opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: hover === i ? 1.18 : 1 }} transition={{ delay: 0.03 * i, duration: 0.3 }} style={{ originX: `${x}px`, originY: `${y}px` }}>
+              <motion.g initial={st ? false : { opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: hover === i ? 1.18 : 1 }} transition={{ delay: 0.03 * i, duration: 0.3 }} style={{ originX: `${x}px`, originY: `${y}px` }}>
                 <g transform={`translate(${x},${y}) rotate(${rot})`}>
                   <rect x={-14} y={-14} width={28} height={28} rx={2} fill={it.ok ? "#7CB46B" : "#D9343A"} />
                   <text y={5} textAnchor="middle" fill="#fff" fontSize={15} fontWeight={700}>{it.ok ? "○" : "✕"}</text>
