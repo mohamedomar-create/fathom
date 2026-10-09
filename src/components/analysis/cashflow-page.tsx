@@ -1,7 +1,7 @@
 "use client";
 import { money } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { CashWaterfall } from "@/components/charts/waterfall";
@@ -10,6 +10,7 @@ import { Legend, MoneyTile, NeedsOpening, Notes } from "./common";
 export function CashflowPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   if (!a) return null;
   const cur = c.settings.currency;
   const W = a.W;
@@ -30,7 +31,7 @@ export function CashflowPage() {
           </p>
         </>
       )}
-      <Notes findings={a.findings.filter((f) => f.section === "cashflow")} comment={c.commentary.cashflow} />
+      <Notes findings={a.findings.filter((f) => f.section === "cashflow")} comment={comments("cashflow")} />
     </>
   );
 }

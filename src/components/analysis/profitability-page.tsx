@@ -1,7 +1,7 @@
 "use client";
 import { money } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { BreakevenChart } from "@/components/charts/breakeven-chart";
@@ -11,6 +11,7 @@ import { TopAccounts } from "./top-accounts";
 export function ProfitabilityPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   if (!a) return null;
   const cur = c.settings.currency;
   const { P } = a.view;
@@ -45,7 +46,7 @@ export function ProfitabilityPage() {
         <EmptyState title="Sorry, we can't load the Profitability tool"
           text={b.reason === "no_revenue" ? "A breakeven point cannot be calculated when there is no revenue." : "A breakeven point cannot be calculated when variable costs are equal to or greater than revenue."} />
       )}
-      <Notes findings={a.findings.filter((f) => f.section === "profitability")} comment={c.commentary.profitability} />
+      <Notes findings={a.findings.filter((f) => f.section === "profitability")} comment={comments("profitability")} />
     </>
   );
 }

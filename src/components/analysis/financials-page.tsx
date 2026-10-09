@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { bsCalc, cashFlowStatement, money, mlabel, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { SentenceSelect } from "@/components/ui/sentence-select";
@@ -44,6 +44,7 @@ const BS_ROWS: BsRow[] = [
 export function FinancialsPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const [view, setView] = useState<View>("pl");
   const [layout, setLayout] = useState<"summary" | "detailed">("summary");
   const [cmp, setCmp] = useState<Cmp>("prior");
@@ -99,7 +100,7 @@ export function FinancialsPage() {
               ])}
             </tbody>
           </table>
-          <Notes findings={[]} comment={c.commentary.pl} />
+          <Notes findings={[]} comment={comments("pl")} />
         </div>
       )}
       {view === "bs" && (
@@ -132,7 +133,7 @@ export function FinancialsPage() {
               })}
             </tbody>
           </table>
-          <Notes findings={a.findings.filter((f) => f.section === "bs")} comment={c.commentary.bs} />
+          <Notes findings={a.findings.filter((f) => f.section === "bs")} comment={comments("bs")} />
         </div>
       )}
       {view === "cf" && (!B0 ? <NeedsOpening /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={a.view.window.short} />)}

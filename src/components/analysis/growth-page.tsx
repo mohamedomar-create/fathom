@@ -2,7 +2,7 @@
 import { useMemo, useState } from "react";
 import { bsCalc, mlabel, plCalc, quadrantOf, QUADRANT_TEXT } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { SentenceSelect } from "@/components/ui/sentence-select";
@@ -12,6 +12,7 @@ import { EmptyState, Notes } from "./common";
 export function GrowthPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const end = a?.view.window.end ?? "";
   const avail = useMemo(() => c.months.map((m) => m.period).sort().filter((p) => p <= end), [c.months, end]);
   const [startSel, setStart] = useState<string | null>(null);
@@ -41,7 +42,7 @@ export function GrowthPage() {
           </div>
         </div>
       )}
-      <Notes findings={[]} comment={c.commentary.growth} />
+      <Notes findings={[]} comment={comments("growth")} />
     </>
   );
 }

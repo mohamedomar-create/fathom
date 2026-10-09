@@ -36,3 +36,11 @@ export function useAnalysis() {
     [company.months, company.settings, company.alerts, sel.type, sel.end, cmp], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
+
+/** Saved commentary for the current period (falls back to period-less notes, e.g. the demo company). */
+export function useComments() {
+  const company = useCompany();
+  const { sel } = usePeriod();
+  const key = `${sel.type}:${sel.end}`;
+  return (section: string): string | undefined => company.commentary[`${key}|${section}`] ?? company.commentary[section];
+}
