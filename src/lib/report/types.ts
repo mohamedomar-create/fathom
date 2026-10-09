@@ -40,7 +40,11 @@ export interface ReportInput {
   org: ReportOrg;
   notes: string[];
   preparedOn: string;
+  /** Known data issues an editor accepted at import, with their reason (disclosed in Basis of Preparation). */
+  accepted?: AcceptedIssue[];
 }
+
+export interface AcceptedIssue { title: string; period?: string; reason: string }
 
 export function normaliseSections(raw: unknown): ReportSection[] {
   const arr = Array.isArray(raw) ? (raw as ReportSection[]) : [];

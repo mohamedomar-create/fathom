@@ -6,11 +6,12 @@ import { cn } from "@/lib/cn";
 
 const ITEMS = [
   { n: 1, href: "source-data", label: "Source Data", sub: "Upload or connect Odoo" },
-  { n: 2, href: "profile", label: "Company Profile", sub: "Currency, year, tax, AI context" },
-  { n: 3, href: "chart-of-accounts", label: "Chart of Accounts", sub: "Mapping & behaviour" },
-  { n: 4, href: "kpis", label: "KPIs", sub: "Choose & rank KPIs" },
-  { n: 5, href: "targets", label: "Targets", sub: "Monthly targets" },
-  { n: 6, href: "alerts", label: "Alerts", sub: "Thresholds" },
+  { n: 2, href: "data-health", label: "Data Health", sub: "Months, checks, history & undo" },
+  { n: 3, href: "profile", label: "Company Profile", sub: "Currency, year, tax, AI context" },
+  { n: 4, href: "chart-of-accounts", label: "Chart of Accounts", sub: "Mapping & behaviour" },
+  { n: 5, href: "kpis", label: "KPIs", sub: "Choose & rank KPIs" },
+  { n: 6, href: "targets", label: "Targets", sub: "Monthly targets" },
+  { n: 7, href: "alerts", label: "Alerts", sub: "Thresholds" },
 ];
 
 export function SettingsNav() {

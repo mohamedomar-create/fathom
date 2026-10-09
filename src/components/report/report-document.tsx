@@ -13,6 +13,7 @@ import { MiniPie, Sparkline } from "@/components/charts/spark";
 import { StaticCharts } from "@/components/charts/static";
 import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
+import { runChecks, type CheckId } from "@/lib/company/checks";
 import { SECTION_COMMENT, type ReportInput, type SectionKey } from "@/lib/report/types";
 
 const AUTO_SECTIONS: Partial<Record<SectionKey, Finding["section"][]>> = { kpis: ["kpis"], profitability: ["profitability"], cashflow: ["cashflow"], trend: ["trend"], bs: ["bs"] };
@@ -289,18 +290,30 @@ function Goalseek({ a }: { a: Analysis }) {
 }
 
 function Basis({ input, a, cur }: { input: ReportInput; a: Analysis; cur: string }) {
-  const W = a.W;
+  const inWindow = new Set(a.view.window.periods);
+  const found = runChecks({ accounts: input.accounts, months: input.months }).filter((c) => c.period && inWindow.has(c.period) && c.severity !== "info");
+  const failed = (id: CheckId) => found.filter((c) => c.id === id);
+  const row = (name: string, ids: CheckId[], okText: string): [string, boolean, string] => {
+    const f = ids.flatMap(failed);
+    return [name, f.length === 0, f.length ? f.map((c) => `${mlabel(c.period!)}: ${c.diff !== undefined ? money(c.diff, cur) : c.title}`).join(" · ") : okText];
+  };
   const checks: [string, boolean, string][] = [
-    ["Balance sheet balances", Math.abs(a.view.B.imbalance) <= 0.5, `difference ${money(a.view.B.imbalance, cur)}`],
-    ["Cash flow reconciles to change in cash less change in debt", W ? Math.abs(W.ncf - (W.dcash - W.ddebt)) <= 0.5 : false, W ? "net cash flow check" : "no opening balance"],
+    row("Balance sheet balances (assets = liabilities + equity)", ["bs_balance"], "difference within rounding"),
+    row("Equity movement equals retained profit", ["re_rollforward"], a.view.B0 ? "reconciles" : "no opening balance sheet"),
+    row("Cash flow reconciles to the change in cash without a balancing line", ["cash_flow"], a.CF ? "reconciles" : "no opening balance sheet"),
+    row("Imported totals match the source file", ["control_total"], "match"),
+    row("Every month in the period has data", ["gap"], a.view.complete ? "complete" : "some months missing"),
     ["Months of history loaded", input.months.length >= 13, `${input.months.length} months`],
   ];
+  if (!a.view.complete && !failed("gap").length) checks[4] = ["Every month in the period has data", false, "some months in the period are missing"];
+  const accepted = input.accepted ?? [];
   const defaults = Object.keys(input.settings.targets ?? {}).length === 0;
   return (
     <div className="space-y-5 text-[12.5px]">
       <table className="tbl"><tbody>{checks.map(([n, ok, d]) => <tr key={n}><td>{n}</td><td className={ok ? "text-green-d" : "text-red"}>{ok ? "✓" : "✕"}</td><td className="text-mute">{d}</td></tr>)}</tbody></table>
       <div><div className="label mb-1">Notes</div><ul className="list-disc space-y-1 pl-5">
         {(input.notes.length ? input.notes : ["No special adjustments were made to the source data."]).map((n) => <li key={n}>{n}</li>)}
+        {accepted.map((x) => <li key={x.title + x.period}>Imported with a known issue ({x.period ? `${mlabel(x.period)}, ` : ""}{x.title.toLowerCase()}): {x.reason}</li>)}
         {defaults && <li>KPI targets are the standard defaults; set company-specific targets for sharper on/off-track scoring.</li>}
       </ul></div>
       <div className="rounded bg-band p-3 text-[11.5px] text-mute">{input.org.disclaimer}</div>

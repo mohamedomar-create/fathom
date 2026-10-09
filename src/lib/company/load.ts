@@ -34,6 +34,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
 }
 
 import { KPI_DEFS } from "@/lib/engine";
+import { checkKey, runChecks } from "./checks";
 function withDefaults(active: string[], cfg: KpiConfig) {
   const set = new Set(active);
   for (const d of KPI_DEFS) if (cfg[d.key]?.active === undefined && d.defaultActive) set.add(d.key);
@@ -65,22 +66,28 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   if (!user) notFound();
   const { data: c } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: mem }, { data: org }, { data: list }, { data: comm }] = await Promise.all([
+  const [{ data: mem }, { data: org }, { data: list }, { data: comm }, { data: imp }] = await Promise.all([
     supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
     supabase.from("commentary").select("period_key, section, body").eq("company_id", id),
+    supabase.from("imports").select("report").eq("company_id", id).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const stored = await loadAccounts(supabase, id, c.data_version);
   const accounts = naturalAccounts(stored);
   const { settings, alerts } = settingsFromRow(c);
+  const months = buildMonths(accounts);
+  const accepted = ((imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[] }).accepted ?? [];
+  const ok = new Set(accepted.map((a) => a.key));
+  const failing = runChecks({ accounts, months }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
   const commentary: Record<string, string> = {};
   for (const r of comm ?? []) commentary[`${r.period_key}|${r.section}`] = r.body;
   return {
     id: c.id, name: c.name, basePath: `/company/${c.id}`, source: c.source as CompanyBundle["source"],
-    months: buildMonths(accounts), settings, alerts, accounts, commentary, readOnly: mem?.role === "viewer",
+    months, settings, alerts, accounts, commentary, readOnly: mem?.role === "viewer",
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: mem?.role ?? "viewer", orgId: c.org_id, dataVersion: c.data_version,
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing },
   };
 });

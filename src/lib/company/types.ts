@@ -28,4 +28,8 @@ export interface CompanyBundle {
   notes?: string[];
   companies?: { id: string; name: string }[];
   aiEnabled?: boolean;
+  /** Known data issues accepted at import (shown in reports). */
+  accepted?: { title: string; period?: string; reason: string }[];
+  /** Blocking checks failing in the current data that nobody accepted. */
+  health?: { failing: number };
 }

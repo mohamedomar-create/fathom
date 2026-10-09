@@ -16,6 +16,7 @@ interface Payload {
   org: { name: string; logo_url: string | null; brand_colour: string | null; disclaimer: string; report_footer: string | null };
   accounts: { id: string; code: string; name: string; class: string; amounts: Record<string, number> }[];
   commentary: Record<string, string>;
+  accepted?: { title: string; period?: string | null; reason: string }[] | null;
 }
 
 export default async function PublicReportPage({ params }: { params: Promise<{ token: string }> }) {
@@ -32,6 +33,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
         title: p.report.title, companyName: p.company.name, months: buildMonths(accounts), accounts, settings, alerts,
         sel: { type: p.report.period_type as PeriodType, end: p.report.period_end }, sections: normaliseSections(p.report.sections),
         commentary: p.commentary ?? {}, notes: (p.company.notes as string[]) ?? [],
+        accepted: (p.accepted ?? []).map((a) => ({ title: a.title, period: a.period ?? undefined, reason: a.reason })),
         org: { name: p.org.name, logoUrl: p.org.logo_url, brandColour: p.org.brand_colour, disclaimer: p.org.disclaimer, footer: p.org.report_footer },
         preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
       }} />

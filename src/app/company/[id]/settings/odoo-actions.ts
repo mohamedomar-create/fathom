@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { saveCompanyData } from "@/lib/company/persist";
+import { runChecks } from "@/lib/company/checks";
 import { OdooClient } from "@/lib/odoo/client";
 import { assertPublicOdooUrl } from "@/lib/odoo/net";
 import { probe, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
@@ -77,7 +78,8 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");
     await saveCompanyData(supabase, companyId, res.accounts, {
       kind: "odoo", filename: `${conn.odoo_company_name ?? "Odoo"} (${res.diagnostics.version})`,
-      report: { kind: "odoo", periods: res.periods, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics } as unknown as Json,
+      // Live sync is authoritative and replaces everything; its checks are recorded and shown, never blocking.
+      report: { kind: "odoo", mode: "replace", periods: res.periods, slices: { PL: res.periods, BS: res.periods }, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics, checks: runChecks({ accounts: res.accounts }).filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,
     }, res.notes);
     await supabase.from("odoo_connections").update({ status: "ok", last_error: null, last_sync_at: new Date().toISOString(), version: res.diagnostics.version }).eq("company_id", companyId);
     await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
