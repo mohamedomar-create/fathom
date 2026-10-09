@@ -59,7 +59,7 @@ export function LineChart({
           </g>
         ))}
         {lo < 0 && <line x1={pl} x2={w - pr} y1={Y(0)} y2={Y(0)} stroke="#cfcfca" />}
-        {labels.map((l, i) => (i % step === 0 || i === n - 1) && (
+        {labels.map((l, i) => ((i % step === 0 && (n - 1 - i >= step * 0.6 || i === n - 1)) || i === n - 1) && (
           <text key={i} x={X(i)} y={h - 10} className="ax" textAnchor="middle">{l}</text>
         ))}
         {target !== null && target !== undefined && (
