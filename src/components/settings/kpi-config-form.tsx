@@ -99,7 +99,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
       <p className="mt-2 text-xs text-mute">* A result below target is favourable for this KPI.</p>
       <div className="sticky bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
         {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
-        {c.readOnly ? <span className="text-sm text-mute">{c.source === "demo" ? "The demo company is read-only." : "You have view-only access."}</span> : (
+        {c.readOnly ? <span className="text-sm text-mute">{c.basePath === "/demo" ? "The demo company is read-only." : "You have view-only access."}</span> : (
           <>
             <button onClick={() => setCfg(initial)} disabled={!dirty || pending} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">Discard</button>
             <button onClick={save} disabled={!dirty || pending} className="rounded bg-green-d px-5 py-2 font-medium text-white disabled:opacity-50" data-testid="save-kpis">{pending ? "Saving…" : "Save changes"}</button>

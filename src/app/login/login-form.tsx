@@ -11,14 +11,15 @@ type Mode = "signin" | "signup";
 export function LoginForm() {
   const sp = useSearchParams();
   const router = useRouter();
-  const next = sp.get("next") || "/companies";
+  const rawNext = sp.get("next");
+  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/companies";
   const [mode, setMode] = useState<Mode>(sp.get("mode") === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(sp.get("error") ? { tone: "bad", text: "That sign-in link is invalid or has expired." } : null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(sp.get("error") ? { tone: "bad", text: "That link is invalid or has already been used. If you just confirmed your email, sign in with your password." } : null);
 
   const supabase = createClient();
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` : undefined;
@@ -53,6 +54,14 @@ export function LoginForm() {
     setMsg(error ? { tone: "bad", text: error.message } : { tone: "ok", text: "We've emailed you a sign-in link." });
   }
 
+  async function reset() {
+    if (!email) { setMsg({ tone: "bad", text: "Enter your email address first." }); return; }
+    setBusy(true); setMsg(null);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset` });
+    setBusy(false);
+    setMsg(error ? { tone: "bad", text: error.message } : { tone: "ok", text: "If that address has an account, we've emailed a link to set a new password." });
+  }
+
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-bar p-12 text-white lg:flex">
@@ -81,13 +90,16 @@ export function LoginForm() {
             </>
           )}
           <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
-          <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} />
+          <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? 8 : undefined} />
           {msg && <p className={cn("mb-3 rounded px-3 py-2 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">{msg.text}</p>}
           <button disabled={busy} className="w-full rounded bg-green-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
           {mode === "signin" && (
-            <button type="button" onClick={magic} disabled={busy} className="mt-3 w-full text-sm text-mute hover:text-ink">Email me a sign-in link instead</button>
+            <div className="mt-3 flex justify-between gap-3 text-sm">
+              <button type="button" onClick={magic} disabled={busy} className="text-mute hover:text-ink">Email me a sign-in link</button>
+              <button type="button" onClick={reset} disabled={busy} className="text-mute hover:text-ink">Forgot password?</button>
+            </div>
           )}
           <p className="mt-8 text-center text-xs text-mute">
             Just looking? <Link href="/demo/summary" className="text-green-d underline">Open the demo company</Link>

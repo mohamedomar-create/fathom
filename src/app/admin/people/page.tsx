@@ -3,7 +3,7 @@ import { PeopleManager } from "./people-manager";
 
 export default async function PeoplePage() {
   const { supabase, user } = await getUser();
-  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").limit(1).single();
+  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").order("created_at").limit(1).single();
   const orgId = m!.org_id;
   const [{ data: members }, { data: invites }] = await Promise.all([
     supabase.from("memberships").select("user_id, role, created_at").eq("org_id", orgId),

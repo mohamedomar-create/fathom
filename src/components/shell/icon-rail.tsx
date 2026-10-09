@@ -22,7 +22,7 @@ export function IconRail() {
           const active = pathname === href;
           return (
             <Tip key={n.href} label={n.title}>
-              <Link href={href + q} aria-label={n.title} data-testid={`nav-${n.href.split("/").pop()}`}
+              <Link prefetch={false} href={href + q} aria-label={n.title} data-testid={`nav-${n.href.split("/").pop()}`}
                 className={cn("flex h-11 w-11 items-center justify-center rounded-md text-[#555] transition hover:bg-band hover:text-ink", active && "bg-green-bg text-green-d hover:bg-green-bg")}>
                 <n.icon className="h-5 w-5" strokeWidth={1.7} />
               </Link>
@@ -31,7 +31,7 @@ export function IconRail() {
         })}
         <div className="mt-auto">
           <Tip label="Create a report / download PDF">
-            <Link href={`${c.basePath}/reports`} className="flex h-11 w-11 items-center justify-center rounded-md text-[#555] hover:bg-band" aria-label="Reports and PDF">
+            <Link prefetch={false} href={`${c.basePath}/reports`} className="flex h-11 w-11 items-center justify-center rounded-md text-[#555] hover:bg-band" aria-label="Reports and PDF">
               <FileDown className="h-5 w-5" strokeWidth={1.7} />
             </Link>
           </Tip>
@@ -43,7 +43,7 @@ export function IconRail() {
           const href = `${c.basePath}/${n.href}`;
           const active = pathname === href;
           return (
-            <Link key={n.href} href={href + q} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs", active ? "bg-green-bg text-green-d" : "text-[#555]")}>
+            <Link prefetch={false} key={n.href} href={href + q} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs", active ? "bg-green-bg text-green-d" : "text-[#555]")}>
               <n.icon className="h-3.5 w-3.5" />{n.label}
             </Link>
           );

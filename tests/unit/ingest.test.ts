@@ -6,7 +6,7 @@ import { ingest, toAccountInputs, type IngestOptions, type IngestResult } from "
 import { cleanNum, parsePeriod, splitCode } from "@/lib/ingest/parse";
 import { classify } from "@/lib/ingest/classify";
 import { readWorkbook } from "@/lib/ingest/read";
-import { journalItems, months, odooReports, trialBalanceDebitCredit, trialBalanceSigned } from "../fixtures/odoo";
+import { generalLedger, journalItems, months, odooReports, trialBalanceDebitCredit, trialBalanceSigned, trialBalanceSinglePeriod } from "../fixtures/odoo";
 
 const OPTS: IngestOptions = { fyStart: 1, ytd: "auto", closeEarnings: "auto", plugEquity: false, mapping: {} };
 
@@ -101,6 +101,36 @@ describe("Odoo exports reproduce the source numbers", () => {
     const res = ingest(trialBalanceDebitCredit(), OPTS);
     expect(res.kind).toBe("movement");
     expectMatchesSample(res, 1);
+  });
+
+  it("Odoo General Ledger (account headings, Initial Balance rows, dated move lines)", () => {
+    const res = ingest(generalLedger(), OPTS);
+    expect(res.kind).toBe("movement");
+    expect(res.lines.some((l) => /^total$/i.test(l.name) && !l.excluded)).toBe(false);
+    expectMatchesSample(res, 1);
+  });
+
+  it("Odoo Trial Balance for one month (date-range header, no comparison)", () => {
+    const res = ingest(trialBalanceSinglePeriod(3), OPTS);
+    expect(res.periods).toEqual([months[3].period]);
+    expect(res.issues.warnings.some((w) => /covers/.test(w))).toBe(false);
+    const got = classTotals(res)[0];
+    const want = months[3];
+    for (const k of PL_KEYS) expect(Math.round(got.pl[k] ?? 0), k).toBe(Math.round((want.pl as Record<string, number>)[k] ?? 0));
+    for (const k of BS_KEYS) expect(Math.round(got.bs[k] ?? 0), k).toBe(Math.round((want.bs as Record<string, number>)[k] ?? 0));
+  });
+
+  it("a multi-month date-range column is accepted with a clear warning", () => {
+    const g = trialBalanceSinglePeriod(3);
+    g[0].rows[2][3] = `From 01/01/${months[3].period.slice(0, 4)} to 30/${months[3].period.slice(5)}/${months[3].period.slice(0, 4)}`;
+    const res = ingest(g, OPTS);
+    expect(res.periods).toEqual([months[3].period]);
+    expect(res.issues.warnings.some((w) => /covers \d+ months/.test(w))).toBe(true);
+  });
+
+  it("an unrecognised sheet explains which Odoo exports work", () => {
+    const res = ingest([{ name: "Notes", rows: [["Hello"], ["world"]] }], OPTS);
+    expect(res.issues.warnings[0]).toMatch(/General Ledger/);
   });
 
   it("user mapping overrides and exclusions are respected", () => {

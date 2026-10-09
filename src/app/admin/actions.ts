@@ -36,7 +36,8 @@ export async function invite(orgId: string, email: string, role: "admin" | "edit
 
 export async function setRole(orgId: string, userId: string, role: "admin" | "editor" | "viewer") {
   const { supabase } = await getUser();
-  const { error } = await supabase.from("memberships").update({ role }).eq("org_id", orgId).eq("user_id", userId);
+  const { error, count } = await supabase.from("memberships").update({ role }, { count: "exact" }).eq("org_id", orgId).eq("user_id", userId);
+  if (!error && !count) return { ok: false, error: "You do not have permission to change this." };
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/people");
   return { ok: true };
@@ -44,7 +45,8 @@ export async function setRole(orgId: string, userId: string, role: "admin" | "ed
 
 export async function removeMember(orgId: string, userId: string) {
   const { supabase } = await getUser();
-  const { error } = await supabase.from("memberships").delete().eq("org_id", orgId).eq("user_id", userId);
+  const { error, count } = await supabase.from("memberships").delete({ count: "exact" }).eq("org_id", orgId).eq("user_id", userId);
+  if (!error && !count) return { ok: false, error: "You do not have permission to change this." };
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/people");
   return { ok: true };
@@ -52,7 +54,8 @@ export async function removeMember(orgId: string, userId: string) {
 
 export async function cancelInvite(id: string) {
   const { supabase } = await getUser();
-  const { error } = await supabase.from("invites").delete().eq("id", id);
+  const { error, count } = await supabase.from("invites").delete({ count: "exact" }).eq("id", id);
+  if (!error && !count) return { ok: false, error: "You do not have permission to change this." };
   if (error) return { ok: false, error: error.message };
   revalidatePath("/admin/people");
   return { ok: true };

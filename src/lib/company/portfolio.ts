@@ -15,6 +15,7 @@ export interface PortfolioItem {
 export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: { id: string; name: string; role: string }[]; email: string }> {
   const { supabase, user } = await getUser();
   if (!user) return { items: [], orgs: [], email: "" };
+  await supabase.rpc("accept_pending_invites"); // invites sent after this user signed up
   const [{ data: mems }, { data: companies }] = await Promise.all([
     supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id),
     supabase.from("companies").select("*").order("name"),

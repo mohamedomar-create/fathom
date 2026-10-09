@@ -16,6 +16,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [raw, setRaw] = useState<{ lines: RawLine[]; issues: { skippedCols: string[]; warnings: string[] } } | null>(null);
+  const [diag, setDiag] = useState<Diagnostic | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
@@ -25,19 +26,28 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
   const input = useRef<HTMLInputElement>(null);
 
   const onFile = useCallback(async (f: File) => {
-    setErr(null); setBusy(true); setFile(f);
+    setErr(null); setBusy(true); setFile(f); setDiag(null);
     try {
       if (f.size > 25 * 1024 * 1024) throw new Error("That file is larger than 25 MB. Export a shorter date range or the monthly Trial Balance instead of journal items.");
-      const grids = await readWorkbook(await f.arrayBuffer(), f.name);
+      if (/\.pdf$/i.test(f.name)) throw new Error("PDF reports can't be read. In Odoo, open the report and use Export → XLSX instead of Print.");
+      let grids: Awaited<ReturnType<typeof readWorkbook>>;
+      try { grids = await readWorkbook(await f.arrayBuffer(), f.name); }
+      catch { throw new Error("This file couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again."); }
       const { raw: lines, issues } = extractAll(grids);
+      setDiag(diagnostic(f, grids, issues));
       if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
       setRaw({ lines, issues });
     } catch (e) {
-      setErr((e as Error).message); setRaw(null);
+      console.error("upload read failed", e);
+      setErr((e as Error).message || "The file could not be read."); setRaw(null);
     } finally { setBusy(false); }
   }, []);
 
-  const res: IngestResult | null = useMemo(() => (raw ? runIngest(raw.lines, raw.issues, { ...opts, mapping }) : null), [raw, opts, mapping]);
+  const [res, ingestErr]: [IngestResult | null, string | null] = useMemo(() => {
+    if (!raw) return [null, null];
+    try { return [runIngest(raw.lines, raw.issues, { ...opts, mapping }), null]; }
+    catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed."]; }
+  }, [raw, opts, mapping]);
 
   const setCls = (labelKey: string, cls: ClassKey | "") => setMapping((m) => ({ ...m, [labelKey]: cls }));
   const lines = res?.lines.filter((l) => !l.system) ?? [];
@@ -49,15 +59,22 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
   async function commit() {
     if (!res || !file) return;
     if (hasData && !confirm("This replaces the company's current financial data with this file. Continue?")) return;
+    setErr(null);
     start(async () => {
-      const accounts = toAccountInputs(res);
-      const out = await commitImport({
-        companyId, filename: file.name, accounts,
-        report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
-      });
-      if (!out.ok) { setErr(out.error); return; }
-      router.push(`/company/${companyId}/summary`);
-      router.refresh();
+      try {
+        const accounts = toAccountInputs(res);
+        if (!accounts.length) { setErr("Nothing to import: every line is excluded or has no amounts. Map at least one account."); return; }
+        const out = await commitImport({
+          companyId, filename: file.name, accounts,
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
+        });
+        if (!out.ok) { setErr(out.error); return; }
+        router.push(`/company/${companyId}/summary`);
+        router.refresh();
+      } catch (e) {
+        console.error("import failed", e);
+        setErr(`The import could not be saved (${(e as Error).message || "network error"}). If the file is very large, export a shorter date range and try again.`);
+      }
     });
   }
 
@@ -75,7 +92,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
           <div className="mt-3 text-lg">{busy ? `Reading ${file?.name}…` : "Drop an Odoo export here, or click to choose"}</div>
           <div className="mt-1 text-sm text-mute">.xlsx, .xls or .csv · English or Arabic · read in your browser</div>
           <input ref={input} type="file" accept=".xlsx,.xls,.csv,.txt" className="hidden" data-testid="file-input" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
-          {err && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
+          {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
+          {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
         </div>
         <aside className="rounded-lg bg-band p-4 text-[13px]">
           <div className="label mb-2">Which Odoo export?</div>
@@ -175,4 +193,24 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
       {sub && <div className="text-xs text-mute">{sub}</div>}
     </div>
   );
+}
+
+interface Diagnostic { file: string; size: number; sheets: { name: string; rows: number; cols: number; head: string[][] }[]; warnings: string[]; skipped: string[] }
+
+/** Layout-only summary (first rows, truncated cells) to diagnose files the importer can't read. */
+function diagnostic(f: File, grids: { name: string; rows: unknown[][] }[], issues: { warnings: string[]; skippedCols: string[] }): Diagnostic {
+  return {
+    file: f.name, size: f.size, warnings: issues.warnings, skipped: issues.skippedCols,
+    sheets: grids.map((g) => ({
+      name: g.name, rows: g.rows.length, cols: Math.max(0, ...g.rows.map((r) => r?.length ?? 0)),
+      head: g.rows.slice(0, 15).map((r) => (r ?? []).slice(0, 16).map((c) => (c instanceof Date ? c.toISOString().slice(0, 10) : c === null || c === undefined ? "" : String(c).slice(0, 60)))),
+    })),
+  };
+}
+
+function downloadDiagnostic(d: Diagnostic) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `import-diagnostic-${d.file.replace(/[^\w.-]+/g, "_")}.json` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

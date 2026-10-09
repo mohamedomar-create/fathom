@@ -58,11 +58,12 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   const v = ProfileSchema.safeParse(input);
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message };
   const { supabase } = await getUser();
-  const { error } = await supabase.from("companies").update({
+  const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,
     industry: v.data.industry, ai_context: v.data.ai_context,
-  }).eq("id", v.data.companyId);
+  }, { count: "exact" }).eq("id", v.data.companyId);
   if (error) return { ok: false, error: error.message };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${v.data.companyId}`, "layout");
   return { ok: true };
 }
@@ -75,8 +76,9 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
   const parsed = z.record(z.string().regex(/^[a-z_]+$/), KpiEntry).safeParse(config);
   if (!parsed.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid KPI settings" };
   const { supabase } = await getUser();
-  const { error } = await supabase.from("companies").update({ kpi_config: parsed.data as Json }).eq("id", companyId);
+  const { error, count } = await supabase.from("companies").update({ kpi_config: parsed.data as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: error.message };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }

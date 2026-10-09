@@ -33,7 +33,8 @@ export async function saveReport(input: z.input<typeof SaveSchema>) {
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message };
   const { supabase } = await getUser();
   const { id, ...rest } = v.data;
-  const { error } = await supabase.from("reports").update({ ...rest, sections: rest.sections as unknown as Json }).eq("id", id);
+  const { error, count } = await supabase.from("reports").update({ ...rest, sections: rest.sections as unknown as Json }, { count: "exact" }).eq("id", id);
+  if (!error && !count) return { ok: false, error: "You do not have permission to change this." };
   return error ? { ok: false, error: error.message } : { ok: true };
 }
 

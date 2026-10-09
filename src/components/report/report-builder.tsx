@@ -19,19 +19,22 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   const [end, setEnd] = useState(report.period_end);
   const [sections, setSections] = useState<ReportSection[]>(report.sections);
   const [token, setToken] = useState<string | null>(report.share_token);
-  const periodKey = `${type}:${end}`;
+  const ends = useMemo(() => selectableEnds(c.months, type, c.settings.fyStartMonth), [c.months, type, c.settings.fyStartMonth]);
+  const validEnd = ends.some((e) => e.end === end) ? end : ends[ends.length - 1]?.end ?? end;
+  const periodKey = `${type}:${validEnd}`;
   const initialComments = useMemo(() => {
     const out: Record<string, string> = {};
     for (const [k, v] of Object.entries(c.commentary)) { const [pk, s] = k.split("|"); if (pk === periodKey && s) out[s] = v; else if (!s) out[k] = v; }
     return out;
   }, [c.commentary, periodKey]);
-  const [comments, setComments] = useState<Record<string, string>>(initialComments);
+  // Unsaved edits are kept per period, so switching the period never carries text across.
+  const [edits, setEdits] = useState<Record<string, Record<string, string>>>({});
+  const comments = useMemo(() => ({ ...initialComments, ...edits[periodKey] }), [initialComments, edits, periodKey]);
+  const setComments = (f: (x: Record<string, string>) => Record<string, string>) => setEdits((e) => ({ ...e, [periodKey]: f({ ...initialComments, ...e[periodKey] }) }));
   const [editing, setEditing] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [, start] = useTransition();
-  const ends = useMemo(() => selectableEnds(c.months, type, c.settings.fyStartMonth), [c.months, type, c.settings.fyStartMonth]);
-  const validEnd = ends.some((e) => e.end === end) ? end : ends[ends.length - 1]?.end ?? end;
   const footer = org.footer || `${c.name} (${windowFor({ type, end: validEnd }, c.settings.fyStartMonth).label}) - Prepared by ${org.name}`;
 
   const input = useMemo(() => ({

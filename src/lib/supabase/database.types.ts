@@ -50,6 +50,7 @@ export type Database = {
     };
     Views: { [_ in never]: never };
     Functions: {
+      accept_pending_invites: { Args: Record<string, never>; Returns: number };
       get_published_report: { Args: { p_token: string }; Returns: Json };
       reclassify_accounts: { Args: { p_company: string; p_changes: Json }; Returns: number };
       replace_company_data: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: number };

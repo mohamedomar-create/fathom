@@ -6,19 +6,24 @@ import { createReport } from "./actions";
 
 export default async function ReportsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase } = await getUser();
-  const [{ data: reports }, { data: c }, { data: last }] = await Promise.all([
+  const { supabase, user } = await getUser();
+  const [{ data: reports }, { data: c }] = await Promise.all([
     supabase.from("reports").select("id, title, period_type, period_end, status, updated_at").eq("company_id", id).order("updated_at", { ascending: false }),
-    supabase.from("companies").select("fy_start_month").eq("id", id).single(),
-    supabase.from("account_balances").select("period").eq("company_id", id).order("period", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("companies").select("fy_start_month, data_version, org_id").eq("id", id).single(),
   ]);
+  const [{ data: last }, { data: mem }] = await Promise.all([
+    supabase.from("account_balances").select("period, source_accounts!inner(version)").eq("company_id", id).eq("source_accounts.version", c?.data_version ?? 0)
+      .order("period", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("memberships").select("role").eq("org_id", c?.org_id ?? "").eq("user_id", user?.id ?? "").maybeSingle(),
+  ]);
+  const canEdit = mem?.role === "admin" || mem?.role === "editor";
   const create = createReport.bind(null, id, last?.period ?? new Date().toISOString().slice(0, 7));
   return (
     <div className="mx-auto max-w-5xl py-8">
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div><div className="label">Reports</div><h1 className="text-3xl font-light">Management reports</h1>
           <p className="text-mute">Branded A4 reports with commentary — download as PDF or share a link.</p></div>
-        <form action={create}><button disabled={!last} className="flex items-center gap-1.5 rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</button></form>
+        {canEdit && <form action={create}><button disabled={!last} className="flex items-center gap-1.5 rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</button></form>}
       </div>
       {!last && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-sm">Add financial data first (Settings → Source Data).</p>}
       <table className="tbl text-sm">

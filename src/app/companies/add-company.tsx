@@ -26,7 +26,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
         {!src ? (
           <div className="grid gap-3 sm:grid-cols-3">
             {tiles.map((t) => (
-              <button key={t.k} disabled={pending} onClick={() => t.k === "demo" ? start(async () => { try { await createDemoCompany(); } catch (e) { setErr(String((e as Error).message)); } }) : setSrc(t.k)}
+              <button key={t.k} disabled={pending} onClick={() => t.k === "demo" ? start(async () => { const r = await createDemoCompany(); if (r?.error) setErr(r.error); }) : setSrc(t.k)}
                 className="rounded-lg border border-line p-4 text-left transition hover:border-green hover:shadow-sm disabled:opacity-50">
                 <div className="mb-3 text-green-d">{t.icon}</div>
                 <div className="font-medium">{t.title}</div>
@@ -35,7 +35,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
             ))}
           </div>
         ) : (
-          <form action={(fd) => start(async () => { try { await createCompany(fd); } catch (e) { setErr(String((e as Error).message)); } })} className="grid gap-4 sm:grid-cols-2">
+          <form action={(fd) => start(async () => { setErr(null); const r = await createCompany(fd); if (r?.error) setErr(r.error); })} className="grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="source" value={src} />
             <label className="sm:col-span-2"><span className="label mb-1 block">Company name</span>
               <input name="name" required maxLength={160} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" placeholder="e.g. Nile Medical Supplies" /></label>

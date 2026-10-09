@@ -38,6 +38,13 @@ const pad = (m: number) => String(m).padStart(2, "0");
 
 /** Cell → 'YYYY-MM' or null. Accepts dates, 'Jan-25', 'January 2025', '2025-01', '01/2025', '31/01/2025', Arabic months. */
 export function parsePeriod(v: Cell): string | null {
+  const p = parsePeriodRaw(v);
+  if (!p) return null;
+  const y = +p.slice(0, 4);
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(p) && y >= 1900 && y <= 2100 ? p : null;
+}
+
+function parsePeriodRaw(v: Cell): string | null {
   if (v === null || v === undefined || typeof v === "boolean") return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}`;
   if (typeof v === "number") return null; // bare numbers are not periods (Excel serials are converted by the reader)
@@ -62,6 +69,19 @@ export function parsePeriod(v: Cell): string | null {
   const ym = s.match(/(\d{4})/);
   if (ym) for (const [rx, mo] of AR_MONTHS) if (rx.test(s) && s.replace(rx, "").replace(ym[1], "").trim().length <= 2) return `${ym[1]}-${pad(mo)}`;
   return null;
+}
+
+/** Column header covering a date range, e.g. Odoo's "From 01/09/2025 to 30/09/2025" → end month and length in months. */
+export function parsePeriodRange(v: Cell): { end: string; months: number } | null {
+  if (typeof v !== "string") return null;
+  const s = arToLatin(v.trim());
+  if (s.length > 80) return null;
+  const toks = s.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|[A-Za-zéû]{3,9}[\s\-_/.,']*\d{4}/g) ?? [];
+  if (toks.length !== 2) return null;
+  const [a, b] = toks.map((t) => parsePeriod(t));
+  if (!a || !b || a > b) return null;
+  const months = (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
+  return { end: b, months };
 }
 
 /** "400100 Product Sales" → { code: "400100", name: "Product Sales" }. */
