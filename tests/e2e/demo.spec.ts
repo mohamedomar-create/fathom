@@ -79,3 +79,12 @@ test("data health shows loaded months, checks and sources", async ({ page }) => 
   await expect(page.getByTestId("month-detail")).toContainText("Demo data");
   expect(errors).toEqual([]);
 });
+
+test("a financials figure opens the accounts behind it", async ({ page }) => {
+  await page.goto("/demo/analysis/financials");
+  await page.getByTestId("trace-gross_profit").click();
+  const d = page.getByTestId("source-drawer");
+  await expect(d).toContainText("Gross Profit");
+  await expect(d).toContainText("Demo data");
+  await expect(d).toContainText("(−)");
+});

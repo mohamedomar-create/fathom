@@ -9,3 +9,4 @@ export * from "./growth";
 export * from "./insights";
 export * from "./period";
 export * from "./analyze";
+export * from "./lines";
