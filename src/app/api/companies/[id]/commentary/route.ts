@@ -7,7 +7,7 @@ import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 const Body = z.object({
   type: z.enum(["month", "quarter", "year"]),

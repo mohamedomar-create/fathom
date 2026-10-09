@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { selectableEnds, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { downloadReportPdf } from "@/lib/report/export";
+import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportOrg, type ReportSection } from "@/lib/report/types";
 import { publishReport, saveCommentary, saveReport } from "@/app/company/[id]/reports/actions";
 import { ReportDocument } from "./report-document";
@@ -47,11 +48,18 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
     setMsg(r.ok ? { ok: true, text: "Report saved." } : { ok: false, text: r.error ?? "Could not save" });
   });
   const ai = (section?: string) => run(section ? `ai:${section}` : "ai", async () => {
-    const res = await fetch(`/api/companies/${c.id}/commentary`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, end: validEnd, sections: section ? [section] : undefined }) });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error ?? "AI commentary failed");
-    setComments((x) => ({ ...x, ...j.commentary }));
-    setMsg({ ok: true, text: `AI commentary written for ${Object.keys(j.commentary).length} section(s). Review and edit before sending.` });
+    // One request per section keeps each call well inside the server function time limit.
+    const results = await Promise.allSettled((section ? [section] : [...COMMENTARY_SECTIONS]).map(async (s) => {
+      const res = await fetch(`/api/companies/${c.id}/commentary`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, end: validEnd, sections: [s] }) });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(j.error ?? "AI commentary failed");
+      return j.commentary as Record<string, string>;
+    }));
+    const written = Object.assign({}, ...results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : [])));
+    setComments((x) => ({ ...x, ...written }));
+    const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+    if (failed && !Object.keys(written).length) throw failed.reason;
+    setMsg({ ok: !failed, text: `AI commentary written for ${Object.keys(written).length} section(s).${failed ? ` Some sections failed: ${(failed.reason as Error).message}` : ""} Review and edit before sending.` });
   });
   const saveComment = (section: string) => run(`c:${section}`, async () => {
     if (demo) { setEditing(null); return; }

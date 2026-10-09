@@ -5,8 +5,9 @@ import { z } from "zod";
 import { SYSTEM_PROMPT } from "./context";
 
 export const COMMENTARY_MODEL = "claude-opus-5-5";
-export const COMMENTARY_SECTIONS = ["summary", "kpis", "profitability", "cashflow", "pl", "bs", "trend", "growth", "goalseek"] as const;
-export type CommentarySection = (typeof COMMENTARY_SECTIONS)[number];
+import { COMMENTARY_SECTIONS, type CommentarySection } from "./sections";
+
+export { COMMENTARY_SECTIONS, type CommentarySection };
 
 const Schema = z.object(Object.fromEntries(COMMENTARY_SECTIONS.map((s) => [s, z.string()])) as Record<CommentarySection, z.ZodString>);
 
@@ -14,7 +15,8 @@ export class CommentaryError extends Error {}
 
 export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS]): Promise<Partial<Record<CommentarySection, string>>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.");
-  const client = new Anthropic();
+  // Stay inside the route's 60s function limit (Vercel Hobby cap).
+  const client = new Anthropic({ timeout: 55_000, maxRetries: 0 });
   try {
     const response = await client.beta.messages.parse({
       model: COMMENTARY_MODEL,
@@ -35,6 +37,7 @@ export async function writeCommentary(context: unknown, sections: CommentarySect
     return Object.fromEntries(sections.map((s) => [s, out[s].trim()]).filter(([, v]) => v));
   } catch (e) {
     if (e instanceof CommentaryError) throw e;
+    if (e instanceof Anthropic.APIConnectionTimeoutError) throw new CommentaryError("The AI took too long. Try fewer sections at once.");
     if (e instanceof Anthropic.AuthenticationError) throw new CommentaryError("The Claude API key on the server is invalid.");
     if (e instanceof Anthropic.RateLimitError) throw new CommentaryError("The AI service is busy (rate limited). Try again in a minute.");
     if (e instanceof Anthropic.BadRequestError) throw new CommentaryError(`The AI request was rejected: ${e.message}`);
