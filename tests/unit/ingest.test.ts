@@ -3,7 +3,8 @@ import * as XLSX from "@e965/xlsx";
 import { analyze, BS_KEYS, PL_KEYS } from "@/lib/engine";
 import { buildMonths } from "@/lib/company/build";
 import { ingest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
-import { cleanNum, parsePeriod, splitCode } from "@/lib/ingest/parse";
+import { cleanNum, parsePeriod, parsePeriodRange, splitCode, type Cell } from "@/lib/ingest/parse";
+import type { Grid } from "@/lib/ingest/extract";
 import { classify } from "@/lib/ingest/classify";
 import { readWorkbook } from "@/lib/ingest/read";
 import { generalLedger, journalItems, months, odooReports, trialBalanceDebitCredit, trialBalanceSigned, trialBalanceSinglePeriod } from "../fixtures/odoo";
@@ -160,5 +161,56 @@ describe("Odoo exports reproduce the source numbers", () => {
     expect(m[0].pl.revenue).toBe(1000);
     expect(m[0].bs.cash).toBe(1000);
     expect(Math.abs(res.imbalance["2026-01"])).toBeLessThan(0.01);
+  });
+});
+
+describe("Odoo report column headers", () => {
+  const now = new Date("2026-10-15T00:00:00");
+  it.each([
+    ["From 01/01/2025 to 09/30/2025", { end: "2025-09", months: 9 }],
+    ["From 01/09/2025\nto 30/09/2025", { end: "2025-09", months: 1 }],
+    ["09/01/2025 - 09/30/2025", { end: "2025-09", months: 1 }],
+    ["2025-01-01 - 2025-03-31", { end: "2025-03", months: 3 }],
+    ["Jan 2025 - Sep 2025", { end: "2025-09", months: 9 }],
+    ["As of 09/30/2025", { end: "2025-09", months: 1 }],
+    ["Q3 2025", { end: "2025-09", months: 3 }],
+    ["H1 2025", { end: "2025-06", months: 6 }],
+    ["2025", { end: "2025-12", months: 12 }],
+    ["FY 2026", { end: "2026-10", months: 10 }],
+  ])("%s", (label, want) => {
+    expect(parsePeriodRange(label, now)).toEqual(want);
+  });
+  it("ignores text that is not a period", () => {
+    for (const t of ["Balance", "Profit and Loss", "Total 2025 budget", "12/2025 notes"]) expect(parsePeriodRange(t, now)).toBeNull();
+  });
+  it("reads amounts exported as text with a currency", () => {
+    expect(cleanNum("EGP -1,234.00")).toBe(-1234);
+    expect(cleanNum("(1,234.50) ج.م")).toBe(-1234.5);
+    expect(cleanNum("1.234,50 €")).toBe(1234.5);
+    expect(cleanNum("−500")).toBe(-500);
+  });
+
+  const odooPL = (head: Cell[][]): Grid[] => [{ name: "Profit and Loss", rows: [
+    ...head,
+    ["Revenue", 1500], ["400000 Product Sales", 1000], ["400100 Services", 500],
+    ["Less Costs of Revenue", 600], ["500000 Cost of Goods Sold", 600],
+    ["Gross Profit", 900],
+    ["Less Operating Expenses", 300], ["600000 Salaries", 200], ["610000 Rent", 100],
+    ["Net Profit", 600],
+  ] }];
+  it("single-period P&L labelled with a range (Odoo default export)", () => {
+    const res = ingest(odooPL([["My Company"], ["Profit and Loss"], ["", "From 09/01/2025 to 09/30/2025"], ["", "Balance"]]), OPTS);
+    expect(res.periods).toEqual(["2025-09"]);
+    expect(res.totals.revenue["2025-09"]).toBe(1500);
+  });
+  it("single-period P&L with a Balance column and the period in the title", () => {
+    const res = ingest(odooPL([["Profit and Loss"], ["From 01/09/2025 to 30/09/2025"], ["", "Balance"]]), OPTS);
+    expect(res.periods).toEqual(["2025-09"]);
+    expect(res.totals.revenue["2025-09"]).toBe(1500);
+  });
+  it("year-labelled P&L imports with a warning", () => {
+    const res = ingest(odooPL([["Profit and Loss"], ["", "2025"]]), OPTS);
+    expect(res.periods).toEqual(["2025-12"]);
+    expect(res.issues.warnings.some((w) => /covers 12 months/.test(w))).toBe(true);
   });
 });
