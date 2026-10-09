@@ -19,10 +19,10 @@ export type CompanyRow = {
 }
 export type SourceAccountRow = {
   id: string; company_id: string; version: number; code: string; name: string; statement: "PL" | "BS"; class: string; odoo_id: number | null; odoo_type: string | null;
-  confidence: number | null; mapped_by: string; sort_order: number;
+  confidence: number | null; mapped_by: string; sort_order: number; refs: Json;
 }
-export type AccountBalanceRow = { account_id: string; company_id: string; period: string; amount: number }
-export type ImportRow = { id: string; company_id: string; kind: string; filename: string | null; status: string; report: Json; created_by: string | null; created_at: string }
+export type AccountBalanceRow = { account_id: string; company_id: string; period: string; amount: number; import_id: string | null }
+export type ImportRow = { id: string; company_id: string; kind: string; filename: string | null; status: string; report: Json; created_by: string | null; created_at: string; data_version: number | null; action: "import" | "restore" }
 export type OdooConnectionRow = {
   company_id: string; url: string; db: string; login: string; api_key_enc: string; odoo_company_id: number | null; odoo_company_name: string | null;
   include_branches: boolean; months_history: number; version: string | null; status: string; last_error: string | null; last_sync_at: string | null; updated_at: string;
@@ -54,6 +54,8 @@ export type Database = {
       get_published_report: { Args: { p_token: string }; Returns: Json };
       reclassify_accounts: { Args: { p_company: string; p_changes: Json }; Returns: number };
       replace_company_data: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: number };
+      save_company_version: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: Json };
+      restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

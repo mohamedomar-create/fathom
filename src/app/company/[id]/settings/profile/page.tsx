@@ -8,7 +8,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
   const { data: m } = await supabase.from("memberships").select("role").eq("org_id", c!.org_id).eq("user_id", user!.id).maybeSingle();
   return (
     <div>
-      <div className="label">2 · Company Profile</div>
+      <div className="label">3 · Company Profile</div>
       <h1 className="mb-6 text-3xl font-light">Company Profile</h1>
       <ProfileForm initial={{ ...c!, tax_rate: Number(c!.tax_rate), ai_context: (c!.ai_context ?? {}) as Record<string, string> }} readOnly={m?.role === "viewer"} canDelete={m?.role === "admin"} />
     </div>

@@ -23,6 +23,8 @@ export interface IngestLine {
   name: string;
   label: string;
   section: string;
+  /** Statement the line sits in, when the file says so. */
+  stmt: "PL" | "BS" | null;
   cls: ClassKey | null;
   conf: number;
   why: string;
@@ -39,7 +41,9 @@ export interface IngestResult {
   detected: { ytd: boolean; creditNegative: boolean; unclosedEarnings: boolean };
   issues: { warnings: string[]; notes: string[]; flips: string[]; subtotals: string[]; skippedCols: string[] };
   imbalance: Record<string, number>;
-  totals: { revenue: Record<string, number>; cash: Record<string, number> };
+  totals: { revenue: Record<string, number>; cash: Record<string, number>; assets: Record<string, number> };
+  /** Months this file covers, per statement (an import replaces exactly these months). */
+  slices: { PL: string[]; BS: string[] };
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
@@ -129,10 +133,10 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
   const movP = continuous(mov.flatMap((l) => Object.keys(l.r.values)));
   let periods: string[];
   if (mov.length && !nat.length) periods = movP;
-  else if (plP.length && bsP.length) {
-    periods = plP.filter((p) => bsP.includes(p));
-    if (plP.length !== bsP.length || periods.length !== plP.length) issues.warnings.push(`P&L has ${plP.length} months, balance sheet ${bsP.length}; using the ${periods.length} months present in both.`);
-  } else periods = continuous([...plP, ...bsP, ...movP]);
+  else {
+    periods = continuous([...plP, ...bsP, ...movP]);
+    if (plP.length && bsP.length && (plP[0] !== bsP[0] || plP.length !== bsP.length)) issues.notes.push(`The P&L covers ${plP.length} months and the balance sheet ${bsP.length}; each is imported for the months it has.`);
+  }
   if (nat.length && !bsP.length && !mov.length) issues.warnings.push("NO BALANCE SHEET FOUND. Cash flow, working-capital, liquidity and return KPIs will be empty or wrong. Add a balance sheet export.");
   if (nat.length && !plP.length && !mov.length) issues.warnings.push("NO P&L FOUND. Add the Profit and Loss export.");
 
@@ -170,9 +174,10 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
 
   // restrict to the chosen periods
   const result: IngestLine[] = lines.map((l) => {
-    const v = values.get(l.r.key) ?? {};
+    // Unmapped lines keep their file values so their size can be judged (they are never stored).
+    const v = values.get(l.r.key) ?? (l.cls ? {} : l.r.values);
     const vv = Object.fromEntries(Object.entries(v).filter(([p, x]) => periods.includes(p) && x));
-    return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv };
+    return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, stmt: l.r.stmt, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv };
   });
 
   // Movement exports: P&L accounts are never closed in Odoo, so earnings to date are carried into retained earnings.
@@ -231,18 +236,23 @@ export function runIngest(raw: RawLine[], extractIssues: { skippedCols: string[]
   }
 
   const months = buildMonths(result.filter((l) => !l.excluded && l.cls).map((l) => ({ id: l.key, code: l.code, name: l.name, cls: l.cls!, amounts: l.values })));
-  const pick = (k: "revenue" | "cash") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : m.bs.cash ?? 0]));
+  const pick = (k: "revenue" | "cash" | "assets") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : k === "cash" ? m.bs.cash ?? 0 : bsCalc(m.bs).ta]));
+  const movPL = mov.some((l) => isPL(l.cls!)), movBS = mov.length > 0;
   return {
     lines: result, periods,
     kind: mov.length && nat.length ? "mixed" : mov.length ? "movement" : "natural",
     detected: { ytd: decum, creditNegative, unclosedEarnings: unclosed },
     issues, imbalance: Object.fromEntries(bal.map((b) => [b.p, b.imb])),
-    totals: { revenue: pick("revenue"), cash: pick("cash") },
+    totals: { revenue: pick("revenue"), cash: pick("cash"), assets: pick("assets") },
+    slices: {
+      PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
+      BS: [...new Set([...bsP, ...(movBS ? movP : [])])].filter((p) => periods.includes(p)).sort(),
+    },
   };
 }
 
 function sys(key: string, name: string, cls: ClassKey, values: Record<string, number>): IngestLine {
-  return { key, sheet: "", row: 0, code: "", name, label: name, section: "", cls, conf: 1, why: "computed", excluded: false, system: true, values };
+  return { key, sheet: "", row: 0, code: "", name, label: name, section: "", stmt: "BS", cls, conf: 1, why: "computed", excluded: false, system: true, values };
 }
 
 export function ingest(grids: Grid[], opts: IngestOptions): IngestResult {
@@ -252,11 +262,12 @@ export function ingest(grids: Grid[], opts: IngestOptions): IngestResult {
 
 /** Merge mapped lines into accounts for storage (same code+name+class are combined). */
 export function toAccountInputs(res: IngestResult) {
-  const m = new Map<string, { code: string; name: string; cls: ClassKey; amounts: Record<string, number>; confidence: number; mapped_by: "auto" | "user" | "system" }>();
+  const m = new Map<string, { code: string; name: string; cls: ClassKey; amounts: Record<string, number>; confidence: number; mapped_by: "auto" | "user" | "system"; ref?: { sheet: string; row: number; label: string } }>();
   for (const l of res.lines) {
     if (l.excluded || !l.cls) continue;
     const k = `${l.code}|${l.name}|${l.cls}`;
-    const cur = m.get(k) ?? { code: l.code.slice(0, 40), name: (l.name || l.label || l.code || "Unnamed account").slice(0, 300), cls: l.cls, amounts: {}, confidence: l.conf, mapped_by: l.system ? "system" : l.why === "your mapping" ? "user" : "auto" };
+    const cur = m.get(k) ?? { code: l.code.slice(0, 40), name: (l.name || l.label || l.code || "Unnamed account").slice(0, 300), cls: l.cls, amounts: {}, confidence: l.conf, mapped_by: l.system ? "system" : l.why === "your mapping" ? "user" : "auto",
+      ref: l.system ? undefined : { sheet: l.sheet.slice(0, 120), row: l.row, label: l.label.slice(0, 300) } };
     for (const [p, v] of Object.entries(l.values)) cur.amounts[p] = (cur.amounts[p] ?? 0) + v;
     m.set(k, cur);
   }
@@ -276,3 +287,10 @@ export const CLASS_LABEL: Record<ClassKey, string> = {
   ltd: "Long Term Debt", other_ncl: "Other Non-Current Liabilities", retained_earnings: "Retained Earnings", other_equity: "Other Equity",
 };
 export const CLASS_OPTIONS = [...PL_KEYS, ...BS_KEYS] as ClassKey[];
+
+/** Unmapped lines large enough to distort the statements (0.5% of revenue or total assets): they block the import until mapped, excluded or accepted. */
+export function materialUnmapped(res: IngestResult) {
+  const scale = (o: Record<string, number>) => Math.max(0, ...Object.values(o).map(Math.abs));
+  const limit = Math.max(1, 0.005 * Math.max(scale(res.totals.revenue), scale(res.totals.assets)));
+  return res.lines.filter((l) => !l.cls && !l.system && l.why !== "excluded by you" && Math.max(0, ...Object.values(l.values).map(Math.abs)) > limit);
+}

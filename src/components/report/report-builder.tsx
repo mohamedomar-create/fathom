@@ -39,7 +39,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
 
   const input = useMemo(() => ({
     title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
-    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [],
+    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [],
     preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
   }), [title, c, type, validEnd, sections, comments, org]);
 

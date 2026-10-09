@@ -66,3 +66,15 @@ test("app routes require sign-in", async ({ page }) => {
   await expect(page).toHaveURL(/\/login\?next=%2Fcompanies/);
   await expect(page.getByTestId("login-form")).toBeVisible();
 });
+
+test("data health shows loaded months, checks and sources", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/demo/settings/data-health");
+  await expect(page.getByTestId("health-calendar")).toBeVisible();
+  await expect(page.getByTestId("failed-count")).toContainText("0");
+  const cell = page.locator('[data-status="ok"]').first();
+  await cell.click();
+  await expect(page.getByTestId("month-detail")).toContainText("Demo data");
+  expect(errors).toEqual([]);
+});

@@ -3,16 +3,19 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from "l
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { mlabel, money, type ClassKey } from "@/lib/engine";
-import { CLASS_LABEL, CLASS_OPTIONS, extractAll, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import { CLASS_LABEL, CLASS_OPTIONS, extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { RawLine } from "@/lib/ingest/extract";
 import { normLabel } from "@/lib/ingest/parse";
 import { readWorkbook } from "@/lib/ingest/read";
-import { commitImport } from "@/app/company/[id]/settings/actions";
+import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
+import { checkKey, type Check } from "@/lib/company/checks";
+import type { ImportMode } from "@/lib/company/import-plan";
+import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
 
 type Filter = "review" | "all" | "excluded";
 
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasData, demo = false }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData: boolean; demo?: boolean }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean }) {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [raw, setRaw] = useState<{ lines: RawLine[]; issues: { skippedCols: string[]; warnings: string[] } } | null>(null);
@@ -23,10 +26,16 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
   const [filter, setFilter] = useState<Filter>("review");
   const [saving, start] = useTransition();
+  const [step, setStep] = useState<"map" | "timeline">("map");
+  const [mode, setMode] = useState<ImportMode>("merge");
+  const [preview, setPreview] = useState<PreviewResult | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [acceptOn, setAcceptOn] = useState(false);
+  const [reason, setReason] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
   const onFile = useCallback(async (f: File) => {
-    setErr(null); setBusy(true); setFile(f); setDiag(null);
+    setErr(null); setBusy(true); setFile(f); setDiag(null); setStep("map"); setPreview(null);
     try {
       if (f.size > 25 * 1024 * 1024) throw new Error("That file is larger than 25 MB. Export a shorter date range or the monthly Trial Balance instead of journal items.");
       if (/\.pdf$/i.test(f.name)) throw new Error("PDF reports can't be read. In Odoo, open the report and use Export → XLSX instead of Print.");
@@ -56,20 +65,50 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
   const lastP = res?.periods[res.periods.length - 1];
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
 
+  /** Everything the server needs to plan this import (the merge itself and the checks run on the server). */
+  function payload(m: ImportMode) {
+    if (!res) return null;
+    const accounts = toAccountInputs(res);
+    if (!accounts.length) return null;
+    const extra: Check[] = [];
+    const unm = materialUnmapped(res);
+    for (const st of ["PL", "BS"] as const) {
+      const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
+      if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} material line${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
+    }
+    return { companyId, mode: m, slices: res.slices, accounts, extra };
+  }
+
+  async function runPreview(m: ImportMode = mode) {
+    const p = payload(m);
+    if (!p) { setErr("Nothing to import: every line is excluded or has no amounts. Map at least one account."); return; }
+    setErr(null); setPreviewing(true);
+    try {
+      const out = await previewImport(p);
+      if (!out.ok) { setErr(out.error); return; }
+      setPreview(out.data); setStep("timeline"); setAcceptOn(false);
+    } catch (e) {
+      console.error("preview failed", e);
+      setErr(`The import could not be checked (${(e as Error).message || "network error"}).`);
+    } finally { setPreviewing(false); }
+  }
+
+  const blocking = preview?.checks.filter((c) => c.severity === "block" && !c.accepted && !c.existing) ?? [];
+
   async function commit() {
-    if (!res || !file) return;
-    if (hasData && !confirm("This replaces the company's current financial data with this file. Continue?")) return;
+    const p = payload(mode);
+    if (!res || !file || !p) return;
+    if (mode === "replace" && preview?.hasData && !confirm("Replace everything: all current months are removed and only this file is kept. You can undo this from Data health. Continue?")) return;
     setErr(null);
     start(async () => {
       try {
-        const accounts = toAccountInputs(res);
-        if (!accounts.length) { setErr("Nothing to import: every line is excluded or has no amounts. Map at least one account."); return; }
         const out = await commitImport({
-          companyId, filename: file.name, accounts,
+          ...p, filename: file.name,
           report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
+          accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
-        router.push(`/company/${companyId}/summary`);
+        router.push(`/company/${companyId}/settings/data-health?imported=1`);
         router.refresh();
       } catch (e) {
         console.error("import failed", e);
@@ -104,6 +143,44 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
           </ol>
           <p className="mt-3 text-mute">Nothing is uploaded until you confirm. Budget, variance and total columns are skipped automatically.</p>
         </aside>
+      </div>
+    );
+  }
+
+  if (step === "timeline" && preview) {
+    const canImport = !blocking.length || (acceptOn && reason.trim().length >= 10);
+    return (
+      <div data-testid="timeline-step" className="space-y-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <FileSpreadsheet className="h-5 w-5 text-green-d" />
+          <span className="font-medium">{file?.name}</span>
+          <button onClick={() => setStep("map")} className="text-sm text-mute underline">Back to mapping</button>
+        </div>
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">What this import changes</h2>
+          <p className="text-sm text-mute">This file covers {sliceText(res.slices)}.</p>
+          <ModeChoice mode={mode} hasData={preview.hasData} onChange={(m) => { setMode(m); runPreview(m); }} />
+          <Timeline cells={preview.timeline} checks={preview.checks} />
+          <OverwriteDiffs diffs={preview.diffs} currency={currency} />
+        </section>
+        <section className="space-y-3">
+          <h2 className="text-lg font-medium">Checks</h2>
+          <CheckList checks={preview.checks} />
+          {blocking.length > 0 && (
+            <div className="rounded-md border border-red/40 p-3 text-sm" data-testid="accept-box">
+              <p className="mb-2">The import is stopped until these {blocking.length === 1 ? "issue is" : `${blocking.length} issues are`} fixed: go back to the mapping, or import anyway and record why. The reason is shown on Data health and in report notes.</p>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptOn} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Import anyway</label>
+              {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why these figures are right, e.g. 'Odoo's own balance sheet is out by this suspense balance; being fixed by the accountant.'" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
+            </div>
+          )}
+        </section>
+        {err && <p className="rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
+          <span className="mr-auto text-xs text-mute">{preview.accounts} accounts will be stored. The previous data stays available to restore from Data health.</span>
+          <button disabled={saving || previewing || !canImport} onClick={commit} className="rounded bg-green-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="commit-import">
+            {saving ? "Importing…" : previewing ? "Checking…" : mode === "replace" && preview.hasData ? "Replace data" : "Import"}
+          </button>
+        </div>
       </div>
     );
   }
@@ -177,12 +254,18 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, hasDa
         <span className="mr-auto text-xs text-mute">{demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Your mapping choices are remembered for the next upload."}</span>
         {demo ? (
           <a href="/login?mode=signup" className="rounded bg-green-d px-5 py-2.5 font-medium text-white" data-testid="commit-import">Create a free account to import</a>
-        ) : <button disabled={saving || !res.periods.length} onClick={commit} className="rounded bg-green-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="commit-import">
-          {saving ? "Importing…" : `Import ${res.periods.length} months`}
+        ) : <button disabled={previewing || !res.periods.length} onClick={() => runPreview()} className="rounded bg-green-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
+          {previewing ? "Checking…" : `Continue: check ${res.periods.length} months`}
         </button>}
       </div>
     </div>
   );
+}
+
+function sliceText(s: { PL: string[]; BS: string[] }) {
+  const r = (ps: string[]) => (ps.length === 1 ? mlabel(ps[0]) : `${mlabel(ps[0])} – ${mlabel(ps[ps.length - 1])}`);
+  const parts = [s.PL.length ? `Profit & Loss for ${r(s.PL)}` : "", s.BS.length ? `Balance sheet for ${r(s.BS)}` : ""].filter(Boolean);
+  return parts.join(" and ") || "no months";
 }
 
 function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "ok" | "bad" | "warn" }) {
