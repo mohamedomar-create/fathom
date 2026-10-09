@@ -1,7 +1,9 @@
+export const maxDuration = 60;
+
 import Link from "next/link";
 import { getUser } from "@/lib/supabase/server";
 import { UploadWizard } from "@/components/settings/upload-wizard";
-import { OdooPanel } from "@/components/settings/odoo-panel";
+import { OdooPanel, type OdooConn } from "@/components/settings/odoo-panel";
 import { cn } from "@/lib/cn";
 
 export default async function SourceDataPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
@@ -27,7 +29,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
         ))}
       </div>
       {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} />}
-      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo} hasData={c.data_version > 0} />}
+      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
       {tab === "history" && (
         <table className="tbl text-sm">
           <thead><tr><th>Imported</th><th>Source</th><th>File</th><th>Months</th><th>Notes</th></tr></thead>
