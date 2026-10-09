@@ -56,9 +56,25 @@ function findHeader(rows: Cell[][]): Header | null {
   // A single period column is only accepted when nothing better exists (e.g. a one-month export)
   if (!best) for (let r = 0; r < Math.min(rows.length, 40); r++) {
     const h = headerAt(rows[r]);
-    if (h.cols.size === 1 && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, ...h }; break; }
+    // the label column (A) can hold a title such as the report period, never the amounts
+    if (h.cols.size === 1 && ![...h.cols.keys()].includes(0) && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, ...h }; break; }
   }
-  return best;
+  return best ?? balanceColumnHeader(rows);
+}
+
+/** "Balance" column whose period is printed in a title row above it (e.g. "Profit and Loss — From 01/01/2025 to 30/09/2025"). */
+function balanceColumnHeader(rows: Cell[][]): Header | null {
+  for (let r = 0; r < Math.min(rows.length, 20); r++) {
+    const c = rows[r].findIndex((v) => /^(balance|amount|total|net|الرصيد|المبلغ|الصافي|solde|montant)$/i.test(str(v)));
+    if (c < 1) continue;
+    for (let t = r; t >= 0; t--) {
+      for (const v of rows[t]) {
+        const h = headerPeriod(v);
+        if (h) return { row: r, cols: new Map([[c, h.p]]), spans: new Map([[c, h.months]]) };
+      }
+    }
+  }
+  return null;
 }
 
 function labelColumn(rows: Cell[][], from: number, before: number): { label: number; code: number | null } {

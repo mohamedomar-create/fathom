@@ -21,6 +21,8 @@ export function cleanNum(v: Cell): number | null {
   if (typeof v === "boolean" || v instanceof Date) return null;
   let s = arToLatin(String(v).trim());
   if (["", "-", "–", "—", "nil", "Nil", "NIL"].includes(s)) return 0;
+  // Currency codes/symbols around the number ("EGP -1,234.00", "(1,234.00) ج.م", "1 234,50 €") carry no meaning here.
+  s = s.replace(/[\u2212\u2013]/g, "-").replace(/[^\d.,()\-]/g, "").replace(/^[.,]+|[.,]+$/g, "");
   let neg = false;
   if (s.startsWith("(") && s.endsWith(")")) { neg = true; s = s.slice(1, -1); }
   if (s.endsWith("-")) { neg = true; s = s.slice(0, -1); }
@@ -71,17 +73,59 @@ function parsePeriodRaw(v: Cell): string | null {
   return null;
 }
 
-/** Column header covering a date range, e.g. Odoo's "From 01/09/2025 to 30/09/2025" → end month and length in months. */
-export function parsePeriodRange(v: Cell): { end: string; months: number } | null {
+const monthsBetween = (a: string, b: string) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
+const ym = (y: number, m: number) => `${y}-${pad(m)}`;
+
+/** Numeric dates in one header share a format: decide dd/mm vs mm/dd from whichever token is unambiguous. */
+function numericDates(toks: string[]): string[] | null {
+  const parts = toks.map((t) => t.split(/[-/.]/).map(Number));
+  if (parts.some((p) => p.length !== 3)) return null;
+  const iso = parts.every((p) => p[0] > 31);
+  const us = !iso && parts.some((p) => p[1] > 12);
+  const out = parts.map(([a, b, c]) => {
+    if (iso) return ym(a, b);
+    const y = c < 100 ? c + 2000 : c;
+    return us ? ym(y, a) : ym(y, b);
+  });
+  return out.every((p) => parsePeriod(p)) ? out : null;
+}
+
+/**
+ * Column header naming a period other than a single month, as Odoo labels its report columns:
+ * "From 01/01/2025 to 09/30/2025", "Jan 2025 - Sep 2025", "As of 09/30/2025", "Q3 2025", "H1 2025", "2025", "FY 2025".
+ * Returns the period's last month and its length in months (balance-sheet "as of" columns count as one month).
+ */
+export function parsePeriodRange(v: Cell, now = new Date()): { end: string; months: number } | null {
   if (typeof v !== "string") return null;
-  const s = arToLatin(v.trim());
-  if (s.length > 80) return null;
-  const toks = s.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}|[A-Za-zéû]{3,9}[\s\-_/.,']*\d{4}/g) ?? [];
-  if (toks.length !== 2) return null;
-  const [a, b] = toks.map((t) => parsePeriod(t));
-  if (!a || !b || a > b) return null;
-  const months = (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
-  return { end: b, months };
+  const s = arToLatin(v.replace(/\s+/g, " ").trim());
+  if (!s || s.length > 80) return null;
+  const cap = (end: string, months: number) => {
+    const cur = ym(now.getFullYear(), now.getMonth() + 1);
+    if (end <= cur) return { end, months };
+    const left = monthsBetween(cur, end) - 1; // a year-to-date column labelled with the full year
+    return months - left >= 1 ? { end: cur, months: months - left } : null;
+  };
+  const nums = s.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/g) ?? [];
+  if (nums.length === 2) {
+    const d = numericDates(nums);
+    if (d && d[0] <= d[1]) return { end: d[1], months: monthsBetween(d[0], d[1]) };
+  }
+  if (nums.length === 1 && /\b(as of|as at|at|until|till|to|end(ing)?|closing)\b|حتى|في|إلى|الى|au\b/i.test(s)) {
+    const d = numericDates(nums);
+    if (d) return { end: d[0], months: 1 };
+  }
+  const named = s.match(/[A-Za-zéû]{3,9}[\s\-_/.,']*\d{4}/g) ?? [];
+  if (named.length === 2) {
+    const [a, b] = named.map((t) => parsePeriod(t));
+    if (a && b && a <= b) return { end: b, months: monthsBetween(a, b) };
+  }
+  let m = s.match(/^(?:Q|الربع\s*)([1-4])[\s\-_/]*(\d{4})$|^(\d{4})[\s\-_/]*Q([1-4])$/i);
+  if (m) { const q = +(m[1] ?? m[4]), y = +(m[2] ?? m[3]); return cap(ym(y, q * 3), 3); }
+  m = s.match(/^H([12])[\s\-_/]*(\d{4})$|^(\d{4})[\s\-_/]*H([12])$/i);
+  if (m) { const h = +(m[1] ?? m[4]), y = +(m[2] ?? m[3]); return cap(ym(y, h * 6), 6); }
+  m = s.match(/^(?:FY|السنة المالية|عام|سنة)?\s*(\d{4})$/i);
+  if (m && +m[1] >= 1990 && +m[1] <= 2100) return cap(ym(+m[1], 12), 12);
+  return null;
 }
 
 /** "400100 Product Sales" → { code: "400100", name: "Product Sales" }. */
