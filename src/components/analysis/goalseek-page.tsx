@@ -2,8 +2,7 @@
 import { Info, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { applyChanges, currentRatio, GOAL_KPIS, goalseekTable, pct, type GoalKpi, type LeverKey } from "@/lib/engine";
-import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { SentenceSelect } from "@/components/ui/sentence-select";
@@ -11,8 +10,8 @@ import { Tip } from "@/components/ui/tooltip";
 import { EmptyState, Notes } from "./common";
 
 export function GoalseekPage() {
-  const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const [kpi, setKpi] = useState<GoalKpi>("profit_ratio");
   const [goalOverride, setGoal] = useState<number | null>(null);
   const [changes, setChanges] = useState<Partial<Record<LeverKey, number>>>({});
@@ -91,7 +90,7 @@ export function GoalseekPage() {
         );
       })}
       <p className="mt-3 text-[11px] text-mute">Change span to goal: {pct(span)} points.</p>
-      <Notes findings={[]} comment={c.commentary.goalseek} />
+      <Notes findings={[]} comment={comments("goalseek")} />
     </>
   );
 }

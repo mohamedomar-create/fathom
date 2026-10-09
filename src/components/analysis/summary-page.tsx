@@ -1,7 +1,7 @@
 "use client";
 import { money, mshort, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis, usePeriod } from "@/lib/company/use-period";
+import { useComments, useAnalysis, usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { Sparkline } from "@/components/charts/spark";
@@ -13,6 +13,7 @@ import type { Finding } from "@/lib/engine";
 export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNode }) {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const { sel } = usePeriod();
   if (!a) return null;
   const cur = c.settings.currency;
@@ -31,7 +32,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
     { l: "Operating cash flow", v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">{P.ebit ? `${Math.round((a.W.ocf / P.ebit) * 100)}% of EBIT` : ""}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
     { l: "Breakeven cushion", v: a.breakeven.ok ? pct(a.breakeven.mosPct, 0) : "–", d: a.breakeven.ok ? <span className="text-mute">breakeven {money(a.breakeven.bep, cur, true)}</span> : null, neg: a.breakeven.ok && a.breakeven.mosPct < 0, s: [] },
   ];
-  const headline = c.commentary.summary ||
+  const headline = comments("summary") ||
     `${c.name} ${P.ebit >= 0 ? "made" : "lost"} ${money(Math.abs(P.ebit), cur)} at EBIT on revenue of ${money(P.revenue, cur)} in ${a.view.window.label}; ${a.onTrack} of ${a.onTrack + a.offTrack} measurable KPIs are on target and cash stands at ${money(B.cash, cur)}.`;
   const labels = series.periods.slice(-12).map(mshort);
   return (

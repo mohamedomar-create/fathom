@@ -3,7 +3,7 @@ import { ChevronRight, Plus, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { mshort, num } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis } from "@/lib/company/use-period";
+import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,6 +17,7 @@ import { Notes } from "./common";
 export function TrendPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const [keys, setKeys] = useState<string[]>(["p:revenue"]);
   const [year, setYear] = useState<string>("All");
   const [note, setNote] = useState<string | null>(null);
@@ -72,7 +73,7 @@ export function TrendPage() {
           </tbody>
         </table>
       </div>
-      <Notes findings={a.findings.filter((f) => f.section === "trend")} comment={c.commentary.trend} />
+      <Notes findings={a.findings.filter((f) => f.section === "trend")} comment={comments("trend")} />
     </>
   );
 }

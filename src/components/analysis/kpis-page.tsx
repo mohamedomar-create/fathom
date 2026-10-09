@@ -4,7 +4,7 @@ import {
   CAT_COL, CAT_ORDER, explainKpi, formatTrend, kpiHistory, mlabel, money, mshort, num, type Comparison, type KpiRow,
 } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useAnalysis, usePeriod } from "@/lib/company/use-period";
+import { useComments, useAnalysis, usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { SentenceSelect } from "@/components/ui/sentence-select";
@@ -21,6 +21,7 @@ const IMP_COL = { Critical: "text-red", High: "text-[#C26A1B]", Medium: "text-[#
 export function KpisPage() {
   const c = useCompany();
   const a = useAnalysis();
+  const comments = useComments();
   const { cmp, set } = usePeriod();
   const [filter, setFilter] = useState<Filter>("all");
   const [open, setOpen] = useState<string | null>(null);
@@ -71,7 +72,7 @@ export function KpisPage() {
         </table>
       </div>
       <p className="mt-3 text-xs text-mute">* For this metric, a result below target is favourable. A red dot means an alert threshold has been crossed. Trend for currency KPIs is % vs the comparison; for % KPIs it is percentage points.</p>
-      <Notes findings={a.findings.filter((f) => f.section === "kpis")} comment={c.commentary.kpis} />
+      <Notes findings={a.findings.filter((f) => f.section === "kpis")} comment={comments("kpis")} />
       <Dialog open={!!openRow} onOpenChange={(o) => !o && setOpen(null)}>
         {openRow && <KpiModal row={openRow} />}
       </Dialog>
