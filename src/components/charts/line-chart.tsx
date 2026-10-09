@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Unit } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
+import { useStaticCharts } from "./static";
 import { axisLabel, niceTicks, valueLabel } from "./util";
 
 export interface Series { name: string; values: (number | null)[]; color: string; fill?: boolean; dashed?: boolean }
@@ -12,6 +13,7 @@ export function LineChart({
 }: {
   labels: string[]; series: Series[]; unit?: Unit; cur?: string; target?: number | null; marks?: (boolean | null)[]; height?: number; testId?: string;
 }) {
+  const st = useStaticCharts();
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(900);
   useEffect(() => {
@@ -74,8 +76,8 @@ export function LineChart({
             const base = Y(Math.max(lo, 0));
             return (
               <g key={s.name}>
-                {s.fill && <motion.path initial={{ opacity: 0 }} animate={{ opacity: 0.14 }} transition={{ duration: 0.8 }} d={`${d} L${pts[pts.length - 1][0]},${base} L${pts[0][0]},${base} Z`} fill={s.color} />}
-                <motion.path initial={{ pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
+                {s.fill && <motion.path initial={st ? false : { opacity: 0 }} animate={{ opacity: 0.14 }} transition={{ duration: 0.8 }} d={`${d} L${pts[pts.length - 1][0]},${base} L${pts[0][0]},${base} Z`} fill={s.color} />}
+                <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
                   d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" strokeDasharray={s.dashed ? "6 4" : undefined} />
                 {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3.2} fill={s.color} stroke="#fff" strokeWidth={1} />)}
               </g>

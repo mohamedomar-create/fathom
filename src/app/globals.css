@@ -58,3 +58,22 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; }
 }
+
+/* ---------------- Report (A4) ---------------- */
+.report { --page-w: 794px; }
+.report .rpage { width: var(--page-w); min-height: 1123px; margin: 0 auto 24px; padding: 48px 52px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.06); position: relative; }
+.report .rcover .h-full { min-height: 1027px; }
+.report .rhead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid; padding-bottom: 8px; margin-bottom: 18px; }
+.report .rhead h2 { font-size: 24px; font-weight: 400; margin: 0; }
+.report .rcomment { background: var(--color-band); border-left: 3px solid var(--brand, var(--color-green)); padding: 10px 14px; margin: 16px 0 0; font-size: 12.5px; }
+.report .tbl th { padding: 6px; }
+.report .tbl td { padding: 5px 6px; }
+@media print {
+  @page { size: A4; margin: 0; }
+  body { background: #fff !important; }
+  .report .rpage { box-shadow: none; margin: 0; width: auto; min-height: 297mm; page-break-after: always; break-after: page; }
+  .report .rpage:last-child { page-break-after: auto; break-after: auto; }
+}
+@media screen and (max-width: 860px) {
+  .report .rpage { width: 100%; min-height: 0; padding: 24px 16px; }
+}
