@@ -2,11 +2,11 @@ import { addMonths, BS_KEYS, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/build";
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
-import { classify, CONTRA_REVENUE } from "./classify";
+import { chartHints, classify, CONTRA_REVENUE } from "./classify";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
 import { fmtDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
-import { normLabel } from "./parse";
+import { normAr, normLabel } from "./parse";
 
 export interface IngestOptions {
   fyStart: number;
@@ -143,7 +143,8 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
   // ---- classify
   const map = opts.mapping;
-  const chart = { fiveIsCos: new Set(rawIn.filter((r) => /^6\d{2,}/.test(r.code)).map((r) => r.code)).size >= 2 };
+  const chart = chartHints(rawIn);
+  if (chart.unified) issues.notes.push("Egypt's unified chart of accounts recognised (3xxx expenses, 4xxx revenues): accounts were placed by their code group where the name alone was not enough.");
   const lines = used.map((r) => {
     const override = map[r.key] ?? map[normLabel(r.label)];
     const c = override !== undefined
@@ -175,7 +176,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
   // natural lines: contra revenue, trial-balance sign detection, negative costs
   const classSum = (k: ClassKey) => nat.filter((l) => l.cls === k).reduce((s, l) => s + Object.values(l.r.values).reduce((a, b) => a + b, 0), 0);
-  for (const l of nat) values.set(l.r.key, Object.fromEntries(Object.entries(l.r.values).map(([p, v]) => [p, l.cls === "revenue" && CONTRA_REVENUE.test(l.r.name) ? -Math.abs(v) : v])));
+  for (const l of nat) values.set(l.r.key, Object.fromEntries(Object.entries(l.r.values).map(([p, v]) => [p, l.cls === "revenue" && CONTRA_REVENUE.test(normAr(l.r.name)) ? -Math.abs(v) : v])));
   const credSigns = (["revenue", "ap", "std", "ltd", "other_cl", "tax_liab", "other_equity"] as ClassKey[]).map((k) => classSum(k)).filter((s) => Math.abs(s) > 0).map((s) => (s > 0 ? 1 : -1));
   const creditNegative = credSigns.length > 0 && credSigns.reduce((a: number, b) => a + b, 0) < 0 && credSigns.filter((s) => s < 0).length >= Math.max(2, Math.floor(credSigns.length / 2) + 1);
   if (creditNegative) {
