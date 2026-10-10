@@ -6,6 +6,7 @@ import { useState } from "react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/cn";
+import { MIN_PASSWORD, PASSWORD_HINT, passwordProblem } from "@/lib/password";
 
 type Mode = "signin" | "signup";
 
@@ -35,6 +36,8 @@ export function LoginForm() {
         router.replace(next);
         router.refresh();
       } else {
+        const problem = passwordProblem(password);
+        if (problem) { setMsg({ tone: "bad", text: problem }); return; }
         const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo, data: { full_name: name, org_name: org } } });
         if (error) throw error;
         if (data.session) { router.replace(next); router.refresh(); }
@@ -91,11 +94,17 @@ export function LoginForm() {
             </>
           )}
           <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
-          <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? 8 : undefined} />
+          <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? MIN_PASSWORD : undefined} />
+          {mode === "signup" && <p className="-mt-3 mb-4 text-xs text-mute">{PASSWORD_HINT}</p>}
           {msg && <p className={cn("mb-3 rounded px-3 py-2 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">{msg.text}</p>}
           <button disabled={busy} className="w-full rounded bg-green-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
+          {mode === "signup" && (
+            <p className="mt-3 text-center text-xs text-mute" data-testid="signup-legal">
+              By creating an account you agree to the <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy Policy</Link>.
+            </p>
+          )}
           {mode === "signin" && (
             <div className="mt-3 flex justify-between gap-3 text-sm">
               <button type="button" onClick={magic} disabled={busy} className="text-mute hover:text-ink">Email me a sign-in link</button>

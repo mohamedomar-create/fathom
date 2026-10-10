@@ -77,3 +77,11 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 @media screen and (max-width: 860px) {
   .report .rpage { width: 100%; min-height: 0; padding: 24px 16px; }
 }
+
+/* Privacy policy and terms */
+.legal h2 { font-size: 20px; font-weight: 300; margin: 32px 0 8px; }
+.legal p, .legal li { line-height: 1.65; }
+.legal p { margin: 0 0 12px; }
+.legal ul { list-style: disc; padding-left: 20px; margin: 0 0 12px; }
+.legal li { margin-bottom: 4px; }
+.legal a { text-decoration: underline; }

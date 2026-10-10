@@ -1,5 +1,6 @@
 "use client";
 import { useState, useTransition } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cancelInvite, invite, removeMember, setRole } from "../actions";
 
 type Role = "admin" | "editor" | "viewer";
@@ -25,7 +26,12 @@ export function PeopleManager({ orgId, me, people, invites }: { orgId: string; m
               <td>{p.name ?? "–"}{p.user_id === me && <span className="ml-2 text-xs text-mute">(you)</span>}</td>
               <td className="text-left">{p.email}</td>
               <td><select disabled={p.user_id === me} value={p.role} onChange={(e) => act(() => setRole(orgId, p.user_id, e.target.value as Role), "Role updated.")} className="rounded border border-line px-1.5 py-0.5 uppercase text-xs"><option value="admin">admin</option><option value="editor">editor</option><option value="viewer">viewer</option></select></td>
-              <td>{p.user_id !== me && <button onClick={() => confirm(`Remove ${p.email}?`) && act(() => removeMember(orgId, p.user_id), "Removed.")} className="text-xs text-red hover:underline">Remove</button>}</td>
+              <td>{p.user_id !== me && (
+                <ConfirmDialog title={`Remove ${p.email}?`} confirmLabel="Remove" onConfirm={async () => { const r = await removeMember(orgId, p.user_id); if (!r.ok) return r.error ?? "Could not remove."; setMsg("Removed."); }}
+                  trigger={<button className="text-xs text-red hover:underline">Remove</button>}>
+                  <p>{p.name ?? p.email} will lose access to this organisation&apos;s companies and reports straight away. You can invite them again later.</p>
+                </ConfirmDialog>
+              )}</td>
             </tr>
           ))}
         </tbody>

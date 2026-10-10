@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env";
 
-const PROTECTED = ["/companies", "/company", "/dashboard", "/admin"];
+const PROTECTED = ["/companies", "/company", "/dashboard", "/admin", "/account"];
 
 /** Refreshes the Supabase session cookie on every request and guards app routes. */
 export async function proxy(request: NextRequest) {

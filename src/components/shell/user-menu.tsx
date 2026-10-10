@@ -16,6 +16,7 @@ export function UserMenu({ email, orgName, isAdmin }: { email: string; orgName?:
         </div>
         <Link href="/companies" className="block rounded px-2 py-1.5 hover:bg-band">My companies</Link>
         <Link href="/dashboard" className="block rounded px-2 py-1.5 hover:bg-band">Insights Dashboard</Link>
+        <Link href="/account" className="block rounded px-2 py-1.5 hover:bg-band" data-testid="menu-account">Account</Link>
         {isAdmin && <Link href="/admin/organisation" className="block rounded px-2 py-1.5 hover:bg-band">Organisation settings</Link>}
         {isAdmin && <Link href="/admin/people" className="block rounded px-2 py-1.5 hover:bg-band">User management</Link>}
         <form action="/auth/signout" method="post" className="mt-1 border-t border-line pt-1">
