@@ -1,4 +1,6 @@
-import { cleanNum, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell } from "./parse";
+import { cleanNum, detectDateOrder, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell, type DateOrder } from "./parse";
+import { extractOdoo } from "./odoo";
+import type { Check } from "@/lib/company/checks";
 
 export interface Grid { name: string; rows: Cell[][] }
 
@@ -18,6 +20,8 @@ export interface RawLine {
   opening: number;
   /** Months covered by the column a value came from, when more than one (e.g. "From 01/01/2025 to 30/09/2025"). */
   spans?: Record<string, number>;
+  /** Movement lines: the (debit − credit) closing balance the file prints for the account, to prove opening + movements = closing. */
+  closing?: number;
 }
 
 /** How one column of a sheet was read. */
@@ -32,15 +36,23 @@ export interface SheetLayout {
   scaleFrom: string | null;
   decimal: "." | ",";
   lines: number;
+  /** The report this sheet was recognised as, when it is a known export (e.g. "Odoo General Ledger"). */
+  source?: string;
+  /** How text dates were read: day or month first, and the date that proved it (null: every date was ambiguous). */
+  dates?: { order: DateOrder; sample: string | null };
+  /** Last day the figures cover, when it falls before the end of its month ("2026-10-10"). */
+  asOf?: string;
+  /** "check": the sheet only verifies figures that another sheet in the upload provides month by month. */
+  role?: "data" | "check";
 }
 /** User corrections for one sheet. periods: column index → month ("YYYY-MM") or null to leave the column out. */
-export interface SheetOverride { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null> }
+export interface SheetOverride { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null>; dateOrder?: DateOrder }
 export type Overrides = Record<string, SheetOverride>;
 
 /** A total row printed in the file, used to verify the imported figures. */
-export interface ControlRow { metric: "gross_profit" | "net_income" | "ta" | "tle"; period: string; value: number; months: number; source: string }
+export interface ControlRow { metric: "gross_profit" | "net_income" | "ta" | "tle"; period: string; value: number; months: number; source: string; sheet?: string }
 
-export interface ExtractIssues { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[] }
+export interface ExtractIssues { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[]; checks?: Check[] }
 
 const CONTROL_ROWS: [ControlRow["metric"], RegExp][] = [
   ["net_income", /^(net (profit|income|earnings)( ?(\/|and|&) ?\(?loss\)?)?|net (loss|profit ?\/ ?loss)|profit (\(loss\) )?for the (year|period)|صافي (الربح|الدخل)( ?\/ ?\(?الخسارة\)?)?|صافي الربح \(الخسارة\))$/i],
@@ -83,8 +95,8 @@ function numReader(scale: number, decimal: "." | ",") {
 }
 
 const BUDGET_WORDS = /budget|forecast|\bplan\b|\btarget|variance|\bvar\b|%|\bprior|last year|\b(py|ly)\b|\bdiff|موازنة|تقديري|مخطط/i;
-const isText = (v: Cell) => typeof v === "string" && v.trim() !== "";
-const str = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v)).trim();
+export const isText = (v: Cell) => typeof v === "string" && v.trim() !== "";
+export const str = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v)).trim();
 
 function trimGrid(rows: Cell[][]): Cell[][] {
   const nonEmpty = rows.filter((r) => r && r.some((c) => str(c) !== ""));
@@ -96,11 +108,11 @@ function trimGrid(rows: Cell[][]): Cell[][] {
 type Header = { row: number; cols: Map<number, string>; spans: Map<number, number> };
 
 /** A header cell naming a month ("Sep 2025") or a date range ("From 01/09/2025 to 30/09/2025"). */
-function headerPeriod(v: Cell): { p: string; months: number } | null {
+export function headerPeriod(v: Cell): { p: string; months: number; endDay?: string } | null {
   const p = parsePeriod(v);
   if (p) return { p, months: 1 };
   const r = parsePeriodRange(v);
-  return r ? { p: r.end, months: r.months } : null;
+  return r ? { p: r.end, months: r.months, ...(r.endDay ? { endDay: r.endDay } : {}) } : null;
 }
 
 function headerAt(row: Cell[]): Omit<Header, "row"> {
@@ -248,7 +260,7 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
   return out;
 }
 
-export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum): RawLine[] | null {
+export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder): RawLine[] | null {
   const hint = stmtFromText(g.name);
   for (let r = 0; r < Math.min(rows.length, 15); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
@@ -264,10 +276,11 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
     if (acc === undefined || dat === undefined || (amt === undefined && (deb === undefined || cre === undefined))) continue;
     const typ = pick(/^(type|class|category|statement|نوع|تصنيف)$/);
     const movement = (deb !== undefined && cre !== undefined) || cells.some((x) => /journal|move|entry|قيد/.test(x));
+    const order = dateOrderOf(rows.slice(r + 1).map((row) => row[dat]), layout, forced);
     const agg = new Map<string, RawLine>();
     for (let rr = r + 1; rr < rows.length; rr++) {
       const lab = str(rows[rr][acc]);
-      const per = parsePeriod(rows[rr][dat]);
+      const per = parsePeriod(rows[rr][dat], order);
       if (!lab || !per) continue;
       const v = deb !== undefined && cre !== undefined ? (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0) : num(rows[rr][amt!]);
       if (v === null) continue;
@@ -290,19 +303,23 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
  * Odoo General Ledger: account headings ("101401 Bank") with dated move lines below them,
  * an optional "Initial Balance" row, and Date / Debit / Credit columns (no account column).
  */
-export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum): RawLine[] | null {
+export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/.test(x));
     const deb = cells.findIndex((x) => /^(debit|مدين|débit)$/.test(x));
     const cre = cells.findIndex((x) => /^(credit|دائن|crédit)$/.test(x));
     if (dat < 0 || deb < 0 || cre < 0) continue;
-    const lc = dat > 0 ? labelColumn(rows, r + 1, dat).label : 0;
+    const { label: lc, code: cc } = dat > 0 ? labelColumn(rows, r + 1, dat) : { label: 0, code: null };
+    const order = dateOrderOf(rows.slice(r + 1).map((row) => row[dat]), layout, forced);
     const accounts = new Map<string, RawLine>();
     let cur: RawLine | null = null;
     for (let rr = r + 1; rr < rows.length; rr++) {
-      const lab = str(rows[rr][lc]);
-      const per = parsePeriod(rows[rr][dat]);
+      let lab = str(rows[rr][lc]);
+      // Account headings may carry their code in a column of its own: keep it, so same-name accounts stay apart.
+      const codeCell = cc !== null ? str(rows[rr][cc]) : "";
+      if (codeCell && lab && !lab.startsWith(codeCell)) lab = `${codeCell} ${lab}`;
+      const per = parsePeriod(rows[rr][dat], order);
       const amt = (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0);
       if (per) {
         if (cur) cur.values[per] = (cur.values[per] ?? 0) + amt;
@@ -324,19 +341,37 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
   return null;
 }
 
+/** One day/month order for a whole date column; the user's choice wins, and the reading panel shows what was used. */
+function dateOrderOf(cells: Cell[], layout?: SheetLayout, forced?: DateOrder): DateOrder {
+  const found = detectDateOrder(cells);
+  const order = forced ?? found.order ?? "dmy";
+  if (layout && cells.some((v) => typeof v === "string" && /^\s*\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}/.test(v))) layout.dates = { order, sample: forced ? null : found.sample };
+  return order;
+}
+
 const NOTHING_FOUND = (name: string) =>
   `Sheet '${name}': couldn't find month columns, a Date/Debit/Credit ledger, or an Account/Date/Amount list, so it was skipped. ` +
   "From Odoo, export the Trial Balance or Profit and Loss / Balance Sheet with monthly comparison periods, the General Ledger, or Journal Items (Account, Date, Debit, Credit).";
 
-export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}): RawLine[] {
+export const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+
+export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}, today = isoToday()): RawLine[] {
   const rows = trimGrid(g.rows);
   const sc = detectScale(rows);
   const layout: SheetLayout = { sheet: g.name, kind: "none", headerRow: null, columns: [], scale: ov.scale ?? sc.scale, scaleFrom: sc.from, decimal: ov.decimal ?? detectDecimal(rows), lines: 0 };
   (issues.layouts ??= []).push(layout);
   if (ov.skip) { layout.kind = "skipped"; return []; }
   if (!rows.length) return [];
+  // Odoo adds a "Filters" sheet (Company, Journals, Options): report settings, not figures.
+  if (/^filters?$/i.test(g.name.split(" › ").pop() ?? "") && rows.length <= 40 && !rows.some((r) => r.some((v) => typeof v === "number"))) {
+    layout.kind = "skipped"; layout.source = "Report filters (no figures)"; return [];
+  }
   const num = numReader(layout.scale, layout.decimal);
   const done = (kind: SheetLayout["kind"], lines: RawLine[]) => { layout.kind = kind; layout.lines = lines.length; return lines; };
+  // Known exports first: Odoo's General Ledger, Trial Balance and statements are read by their exact layout.
+  const odoo = extractOdoo(g, rows, num, ov, layout, issues, today);
+  if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" ? "ledger" : "trial-balance", odoo);
+  layout.columns = []; layout.source = undefined; layout.asOf = undefined; layout.dates = undefined; layout.headerRow = null;
   const found = findHeader(rows);
   // Columns the user re-dated or left out; a re-dated column always counts as one month.
   const hdr = found ? { ...found, cols: new Map(found.cols), spans: new Map(found.spans), forced: new Set<number>() } : null;
@@ -346,12 +381,17 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
     else if (/^\d{4}-(0[1-9]|1[0-2])$/.test(p)) { hdr.cols.set(c, p); hdr.spans.set(c, 1); hdr.forced.add(c); }
   }
   if (hdr) layout.headerRow = hdr.row;
+  // A lone period in a title ("2026") above a dated ledger or list is the report's period, not an amount column.
+  const lone = !!hdr && hdr.cols.size === 1 && [...hdr.spans.values()][0] > 1;
+  const ledgerFirst = lone ? extractLedger(g, rows, num, layout, ov.dateOrder) ?? extractLong(g, rows, num, layout, ov.dateOrder) : null;
+  if (ledgerFirst?.length) { layout.headerRow = null; return done(ledgerFirst[0].row === 0 ? "list" : "ledger", ledgerFirst); }
   const got = hdr && hdr.cols.size ? extractWide(g, rows, hdr, issues, num, layout.columns) : null;
   layout.columns.sort((a, b) => a.col - b.col);
   if (got?.length) return done(got.some((l) => l.kind === "movement") ? "trial-balance" : "columns", got);
-  const long = extractLong(g, rows, num);
+  layout.columns = [];
+  const long = extractLong(g, rows, num, layout, ov.dateOrder);
   if (long?.length) return done("list", long);
-  const ledger = extractLedger(g, rows, num);
+  const ledger = extractLedger(g, rows, num, layout, ov.dateOrder);
   if (ledger?.length) return done("ledger", ledger);
   issues.warnings.push(NOTHING_FOUND(g.name));
   return [];

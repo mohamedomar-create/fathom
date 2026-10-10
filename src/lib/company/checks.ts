@@ -5,9 +5,12 @@ import type { AccountLine } from "./types";
 /** Accounting identity and integrity checks, shared by the upload preview, the server commit, the Data health page and reports. */
 
 export type CheckSeverity = "block" | "warn" | "info";
-export type CheckId =
-  | "bs_balance" | "control_total" | "tb_zero" | "unmapped" | "duplicate" | "multi_month"
-  | "re_rollforward" | "cash_flow" | "gap" | "statement_mismatch" | "sign" | "opening";
+export const CHECK_IDS = [
+  "bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month",
+  "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening",
+  "account_rollforward", "cross_check", "future_dated", "partial_month",
+] as const;
+export type CheckId = (typeof CHECK_IDS)[number];
 
 export interface Check {
   id: CheckId;
@@ -29,6 +32,8 @@ export interface ControlTotal {
   period: string;
   value: number;
   source: string;
+  /** P&L totals over several months ending at `period` (e.g. Odoo's "From 01/01 to 10/10"): compared with the sum of those months. */
+  months?: number;
 }
 export type ControlMetric = "revenue" | "gross_profit" | "net_income" | "ta" | "tl" | "te" | "tle";
 export const CONTROL_LABEL: Record<ControlMetric, string> = {
@@ -115,15 +120,18 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
   for (const c of controls) {
     const m = byP.get(c.period);
     if (!m) continue;
-    const P = plCalc(m.pl), B = bsCalc(m.bs);
+    const B = bsCalc(m.bs);
     const isPLm = c.metric === "revenue" || c.metric === "gross_profit" || c.metric === "net_income";
-    let actual = c.metric === "revenue" ? P.revenue : c.metric === "gross_profit" ? P.gross_profit : c.metric === "net_income" ? P.net_income : B[c.metric];
+    const win = isPLm && (c.months ?? 1) > 1 ? Array.from({ length: c.months! }, (_, i) => addMonths(c.period, i - c.months! + 1)) : [c.period];
+    if (win.some((p) => !byP.has(p) || !cov.pl.has(p))) continue;
+    const plSum = (k: "revenue" | "gross_profit" | "net_income") => win.reduce((a, p) => a + plCalc(byP.get(p)!.pl)[k], 0);
+    let actual = isPLm ? plSum(c.metric as "revenue" | "gross_profit" | "net_income") : B[c.metric as "ta" | "tl" | "te" | "tle"];
     // Balance-sheet totals are compared by size: some exports print liabilities and equity as negatives.
     if (!isPLm && Math.sign(actual) !== Math.sign(c.value)) actual = -actual;
     const diff = actual - c.value;
     if (Math.abs(diff) > tolerance(Math.max(Math.abs(c.value), Math.abs(B.ta)))) {
       // Gross profit depends on where cost lines are mapped (cost of sales vs expenses), so it only warns.
-      out.push({ id: "control_total", severity: c.metric === "gross_profit" ? "warn" : "block", period: c.period, statement: c.metric === "revenue" || c.metric === "gross_profit" || c.metric === "net_income" ? "PL" : "BS", title: `${CONTROL_LABEL[c.metric]} does not match the file`, detail: `The file says ${fmt(c.value)} (${c.source}); the imported accounts add up to ${fmt(actual)}, a difference of ${fmt(diff)}. Some lines are probably excluded, double counted or mapped to the wrong class.`, expected: c.value, actual, diff });
+      out.push({ id: "control_total", severity: c.metric === "gross_profit" ? "warn" : "block", period: c.period, statement: c.metric === "revenue" || c.metric === "gross_profit" || c.metric === "net_income" ? "PL" : "BS", title: `${CONTROL_LABEL[c.metric]} does not match the file`, detail: `The file says ${fmt(c.value)}${win.length > 1 ? ` for ${win.length} months` : ""} (${c.source}); the imported accounts add up to ${fmt(actual)}, a difference of ${fmt(diff)}. Some lines are probably excluded, double counted or mapped to the wrong class.`, expected: c.value, actual, diff });
     }
   }
   return out;

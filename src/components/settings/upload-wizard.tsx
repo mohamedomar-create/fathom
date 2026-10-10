@@ -7,7 +7,7 @@ import { CLASS_LABEL, CLASS_OPTIONS, extractAll, materialUnmapped, runIngest, to
 import type { Grid, Overrides } from "@/lib/ingest/extract";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
-import { readWorkbook } from "@/lib/ingest/read";
+import { readWorkbooks } from "@/lib/ingest/read";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
 import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
@@ -15,10 +15,11 @@ import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeli
 import { cn } from "@/lib/cn";
 
 type Filter = "review" | "all" | "excluded";
+const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
 export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean }) {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [grids, setGrids] = useState<Grid[] | null>(null);
   const [overrides, setOverrides] = useState<Overrides>({});
   const [diag, setDiag] = useState<Diagnostic | null>(null);
@@ -36,16 +37,19 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [reason, setReason] = useState("");
   const input = useRef<HTMLInputElement>(null);
 
-  const onFile = useCallback(async (f: File) => {
-    setErr(null); setBusy(true); setFile(f); setDiag(null); setStep("map"); setPreview(null);
+  // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
+  const onFiles = useCallback(async (fs: File[]) => {
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null);
     try {
-      if (f.size > 25 * 1024 * 1024) throw new Error("That file is larger than 25 MB. Export a shorter date range or the monthly Trial Balance instead of journal items.");
-      if (/\.pdf$/i.test(f.name)) throw new Error("PDF reports can't be read. In Odoo, open the report and use Export → XLSX instead of Print.");
-      let grids: Awaited<ReturnType<typeof readWorkbook>>;
-      try { grids = await readWorkbook(await f.arrayBuffer(), f.name); }
-      catch { throw new Error("This file couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again."); }
+      if (!fs.length) throw new Error("Choose a file.");
+      if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
+      if (fs.reduce((a, f) => a + f.size, 0) > 40 * 1024 * 1024 || fs.some((f) => f.size > 25 * 1024 * 1024)) throw new Error("That upload is too large (25 MB per file, 40 MB in all). Export a shorter date range or the monthly Trial Balance instead of journal items.");
+      if (fs.some((f) => /\.pdf$/i.test(f.name))) throw new Error("PDF reports can't be read. In Odoo, open the report and use Export → XLSX instead of Print.");
+      let grids: Grid[];
+      try { grids = await readWorkbooks(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
+      catch { throw new Error(`${fs.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
       const { raw: lines, issues } = extractAll(grids);
-      setDiag(diagnostic(f, grids, issues));
+      setDiag(diagnostic(fs, grids, issues));
       if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
       setOverrides({}); setGrids(grids);
     } catch (e) {
@@ -73,7 +77,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const fileChecks = useMemo(() => {
     if (!res) return [];
     const accts = toAccountInputs(res).map((a, i) => ({ ...a, id: String(i) }));
-    return runChecks({ accounts: accts, controls: res.controls, extra: res.checks }).filter((c) => c.id === "control_total" || c.id === "duplicate" || c.id === "tb_zero");
+    return runChecks({ accounts: accts, controls: res.controls, extra: res.checks }).filter((c) => FILE_CHECKS.has(c.id));
   }, [res]);
   const controlCount = res?.controls.length ?? 0;
 
@@ -109,14 +113,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   async function commit() {
     const p = payload(mode);
-    if (!res || !file || !p) return;
+    if (!res || !files.length || !p) return;
     if (mode === "replace" && preview?.hasData && !confirm("Replace everything: all current months are removed and only this file is kept. You can undo this from Data health. Continue?")) return;
     setErr(null);
     start(async () => {
       try {
         const out = await commitImport({
-          ...p, filename: file.name,
-          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
+          ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
@@ -134,24 +138,24 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div
           onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) onFile(f); }}
+          onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
           onClick={() => input.current?.click()}
           className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line px-6 py-16 text-center transition hover:border-green hover:bg-green-bg/20"
           data-testid="dropzone"
         >
           {busy ? <Loader2 className="h-10 w-10 animate-spin text-green" /> : <Upload className="h-10 w-10 text-green" strokeWidth={1.5} />}
-          <div className="mt-3 text-lg">{busy ? `Reading ${file?.name}…` : "Drop an Odoo export here, or click to choose"}</div>
-          <div className="mt-1 text-sm text-mute">.xlsx, .xls or .csv · English or Arabic · read in your browser</div>
-          <input ref={input} type="file" accept=".xlsx,.xls,.csv,.txt" className="hidden" data-testid="file-input" onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); }} />
+          <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
+          <div className="mt-1 text-sm text-mute">One or several files · .xlsx, .xls or .csv · English or Arabic · read in your browser</div>
+          <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
           {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
         </div>
         <aside className="rounded-lg bg-band p-4 text-[13px]">
           <div className="label mb-2">Which Odoo export?</div>
           <ol className="list-decimal space-y-2 pl-4">
-            <li><b>Best:</b> Accounting → Reporting → <b>Trial Balance</b>, with monthly comparison periods → Export to XLSX. Includes opening balances.</li>
-            <li><b>Profit and Loss</b> + <b>Balance Sheet</b> with monthly comparison → Export XLSX (both sheets in one workbook, or upload the P&amp;L and add the BS later).</li>
-            <li><b>Journal Items</b> (posted, all dates) with Account, Date, Debit, Credit columns.</li>
+            <li><b>Best:</b> Accounting → Reporting → <b>General Ledger</b> for the year → Export XLSX. It gives every month and the opening balances.</li>
+            <li>Add the <b>Trial Balance</b> and <b>Profit and Loss</b> for the same dates in the same upload: they are used to prove the figures, account by account, and are not counted twice.</li>
+            <li>Or a <b>Trial Balance</b> / <b>P&amp;L</b> + <b>Balance Sheet</b> with monthly comparison periods, or <b>Journal Items</b> (Account, Date, Debit, Credit).</li>
           </ol>
           <p className="mt-3 text-mute">Nothing is uploaded until you confirm. Budget, variance and total columns are skipped automatically.</p>
         </aside>
@@ -165,7 +169,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div data-testid="timeline-step" className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
           <FileSpreadsheet className="h-5 w-5 text-green-d" />
-          <span className="font-medium">{file?.name}</span>
+          <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
           <button onClick={() => setStep("map")} className="text-sm text-mute underline">Back to mapping</button>
         </div>
         <section className="space-y-3">
@@ -201,14 +205,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     <div data-testid="review">
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <FileSpreadsheet className="h-5 w-5 text-green-d" />
-        <span className="font-medium">{file?.name}</span>
-        <button onClick={() => { setGrids(null); setFile(null); }} className="text-sm text-mute underline">Choose another file</button>
+        <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
+        <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
       </div>
       <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
       <div className="mb-5 grid gap-4 sm:grid-cols-4">
         <Stat label="Months" value={res.periods.length ? `${res.periods.length}` : "0"} sub={res.periods.length ? `${mlabel(res.periods[0])} – ${mlabel(lastP!)}` : ""} />
         <Stat label="Accounts mapped" value={`${lines.filter((l) => l.cls && !l.excluded).length} / ${lines.length}`} sub={`${review.length} to review`} tone={review.length ? "warn" : "ok"} />
-        <Stat label={`Revenue ${lastP ? mlabel(lastP) : ""}`} value={lastP ? money(res.totals.revenue[lastP] ?? 0, currency) : "–"} sub="compare with your Odoo report" />
+        <Stat label={`Revenue ${lastP ? mlabel(lastP) : ""}`} value={lastP ? money(res.totals.revenue[lastP] ?? 0, currency) : "–"} sub={res.asOf ? `part month, to ${Number(res.asOf.slice(8))} ${mlabel(lastP!).split(" ")[0]}` : "compare with your Odoo report"} />
         <Stat label="Balance sheet" value={maxImb < 1 ? "Balances" : `Out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} sub={lastP ? `cash ${money(res.totals.cash[lastP] ?? 0, currency)}` : ""} />
       </div>
       {fileChecks.length > 0 && <div className="mb-5"><CheckList checks={fileChecks} /></div>}
@@ -296,9 +300,9 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
 interface Diagnostic { file: string; size: number; sheets: { name: string; rows: number; cols: number; head: string[][] }[]; warnings: string[]; skipped: string[] }
 
 /** Layout-only summary (first rows, truncated cells) to diagnose files the importer can't read. */
-function diagnostic(f: File, grids: { name: string; rows: unknown[][] }[], issues: { warnings: string[]; skippedCols: string[] }): Diagnostic {
+function diagnostic(fs: File[], grids: { name: string; rows: unknown[][] }[], issues: { warnings: string[]; skippedCols: string[] }): Diagnostic {
   return {
-    file: f.name, size: f.size, warnings: issues.warnings, skipped: issues.skippedCols,
+    file: fs.map((f) => f.name).join(" + "), size: fs.reduce((a, f) => a + f.size, 0), warnings: issues.warnings, skipped: issues.skippedCols,
     sheets: grids.map((g) => ({
       name: g.name, rows: g.rows.length, cols: Math.max(0, ...g.rows.map((r) => r?.length ?? 0)),
       head: g.rows.slice(0, 15).map((r) => (r ?? []).slice(0, 16).map((c) => (c instanceof Date ? c.toISOString().slice(0, 10) : c === null || c === undefined ? "" : String(c).slice(0, 60)))),

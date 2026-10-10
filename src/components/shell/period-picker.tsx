@@ -35,6 +35,9 @@ export function PeriodPicker({ mode = "for", allowTypes = true }: { mode?: "for"
         <b>Month</b>
       )}{" "}
       of <PeriodPopover label={sel.type === "month" ? mlabel(sel.end) : label} type={allowTypes ? sel.type : "month"} periods={periods} />
+      {c.asOf && sel.end && windowFor(sel, fy).periods.includes(c.asOf.slice(0, 7)) && (
+        <span className="ml-2 rounded bg-amber/20 px-1.5 py-0.5 text-xs text-[#9a6b00]" title="The latest month's figures stop on this day, so it covers only part of the month." data-testid="part-month">part month, to {Number(c.asOf.slice(8))} {MONTH_ABBR[Number(c.asOf.slice(5, 7))]}</span>
+      )}
     </div>
   );
 }

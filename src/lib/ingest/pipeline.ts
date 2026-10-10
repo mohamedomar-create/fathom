@@ -3,7 +3,8 @@ import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/buil
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 import { classify, CONTRA_REVENUE } from "./classify";
-import { extractGrid, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
+import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
+import { fmtDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normLabel } from "./parse";
 
@@ -14,6 +15,8 @@ export interface IngestOptions {
   plugEquity: boolean;
   /** Overrides by line key or normalised label → class ("" = exclude). */
   mapping: Record<string, ClassKey | "">;
+  /** "YYYY-MM-DD"; entries after it are future-dated and a month that contains it is partial (defaults to the real date). */
+  today?: string;
 }
 
 export interface IngestLine {
@@ -54,11 +57,17 @@ export interface IngestResult {
   /** File-level checks: the same account in two sheets, debits not equal to credits. */
   checks: Check[];
   layouts: SheetLayout[];
+  /** Last day the latest month covers, when it is a part month ("2026-10-10"). */
+  asOf: string | null;
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
 const SUBTOTAL = /^\s*(total|sub.?total|grand total|gross (profit|margin|loss)|net (income|profit|loss|earnings|sales)|operating (profit|income|loss)|ebit(da)?\b|profit (before|after)|(income|earnings) before|working capital|check|difference|balance check|الإجمالي|اجمالي|إجمالي|مجموع|صافي (الربح|الدخل|الخسارة)|مجمل (الربح|الخسارة))/i;
 
+const fmt0 = (v: number) => (Math.round(v * 100) / 100).toLocaleString("en-GB", { maximumFractionDigits: 2 });
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const monthName = (p: string) => `${MONTH_NAMES[Number(p.slice(5)) - 1]} ${p.slice(0, 4)}`;
+const daysIn = (p: string) => new Date(Date.UTC(Number(p.slice(0, 4)), Number(p.slice(5)), 0)).getUTCDate();
 const monthsFrom = (a: string, b: string) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
 const fyOf = (p: string, fy: number) => { const [y, m] = p.split("-").map(Number); return m >= fy ? y : y - 1; };
 function continuous(ps: string[]) {
@@ -69,15 +78,43 @@ function continuous(ps: string[]) {
   return out;
 }
 
-export type ExtractResult = { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[] };
+export type ExtractResult = { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[]; checks?: Check[] };
 
-export function extractAll(grids: Grid[], overrides: Overrides = {}) {
-  const issues: Required<ExtractResult> = { skippedCols: [], warnings: [], layouts: [], controls: [] };
-  const raw = grids.flatMap((g) => extractGrid(g, issues, overrides[g.name]));
+export function extractAll(grids: Grid[], overrides: Overrides = {}, today?: string) {
+  const issues: Required<ExtractResult> = { skippedCols: [], warnings: [], layouts: [], controls: [], checks: [] };
+  const raw = grids.flatMap((g) => extractGrid(g, issues, overrides[g.name], today));
   return { raw, issues };
 }
 
-export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
+/** Months a column covers, ending at `p`. */
+const windowOf = (p: string, k: number) => Array.from({ length: k }, (_, i) => addMonths(p, i - k + 1));
+
+/**
+ * A sheet whose every column is a multi-month total (a Trial Balance or P&L "From 01/01 to 10/10") only checks the figures
+ * when another sheet in the same upload gives those months one by one (a General Ledger). It is then never imported.
+ */
+function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
+  const roles = new Map<string, "data" | "check">();
+  const monthly = (sheet: string) => new Set(raw.filter((r) => r.sheet === sheet).flatMap((r) => Object.keys(r.values).filter((p) => !(r.spans?.[p] && r.spans[p] > 1))));
+  const sheets = [...new Set(raw.map((r) => r.sheet))];
+  const isRange = (sheet: string) => {
+    const cols = layouts.find((l) => l.sheet === sheet)?.columns.filter((c) => c.used) ?? [];
+    return cols.length > 0 && cols.every((c) => c.months > 1);
+  };
+  for (const sh of sheets) {
+    if (!isRange(sh)) { roles.set(sh, "data"); continue; }
+    const others = new Set(sheets.filter((o) => o !== sh && !isRange(o)).flatMap((o) => [...monthly(o)]));
+    const cols = layouts.find((l) => l.sheet === sh)!.columns.filter((c) => c.used && c.period);
+    roles.set(sh, others.size && cols.every((c) => windowOf(c.period!, c.months).every((p) => others.has(p))) ? "check" : "data");
+  }
+  for (const l of layouts) if (roles.has(l.sheet)) l.role = roles.get(l.sheet);
+  return roles;
+}
+
+export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
+  const roles = sheetRoles(rawIn, extractIssues.layouts ?? []);
+  const checkRaw = rawIn.filter((r) => roles.get(r.sheet) === "check");
+  const raw = rawIn.filter((r) => roles.get(r.sheet) !== "check");
   const issues = { warnings: [...extractIssues.warnings], notes: [] as string[], flips: [] as string[], subtotals: [] as string[], skippedCols: [...extractIssues.skippedCols] };
   // ---- subtotal removal (natural lines only; movement exports are per account)
   const skip = new Set<string>();
@@ -106,13 +143,30 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
 
   // ---- classify
   const map = opts.mapping;
+  const chart = { fiveIsCos: new Set(rawIn.filter((r) => /^6\d{2,}/.test(r.code)).map((r) => r.code)).size >= 2 };
   const lines = used.map((r) => {
     const override = map[r.key] ?? map[normLabel(r.label)];
     const c = override !== undefined
       ? { cls: (override || null) as ClassKey | null, conf: 1, why: override ? "your mapping" : "excluded by you" }
-      : classify(r.name, r.section, r.stmt, {}, r.code);
-    return { r, ...c, excluded: override === "" };
+      : classify(r.name, r.section, r.stmt, {}, r.code, chart);
+    return { r, ...c, excluded: override === "", user: override !== undefined };
   });
+  const checkLines = checkRaw.map((r) => ({ r, ...classify(r.name, r.section, r.stmt, {}, r.code, chart), excluded: false }));
+  // Code families: an account only placed by its code (a person's name, "Visa") takes the class its confident siblings share,
+  // e.g. a custodian's account named after a person among the 1211xx cash accounts. Balance-sheet classes only; the closest shared prefix decides.
+  for (const l of lines) {
+    if (l.user || l.conf >= 0.6 || !/^\d{4,}$/.test(l.r.code) || (l.cls && isPL(l.cls))) continue;
+    for (let len = l.r.code.length - 1; len >= 3; len--) {
+      const pre = l.r.code.slice(0, len);
+      const sibs = lines.filter((o) => o !== l && o.cls && o.conf >= 0.75 && /^\d/.test(o.r.code) && o.r.code.startsWith(pre));
+      if (sibs.length < 2) continue;
+      const count = new Map<ClassKey, number>();
+      for (const o of sibs) count.set(o.cls!, (count.get(o.cls!) ?? 0) + 1);
+      const [top, n] = [...count.entries()].sort((a, b) => b[1] - a[1])[0];
+      if (!isPL(top) && n / sibs.length >= 0.75) Object.assign(l, { cls: top, conf: 0.7, why: `same code group as ${n} ${CLASS_LABEL[top].toLowerCase()} accounts (${pre}…)` });
+      break;
+    }
+  }
 
   // ---- sign handling
   const nat = lines.filter((l) => l.r.kind === "natural" && l.cls);
@@ -258,6 +312,25 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
   }
   if (Object.keys(ranges).length) issues.notes.push(`Some P&L columns cover several months (${Object.entries(ranges).map(([p, k]) => `${p}: ${k} months`).join(", ")}). Each is turned into its last month by subtracting the months already loaded; if they are not loaded, the import asks what to do.`);
 
+  // The file's gross profit counts lines by its own sections (Odoo puts exchange gains under Revenue); compare it as we map them.
+  const REV_SEC = /^(revenue|revenues|sales|income|operating income|الإيرادات|الايرادات|المبيعات)$/i, COS_SEC = /cost(s)? of (revenue|sales|goods)|تكلفة (المبيعات|الإيرادات)/i;
+  const GP_IN = (k: ClassKey | null) => (k === "revenue" ? 1 : k === "cos_variable" || k === "cos_fixed" || k === "cos_depreciation" ? -1 : 0);
+  const gpAsMapped = (c: ControlRow, win: string[]) => {
+    let adj = 0;
+    const moved: string[] = [];
+    for (const l of [...lines, ...checkLines]) {
+      if (c.sheet && l.r.sheet !== c.sheet) continue;
+      const sec = l.r.section.split(" / ").pop() ?? "";
+      const file = REV_SEC.test(sec.replace(/^(less|plus)\s+/i, "")) ? 1 : COS_SEC.test(sec) ? -1 : 0;
+      const ours = l.excluded ? 0 : GP_IN(l.cls);
+      if (file === ours) continue;
+      const v = win.reduce((a, p) => a + (l.r.values[p] ?? 0), 0);
+      if (!v) continue;
+      adj += v * (file - ours);
+      moved.push(`${l.r.name} ${Math.round(Math.abs(v)).toLocaleString("en-GB")} shown as ${l.cls ? CLASS_LABEL[l.cls] : "unmapped"}`);
+    }
+    return { value: c.value - adj, why: moved.length ? ` (less ${moved.slice(0, 3).join("; ")}${moved.length > 3 ? "…" : ""})` : "" };
+  };
   // Total rows from the file. P&L totals only verify single-month columns (year-to-date totals are converted like the lines).
   const controls: ControlTotal[] = [];
   // A total row that is zero in every month is a placeholder (a heading or an empty formula), not a figure to check against.
@@ -265,18 +338,27 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
   for (const c of ctl) {
     if (!periods.includes(c.period)) continue;
     const pl = c.metric === "net_income" || c.metric === "gross_profit";
-    if (pl && (c.months > 1 || ranges[c.period])) continue;
+    // A total over several months checks the sum of those months, when the upload gives each of them (a ledger with a P&L as check).
+    if (pl && (c.months > 1 || ranges[c.period])) {
+      const win = windowOf(c.period, c.months);
+      if (c.months > 1 && !ranges[c.period] && win.every((p) => periods.includes(p))) {
+        const { value, why } = c.metric === "gross_profit" ? gpAsMapped(c, win) : { value: c.value, why: "" };
+        controls.push({ metric: c.metric, period: c.period, value, source: c.source + why, months: c.months });
+      }
+      continue;
+    }
     let value = c.value;
     if (pl && decum) {
       const prev = addMonths(c.period, -1);
       const before = ctl.find((x) => x.metric === c.metric && x.period === prev);
       if (fyOf(prev, opts.fyStart) === fyOf(c.period, opts.fyStart)) { if (!before) continue; value -= before.value; }
     }
+    if (c.metric === "gross_profit") { const g = gpAsMapped(c, [c.period]); value += g.value - c.value; controls.push({ metric: c.metric, period: c.period, value, source: c.source + g.why }); continue; }
     controls.push({ metric: c.metric, period: c.period, value, source: c.source });
   }
 
   // The same account read from two sheets would be counted twice (e.g. a Trial Balance and a P&L in one workbook).
-  const fileChecks: Check[] = [];
+  const fileChecks: Check[] = [...(extractIssues.checks ?? [])];
   const seen = new Map<string, { bySheet: Map<string, Set<string>>; name: string; stmt: "PL" | "BS" }>();
   for (const l of result) {
     if (l.excluded || !l.cls || l.system) continue;
@@ -312,6 +394,43 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
     if (off.length) fileChecks.push({ id: "tb_zero", severity: "block", title: "Debits do not equal credits", detail: `The movements in the file do not net to zero (${off.slice(0, 4).join("; ")}${off.length > 4 ? "…" : ""}). The export is probably filtered to some accounts or journals, or rows are missing. Export all accounts, posted entries only.` });
   }
 
+  // Every account's opening balance plus its movements must give the closing balance the file prints.
+  const rollTol = (x: number) => Math.max(0.05, Math.abs(x) * 1e-9);
+  const offRoll = raw.filter((r) => r.kind === "movement" && r.closing !== undefined).map((r) => ({ r, got: r.opening + Object.values(r.values).reduce((a, b) => a + b, 0) })).filter(({ r, got }) => Math.abs(got - r.closing!) > rollTol(r.closing!));
+  if (offRoll.length) fileChecks.push({ id: "account_rollforward", severity: "block", title: `${offRoll.length} account${offRoll.length > 1 ? "s don't" : " doesn't"} add up to the closing balance in the file`, detail: `Opening balance plus movements differs from the closing balance printed for ${offRoll.slice(0, 4).map(({ r, got }) => `${r.label} (${fmt0(got)} vs ${fmt0(r.closing!)})`).join("; ")}${offRoll.length > 4 ? "…" : ""}. Rows are probably missing or filtered out of the export.` });
+
+  // Check-only sheets: every account must agree with the months imported from the other sheet(s).
+  const excludedIds = new Set(result.filter((l) => l.excluded).map((l) => (l.code ? `c:${l.code.toLowerCase()}` : `n:${normLabel(l.name)}`)));
+  const byId = new Map<string, IngestLine>();
+  const idOf = (code: string, name: string) => (code ? `c:${code.toLowerCase()}` : `n:${normLabel(name)}`);
+  for (const l of result) if (!l.system && l.cls && !l.excluded) byId.set(idOf(l.code, l.name), l);
+  for (const sh of [...new Set(checkRaw.map((r) => r.sheet))]) {
+    const off: string[] = [];
+    let compared = 0;
+    for (const r of checkRaw.filter((x) => x.sheet === sh)) {
+      const d = byId.get(idOf(r.code, r.name));
+      for (const [p, v] of Object.entries(r.values)) {
+        const win = windowOf(p, r.spans?.[p] ?? 1);
+        if (!d) { const exp = r.kind === "movement" ? v + r.opening : v; if (Math.abs(exp) > 0.05 && !excludedIds.has(idOf(r.code, r.name))) off.push(`${r.label}: ${fmt0(exp)} in '${sh}', missing from the import`); continue; }
+        const cls = d.cls!;
+        // P&L: the period's total; balance sheet: the balance at its end (opening + movement for a trial balance).
+        const want = isPL(cls) ? (r.kind === "movement" ? toNatural(cls, v) : v) : (r.kind === "movement" ? toNatural(cls, r.opening + v) : v);
+        const got = isPL(cls) ? win.reduce((a, q) => a + (d.values[q] ?? 0), 0) : d.values[p] ?? 0;
+        compared++;
+        if (Math.abs(want - got) > Math.max(0.05, Math.abs(want) * 1e-7)) off.push(`${r.label}: ${fmt0(want)} in '${sh}' vs ${fmt0(got)} imported`);
+      }
+    }
+    if (off.length) fileChecks.push({ id: "cross_check", severity: "block", title: `${off.length} figure${off.length > 1 ? "s" : ""} differ from '${sh}'`, detail: `${off.slice(0, 5).join("; ")}${off.length > 5 ? "…" : ""}. The files probably cover different dates or filters: export them for the same period.` });
+    else if (compared) issues.notes.push(`'${sh}' covers several months in one total, so it was used to check the import instead of being imported: all ${compared} account figures agree.`);
+  }
+
+  // A month that is still running (or a report that stops mid-month) is partial: its figures cover only some days.
+  const today = opts.today ?? isoToday();
+  const layoutsAll = extractIssues.layouts ?? [];
+  const lastP = periods[periods.length - 1];
+  const asOf = layoutsAll.find((l) => l.role !== "check" && l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? layoutsAll.find((l) => l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? (lastP && today.startsWith(lastP) ? today : undefined);
+  if (asOf && lastP) fileChecks.push({ id: "partial_month", severity: "warn", period: lastP, title: `Part month: figures to ${Number(asOf.slice(8))} ${monthName(lastP).split(" ")[0]}`, detail: `The figures stop on ${fmtDay(asOf)}, so ${monthName(lastP)} covers ${Number(asOf.slice(8))} of ${daysIn(lastP)} days. Comparisons with full months will look low; they are labelled as part month.` });
+
   const months = buildMonths(result.filter((l) => !l.excluded && l.cls).map((l) => ({ id: l.key, code: l.code, name: l.name, cls: l.cls!, amounts: l.values })));
   const pick = (k: "revenue" | "cash" | "assets") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : k === "cash" ? m.bs.cash ?? 0 : bsCalc(m.bs).ta]));
   const movPL = mov.some((l) => isPL(l.cls!)), movBS = mov.length > 0;
@@ -325,7 +444,7 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : [])])].filter((p) => periods.includes(p)).sort(),
     },
-    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [],
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
   };
 }
@@ -335,7 +454,7 @@ function sys(key: string, name: string, cls: ClassKey, values: Record<string, nu
 }
 
 export function ingest(grids: Grid[], opts: IngestOptions, overrides: Overrides = {}): IngestResult {
-  const { raw, issues } = extractAll(grids, overrides);
+  const { raw, issues } = extractAll(grids, overrides, opts.today);
   return runIngest(raw, issues, opts);
 }
 

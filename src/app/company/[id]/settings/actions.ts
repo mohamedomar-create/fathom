@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
 import { ALL_CLASSES } from "@/lib/company/build";
-import { checkKey, type Check } from "@/lib/company/checks";
+import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
@@ -13,7 +13,7 @@ const ClassEnum = z.enum(ALL_CLASSES as [string, ...string[]]);
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Ref = z.object({ sheet: z.string().max(120).optional(), row: z.number().int().min(0).optional(), label: z.string().max(300).optional() });
 const CheckSchema = z.object({
-  id: z.enum(["bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month", "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening"]),
+  id: z.enum(CHECK_IDS),
   severity: z.enum(["block", "warn", "info"]), period: Period.optional(), statement: z.enum(["PL", "BS"]).optional(),
   title: z.string().max(200), detail: z.string().max(1000),
   expected: z.number().finite().optional(), actual: z.number().finite().optional(), diff: z.number().finite().optional(),
@@ -29,7 +29,7 @@ const PlanSchema = z.object({
     mapped_by: z.enum(["auto", "user", "system"]).optional(),
     ref: Ref.optional(),
   })).min(1).max(5000),
-  controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(200) })).max(3000).default([]),
+  controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(400), months: z.number().int().min(1).max(60).optional() })).max(3000).default([]),
   extra: z.array(CheckSchema).max(500).default([]),
   ranges: z.record(Period, z.number().int().min(1).max(60)).default({}),
   openingFrom: Period.nullable().default(null),
@@ -39,6 +39,7 @@ const ImportSchema = PlanSchema.extend({
   report: z.object({
     kind: z.string(), periods: z.array(Period), warnings: z.array(z.string()), notes: z.array(z.string()), flips: z.array(z.string()),
     mapping: z.record(z.string(), z.string()),
+    asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   }),
   accept: z.object({ keys: z.array(z.string().max(80)).max(500), reason: z.string().trim().min(10, "Give a reason of at least 10 characters.").max(500) }).optional(),
 });

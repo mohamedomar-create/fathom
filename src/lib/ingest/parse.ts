@@ -39,14 +39,17 @@ export function cleanNum(v: Cell): number | null {
 const pad = (m: number) => String(m).padStart(2, "0");
 
 /** Cell → 'YYYY-MM' or null. Accepts dates, 'Jan-25', 'January 2025', '2025-01', '01/2025', '31/01/2025', Arabic months. */
-export function parsePeriod(v: Cell): string | null {
-  const p = parsePeriodRaw(v);
+export type DateOrder = "dmy" | "mdy";
+
+/** Cell → 'YYYY-MM' or null. Ambiguous numeric dates ("03/04/2026") follow `order` (day first by default, as in Egypt). */
+export function parsePeriod(v: Cell, order: DateOrder = "dmy"): string | null {
+  const p = parsePeriodRaw(v, order);
   if (!p) return null;
   const y = +p.slice(0, 4);
   return /^\d{4}-(0[1-9]|1[0-2])$/.test(p) && y >= 1900 && y <= 2100 ? p : null;
 }
 
-function parsePeriodRaw(v: Cell): string | null {
+function parsePeriodRaw(v: Cell, order: DateOrder): string | null {
   if (v === null || v === undefined || typeof v === "boolean") return null;
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}`;
   if (typeof v === "number") return null; // bare numbers are not periods (Excel serials are converted by the reader)
@@ -62,7 +65,7 @@ function parsePeriodRaw(v: Cell): string | null {
     let y = +m[3]; if (y < 100) y += 2000;
     if (a > 12 && b >= 1 && b <= 12) return `${y}-${pad(b)}`;
     if (b > 12 && a >= 1 && a <= 12) return `${y}-${pad(a)}`;
-    if (b >= 1 && b <= 12) return `${y}-${pad(b)}`; // ambiguous: assume dd/mm (Egypt/EU)
+    if (a >= 1 && a <= 12 && b >= 1 && b <= 12) return `${y}-${pad(order === "mdy" ? a : b)}`; // ambiguous: the column's order decides
   }
   m = s.match(/^([A-Za-zéû]{3,9})[\s\-_/.,']*(\d{2,4})$/);
   if (m && MONTHS[m[1].toLowerCase()]) { let y = +m[2]; if (y < 100) y += 2000; return `${y}-${pad(MONTHS[m[1].toLowerCase()])}`; }
@@ -72,6 +75,37 @@ function parsePeriodRaw(v: Cell): string | null {
   if (ym) for (const [rx, mo] of AR_MONTHS) if (rx.test(s) && s.replace(rx, "").replace(ym[1], "").trim().length <= 2) return `${ym[1]}-${pad(mo)}`;
   return null;
 }
+
+/**
+ * Day/month order of a whole column of text dates: one "31/01/2026" or "01/31/2026" settles it for every row.
+ * `order` is null when every date is ambiguous (each part ≤ 12); `sample` is the date that decided it.
+ */
+export function detectDateOrder(cells: Cell[]): { order: DateOrder | null; sample: string | null } {
+  for (const v of cells) {
+    if (typeof v !== "string") continue;
+    const m = arToLatin(v.trim()).match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})\b/);
+    if (!m) continue;
+    if (+m[1] > 12 && +m[2] <= 12) return { order: "dmy", sample: v.trim() };
+    if (+m[2] > 12 && +m[1] <= 12) return { order: "mdy", sample: v.trim() };
+  }
+  return { order: null, sample: null };
+}
+
+/** Cell → 'YYYY-MM-DD' (Date objects and numeric text dates), for "figures up to" days. */
+export function parseDay(v: Cell, order: DateOrder = "dmy"): string | null {
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  if (typeof v !== "string") return null;
+  const s = arToLatin(v.trim());
+  let m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (m) return validDay(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})$/);
+  if (!m) return null;
+  let a = +m[1], b = +m[2];
+  const y = +m[3] < 100 ? +m[3] + 2000 : +m[3];
+  if (a > 12 || (b <= 12 && order === "dmy")) [a, b] = [b, a]; // a is now the month
+  return validDay(y, a, b);
+}
+const validDay = (y: number, m: number, d: number) => (m >= 1 && m <= 12 && d >= 1 && d <= new Date(Date.UTC(y, m, 0)).getUTCDate() ? `${y}-${pad(m)}-${pad(d)}` : null);
 
 const monthsBetween = (a: string, b: string) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
 const ym = (y: number, m: number) => `${y}-${pad(m)}`;
@@ -95,7 +129,7 @@ function numericDates(toks: string[]): string[] | null {
  * "From 01/01/2025 to 09/30/2025", "Jan 2025 - Sep 2025", "As of 09/30/2025", "Q3 2025", "H1 2025", "2025", "FY 2025".
  * Returns the period's last month and its length in months (balance-sheet "as of" columns count as one month).
  */
-export function parsePeriodRange(v: Cell, now = new Date()): { end: string; months: number } | null {
+export function parsePeriodRange(v: Cell, now = new Date()): { end: string; months: number; endDay?: string } | null {
   if (typeof v !== "string") return null;
   const s = arToLatin(v.replace(/\s+/g, " ").trim());
   if (!s || s.length > 80) return null;
@@ -108,11 +142,13 @@ export function parsePeriodRange(v: Cell, now = new Date()): { end: string; mont
   const nums = s.match(/\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}/g) ?? [];
   if (nums.length === 2) {
     const d = numericDates(nums);
-    if (d && d[0] <= d[1]) return { end: d[1], months: monthsBetween(d[0], d[1]) };
+    const endDay = parseDay(nums[1], detectDateOrder(nums).order ?? "dmy") ?? undefined;
+    if (d && d[0] <= d[1]) return { end: d[1], months: monthsBetween(d[0], d[1]), ...(endDay ? { endDay } : {}) };
   }
   if (nums.length === 1 && /\b(as of|as at|at|until|till|to|end(ing)?|closing)\b|حتى|في|إلى|الى|au\b/i.test(s)) {
     const d = numericDates(nums);
-    if (d) return { end: d[0], months: 1 };
+    const endDay = parseDay(nums[0], detectDateOrder(nums).order ?? "dmy") ?? undefined;
+    if (d) return { end: d[0], months: 1, ...(endDay ? { endDay } : {}) };
   }
   const named = s.match(/[A-Za-zéû]{3,9}[\s\-_/.,']*\d{4}/g) ?? [];
   if (named.length === 2) {

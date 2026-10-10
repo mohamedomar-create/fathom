@@ -1,8 +1,9 @@
 "use client";
-import { FileSearch } from "lucide-react";
+import { FileSearch, ShieldCheck } from "lucide-react";
 import { mlabel } from "@/lib/engine";
 import type { Overrides, SheetLayout, SheetOverride } from "@/lib/ingest/extract";
 import { cn } from "@/lib/cn";
+import { fmtDay } from "@/lib/ingest/odoo";
 
 const KIND: Record<SheetLayout["kind"], string> = {
   columns: "Report with month columns",
@@ -17,13 +18,14 @@ const KIND: Record<SheetLayout["kind"], string> = {
 export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLayout[]; overrides: Overrides; onChange: (o: Overrides) => void }) {
   const set = (sheet: string, patch: Partial<SheetOverride>) => onChange({ ...overrides, [sheet]: { ...overrides[sheet], ...patch } });
   const setCol = (sheet: string, col: number, period: string | null) => set(sheet, { periods: { ...overrides[sheet]?.periods, [col]: period } });
-  const attention = layouts.some((l) => l.kind === "none" || l.scale !== 1 || l.columns.some((c) => !c.used || c.months > 1));
+  const attention = layouts.some((l) => l.kind === "none" || l.scale !== 1 || (l.role !== "check" && l.columns.some((c) => !c.used || c.months > 1)) || (l.dates && !l.dates.sample));
+  const figures = (l: SheetLayout) => (l.kind === "skipped" ? (l.source ? "no figures" : "left out") : l.role === "check" ? "check only" : `${l.lines} lines`);
   return (
     <details open={attention} className="mb-5 rounded-md border border-line" data-testid="file-reading">
       <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm">
         <FileSearch className="h-4 w-4 text-green-d" />
         <span className="font-medium">How the file was read</span>
-        <span className="text-mute">· {layouts.map((l) => `${l.sheet}: ${l.kind === "skipped" ? "left out" : `${l.lines} lines`}`).join(" · ")}</span>
+        <span className="text-mute">· {layouts.filter((l) => !(l.kind === "skipped" && l.source)).map((l) => `${l.sheet}: ${figures(l)}`).join(" · ")}</span>
       </summary>
       <div className="space-y-4 border-t border-line px-4 py-3">
         {layouts.map((l) => {
@@ -35,7 +37,8 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
                   <input type="checkbox" checked={!ov.skip} onChange={(e) => set(l.sheet, { skip: !e.target.checked })} data-testid="use-sheet" />
                   {l.sheet}
                 </label>
-                <span className={cn("text-mute", l.kind === "none" && "text-red")}>{KIND[l.kind]}{l.headerRow !== null && l.kind !== "skipped" ? ` · headings on row ${l.headerRow + 1}` : ""}</span>
+                <span className={cn("text-mute", l.kind === "none" && "text-red")}>{l.source ?? KIND[l.kind]}{l.headerRow !== null && l.kind !== "skipped" ? ` · headings on row ${l.headerRow + 1}` : ""}</span>
+                {l.role === "check" && <span className="flex items-center gap-1 rounded bg-green-bg px-1.5 py-0.5 text-xs text-green-d" data-testid="check-only"><ShieldCheck className="h-3.5 w-3.5" />Used to check the other file, not imported</span>}
                 {l.kind !== "skipped" && (
                   <>
                     <label className="ml-auto flex items-center gap-1.5">Units
@@ -52,7 +55,19 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
                 )}
               </div>
               {l.scaleFrom && l.kind !== "skipped" && <div className="mt-1 text-xs text-mute">Units taken from “{l.scaleFrom}”.</div>}
-              {l.columns.length > 0 && l.kind !== "skipped" && (
+              {l.dates && l.kind !== "skipped" && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" data-testid="date-order">
+                  <span className={cn(!l.dates.sample && !ov.dateOrder ? "text-[#9a6b00]" : "text-mute")}>
+                    Dates read {l.dates.order === "mdy" ? "month first (01/31/2026)" : "day first (31/01/2026)"}
+                    {ov.dateOrder ? ", as you chose" : l.dates.sample ? `, proved by “${l.dates.sample}”` : ": every date could be either, so check this"}
+                  </span>
+                  <select value={l.dates.order} onChange={(e) => set(l.sheet, { dateOrder: e.target.value as "dmy" | "mdy" })} className="rounded border border-line bg-white px-1 py-0.5" aria-label="Date order">
+                    <option value="dmy">Day first</option><option value="mdy">Month first</option>
+                  </select>
+                </div>
+              )}
+              {l.asOf && l.kind !== "skipped" && <div className="mt-1 text-xs text-[#9a6b00]">Figures stop on {fmtDay(l.asOf)}: the last month is a part month.</div>}
+              {l.columns.length > 0 && l.kind !== "skipped" && l.role !== "check" && (
                 <div className="mt-2 grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
                   {l.columns.map((c) => (
                     <div key={c.col} className={cn("rounded border bg-white px-2 py-1.5", !c.used ? "border-dashed border-line opacity-70" : c.months > 1 ? "border-amber" : "border-line")}>

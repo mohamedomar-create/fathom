@@ -180,7 +180,11 @@ describe("Odoo report column headers", () => {
     ["2025", { end: "2025-12", months: 12 }],
     ["FY 2026", { end: "2026-10", months: 10 }],
   ])("%s", (label, want) => {
-    expect(parsePeriodRange(label, now)).toEqual(want);
+    expect(parsePeriodRange(label, now)).toMatchObject(want);
+  });
+  it("keeps the day a range ends on, so a part month is visible", () => {
+    expect(parsePeriodRange("From 01/01/2026\nto  10/10/2026", now)).toEqual({ end: "2026-10", months: 10, endDay: "2026-10-10" });
+    expect(parsePeriodRange("From 01/01/2025 to 09/30/2025", now)?.endDay).toBe("2025-09-30");
   });
   it("ignores text that is not a period", () => {
     for (const t of ["Balance", "Profit and Loss", "Total 2025 budget", "12/2025 notes"]) expect(parsePeriodRange(t, now)).toBeNull();
