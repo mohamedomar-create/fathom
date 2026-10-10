@@ -5,6 +5,8 @@ import { buildContext } from "@/lib/ai/context";
 import { COMMENTARY_SECTIONS, CommentaryError, writeCommentary } from "@/lib/ai/commentary";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
+import { dbError } from "@/lib/action-error";
+import { limited } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,8 +23,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const { supabase, user } = await getUser();
   if (!user) return NextResponse.json({ error: "Please sign in" }, { status: 401 });
+  if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const bundle = await loadCompanyBundle(id);
   if (bundle.role === "viewer") return NextResponse.json({ error: "View-only access" }, { status: 403 });
+  // AI calls cost money: 20 a day per company and 60 a day per person.
+  if ((await limited(supabase, `ai:company:${id}`, 86400, 20)) || (await limited(supabase, `ai:user:${user.id}`, 86400, 60)))
+    return NextResponse.json({ error: "The daily limit for AI commentary has been reached. Try again tomorrow, or write the commentary by hand." }, { status: 429 });
   const { data: row } = await supabase.from("companies").select("industry, ai_context").eq("id", id).single();
   try {
     const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts });
@@ -32,7 +38,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const rows = Object.entries(out).map(([section, body]) => ({ company_id: id, period_key: periodKey, section, body: body!, source: "ai", updated_by: user.id, updated_at: new Date().toISOString() }));
     if (rows.length) {
       const { error } = await supabase.from("commentary").upsert(rows, { onConflict: "company_id,period_key,section" });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return NextResponse.json({ error: dbError(error, "commentary") }, { status: 500 });
     }
     return NextResponse.json({ commentary: out });
   } catch (e) {

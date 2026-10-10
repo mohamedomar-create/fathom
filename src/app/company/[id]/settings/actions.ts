@@ -7,6 +7,8 @@ import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
+import { dbError, safeError } from "@/lib/action-error";
+import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 
 const ClassEnum = z.enum(ALL_CLASSES as [string, ...string[]]);
@@ -51,7 +53,7 @@ type Plan = z.output<typeof PlanSchema>;
 /** Current data version, its accepted issues and notes, then the merged plan for this upload. */
 async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], d: Plan) {
   const { data: c, error } = await supabase.from("companies").select("data_version, notes").eq("id", d.companyId).single();
-  if (error || !c) throw new Error("Company not found.");
+  if (error || !c) throw new Error("Company not found, or you don't have access to it.");
   const [current, { data: imp }] = await Promise.all([
     loadVersion(supabase, d.companyId, c.data_version),
     supabase.from("imports").select("report").eq("company_id", d.companyId).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
@@ -66,12 +68,13 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  if (await limited(supabase, `import:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
   try {
     const { plan, prevAccepted, hasData } = await buildPlan(supabase, v.data);
     const ok = new Set(prevAccepted.map((a) => a.key));
     return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData } };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: safeError(e, "previewImport") };
   }
 }
 
@@ -80,6 +83,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
   if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  if (await limited(supabase, `import:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
   try {
     const d = v.data;
     const { plan, prevAccepted, notes } = await buildPlan(supabase, d);
@@ -111,7 +115,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     revalidatePath(`/company/${d.companyId}`, "layout");
     return { ok: true, version };
   } catch (e) {
-    return { ok: false, error: (e as Error).message };
+    return { ok: false, error: safeError(e, "commitImport") };
   }
 }
 
@@ -150,7 +154,7 @@ export async function restoreVersion(companyId: string, version: number): Promis
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   const { error } = await supabase.rpc("restore_company_version", { p_company: companyId, p_version: version });
-  if (error) return { ok: false, error: error.code === "42501" ? "Only editors can restore data." : error.message };
+  if (error) return { ok: false, error: error.code === "42501" ? "Only editors can restore data." : dbError(error, "restoreVersion") };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -169,12 +173,13 @@ const ProfileSchema = z.object({
 export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise<{ ok: boolean; error?: string }> {
   const v = ProfileSchema.safeParse(input);
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message };
-  const { supabase } = await getUser();
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,
     industry: v.data.industry, ai_context: v.data.ai_context,
   }, { count: "exact" }).eq("id", v.data.companyId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error, "saveProfile") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${v.data.companyId}`, "layout");
   return { ok: true };
@@ -187,9 +192,10 @@ const KpiEntry = z.object({
 export async function saveKpiConfig(companyId: string, config: Record<string, z.infer<typeof KpiEntry>>): Promise<{ ok: boolean; error?: string }> {
   const parsed = z.record(z.string().regex(/^[a-z_]+$/), KpiEntry).safeParse(config);
   if (!parsed.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid KPI settings" };
-  const { supabase } = await getUser();
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
   const { error, count } = await supabase.from("companies").update({ kpi_config: parsed.data as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error, "saveKpiConfig") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
@@ -198,17 +204,20 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
 export async function reclassify(companyId: string, changes: Record<string, string>): Promise<{ ok: boolean; error?: string; count?: number }> {
   const ok = z.record(z.string().uuid(), ClassEnum).safeParse(changes);
   if (!ok.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid changes" };
-  const { supabase } = await getUser();
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
   const { data, error } = await supabase.rpc("reclassify_accounts", { p_company: companyId, p_changes: Object.fromEntries(Object.entries(ok.data).map(([k, c]) => [k, { class: c }])) as Json });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error, "reclassify") };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, count: data as number };
 }
 
 export async function deleteCompany(companyId: string): Promise<{ ok: boolean; error?: string }> {
-  const { supabase } = await getUser();
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
   const { error, count } = await supabase.from("companies").delete({ count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: dbError(error, "deleteCompany") };
   if (!count) return { ok: false, error: "Only organisation admins can delete a company." };
   revalidatePath("/companies");
   return { ok: true };

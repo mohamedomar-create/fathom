@@ -29,7 +29,7 @@ export type OdooConnectionRow = {
 }
 export type CommentaryRow = { company_id: string; period_key: string; section: string; body: string; source: string; updated_by: string | null; updated_at: string }
 export type ReportRow = {
-  id: string; company_id: string; title: string; period_type: string; period_end: string; sections: Json; status: string; share_token: string | null;
+  id: string; company_id: string; title: string; period_type: string; period_end: string; sections: Json; status: string; share_token: string | null; expires_at: string | null;
   published_at: string | null; created_by: string | null; created_at: string; updated_at: string;
 }
 
@@ -56,6 +56,7 @@ export type Database = {
       replace_company_data: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: number };
       save_company_version: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: Json };
       restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };
+      hit_rate_limit: { Args: { p_key: string; p_window_s: number; p_max: number }; Returns: boolean };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { demoCompany } from "@/lib/company/demo";
 import { saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
+import { dbError, safeError } from "@/lib/action-error";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 type EditableOrg = { ok: true; supabase: Supa; user: { id: string }; orgId: string } | { ok: false; error: string };
@@ -38,7 +39,7 @@ export async function createCompany(formData: FormData): Promise<{ error: string
   const { data, error } = await supabase.from("companies").insert({
     org_id: orgId, name: v.name, currency: v.currency.toUpperCase(), fy_start_month: v.fy_start_month, tax_rate: v.tax_rate / 100, source: v.source, created_by: user.id,
   }).select("id").single();
-  if (error) return { error: error.message };
+  if (error) return { error: dbError(error, "createCompany") };
   revalidatePath("/companies");
   redirect(`/company/${data.id}/settings/source-data${v.source === "odoo" ? "?tab=odoo" : ""}`);
 }
@@ -53,12 +54,12 @@ export async function createDemoCompany(): Promise<{ error: string } | void> {
     tax_rate: demo.settings.taxRate, source: "demo", created_by: user.id,
     kpi_config: { total_revenue: { target: 950000 }, gpm: { target: 40, alert_active: true, alert_threshold: 46 }, profit_ratio: { target: 15 } },
   }).select("id").single();
-  if (error) return { error: error.message };
+  if (error) return { error: dbError(error, "createDemoCompany") };
   try {
     await saveCompanyData(supabase, data.id, demo.accounts.map((a) => ({ code: a.code, name: a.name, cls: a.cls, amounts: a.amounts, mapped_by: "system" })),
       { kind: "demo", filename: "Demo data" }, demo.notes);
   } catch (e) {
-    return { error: `The demo company was created but its data could not be loaded: ${(e as Error).message}` };
+    return { error: `The demo company was created but its data could not be loaded: ${safeError(e, "createDemoCompany")}` };
   }
   revalidatePath("/companies");
   redirect(`/company/${data.id}/summary`);

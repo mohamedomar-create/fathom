@@ -1,3 +1,4 @@
+import { DbError } from "@/lib/action-error";
 import "server-only";
 import type { ClassKey } from "@/lib/engine";
 import type { Json } from "@/lib/supabase/database.types";
@@ -28,7 +29,7 @@ export async function loadVersion(supabase: Supa, companyId: string, version: nu
   const { data: accts, error } = await supabase.from("source_accounts")
     .select("id, code, name, class, odoo_id, odoo_type, confidence, mapped_by, refs, sort_order")
     .eq("company_id", companyId).eq("version", version).order("sort_order");
-  if (error) throw new Error(error.message);
+  if (error) throw new DbError(error);
   const byId = new Map((accts ?? []).map((a) => [a.id, {
     code: a.code, name: a.name, cls: a.class as ClassKey, amounts: {} as Record<string, number>, sources: {} as Record<string, string | null>,
     refs: (a.refs ?? {}) as Record<string, SourceRef>, odoo_id: a.odoo_id, odoo_type: a.odoo_type, confidence: a.confidence,
@@ -71,7 +72,7 @@ export async function saveCompanyData(
     p_import: { kind: meta.kind, filename: meta.filename ?? null, report: meta.report ?? {} } as Json,
     p_notes: (notes ?? null) as Json,
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new DbError(error);
   const out = data as { version: number; import_id: string };
   // Keep the newest versions for undo; anything older is removed (the current version is always the newest here).
   const { error: e2 } = await supabase.from("source_accounts").delete().eq("company_id", companyId).lte("version", out.version - KEEP_VERSIONS);

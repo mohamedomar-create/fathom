@@ -3,6 +3,7 @@ import { z } from "zod";
 import { htmlToPdf } from "@/lib/pdf/render";
 import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
+import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -16,29 +17,22 @@ const Body = z.object({
   demo: z.boolean().optional(),
 });
 
-// Best-effort per-instance limiter for anonymous (demo / public link) exports.
-const hits = new Map<string, number[]>();
-function limited(key: string, max = 6, windowMs = 10 * 60_000) {
-  const now = Date.now();
-  const list = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-  list.push(now);
-  hits.set(key, list);
-  return list.length > max;
-}
-
 export async function POST(req: Request) {
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const b = parsed.data;
   const { supabase, user } = await getUser();
-  if (!user) {
-    if (b.token) {
-      const { data } = await supabase.rpc("get_published_report", { p_token: b.token });
-      if (!data) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-    } else if (!b.demo) return NextResponse.json({ error: "Please sign in" }, { status: 401 });
-    const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "anon";
-    if (limited(ip)) return NextResponse.json({ error: "Too many exports — try again in a few minutes." }, { status: 429 });
-  }
+  const ip = clientIp(req);
+  // Who may render: a signed-in user, a valid public report link, or the demo report. Each is limited across instances.
+  let over: boolean;
+  if (user) over = await limited(supabase, `pdf:user:${user.id}`, 3600, 30);
+  else if (b.token) {
+    const { data } = await supabase.rpc("get_published_report", { p_token: b.token });
+    if (!data) return NextResponse.json({ error: "Report not found" }, { status: 404 });
+    over = (await limited(supabase, `pdf:ip:${ip}`, 600, 5)) || (await limited(supabase, `pdf:token:${b.token.slice(0, 16)}`, 3600, 20));
+  } else if (b.demo) over = await limited(supabase, `pdf:ip:${ip}`, 600, 5);
+  else return NextResponse.json({ error: "Please sign in" }, { status: 401 });
+  if (over) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${b.title.replace(/</g, "")}</title>
 <style>${REPORT_FONT_CSS}</style><style>${b.css}</style>
 <style>

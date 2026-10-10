@@ -22,6 +22,7 @@ export class OdooClient {
     } catch (e) {
       throw new OdooError(`Could not reach Odoo at ${this.url} (${(e as Error).name === "TimeoutError" ? "timed out" : (e as Error).message}).`);
     }
+    if (res.status >= 300 && res.status < 400) throw new OdooError(`Odoo redirected the request (HTTP ${res.status}). Enter the final https:// address of your Odoo, e.g. https://yourcompany.odoo.com.`);
     if (!res.ok) throw new OdooError(`Odoo answered HTTP ${res.status}. Check the URL${res.status === 404 ? " (is the external API enabled? Odoo Online needs the Custom plan)" : ""}.`);
     let body: { result?: T; error?: { message?: string; data?: { message?: string; name?: string } } };
     try { body = await res.json(); } catch { throw new OdooError("Odoo returned something that is not JSON. Is this the right URL?"); }
