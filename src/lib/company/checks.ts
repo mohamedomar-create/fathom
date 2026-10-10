@@ -7,7 +7,7 @@ import type { AccountLine } from "./types";
 export type CheckSeverity = "block" | "warn" | "info";
 export type CheckId =
   | "bs_balance" | "control_total" | "tb_zero" | "unmapped" | "duplicate" | "multi_month"
-  | "re_rollforward" | "cash_flow" | "gap" | "statement_mismatch" | "sign";
+  | "re_rollforward" | "cash_flow" | "gap" | "statement_mismatch" | "sign" | "opening";
 
 export interface Check {
   id: CheckId;

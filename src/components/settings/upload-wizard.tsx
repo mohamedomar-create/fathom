@@ -88,7 +88,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
       if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} material line${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
     }
-    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges };
+    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom };
   }
 
   async function runPreview(m: ImportMode = mode) {

@@ -49,6 +49,8 @@ export interface IngestResult {
   ranges: Record<string, number>;
   /** Total rows printed in the file (single-month columns only), to verify the imported figures. */
   controls: ControlTotal[];
+  /** First month of a movement file that has no opening balances: its balance sheet must continue from the month before. */
+  openingFrom: string | null;
   /** File-level checks: the same account in two sheets, debits not equal to credits. */
   checks: Check[];
   layouts: SheetLayout[];
@@ -203,7 +205,7 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
       result.push(sys("__re_computed", "Earnings to date (computed from P&L accounts)", "retained_earnings", re));
       issues.notes.push("Retained earnings include profit to date computed from the P&L accounts (Odoo does not close P&L accounts into equity).");
     }
-    if (!mov.some((l) => l.r.opening)) issues.notes.push("Balances are built from the movements in the file. If the export does not start at the company's first entry, include opening balances (Trial Balance with an Initial Balance column) or use the live Odoo connection.");
+    if (!mov.some((l) => l.r.opening)) issues.notes.push("The file has movements but no opening balances. When merged, balances continue from the balance sheet already loaded for the month before; otherwise they start from zero, so include opening balances (Trial Balance with an Initial Balance column) unless the export starts at the company's first entry.");
   }
 
   // balance check & close-earnings
@@ -324,6 +326,7 @@ export function runIngest(raw: RawLine[], extractIssues: ExtractResult, opts: In
       BS: [...new Set([...bsP, ...(movBS ? movP : [])])].filter((p) => periods.includes(p)).sort(),
     },
     ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [],
+    openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
   };
 }
 

@@ -77,6 +77,8 @@ test("data health shows loaded months, checks and sources", async ({ page }) => 
   const cell = page.locator('[data-status="ok"]').first();
   await cell.click();
   await expect(page.getByTestId("month-detail")).toContainText("Demo data");
+  await page.getByTestId("trace-buttons").getByRole("button").first().click();
+  await expect(page.getByTestId("source-drawer")).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -87,4 +89,10 @@ test("a financials figure opens the accounts behind it", async ({ page }) => {
   await expect(d).toContainText("Gross Profit");
   await expect(d).toContainText("Demo data");
   await expect(d).toContainText("(−)");
+});
+
+test("summary headline figures open their source accounts", async ({ page }) => {
+  await page.goto("/demo/summary");
+  await page.getByTestId("trace-cash").click();
+  await expect(page.getByTestId("source-drawer")).toContainText("Cash on hand");
 });

@@ -58,8 +58,10 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number> }): ImportPlan {
-  const { incoming, rangeChecks } = deriveRanges(current, incomingIn, opts);
+export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null }): ImportPlan {
+  const seeded = seedOpening(current, incomingIn, opts);
+  const { incoming, rangeChecks: rc } = deriveRanges(current, seeded.incoming, opts);
+  const rangeChecks = [...rc, ...seeded.checks];
   const inc: Record<Statement, Set<string>> = { PL: new Set(opts.slices.PL), BS: new Set(opts.slices.BS) };
   // Every month the file has a figure for is covered, whatever the caller declared.
   for (const n of incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
@@ -137,6 +139,37 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
   const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks };
+}
+
+/**
+ * A movement file (general ledger, journal items) without opening balances builds each balance from zero. Merged onto
+ * loaded data, balances continue from the stored balance sheet of the month before the file starts.
+ */
+function seedOpening(current: VersionAccount[], incoming: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; openingFrom?: string | null }) {
+  const checks: Check[] = [];
+  const p0 = opts.openingFrom;
+  if (!p0) return { incoming, checks };
+  const prev = addMonths(p0, -1);
+  const stored = opts.mode === "merge" ? current.filter((a) => !isPL(a.cls) && a.amounts[prev]) : [];
+  if (!stored.length) {
+    const hasBS = opts.mode === "merge" && coverageOf(current).bs.size > 0;
+    checks.push(hasBS
+      ? { id: "opening", severity: "block", period: p0, statement: "BS", title: "No opening balances to continue from", detail: `The file has movements only, starting ${p0}, and the balance sheet for ${prev} is not loaded, so closing balances would start from zero. Load ${prev} first, or export a Trial Balance with an Initial Balance column.` }
+      : { id: "opening", severity: "warn", period: p0, statement: "BS", title: "Balances start from zero", detail: `The file has no opening balances, so every balance is built from the movements since ${p0}. This is only right if the export starts at the company's first entry.` });
+    return { incoming, checks };
+  }
+  const months = new Set([...opts.slices.BS, ...incoming.filter((a) => !isPL(a.cls)).flatMap((a) => Object.keys(a.amounts))]);
+  const out = incoming.map((a) => ({ ...a, amounts: { ...a.amounts } }));
+  const byKey = new Map(out.filter((a) => !isPL(a.cls)).map((a) => [accountIdentity(a), a]));
+  for (const st of stored) {
+    const key = accountIdentity(st);
+    let a = byKey.get(key);
+    if (!a) { a = { code: st.code, name: st.name, cls: st.cls, amounts: {}, mapped_by: st.mapped_by, confidence: st.confidence }; out.push(a); byKey.set(key, a); }
+    const open = recast(st.cls, a.cls, st.amounts[prev]);
+    for (const p of months) a.amounts[p] = Math.round(((a.amounts[p] ?? 0) + open) * 100) / 100;
+  }
+  checks.push({ id: "opening", severity: "info", period: p0, statement: "BS", title: "Opening balances taken from loaded data", detail: `The file has movements only; balances continue from the ${prev} balance sheet already loaded.` });
+  return { incoming: out, checks };
 }
 
 /**

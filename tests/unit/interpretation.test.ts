@@ -9,7 +9,7 @@ const OPTS: IngestOptions = { fyStart: 1, ytd: "auto", closeEarnings: "auto", pl
 const accts = (res: IngestResult) => toAccountInputs(res).map((a, i) => ({ ...a, id: String(i) }));
 const blocking = (res: IngestResult) => runChecks({ accounts: accts(res), controls: res.controls, extra: res.checks }).filter((c) => c.severity === "block");
 const plan = (res: IngestResult, current: Parameters<typeof planImport>[0] = []) =>
-  planImport(current, toAccountInputs(res) as IncomingAccount[], { mode: "merge", slices: res.slices, controls: res.controls, extra: res.checks, ranges: res.ranges });
+  planImport(current, toAccountInputs(res) as IncomingAccount[], { mode: "merge", slices: res.slices, controls: res.controls, extra: res.checks, ranges: res.ranges, openingFrom: res.openingFrom });
 
 describe("every supported Odoo export passes the accounting checks", () => {
   const cases: [string, Grid[]][] = [
@@ -123,5 +123,35 @@ describe("columns covering several months", () => {
     const mm = unresolved(p.checks, []).filter((c) => c.id === "multi_month");
     expect(mm).toHaveLength(1);
     expect(mm[0].period).toBe(months[3].period);
+  });
+});
+
+describe("movement files without opening balances", () => {
+  it("continue from the balance sheet already loaded when merged", () => {
+    const full = plan(ingest(journalItems(), OPTS));
+    const k = 6, start = months[k].period;
+    const stored = full.accounts.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => p < start)), sources: {} }));
+    const g = journalItems();
+    g[0].rows = g[0].rows.filter((r, i) => i === 0 || String(r[0]) >= start);
+    const later = ingest(g, OPTS);
+    expect(later.openingFrom).toBe(start);
+    const p = plan(later, stored);
+    expect(p.checks.some((c) => c.id === "opening" && c.severity === "info")).toBe(true);
+    expect(unresolved(p.checks, [])).toEqual([]);
+    const totals = (accts: { cls: string; amounts: Record<string, number> }[], per: string) => {
+      const o: Record<string, number> = {};
+      for (const a of accts) if (a.amounts[per]) o[a.cls] = Math.round((o[a.cls] ?? 0) + a.amounts[per]);
+      return o;
+    };
+    for (const m of months.slice(k)) expect(totals(p.accounts, m.period), m.period).toEqual(totals(full.accounts, m.period));
+  });
+
+  it("block when the month before is not loaded", () => {
+    const g = journalItems();
+    const start = months[6].period;
+    g[0].rows = g[0].rows.filter((r, i) => i === 0 || String(r[0]) >= start);
+    const later = ingest(g, OPTS);
+    const stored = plan(ingest(journalItems(), OPTS)).accounts.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => p < months[3].period)), sources: {} }));
+    expect(unresolved(plan(later, stored).checks, []).map((c) => c.id)).toContain("opening");
   });
 });
