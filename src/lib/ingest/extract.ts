@@ -131,7 +131,8 @@ function findHeader(rows: Cell[][]): Header | null {
   if (!best) for (let r = 0; r < Math.min(rows.length, 40); r++) {
     const h = headerAt(rows[r]);
     // the label column (A) can hold a title such as the report period, never the amounts
-    if (h.cols.size === 1 && ![...h.cols.keys()].includes(0) && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, ...h }; break; }
+    // …and a row that itself holds amounts is data (a dated line of a list), never the heading.
+    if (h.cols.size === 1 && ![...h.cols.keys()].includes(0) && !rows[r].some((x) => typeof x === "number") && rows.slice(r + 1, r + 6).some((rr) => rr.some((x) => cleanNum(x) !== null && typeof x !== "string"))) { best = { row: r, ...h }; break; }
   }
   return best ?? balanceColumnHeader(rows);
 }
@@ -241,7 +242,9 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
       } else v = num(rows[r][col.val!]);
       if (v !== null) { values[col.p] = v; any = true; }
     }
-    if (!any) {
+    // An account with an opening balance but no movement in the months shown is still an account, not a heading.
+    const hasOpening = dcMode && openDeb !== undefined && (num(rows[r][openDeb]) !== null || (openCred !== undefined && num(rows[r][openCred]) !== null));
+    if (!any && !hasOpening) {
       // heading row: keep a two-level section path
       if (headingDepth(lab) === 0) heads.length = 0;
       heads.splice(1);
@@ -312,6 +315,9 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
     if (dat < 0 || deb < 0 || cre < 0) continue;
     const { label: lc, code: cc } = dat > 0 ? labelColumn(rows, r + 1, dat) : { label: 0, code: null };
     const order = dateOrderOf(rows.slice(r + 1).map((row) => row[dat]), layout, forced);
+    // A ledger opens with an account heading (no date); a journal list has a date on every line.
+    const first = rows.slice(r + 1).find((row) => str(row[lc]) || str(row[dat]));
+    if (!first || parsePeriod(first[dat], order) || !str(first[lc])) return null;
     const accounts = new Map<string, RawLine>();
     let cur: RawLine | null = null;
     for (let rr = r + 1; rr < rows.length; rr++) {
@@ -389,9 +395,11 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   layout.columns.sort((a, b) => a.col - b.col);
   if (got?.length) return done(got.some((l) => l.kind === "movement") ? "trial-balance" : "columns", got);
   layout.columns = [];
+  // A ledger (account headings over dated lines) before a list: its description column would otherwise pass for accounts.
+  const ledger = extractLedger(g, rows, num, layout, ov.dateOrder);
+  if (ledger && ledger.length >= 2) return done("ledger", ledger);
   const long = extractLong(g, rows, num, layout, ov.dateOrder);
   if (long?.length) return done("list", long);
-  const ledger = extractLedger(g, rows, num, layout, ov.dateOrder);
   if (ledger?.length) return done("ledger", ledger);
   issues.warnings.push(NOTHING_FOUND(g.name));
   return [];

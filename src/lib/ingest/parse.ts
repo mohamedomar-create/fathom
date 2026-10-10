@@ -117,6 +117,8 @@ export function parseDay(v: Cell, order: DateOrder = "dmy"): string | null {
 }
 const validDay = (y: number, m: number, d: number) => (m >= 1 && m <= 12 && d >= 1 && d <= new Date(Date.UTC(y, m, 0)).getUTCDate() ? `${y}-${pad(m)}-${pad(d)}` : null);
 
+const YEAR_ENDED = arRx(/year end(ed|ing)|for the year|fiscal year|السنة المنتهية|السنة المالية المنتهية|العام المنتهي|عن السنة/i);
+const AR_MONTH_YEAR = new RegExp(`(?:${AR_MONTHS.map(([rx]) => rx.source).join("|")})\\s*\\d{4}`, "g");
 const monthsBetween = (a: string, b: string) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5) - +a.slice(5)) + 1;
 const ym = (y: number, m: number) => `${y}-${pad(m)}`;
 
@@ -155,6 +157,12 @@ export function parsePeriodRange(v: Cell, now = new Date()): { end: string; mont
     const endDay = parseDay(nums[1], detectDateOrder(nums).order ?? "dmy") ?? undefined;
     if (d && d[0] <= d[1]) return { end: d[1], months: monthsBetween(d[0], d[1]), ...(endDay ? { endDay } : {}) };
   }
+  // "For the year ended 31/12/2025", "عن السنة المنتهية في 31/12/2025": twelve months to that date.
+  if (nums.length === 1 && YEAR_ENDED.test(normAr(s))) {
+    const d = numericDates(nums);
+    const endDay = parseDay(nums[0], detectDateOrder(nums).order ?? "dmy") ?? undefined;
+    if (d) return { end: d[0], months: 12, ...(endDay ? { endDay } : {}) };
+  }
   if (nums.length === 1 && /\b(as of|as at|at|until|till|to|end(ing)?|closing)\b|حتى|في|إلى|الى|au\b/i.test(s)) {
     const d = numericDates(nums);
     const endDay = parseDay(nums[0], detectDateOrder(nums).order ?? "dmy") ?? undefined;
@@ -165,6 +173,9 @@ export function parsePeriodRange(v: Cell, now = new Date()): { end: string; mont
     const [a, b] = named.map((t) => parsePeriod(t));
     if (a && b && a <= b) return { end: b, months: monthsBetween(a, b) };
   }
+  // Arabic month names: "من يناير 2025 إلى سبتمبر 2025"
+  const arNamed = [...s.matchAll(AR_MONTH_YEAR)].map((m) => parsePeriod(m[0]));
+  if (arNamed.length === 2 && arNamed[0] && arNamed[1] && arNamed[0] <= arNamed[1]) return { end: arNamed[1], months: monthsBetween(arNamed[0], arNamed[1]) };
   let m = s.match(/^(?:Q|الربع\s*)([1-4])[\s\-_/]*(\d{4})$|^(\d{4})[\s\-_/]*Q([1-4])$/i);
   if (m) { const q = +(m[1] ?? m[4]), y = +(m[2] ?? m[3]); return cap(ym(y, q * 3), 3); }
   m = s.match(/^H([12])[\s\-_/]*(\d{4})$|^(\d{4})[\s\-_/]*H([12])$/i);
