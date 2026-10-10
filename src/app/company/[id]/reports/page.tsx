@@ -23,7 +23,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div><div className="label">Reports</div><h1 className="text-3xl font-light">Management reports</h1>
           <p className="text-mute">Branded A4 reports with commentary — download as PDF or share a link.</p></div>
-        {canEdit && <form action={create}><button disabled={!last} className="flex items-center gap-1.5 rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</button></form>}
+        {canEdit && <form action={create}><button disabled={!last} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</button></form>}
       </div>
       {!last && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-sm">Add financial data first (Settings → Source Data).</p>}
       <table className="tbl text-sm">
@@ -31,7 +31,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
         <tbody>
           {(reports ?? []).map((r) => (
             <tr key={r.id} className="row">
-              <td><Link href={`/company/${id}/reports/${r.id}`} className="flex items-center gap-2 font-medium hover:underline"><FileText className="h-4 w-4 text-green-d" />{r.title}</Link></td>
+              <td><Link href={`/company/${id}/reports/${r.id}`} className="flex items-center gap-2 font-medium hover:underline"><FileText className="h-4 w-4 text-brand-d" />{r.title}</Link></td>
               <td>{windowFor({ type: r.period_type as PeriodType, end: r.period_end }, c?.fy_start_month ?? 1).label}</td>
               <td><span className={r.status === "published" ? "rounded bg-green-bg px-2 py-0.5 text-xs text-green-d" : "rounded bg-band px-2 py-0.5 text-xs text-mute"}>{r.status === "published" ? "Published" : "Draft"}</span></td>
               <td className="text-mute">{new Date(r.updated_at).toLocaleDateString("en-GB", { dateStyle: "medium" })}</td>

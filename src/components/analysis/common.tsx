@@ -21,10 +21,10 @@ export function MoneyTile({ label, value, testId }: { label: string; value: numb
 }
 
 export function Notes({ findings, comment, title = "Analyst notes" }: { findings: Finding[]; comment?: string; title?: string }) {
-  if (comment) return <div className="my-5 border-l-[3px] border-green bg-band px-4 py-3 text-[13px] whitespace-pre-line">{comment}</div>;
+  if (comment) return <div className="my-5 border-l-[3px] border-brand bg-band px-4 py-3 text-[13px] whitespace-pre-line">{comment}</div>;
   if (!findings.length) return null;
   return (
-    <div className="my-5 border-l-[3px] border-green bg-band px-4 py-3 text-[13px]">
+    <div className="my-5 border-l-[3px] border-brand bg-band px-4 py-3 text-[13px]">
       <div className="label mb-1">{title}</div>
       {findings.slice(0, 3).map((f) => (
         <div key={f.title} className="py-0.5"><b className="font-semibold">{f.title}.</b> {f.text}</div>

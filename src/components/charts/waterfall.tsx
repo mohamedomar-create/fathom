@@ -42,7 +42,7 @@ export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string
               {Math.abs(r.value) >= 0.5 && <motion.div
                 initial={st ? false : { scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: 0.5, delay: i * 0.03 }}
                 className="absolute inset-y-[2px] origin-left rounded-[2px] group-hover:brightness-95"
-                style={{ left: `${x0}%`, width: `max(${x1 - x0}%, 2px)`, background: pos ? "#7CB46B" : "#D9343A", opacity: total ? 1 : 0.9 }}
+                style={{ left: `${x0}%`, width: `max(${x1 - x0}%, 2px)`, background: pos ? "#2E9E6A" : "#D9343A", opacity: total ? 1 : 0.9 }}
               />}
               <span className={`num absolute top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] ${inside ? "font-semibold text-white" : Math.abs(r.value) < 0.5 ? "text-mute" : pos ? "text-green-d" : "text-red"}`}
                 style={inside ? { left: `calc(${x0}% + 8px)` } : labelRight ? { left: `calc(${x1}% + 6px)` } : { right: `calc(${100 - x0}% + 6px)` }}>

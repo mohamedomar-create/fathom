@@ -19,7 +19,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
   ];
   return (
     <Dialog onOpenChange={(o) => { if (!o) { setSrc(null); setErr(null); } }}>
-      <DialogTrigger className="flex items-center gap-1.5 rounded bg-green-d px-4 py-2 font-medium text-white hover:brightness-110" data-testid="add-company"><Plus className="h-4 w-4" />Add company</DialogTrigger>
+      <DialogTrigger className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white hover:brightness-110" data-testid="add-company"><Plus className="h-4 w-4" />Add company</DialogTrigger>
       <DialogContent title="Add a company" className="w-[min(720px,calc(100vw-24px))] p-6">
         <div className="label">Company source system</div>
         <h2 className="mb-5 text-2xl font-light">{src ? "Company details" : "Where is the data coming from?"}</h2>
@@ -27,8 +27,8 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
           <div className="grid gap-3 sm:grid-cols-3">
             {tiles.map((t) => (
               <button key={t.k} disabled={pending} onClick={() => t.k === "demo" ? start(async () => { const r = await createDemoCompany(); if (r?.error) setErr(r.error); }) : setSrc(t.k)}
-                className="rounded-lg border border-line p-4 text-left transition hover:border-green hover:shadow-sm disabled:opacity-50">
-                <div className="mb-3 text-green-d">{t.icon}</div>
+                className="rounded-lg border border-line p-4 text-left transition hover:border-brand hover:shadow-sm disabled:opacity-50">
+                <div className="mb-3 text-brand-d">{t.icon}</div>
                 <div className="font-medium">{t.title}</div>
                 <div className="mt-1 text-xs text-mute">{t.text}</div>
               </button>
@@ -38,20 +38,20 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
           <form action={(fd) => start(async () => { setErr(null); const r = await createCompany(fd); if (r?.error) setErr(r.error); })} className="grid gap-4 sm:grid-cols-2">
             <input type="hidden" name="source" value={src} />
             <label className="sm:col-span-2"><span className="label mb-1 block">Company name</span>
-              <input name="name" required maxLength={160} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" placeholder="e.g. Nile Medical Supplies" /></label>
+              <input name="name" required maxLength={160} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" placeholder="e.g. Nile Medical Supplies" /></label>
             {orgs.length > 1 && (
               <label className="sm:col-span-2"><span className="label mb-1 block">Organisation</span>
                 <select name="org_id" className="w-full rounded border border-line px-3 py-2">{orgs.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label>
             )}
             <label><span className="label mb-1 block">Currency</span>
-              <input name="currency" defaultValue="EGP" maxLength={6} className="w-full rounded border border-line px-3 py-2 uppercase outline-none focus:border-green" /></label>
+              <input name="currency" defaultValue="EGP" maxLength={6} className="w-full rounded border border-line px-3 py-2 uppercase outline-none focus:border-brand" /></label>
             <label><span className="label mb-1 block">Financial year starts</span>
               <select name="fy_start_month" defaultValue="1" className="w-full rounded border border-line px-3 py-2">{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></label>
             <label><span className="label mb-1 block">Corporate tax rate %</span>
-              <input name="tax_rate" type="number" step="0.1" defaultValue="22.5" className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" /></label>
+              <input name="tax_rate" type="number" step="0.1" defaultValue="22.5" className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" /></label>
             <div className="flex items-end justify-end gap-2 sm:col-span-2">
               <button type="button" onClick={() => setSrc(null)} className="rounded px-4 py-2 text-mute hover:bg-band">Back</button>
-              <button disabled={pending} className={cn("rounded bg-green-d px-4 py-2 font-medium text-white", pending && "opacity-60")}>{pending ? "Creating…" : "Create company"}</button>
+              <button disabled={pending} className={cn("rounded bg-brand-d px-4 py-2 font-medium text-white", pending && "opacity-60")}>{pending ? "Creating…" : "Create company"}</button>
             </div>
           </form>
         )}

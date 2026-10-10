@@ -29,7 +29,9 @@ export function companySheets(d: CompanyExport): Sheet[] {
     ["Corporate tax rate", c.tax_rate], ["Industry", c.industry], ["Source", c.source], ["Data version", c.data_version],
     ["Last updated", day(c.last_synced_at)], ["Exported", d.exportedAt],
   ];
-  const kpis = Object.entries(obj(c.kpi_config));
+  const kpis = Object.entries(obj(c.kpi_config)).filter(([k]) => k !== "economy");
+  const econ = Object.entries(obj(obj(c.kpi_config).economy)).filter(([, v]) => v !== null && v !== undefined);
+  if (econ.length) { company.push([], ["Economic assumptions"]); for (const [k, v] of econ) company.push([k, cell(v)]); }
   if (kpis.length) {
     company.push([], ["KPI", "Active", "Importance", "Target", "Alert on", "Alert threshold"]);
     for (const [k, v] of kpis) { const o = obj(v); company.push([k, cell(o.active), cell(o.importance), cell(o.target), cell(o.alert_active), cell(o.alert_threshold)]); }

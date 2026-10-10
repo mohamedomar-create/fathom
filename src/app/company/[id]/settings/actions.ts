@@ -7,6 +7,7 @@ import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
+import { ECONOMY_KEY } from "@/lib/company/load";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -194,8 +195,45 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
   if (!parsed.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid KPI settings" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: parsed.data as Json }, { count: "exact" }).eq("id", companyId);
+  // The economic assumptions share this column; keep them when the KPI settings are saved.
+  const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+  const economy = ((row?.kpi_config ?? {}) as Record<string, unknown>)[ECONOMY_KEY];
+  const next: Record<string, unknown> = { ...parsed.data };
+  delete next[ECONOMY_KEY];
+  if (economy !== undefined) next[ECONOMY_KEY] = economy;
+  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveKpiConfig") };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}
+
+const Rate = z.number().finite().nullable().optional();
+const AssumptionsSchema = z.object({
+  inflation: Rate.refine((v) => v == null || (v > -50 && v < 1000), "Inflation must be a yearly % between -50 and 1000"),
+  fxStart: Rate.refine((v) => v == null || (v > 0 && v < 100000), "Exchange rates must be positive"),
+  fxEnd: Rate.refine((v) => v == null || (v > 0 && v < 100000), "Exchange rates must be positive"),
+  importShare: Rate.refine((v) => v == null || (v >= 0 && v <= 100), "Imported share must be 0 to 100%"),
+  assetAge: Rate.refine((v) => v == null || (v >= 0 && v <= 100), "Asset age must be 0 to 100 years"),
+  rate: Rate.refine((v) => v == null || (v >= 0 && v < 200), "Borrowing rate must be 0 to 200%"),
+  principal12m: Rate.refine((v) => v == null || v >= 0, "Repayments cannot be negative"),
+  tenor: Rate.refine((v) => v == null || (v > 0 && v <= 40), "Tenor must be 1 to 40 years"),
+}).strict();
+
+/** Inflation, exchange rates and borrowing terms used by the bank-readiness and real-profit views. */
+export async function saveAssumptions(companyId: string, input: z.input<typeof AssumptionsSchema>): Promise<{ ok: boolean; error?: string }> {
+  const v = AssumptionsSchema.safeParse(input);
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "Invalid figures" };
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company" };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+  if (e1) return { ok: false, error: dbError(e1, "saveAssumptions") };
+  if (!row) return { ok: false, error: "You do not have permission to change this." };
+  const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined));
+  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [ECONOMY_KEY]: clean };
+  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
+  if (error) return { ok: false, error: dbError(error, "saveAssumptions") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };

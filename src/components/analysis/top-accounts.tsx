@@ -26,7 +26,7 @@ export function TopAccounts({ title, classes, periods, total }: { title: string;
               <tr key={r.id}>
                 <td>
                   <div className="text-xs text-mute">{r.code}</div>{r.name}
-                  <div className="mt-1 h-1.5 rounded bg-band"><div className="h-1.5 rounded bg-green" style={{ width: `${(Math.abs(r.v) / max) * 100}%` }} /></div>
+                  <div className="mt-1 h-1.5 rounded bg-band"><div className="h-1.5 rounded bg-brand" style={{ width: `${(Math.abs(r.v) / max) * 100}%` }} /></div>
                 </td>
                 <td>{money(r.v, c.settings.currency)}</td>
                 <td>{total ? `${((r.v / total) * 100).toFixed(1)}%` : "–"}</td>

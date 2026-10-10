@@ -23,7 +23,7 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
   return (
     <details open={attention} className="mb-5 rounded-md border border-line" data-testid="file-reading">
       <summary className="flex cursor-pointer items-center gap-2 px-4 py-3 text-sm">
-        <FileSearch className="h-4 w-4 text-green-d" />
+        <FileSearch className="h-4 w-4 text-brand-d" />
         <span className="font-medium">How the file was read</span>
         <span className="text-mute">· {layouts.filter((l) => !(l.kind === "skipped" && l.source)).map((l) => `${l.sheet}: ${figures(l)}`).join(" · ")}</span>
       </summary>

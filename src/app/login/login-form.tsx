@@ -3,7 +3,8 @@ import Link from "next/link";
 import { safeNext } from "@/lib/safe-redirect";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
-import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
+import { APP_TAGLINE } from "@/lib/brand";
+import { Logo } from "@/components/shell/logo";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/cn";
 import { MIN_PASSWORD, PASSWORD_HINT, passwordProblem } from "@/lib/password";
@@ -69,16 +70,16 @@ export function LoginForm() {
   return (
     <div className="grid min-h-screen lg:grid-cols-2">
       <div className="hidden flex-col justify-between bg-bar p-12 text-white lg:flex">
-        <Link href="/" className="text-lg font-semibold">{APP_NAME}</Link>
+        <Link href="/" className="text-lg"><Logo tone="dark" /></Link>
         <div>
           <h2 className="max-w-md text-4xl font-light leading-tight">See what your Odoo numbers are really saying.</h2>
           <p className="mt-4 max-w-md text-[#bbb]">{APP_TAGLINE}. KPIs against targets, breakeven, cash-flow waterfalls, growth and goalseek — in minutes, not spreadsheets.</p>
         </div>
-        <Link href="/demo/summary" className="text-sm text-green hover:underline">Explore the demo company →</Link>
+        <Link href="/demo/summary" className="text-sm text-brand hover:underline">Explore the demo company →</Link>
       </div>
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm" data-testid="login-form">
-          <Link href="/" className="mb-8 block text-lg font-semibold lg:hidden">{APP_NAME}</Link>
+          <Link href="/" className="mb-8 block text-lg lg:hidden"><Logo /></Link>
           <div className="mb-6 flex gap-1 rounded-md bg-band p-1 text-sm">
             {(["signin", "signup"] as Mode[]).map((m) => (
               <button type="button" key={m} onClick={() => { setMode(m); setMsg(null); }}
@@ -97,7 +98,7 @@ export function LoginForm() {
           <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? MIN_PASSWORD : undefined} />
           {mode === "signup" && <p className="-mt-3 mb-4 text-xs text-mute">{PASSWORD_HINT}</p>}
           {msg && <p className={cn("mb-3 rounded px-3 py-2 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">{msg.text}</p>}
-          <button disabled={busy} className="w-full rounded bg-green-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">
+          <button disabled={busy} className="w-full rounded bg-brand-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </button>
           {mode === "signup" && (
@@ -112,7 +113,7 @@ export function LoginForm() {
             </div>
           )}
           <p className="mt-8 text-center text-xs text-mute">
-            Just looking? <Link href="/demo/summary" className="text-green-d underline">Open the demo company</Link>
+            Just looking? <Link href="/demo/summary" className="text-brand-d underline">Open the demo company</Link>
           </p>
         </form>
       </div>
@@ -124,7 +125,7 @@ function Field({ label, value, onChange, ...rest }: { label: string; value: stri
   return (
     <label className="mb-4 block">
       <span className="label mb-1 block">{label}</span>
-      <input {...rest} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" />
+      <input {...rest} value={value} onChange={(e) => onChange(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" />
     </label>
   );
 }

@@ -26,9 +26,11 @@ const BS_RULES: [ClassKey, RegExp][] = ([
   ["other_ca", /insurance|l ?g margin|margin deposit|letters? of guarantee|guarantee deposit|tender|certificates?|staff loans?|employee loans?|vat paid|input vat|vat receivable|with?holding tax|تأمين(ات)? (ابتدائي|نهائي)|خطابات ضمان|ضريبة (الخصم|خصم) (من )?المنبع/],
   ["intangibles", /software|intangible|goodwill|برمجيات/],
   ["fixed_assets", /\bacc(um\w*)? dep\w*|accumulated depreciation|^assets? (?!held)|lap ?tops?|mobile phones?|printers?|service cent(er|re)|improvements?|lease ?hold|مجمع (ال)?(إهلاك|اهلاك)/],
-  ["tax_liab", /(vat|sales tax|income tax|corporate tax|payroll tax(es)?|with?holding|gst|social insurance|trad+ing tax|stamp (tax|duty)|tax(es)?)( \w+)? (payable|liabilit|due|control)|tax payable|tax received|tax paid|with?holding tax|trad+ing tax|social insurance|ضريبة القيمة المضافة|ضرائب (مستحقة|دائنة)|تأمينات اجتماعية|التأمينات الاجتماعية|مصلحة الضرائب|كسب العمل|الدمغة/],
-  ["std", /overdraft|facilit(y|ies)|contact loan|\bloans?\b|credit card|short.?term (loan|debt|borrowing|facilit)|current (portion|maturit)|credit card (payable|liab)|line of credit|(bank|loans?) payable|قروض قصيرة|سحب على المكشوف|بنوك دائنة|تسهيلات/],
+  ["tax_liab", /(vat|sales tax|income tax|corporate tax|payroll tax(es)?|with?holding|gst|social insurance|trad+ing tax|stamp (tax|duty)|tax(es)?)( \w+)? (payable|liabilit|due|control)|tax payable|tax received|tax paid|with?holding tax|trad+ing tax|social insurance|ضريبة القيمة المضافة|ضرائب (مستحقة|دائنة)|(ضريبة|ضرائب).*مستحق|تأمينات اجتماعية|التأمينات الاجتماعية|مصلحة الضرائب|كسب العمل|الدمغة/],
+  // "Current portion of long-term loans" is due within a year; any other long-term loan before the generic "loans" word.
+  ["std", /current (portion|maturit)/],
   ["ltd", /long.?term (loan|debt|borrowing|liabilit)|mortgage|bonds? payable|term loan|notes payable.*long|قروض طويلة/],
+  ["std", /overdraft|facilit(y|ies)|contact loan|\bloans?\b|credit card|short.?term (loan|debt|borrowing|facilit)|current (portion|maturit)|credit card (payable|liab)|line of credit|(bank|loans?) payable|قروض قصيرة|سحب على المكشوف|بنوك دائنة|تسهيلات/],
   ["other_ncl", /deferred tax|lease liabilit|non.?current (liabilit|provision)|end of service|severance|مكافأة نهاية|التزامات طويلة/],
   ["other_cl", /accrued|accruals?|deferred (revenue|income)|unearned|customer (deposit|advance)|advances? from|provision|salaries payable|wages payable|due to|other (current )?liabilit|مستحق(ات)?|مصروفات مستحقة|إيرادات مقدمة|مخصص|دائنون متنوعون|أرصدة دائنة/],
   ["ap", /payables?|creditors?|suppliers?|vendors?|موردين|موردون|دائنون|أوراق دفع/],
@@ -40,7 +42,7 @@ const BS_RULES: [ClassKey, RegExp][] = ([
   ["other_ca", /prepaid|prepayment|advance|deposits? (paid|with)|other (current )?assets?|accrued income|due from|input vat|vat receivable|outstanding (receipts|payments)|مصروفات مقدمة|دفعات مقدمة|سلف|تأمينات لدى|أرصدة مدينة|عهد/],
   ["intangibles", /intangible|goodwill|patent|trademark|software|licen[cs]e|development cost|شهرة|برمجيات|علامة تجارية/],
   ["investments", /investments?|long.?term (deposit|receivable)|loans? to|استثمارات/],
-  ["fixed_assets", /property|plant|equipment|furniture|vehicles?|machinery|buildings?|land|fixed assets?|accumulated depreciation|leasehold|computers?|fit.?out|أصول ثابتة|معدات|سيارات|وسائل (ال)?نقل|مباني|أراضي|مجمع (إهلاك|اهلاك)|آلات|أثاث/],
+  ["fixed_assets", /property|plant|equipment|furniture|vehicles?|machinery|buildings?|land|fixed assets?|accumulated depreciation|leasehold|computers?|fit.?out|(ال)?أصول (ال)?ثابتة|معدات|سيارات|وسائل (ال)?نقل|مباني|أراضي|مجمع (إهلاك|اهلاك)|آلات|أثاث/],
   ["cash", /cash|bank|banque|petty|treasury|safe|liquidity transfer|\bacc(ount)? ?(no|#|number)|\biban\b|نقدية|نقدي|بنك|خزينة|حساب جاري لدى/],
 ] as [ClassKey, RegExp][]).map(([k, rx]) => [k, arRx(rx)]);
 const ASSET = new Set<ClassKey>(["cash", "ar", "inventory", "wip", "other_ca", "fixed_assets", "intangibles", "investments"]);
@@ -56,10 +58,12 @@ function sideOf(code: string, chart: ChartHints = {}): ((c: ClassKey) => boolean
 }
 /** Lower-case text with punctuation as spaces: "Tax (VAT) Payable" → "tax vat payable", "Acc. Depreciation - Printer" → "acc depreciation printer". */
 const words = (s: string) => normAr(s.toLowerCase()).replace(/[()[\]{}_.,:;\-–/\\|،؛]+/g, " ").replace(/\s+/g, " ").trim();
+/** Names that describe an amount owed, never a cost or income: "Income tax payable", "Interest payable", "Accrued expenses". */
+const OWED = arRx(/payable|liabilit|accrued|accruals?|\bdue (to|for)\b|مستحق/);
 const AMBIGUOUS = arRx(/^(adjustments?|miscellaneous|misc|other|others|suspense|general|تسويات|متنوعة|أخرى|اخرى)$/);
 
 const ALWAYS_PL_FIRST = /bank (charge|fee)s?|cash (discount|short)/;
-const BS_HEADINGS = arRx(/asset|liabilit|equity|capital|shareholder|owner|الأصول|الاصول|الخصوم|الالتزامات|حقوق/);
+const BS_HEADINGS = arRx(/asset|liabilit|equity|capital|shareholder|owner|financial position|balance sheet|المركز المالي|الميزانية|الأصول|الاصول|الخصوم|الالتزامات|حقوق/);
 const PL_HEADINGS = arRx(/income|revenue|sales|expense|cost|turnover|profit|الإيرادات|المصروفات|المصاريف|تكلفة|الدخل/);
 
 export interface Classification { cls: ClassKey | null; conf: number; why: string }
@@ -142,8 +146,9 @@ export function classify(label: string, section: string, stmt: "PL" | "BS" | nul
     if (dep && (st === "PL" || inCos || inExp || !/accum|\bacc\b|مجمع/.test(low)))
       return { cls: inCos || (chart.fiveIsCos && !section && code.trim()[0] === "5") ? "cos_depreciation" : "exp_depreciation", conf: 0.9, why: "depreciation" };
     const unifiedPL = chart.unified && (g2[0] === "3" || g2[0] === "4");
+    const owed = st === null && OWED.test(low);
     for (const [cls, rx] of PL_RULES) {
-      if (!rx.test(low)) continue;
+      if (owed || !rx.test(low)) continue;
       // Unified chart: an expense code (3xxx) is never revenue, and a revenue code (4xxx) never a cost, whatever a word suggests.
       if (unifiedPL && g2[0] === "3" && ["revenue", "other_income", "interest_income"].includes(cls)) continue;
       if (unifiedPL && g2[0] === "4" && !["revenue", "other_income", "interest_income", "adjustments"].includes(cls)) continue;
@@ -158,7 +163,7 @@ export function classify(label: string, section: string, stmt: "PL" | "BS" | nul
       if (g2[0] === "4") return { cls: "other_income", conf: 0.6, why: `unified chart group ${g2}: other revenue (check)` };
       return { cls: VARIABLE_HINT.test(low) ? "exp_variable" : "exp_fixed", conf: 0.65, why: `unified chart group ${g2}: expense (check)` };
     }
-    if (st === null && /expenses?\b|\bexp\b|مصروفات|مصاريف|overheads?/.test(low))
+    if (st === null && !owed && /expenses?\b|\bexp\b|مصروفات|مصاريف|overheads?/.test(low))
       return { cls: VARIABLE_HINT.test(low) ? "exp_variable" : "exp_fixed", conf: 0.5, why: "expense wording (check)" };
     if (st === "PL" && !inCos && !inExp && !inRev && !section) {
       const d = code.trim()[0];
@@ -211,7 +216,7 @@ export function classFromOdooType(type: string, name: string): Classification {
     }
     case "asset_non_current": {
       if (arRx(/intangible|goodwill|software|licen|patent|trademark|شهرة|برمجيات/).test(low)) return { cls: "intangibles", conf: 0.95, why: "Odoo type + name" };
-      if (arRx(/property|plant|equipment|furniture|vehicle|machinery|building|أصول ثابتة|معدات/).test(low)) return { cls: "fixed_assets", conf: 0.9, why: "Odoo type + name" };
+      if (arRx(/property|plant|equipment|furniture|vehicle|machinery|building|(ال)?أصول (ال)?ثابتة|معدات/).test(low)) return { cls: "fixed_assets", conf: 0.9, why: "Odoo type + name" };
       return { cls: "investments", conf: 0.85, why: "Odoo type" };
     }
     case "liability_payable": return { cls: "ap", conf: 1, why: "Odoo type" };

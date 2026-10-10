@@ -27,8 +27,8 @@ export function SettingsNav() {
         const href = `${c.basePath}/settings/${i.href}`;
         const on = path === href;
         return (
-          <Link prefetch={false} key={i.href} href={href} className={cn("flex shrink-0 items-start gap-3 rounded-md px-3 py-2 hover:bg-band", on && "bg-green-bg/70")}>
-            <span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", on ? "bg-green-d text-white" : "bg-[#e8e8e4] text-mute")}>{i.n}</span>
+          <Link prefetch={false} key={i.href} href={href} className={cn("flex shrink-0 items-start gap-3 rounded-md px-3 py-2 hover:bg-band", on && "bg-brand-bg/70")}>
+            <span className={cn("mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold", on ? "bg-brand-d text-white" : "bg-[#e8e8e4] text-mute")}>{i.n}</span>
             <span><span className="block text-sm font-medium">{i.label}</span><span className="hidden text-xs text-mute md:block">{i.sub}</span></span>
           </Link>
         );

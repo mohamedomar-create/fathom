@@ -85,7 +85,7 @@ export function LineChart({
           })}
         </g>
         {marks?.map((ok, i) => ok === null ? null : (
-          <text key={i} x={X(i)} y={h - 26} textAnchor="middle" fontSize={11} fill={ok ? "#4F8A41" : "#D9343A"}>{ok ? "✓" : "✕"}</text>
+          <text key={i} x={X(i)} y={h - 26} textAnchor="middle" fontSize={11} fill={ok ? "#237A51" : "#D9343A"}>{ok ? "✓" : "✕"}</text>
         ))}
         {hover !== null && (
           <g pointerEvents="none">

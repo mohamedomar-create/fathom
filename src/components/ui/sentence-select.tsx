@@ -24,9 +24,9 @@ export function SentenceSelect<T extends string>({
             key={o.value}
             disabled={o.disabled}
             onClick={() => { onChange(o.value); setOpen(false); }}
-            className={cn("flex w-full items-start gap-2 rounded px-2.5 py-1.5 text-left text-sm hover:bg-band disabled:opacity-40", o.value === value && "bg-green-bg/60")}
+            className={cn("flex w-full items-start gap-2 rounded px-2.5 py-1.5 text-left text-sm hover:bg-band disabled:opacity-40", o.value === value && "bg-brand-bg/60")}
           >
-            <Check className={cn("mt-0.5 h-4 w-4 shrink-0 text-green-d", o.value !== value && "invisible")} />
+            <Check className={cn("mt-0.5 h-4 w-4 shrink-0 text-brand-d", o.value !== value && "invisible")} />
             <span>
               <span className="block">{o.label}</span>
               {o.hint && <span className="block text-xs text-mute">{o.hint}</span>}

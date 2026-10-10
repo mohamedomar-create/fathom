@@ -66,5 +66,7 @@ export function demoCompany(): CompanyBundle {
     lastUpdated: "2026-10-02T09:00:00Z",
     orgName: "Demo Advisory",
     notes: ["Demo company built from synthetic numbers that follow the app's own formulas."],
+    // Illustrative rates for the demo only; real companies enter their own (CAPMAS inflation, CBE exchange rates).
+    assumptions: { inflation: 20, fxStart: 49, fxEnd: 48.5, importShare: 40, assetAge: 3, rate: 24, tenor: 5, example: true },
   };
 }

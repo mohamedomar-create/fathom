@@ -22,7 +22,7 @@ const AUTO_SECTIONS: Partial<Record<SectionKey, Finding["section"][]>> = { kpis:
 export function ReportDocument({ input }: { input: ReportInput }) {
   const a = useMemo(() => analyze(input.months, input.sel, input.settings, { alerts: input.alerts }), [input.months, input.sel, input.settings, input.alerts]);
   const cur = input.settings.currency;
-  const brand = input.org.brandColour ?? "#4F8A41";
+  const brand = input.org.brandColour ?? "#0B6E70";
   const enabled = input.sections.filter((s) => s.enabled).map((s) => s.key);
   const comment = (k: SectionKey) => {
     const key = SECTION_COMMENT[k];
@@ -133,7 +133,7 @@ function Summary({ input, a, cur }: { input: ReportInput; a: Analysis; cur: stri
         {hero.map(([l, v, dd, sp, neg]) => (
           <div key={l} className={cn("border-t-[3px] pt-1.5", neg ? "border-red" : "border-green")}>
             <div className="label">{l}</div><div className="num whitespace-nowrap text-[17px]">{v}</div><div className="text-[11px]">{dd}</div>
-            <Sparkline values={sp} w={120} h={28} color={neg ? "#D9343A" : "#7CB46B"} />
+            <Sparkline values={sp} w={120} h={28} color={neg ? "#D9343A" : "#2E9E6A"} />
           </div>
         ))}
       </div>

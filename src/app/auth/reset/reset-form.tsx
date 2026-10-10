@@ -30,10 +30,10 @@ export function ResetForm() {
       <h1 className="mb-6 text-2xl font-light">Set a new password</h1>
       <label className="mb-4 block"><span className="label mb-1 block">New password</span>
         <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={MIN_PASSWORD} autoComplete="new-password"
-          className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" />
+          className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" />
         <span className="mt-1 block text-xs text-mute">{PASSWORD_HINT}</span></label>
       {msg && <p className={cn("mb-3 rounded px-3 py-2 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">{msg.text}</p>}
-      <button disabled={busy} className="w-full rounded bg-green-d px-4 py-2.5 font-medium text-white disabled:opacity-60">{busy ? "Saving…" : "Save password"}</button>
+      <button disabled={busy} className="w-full rounded bg-brand-d px-4 py-2.5 font-medium text-white disabled:opacity-60">{busy ? "Saving…" : "Save password"}</button>
       <p className="mt-6 text-center text-sm"><Link href="/login" className="text-mute underline">Back to sign in</Link></p>
     </form>
   );

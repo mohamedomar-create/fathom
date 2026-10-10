@@ -88,7 +88,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
       <aside className="no-print space-y-5 xl:sticky xl:top-16 xl:h-[calc(100vh-80px)] xl:overflow-auto xl:pr-2">
         <div>
           <label className="label mb-1 block">Report title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-green" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <label><span className="label mb-1 block">Period</span>
@@ -101,14 +101,14 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
             </select></label>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!demo && <button onClick={save} disabled={!!busy} className="flex items-center gap-1.5 rounded bg-green-d px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save</button>}
-          <button onClick={pdf} disabled={!!busy} className="flex items-center gap-1.5 rounded border border-green-d px-3 py-2 text-sm font-medium text-green-d disabled:opacity-60" data-testid="download-pdf">{busy === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download PDF</button>
+          {!demo && <button onClick={save} disabled={!!busy} className="flex items-center gap-1.5 rounded bg-brand-d px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save</button>}
+          <button onClick={pdf} disabled={!!busy} className="flex items-center gap-1.5 rounded border border-brand-d px-3 py-2 text-sm font-medium text-brand-d disabled:opacity-60" data-testid="download-pdf">{busy === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download PDF</button>
           <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm"><Printer className="h-4 w-4" />Print</button>
         </div>
         {!demo && (
           <div className="rounded-md border border-line p-3 text-sm">
             <div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Globe className="h-4 w-4" />Share link</span>
-              <button onClick={() => publish(!token)} disabled={!!busy} className={cn("rounded px-2.5 py-1 text-xs font-medium", token ? "bg-band" : "bg-green-d text-white")}>{token ? "Stop sharing" : "Publish report"}</button></div>
+              <button onClick={() => publish(!token)} disabled={!!busy} className={cn("rounded px-2.5 py-1 text-xs font-medium", token ? "bg-band" : "bg-brand-d text-white")}>{token ? "Stop sharing" : "Publish report"}</button></div>
             {!token && (
               <label className="mb-2 flex items-center gap-2 text-xs text-mute">Link works
                 <select value={expiry} onChange={(e) => setExpiry(Number(e.target.value) as 0 | 30 | 90)} className="rounded border border-line px-1 py-0.5" data-testid="link-expiry">
@@ -135,18 +135,18 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
               return (
                 <div key={s.key} className={cn("rounded border border-line", !s.enabled && "opacity-55")}>
                   <div className="flex items-center gap-1.5 px-2 py-1.5 text-sm">
-                    <button onClick={() => setSections((x) => x.map((y) => (y.key === s.key ? { ...y, enabled: !y.enabled } : y)))} aria-label={s.enabled ? `Hide ${meta.label}` : `Show ${meta.label}`}>{s.enabled ? <Eye className="h-4 w-4 text-green-d" /> : <EyeOff className="h-4 w-4 text-mute" />}</button>
+                    <button onClick={() => setSections((x) => x.map((y) => (y.key === s.key ? { ...y, enabled: !y.enabled } : y)))} aria-label={s.enabled ? `Hide ${meta.label}` : `Show ${meta.label}`}>{s.enabled ? <Eye className="h-4 w-4 text-brand-d" /> : <EyeOff className="h-4 w-4 text-mute" />}</button>
                     <span className="flex-1">{meta.label}</span>
-                    {ck && <button onClick={() => setEditing(editing === ck ? null : ck)} className={cn("rounded px-1.5 text-xs", comments[ck] ? "bg-green-bg text-green-d" : "text-mute hover:bg-band")}>{comments[ck] ? "Comment ✓" : "Comment"}</button>}
+                    {ck && <button onClick={() => setEditing(editing === ck ? null : ck)} className={cn("rounded px-1.5 text-xs", comments[ck] ? "bg-brand-bg text-brand-d" : "text-mute hover:bg-band")}>{comments[ck] ? "Comment ✓" : "Comment"}</button>}
                     <button onClick={() => move(i, -1)} aria-label="Move up" className="text-mute hover:text-ink"><ArrowUp className="h-3.5 w-3.5" /></button>
                     <button onClick={() => move(i, 1)} aria-label="Move down" className="text-mute hover:text-ink"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div>
                   {ck && editing === ck && (
                     <div className="border-t border-line p-2">
-                      <textarea rows={5} value={comments[ck] ?? ""} onChange={(e) => setComments((x) => ({ ...x, [ck]: e.target.value }))} placeholder="Leave empty to use the automatic analyst notes" className="w-full rounded border border-line px-2 py-1.5 text-[13px] outline-none focus:border-green" />
+                      <textarea rows={5} value={comments[ck] ?? ""} onChange={(e) => setComments((x) => ({ ...x, [ck]: e.target.value }))} placeholder="Leave empty to use the automatic analyst notes" className="w-full rounded border border-line px-2 py-1.5 text-[13px] outline-none focus:border-brand" />
                       <div className="mt-1.5 flex gap-2">
                         {c.aiEnabled && !demo && <button onClick={() => ai(ck)} disabled={!!busy} className="flex items-center gap-1 rounded bg-[#efe9fb] px-2 py-1 text-xs text-[#5b3aa8]">{busy === `ai:${ck}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}Write with AI</button>}
-                        <button onClick={() => saveComment(ck)} disabled={!!busy} className="ml-auto rounded bg-green-d px-2.5 py-1 text-xs text-white">{demo ? "Done" : "Save comment"}</button>
+                        <button onClick={() => saveComment(ck)} disabled={!!busy} className="ml-auto rounded bg-brand-d px-2.5 py-1 text-xs text-white">{demo ? "Done" : "Save comment"}</button>
                       </div>
                     </div>
                   )}
