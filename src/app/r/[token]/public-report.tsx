@@ -1,6 +1,8 @@
 "use client";
 import { Download, Loader2, Printer } from "lucide-react";
+import Link from "next/link";
 import { useState } from "react";
+import { APP_NAME } from "@/lib/brand";
 import { ReportDocument } from "@/components/report/report-document";
 import { downloadReportPdf } from "@/lib/report/export";
 import type { ReportInput } from "@/lib/report/types";
@@ -20,6 +22,9 @@ export function PublicReport({ input, token }: { input: ReportInput; token: stri
       </div>
       {err && <p className="no-print mx-auto mt-3 max-w-xl rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       <div className="py-6 print:p-0"><ReportDocument input={input} /></div>
+      <footer className="no-print pb-6 text-center text-xs text-mute">
+        Shared with {APP_NAME} · <Link href="/privacy" className="hover:text-ink">Privacy</Link> · <Link href="/terms" className="hover:text-ink">Terms</Link>
+      </footer>
     </div>
   );
 }

@@ -57,6 +57,9 @@ export type Database = {
       save_company_version: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: Json };
       restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };
       hit_rate_limit: { Args: { p_key: string; p_window_s: number; p_max: number }; Returns: boolean };
+      leave_organisation: { Args: { p_org: string }; Returns: undefined };
+      delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };
+      delete_my_account: { Args: { p_email: string }; Returns: undefined };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

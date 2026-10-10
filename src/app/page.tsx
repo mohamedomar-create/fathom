@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { ArrowRight, Database, FileDown, Gauge, LineChart, ShieldCheck, Sparkles, Telescope, Waves } from "lucide-react";
 import { APP_NAME } from "@/lib/brand";
+import { SiteFooter } from "@/components/shell/site-footer";
+import { AccountDeletedNotice } from "./account-deleted-notice";
 import { LandingPreview } from "./landing-preview";
 
 const FEATURES = [
@@ -15,6 +18,7 @@ const FEATURES = [
 export default function Home() {
   return (
     <div className="min-h-screen bg-white">
+      <Suspense><AccountDeletedNotice /></Suspense>
       <header className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-5">
         <span className="text-lg font-semibold">{APP_NAME}</span>
         <nav className="ml-auto flex items-center gap-2 text-sm">
@@ -63,7 +67,7 @@ export default function Home() {
           <Link href="/login?mode=signup" className="ml-auto rounded bg-ink px-4 py-2 font-medium text-white">Create your account</Link>
         </div>
       </section>
-      <footer className="border-t border-line py-6 text-center text-xs text-mute">© {new Date().getFullYear()} {APP_NAME}</footer>
+      <SiteFooter />
     </div>
   );
 }

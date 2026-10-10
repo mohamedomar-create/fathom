@@ -92,3 +92,15 @@ export async function cancelInvite(id: string): Promise<Result> {
   revalidatePath("/admin/people");
   return { ok: true };
 }
+
+/** Deletes the organisation and everything in it. The database checks the caller is an admin and the typed name matches. */
+export async function deleteOrganisation(orgId: string, typedName: string): Promise<Result> {
+  const v = z.object({ orgId: Uuid, typedName: z.string().trim().min(1).max(120) }).safeParse({ orgId, typedName });
+  if (!v.success) return { ok: false, error: "Type the organisation name to confirm." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { error } = await supabase.rpc("delete_organisation", { p_org: v.data.orgId, p_name: v.data.typedName });
+  if (error) return { ok: false, error: dbError(error, "deleteOrganisation") };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}

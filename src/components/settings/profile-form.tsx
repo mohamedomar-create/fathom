@@ -2,12 +2,13 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteCompany, saveProfile } from "@/app/company/[id]/settings/actions";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string> }
 
-export function ProfileForm({ initial, readOnly, canDelete }: { initial: ProfileData; readOnly: boolean; canDelete: boolean }) {
+export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean }) {
   const router = useRouter();
   const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
   const [pending, start] = useTransition();
@@ -18,9 +19,10 @@ export function ProfileForm({ initial, readOnly, canDelete }: { initial: Profile
     setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save" });
     if (r.ok) router.refresh();
   });
-  const del = () => {
-    if (prompt(`Type the company name to delete it permanently:\n${initial.name}`) !== initial.name) return;
-    start(async () => { const r = await deleteCompany(v.id); if (r.ok) router.push("/companies"); else setMsg({ ok: false, text: r.error ?? "Could not delete" }); });
+  const del = async () => {
+    const r = await deleteCompany(v.id);
+    if (!r.ok) return r.error ?? "Could not delete the company.";
+    router.push("/companies");
   };
   const ai = (k: keyof typeof v.ai, label: string, ph: string) => (
     <label className="block"><span className="label mb-1 block">{label}</span>
@@ -53,11 +55,20 @@ export function ProfileForm({ initial, readOnly, canDelete }: { initial: Profile
           <button onClick={save} disabled={pending} className="rounded bg-green-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save profile"}</button>
         </div>
       )}
+      {canExport && <section className="rounded-md border border-line p-4">
+        <h3 className="font-medium">Your data</h3>
+        <p className="mb-3 text-sm text-mute">Download everything stored for this company: settings, every account by month, import history, commentary and reports. The Odoo API key is never included.</p>
+        <a href={`/api/export/${initial.id}`} download className="inline-block rounded border border-line px-4 py-2 text-sm hover:bg-band" data-testid="export-company">Download all data (.xlsx)</a>
+      </section>}
       {canDelete && (
         <section className="rounded-md border border-red/30 p-4">
           <h3 className="font-medium text-red">Danger zone</h3>
           <p className="mb-3 text-sm text-mute">Deleting a company removes its data, reports and Odoo connection permanently.</p>
-          <button onClick={del} className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg">Delete this company</button>
+          <ConfirmDialog title="Delete this company?" confirmLabel="Delete company" typeToConfirm={initial.name} typeLabel="Type the company name" onConfirm={del} testId="delete-company-dialog"
+            trigger={<button className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg">Delete this company</button>}>
+            <p>This permanently removes <strong>{initial.name}</strong>: all its financial data and history, commentary, reports and shared report links, and its Odoo connection.</p>
+            <p className="text-mute">Download the data first if you may need it. This cannot be undone.</p>
+          </ConfirmDialog>
         </section>
       )}
     </div>
