@@ -19,3 +19,10 @@ export async function readWorkbook(data: ArrayBuffer, filename: string): Promise
     return { name: isCsv ? filename.replace(/\.[^.]+$/, "") : name, rows };
   });
 }
+
+/** Several files read as one upload: sheets are named "file › sheet" so each stays identifiable. */
+export async function readWorkbooks(files: { name: string; data: ArrayBuffer }[]): Promise<Grid[]> {
+  const all = await Promise.all(files.map((f) => readWorkbook(f.data, f.name)));
+  if (files.length === 1) return all[0];
+  return all.flatMap((grids, i) => grids.map((g) => ({ ...g, name: `${files[i].name.replace(/\.[^.]+$/, "")} › ${g.name}`.slice(0, 120) })));
+}

@@ -55,6 +55,18 @@ test("Odoo export importer maps and balances a real file", async ({ page }) => {
   await expect(page.getByTestId("file-reading")).toContainText("Profit and Loss: 28 lines");
 });
 
+test("an Odoo ledger, trial balance and P&L uploaded together: the ledger is imported, the others prove it", async ({ page }) => {
+  const f = (n: string) => path.join(__dirname, `../fixtures/files/egypt-odoo-${n}.xlsx`);
+  await page.goto("/demo/settings/source-data");
+  await page.getByTestId("file-input").setInputFiles([f("general-ledger"), f("trial-balance"), f("profit-and-loss")]);
+  const reading = page.getByTestId("file-reading");
+  await expect(reading).toContainText("Odoo General Ledger");
+  await expect(page.getByTestId("check-only")).toHaveCount(2);
+  await expect(page.getByTestId("date-order").first()).toContainText("month first");
+  await expect(page.getByTestId("review")).toContainText(/Trial Balance' covers several months in one total, so it was used to check the import instead of being imported: all \d+ account figures agree/);
+  await expect(page.getByTestId("review")).toContainText("z Adjustment");
+});
+
 test("demo report downloads as a PDF", async ({ page }) => {
   test.slow();
   await page.goto("/demo/reports");

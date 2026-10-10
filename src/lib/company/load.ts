@@ -77,7 +77,10 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const accounts = naturalAccounts(stored);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);
-  const accepted = ((imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[] }).accepted ?? [];
+  const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string };
+  const accepted = report.accepted ?? [];
+  // Only the latest month can be a part month: an older import's stop day no longer applies once later months exist.
+  const asOf = report.asOf && months.length && report.asOf.startsWith(months[months.length - 1].period) ? report.asOf : undefined;
   const ok = new Set(accepted.map((a) => a.key));
   const failing = runChecks({ accounts, months }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
   const commentary: Record<string, string> = {};
@@ -88,6 +91,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: mem?.role ?? "viewer", orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing },
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf,
   };
 });

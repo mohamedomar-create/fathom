@@ -32,4 +32,6 @@ export interface CompanyBundle {
   accepted?: { title: string; period?: string; reason: string }[];
   /** Blocking checks failing in the current data that nobody accepted. */
   health?: { failing: number };
+  /** The latest month is a part month whose figures stop on this day ("2026-10-10"). */
+  asOf?: string;
 }
