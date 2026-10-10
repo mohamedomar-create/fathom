@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { safeNext } from "@/lib/safe-redirect";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
@@ -12,7 +13,7 @@ export function LoginForm() {
   const sp = useSearchParams();
   const router = useRouter();
   const rawNext = sp.get("next");
-  const next = rawNext && rawNext.startsWith("/") && !rawNext.startsWith("//") ? rawNext : "/companies";
+  const next = safeNext(rawNext);
   const [mode, setMode] = useState<Mode>(sp.get("mode") === "signup" ? "signup" : "signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

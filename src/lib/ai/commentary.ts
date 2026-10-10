@@ -13,6 +13,16 @@ const Schema = z.object(Object.fromEntries(COMMENTARY_SECTIONS.map((s) => [s, z.
 
 export class CommentaryError extends Error {}
 
+const MAX_SECTION = 1500;
+
+/** Text from the client's files can't close the data block or pose as markup: angle brackets are removed, strings capped. */
+export function asData(v: unknown): unknown {
+  if (typeof v === "string") return v.replace(/[<>]/g, "").slice(0, 2000);
+  if (Array.isArray(v)) return v.slice(0, 200).map(asData);
+  if (v && typeof v === "object") return Object.fromEntries(Object.entries(v).map(([k, x]) => [k.replace(/[<>]/g, ""), asData(x)]));
+  return v;
+}
+
 export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS]): Promise<Partial<Record<CommentarySection, string>>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.");
   // Stay inside the route's 60s function limit (Vercel Hobby cap).
@@ -20,27 +30,27 @@ export async function writeCommentary(context: unknown, sections: CommentarySect
   try {
     const response = await client.beta.messages.parse({
       model: COMMENTARY_MODEL,
-      max_tokens: 16000,
+      max_tokens: 6000,
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "medium", format: betaZodOutputFormat(Schema) },
       system: SYSTEM_PROMPT,
       messages: [{
         role: "user",
-        content: `Write commentary for these sections: ${sections.join(", ")}. Return an empty string for any section not in that list.\n\nReport data (JSON):\n${JSON.stringify(context)}`,
+        content: `Write commentary for these sections: ${sections.join(", ")}. Return an empty string for any section not in that list.\n\n<company_data>\n${JSON.stringify(asData(context))}\n</company_data>`,
       }],
     });
     if (response.stop_reason === "refusal") throw new CommentaryError("The AI declined to write commentary for this data.");
     if (response.stop_reason === "max_tokens") throw new CommentaryError("The AI response was cut off. Try fewer sections at once.");
     const out = response.parsed_output;
     if (!out) throw new CommentaryError("The AI response could not be read. Please try again.");
-    return Object.fromEntries(sections.map((s) => [s, out[s].trim()]).filter(([, v]) => v));
+    return Object.fromEntries(sections.map((s) => [s, out[s].trim().slice(0, MAX_SECTION)]).filter(([, v]) => v));
   } catch (e) {
     if (e instanceof CommentaryError) throw e;
     if (e instanceof Anthropic.APIConnectionTimeoutError) throw new CommentaryError("The AI took too long. Try fewer sections at once.");
     if (e instanceof Anthropic.AuthenticationError) throw new CommentaryError("The Claude API key on the server is invalid.");
     if (e instanceof Anthropic.RateLimitError) throw new CommentaryError("The AI service is busy (rate limited). Try again in a minute.");
-    if (e instanceof Anthropic.BadRequestError) throw new CommentaryError(`The AI request was rejected: ${e.message}`);
+    if (e instanceof Anthropic.BadRequestError) { console.error("AI request rejected", e.message); throw new CommentaryError("The AI request was rejected. Try fewer sections, or contact support."); }
     if (e instanceof Anthropic.APIError) throw new CommentaryError(`The AI service returned an error (${e.status}). Try again shortly.`);
     if (e instanceof Anthropic.APIConnectionError) throw new CommentaryError("Could not reach the AI service. Try again shortly.");
     throw e;

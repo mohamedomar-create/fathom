@@ -10,7 +10,7 @@ import { publishReport, saveCommentary, saveReport } from "@/app/company/[id]/re
 import { ReportDocument } from "./report-document";
 import { cn } from "@/lib/cn";
 
-export interface ReportRecord { id: string; title: string; period_type: PeriodType; period_end: string; sections: ReportSection[]; status: string; share_token: string | null }
+export interface ReportRecord { id: string; title: string; period_type: PeriodType; period_end: string; sections: ReportSection[]; status: string; share_token: string | null; expires_at?: string | null }
 
 export function ReportBuilder({ report, org, demo = false }: { report: ReportRecord; org: ReportOrg; demo?: boolean }) {
   const c = useCompany();
@@ -19,6 +19,8 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   const [end, setEnd] = useState(report.period_end);
   const [sections, setSections] = useState<ReportSection[]>(report.sections);
   const [token, setToken] = useState<string | null>(report.share_token);
+  const [expiresAt, setExpiresAt] = useState<string | null>(report.expires_at ?? null);
+  const [expiry, setExpiry] = useState<0 | 30 | 90>(0);
   const ends = useMemo(() => selectableEnds(c.months, type, c.settings.fyStartMonth), [c.months, type, c.settings.fyStartMonth]);
   const validEnd = ends.some((e) => e.end === end) ? end : ends[ends.length - 1]?.end ?? end;
   const periodKey = `${type}:${validEnd}`;
@@ -72,10 +74,11 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   });
   const publish = (on: boolean) => run("pub", async () => {
     await saveReport({ id: report.id, title, period_type: type, period_end: validEnd, sections });
-    const r = await publishReport(report.id, on);
+    const r = await publishReport(report.id, on, expiry);
     if (!r.ok) throw new Error(r.error);
     setToken(r.token ?? null);
-    setMsg({ ok: true, text: on ? "Published. Anyone with the link can view this report." : "Unpublished. The link no longer works." });
+    setExpiresAt(r.expiresAt ?? null);
+    setMsg({ ok: true, text: on ? `Published. Anyone with the link can view this report${expiry ? ` for ${expiry} days` : ""}.` : "Sharing stopped. The link no longer works." });
   });
   const pdf = () => run("pdf", async () => { await downloadReportPdf({ title: `${c.name} - ${title}`, footer, demo }); });
   const shareUrl = token && typeof window !== "undefined" ? `${window.location.origin}/r/${token}` : null;
@@ -105,9 +108,17 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
         {!demo && (
           <div className="rounded-md border border-line p-3 text-sm">
             <div className="mb-2 flex items-center justify-between"><span className="flex items-center gap-1.5 font-medium"><Globe className="h-4 w-4" />Share link</span>
-              <button onClick={() => publish(!token)} disabled={!!busy} className={cn("rounded px-2.5 py-1 text-xs font-medium", token ? "bg-band" : "bg-green-d text-white")}>{token ? "Unpublish" : "Publish report"}</button></div>
+              <button onClick={() => publish(!token)} disabled={!!busy} className={cn("rounded px-2.5 py-1 text-xs font-medium", token ? "bg-band" : "bg-green-d text-white")}>{token ? "Stop sharing" : "Publish report"}</button></div>
+            {!token && (
+              <label className="mb-2 flex items-center gap-2 text-xs text-mute">Link works
+                <select value={expiry} onChange={(e) => setExpiry(Number(e.target.value) as 0 | 30 | 90)} className="rounded border border-line px-1 py-0.5" data-testid="link-expiry">
+                  <option value={0}>until you stop sharing</option><option value={30}>for 30 days</option><option value={90}>for 90 days</option>
+                </select>
+              </label>
+            )}
             {shareUrl ? <div className="flex items-center gap-2"><input readOnly value={shareUrl} className="min-w-0 flex-1 rounded border border-line bg-band px-2 py-1 text-xs" /><button onClick={() => navigator.clipboard.writeText(shareUrl)} aria-label="Copy link"><Copy className="h-4 w-4 text-mute" /></button></div>
               : <p className="text-xs text-mute">Publish to get a read-only link you can send to the client or board.</p>}
+            {shareUrl && <p className="mt-1.5 text-xs text-mute">{expiresAt ? `Expires on ${new Date(expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.` : "Works until you stop sharing."} Shows the report&apos;s period and up to three years before it, nothing older.</p>}
           </div>
         )}
         <div>
