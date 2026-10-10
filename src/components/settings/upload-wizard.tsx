@@ -145,8 +145,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         >
           {busy ? <Loader2 className="h-10 w-10 animate-spin text-green" /> : <Upload className="h-10 w-10 text-green" strokeWidth={1.5} />}
           <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
-          <div className="mt-1 text-sm text-mute">One or several files · .xlsx, .xls or .csv · English or Arabic · read in your browser</div>
-          <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
+          <div className="mt-1 text-sm text-mute">One or several files · .xlsx, .xls, .csv or .txt · English or Arabic · read in your browser</div>
+          <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
           {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
         </div>

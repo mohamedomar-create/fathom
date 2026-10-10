@@ -1,4 +1,4 @@
-import { detectDateOrder, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
+import { arRx, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
 import { controlMetric, headerPeriod, str, type ExtractIssues, type RawLine, type SheetLayout, type SheetOverride } from "./extract";
 
 /**
@@ -11,32 +11,67 @@ import { controlMetric, headerPeriod, str, type ExtractIssues, type RawLine, typ
  */
 
 type Num = (v: Cell) => number | null;
-const CODE_HDR = /^(code|الكود|الرمز|رمز الحساب|كود الحساب|code compte)$/i;
-const NAME_HDR = /^(account( name)?|name|اسم الحساب|الحساب|البيان|compte|libellé)$/i;
-const DEBIT = /^(debit|مدين|débit)$/i;
-const CREDIT = /^(credit|دائن|crédit)$/i;
-const INITIAL = /^(initial balance|opening balance|balance forward|solde (initial|d'ouverture)|رصيد افتتاحي|الرصيد الافتتاحي|رصيد أول المدة|رصيد اول المدة)$/i;
-const INITIAL_GROUP = /initial|opening|افتتاحي|أول المدة|اول المدة|solde initial/i;
-const END_GROUP = /^(end(ing)? balance|closing balance|balance|رصيد آخر المدة|رصيد اخر المدة|الرصيد الختامي|رصيد ختامي|solde final)$/i;
-const GRAND_TOTAL = /^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)$/i;
-const TOTAL_PREFIX = /^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)\b/i;
-const NO_GROUP = /^\(no group\)$|^\(بدون مجموعة\)$/i;
+const CODE_HDR = arRx(/^(code|account code|acc(ount)? ?(no\.?|number|#)|الكود|الرمز|رمز الحساب|كود الحساب|رقم الحساب|كود|code compte)$/i);
+const NAME_HDR = arRx(/^(account( name| description)?|name|description|اسم الحساب|الحساب|البيان|بيان الحساب|اسم|compte|libellé)$/i);
+const DEBIT = arRx(/^(debit|مدين|débit)$/i);
+const CREDIT = arRx(/^(credit|دائن|crédit)$/i);
+const INITIAL = arRx(/^(initial balance|opening balance|balance forward|solde (initial|d'ouverture)|رصيد افتتاحي|الرصيد الافتتاحي|رصيد أول المدة|رصيد اول المدة|رصيد سابق|الرصيد السابق)$/i);
+const INITIAL_GROUP = arRx(/initial|opening|beginning|افتتاحي|أول المدة|اول المدة|بداية المدة|بداية الفترة|رصيد سابق|الرصيد السابق|ما قبله|solde initial/i);
+const END_GROUP = arRx(/^(end(ing)?( balance)?|closing( balance)?|balance|رصيد آخر المدة|رصيد اخر المدة|رصيد نهاية المدة|رصيد نهاية الفترة|الرصيد الختامي|رصيد ختامي|الرصيد النهائي|الرصيد|رصيد|solde final)$/i);
+const GRAND_TOTAL = arRx(/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي|الإجمالي العام|المجموع الكلي)$/i);
+const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)\b/i);
+const NO_GROUP = arRx(/^\(no group\)$|^\(بدون مجموعة\)$/i);
+/** Words around a period in a trial-balance column group ("حركة شهر يناير 2025", "Movement Jan 2025"). */
+const PERIOD_WORDS = arRx(/(الحركة|حركة|خلال|الفترة|فترة|شهر|عن|movements?|transactions|period|month|for|of)\s*/gi);
+/** Heading text compared with Arabic spelling variants made alike; names in the output keep their own spelling. */
+const hn = (v: Cell) => normAr(str(v));
 
-interface Ctx { g: { name: string }; rows: Cell[][]; num: Num; ov: SheetOverride; layout: SheetLayout; issues: ExtractIssues; today: string }
+interface Ctx {
+  g: { name: string }; rows: Cell[][]; num: Num; ov: SheetOverride; layout: SheetLayout; issues: ExtractIssues; today: string;
+  /** The heading row as read (two-row and combined headings resolved) and the group labels above each column. */
+  head: string[]; above: string[];
+  /** Last of the code and name columns: amounts are to its right. */
+  last: number;
+}
+
+const DC_WORD = arRx(/(debit|credit|مدين|دائن|débit|crédit)/i);
+/**
+ * Headings as one row: combined headings ("رصيد أول المدة مدين", "Opening Debit", "Debit Balance") become a Debit/Credit heading
+ * with their other words as the group label above, and when Debit/Credit sit one row below "Code / Account", both rows are read together.
+ */
+function headings(rows: Cell[][], r: number): { head: string[]; above: string[] } {
+  const own = rows[r].map(hn);
+  const prev = r > 0 ? rows[r - 1].map(hn) : [];
+  const above = prev.slice();
+  const head = own.map((x, c) => {
+    if (DEBIT.test(x) || CREDIT.test(x)) return x;
+    const m = x.match(new RegExp(`^(.*?)[\\s\\-–/:()]*${DC_WORD.source}[\\s)]*$`, "i")) ?? x.match(new RegExp(`^${DC_WORD.source}[\\s\\-–/:(]+(.+?)\\)?$`, "i"));
+    if (!m) return x;
+    const [word, rest] = DC_WORD.test(m[1]) && !m[2] ? [m[1], ""] : m[1].match(DC_WORD) && m[1].length <= 7 ? [m[1], m[2]] : [m[2], m[1]];
+    if (rest?.trim() && !above[c]) above[c] = rest.trim();
+    return word;
+  });
+  if (head.some((x) => DEBIT.test(x))) head.forEach((x, c) => { if (!x && prev[c]) head[c] = prev[c]; });
+  return { head, above };
+}
 
 export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 12); r++) {
-    const cells = rows[r].map((v) => str(v));
+    const { head: cells, above } = headings(rows, r);
     const cCode = cells.findIndex((x) => CODE_HDR.test(x));
-    const cName = cells.findIndex((x, i) => i > cCode && NAME_HDR.test(x));
-    if (cCode < 0 || cName !== cCode + 1) continue;
-    const ctx: Ctx = { g, rows, num, ov, layout, issues, today };
+    if (cCode < 0) continue;
+    // Name next to the code, on either side (right-to-left sheets often put the name first).
+    const cName = NAME_HDR.test(cells[cCode + 1] ?? "") ? cCode + 1 : cCode > 0 && NAME_HDR.test(cells[cCode - 1] ?? "") ? cCode - 1 : -1;
+    if (cName < 0) continue;
+    const last = Math.max(cCode, cName);
+    const ctx: Ctx = { g, rows, num, ov, layout, issues, today, head: cells, above, last };
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/i.test(x));
     const debits = cells.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
-    if (dat > cName && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)));
-    if (debits.length >= 2) return trialBalance(ctx, r, cCode, cName);
-    const vals = cells.map((x, i) => (i > cName && x ? i : -1)).filter((i) => i >= 0);
-    if (vals.length) return statement(ctx, r, cCode, cName, vals);
+    // A heading row that turns out not to be one of these layouts (e.g. the group row above Debit/Credit) lets the next row try.
+    if (dat > last && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)));
+    if (debits.length >= 2 || (debits.length === 1 && dat < 0)) { const tb = trialBalance(ctx, r, cCode, cName); if (tb) return tb; continue; }
+    const vals = cells.map((x, i) => (i > last && x ? i : -1)).filter((i) => i >= 0);
+    if (vals.length) { const st = statement(ctx, r, cCode, cName, vals); if (st) return st; layout.columns = []; }
   }
   return null;
 }
@@ -100,14 +135,12 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
   return out.length ? out : null;
 }
 
-function trialBalance({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCode: number, cName: number): RawLine[] | null {
-  const head = rows[r].map((v) => str(v));
+function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: Ctx, r: number, cCode: number, cName: number): RawLine[] | null {
   // Group labels sit in the nearest non-empty row above the Debit/Credit headings, at or left of each Debit column.
-  const above = r > 0 ? rows[r - 1].map((v) => str(v)) : [];
-  const groupAt = (c: number) => { for (let k = c; k > cName; k--) if (above[k]) return { label: above[k], col: k }; return null; };
+  const groupAt = (c: number) => { for (let k = c; k > last; k--) if (above[k]) return { label: above[k], col: k }; return null; };
   type Grp = { kind: "initial" | "end" | "period"; deb: number; cred: number; col: number; label: string; p?: string; months?: number; endDay?: string };
   const groups: Grp[] = [];
-  for (let c = cName + 1; c < head.length; c++) {
+  for (let c = last + 1; c < head.length; c++) {
     if (!DEBIT.test(head[c])) continue;
     const cred = head.findIndex((x, i) => i > c && CREDIT.test(x));
     if (cred < 0) continue;
@@ -116,13 +149,21 @@ function trialBalance({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCod
     if (INITIAL_GROUP.test(label)) groups.push({ kind: "initial", deb: c, cred, col: c, label });
     else if (END_GROUP.test(label)) groups.push({ kind: "end", deb: c, cred, col: c, label });
     else {
-      const h = headerPeriod(label) ?? titlePeriod(rows, r);
+      const h = headerPeriod(label) ?? headerPeriod(label.replace(PERIOD_WORDS, "").trim()) ?? titlePeriod(rows, r);
       if (h) groups.push({ kind: "period", deb: c, cred, col: c, label, p: h.p, months: h.months, endDay: h.endDay });
     }
   }
+  // A trial balance of closing balances only ("Debit balance / Credit balance" as of a date): the balances are the
+  // movements since the start, so the title's period carries them (balance sheet: closing; P&L: the period's total).
+  if (!groups.some((x) => x.kind === "period")) {
+    const end = groups.find((x) => x.kind === "end"), t = titlePeriod(rows, r);
+    if (!end || !t || groups.some((x) => x.kind === "initial")) return null;
+    Object.assign(end, { kind: "period", p: t.p, months: t.months, endDay: t.endDay });
+  }
   const periods = groups.filter((x) => x.kind === "period");
   if (!periods.length) return null;
-  layout.source = "Odoo Trial Balance";
+  // Odoo heads its columns exactly "Code" and "Account Name"; other systems' trial balances are read the same way.
+  layout.source = /^code$/i.test(head[cCode]) && /^account( name)?$/i.test(head[cName]) ? "Odoo Trial Balance" : "Trial balance";
   layout.headerRow = r;
   for (const gp of periods) {
     const o = ov.periods?.[gp.col];
@@ -132,8 +173,8 @@ function trialBalance({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCod
     layout.columns.push({ col: gp.col, header: gp.label.slice(0, 80), period: gp.p!, months: gp.months!, used: true });
   }
   const used = periods.filter((gp) => layout.columns.some((x) => x.col === gp.col && x.used));
-  const last = used[used.length - 1];
-  layout.asOf = last ? partialDay(last.endDay) : undefined;
+  const lastUsed = used[used.length - 1];
+  layout.asOf = lastUsed ? partialDay(lastUsed.endDay) : undefined;
   const initial = groups.find((x) => x.kind === "initial"), end = groups.find((x) => x.kind === "end");
   const dc = (row: Cell[], gp?: Grp) => (gp ? (num(row[gp.deb]) ?? 0) - (num(row[gp.cred]) ?? 0) : 0);
   const stack: { code: string; label: string }[] = [];
@@ -175,7 +216,7 @@ function trialBalance({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCod
     const code = str(row[cCode]), name = str(row[cName]);
     if (!code && !name) continue;
     if (!code) {
-      if (GRAND_TOTAL.test(name)) {
+      if (GRAND_TOTAL.test(normAr(name))) {
         // Odoo prints debits and credits side by side: each group must be equal.
         for (const gp of groups) {
           const d = num(row[gp.deb]) ?? 0, c = num(row[gp.cred]) ?? 0;
@@ -184,7 +225,7 @@ function trialBalance({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCod
         break;
       }
       // Group row: "121 Cash & Cash Equivalent" or "(No Group)". Pop groups that are not its parents.
-      const gcode = NO_GROUP.test(name) ? "(none)" : (name.match(/^([\dA-Za-z][\d.\-]*)\s+/)?.[1] ?? name);
+      const gcode = NO_GROUP.test(normAr(name)) ? "(none)" : (name.match(/^([\dA-Za-z][\d.\-]*)\s+/)?.[1] ?? name);
       if (gcode !== "(none)" && !isGroup(i, gcode)) {
         // A code-less account (Odoo 17+ shared charts), not a heading: its amounts are its own.
         const line = leaf(row, i, "", name);

@@ -40,7 +40,7 @@ const BS_RULES: [ClassKey, RegExp][] = ([
   ["other_ca", /prepaid|prepayment|advance|deposits? (paid|with)|other (current )?assets?|accrued income|due from|input vat|vat receivable|outstanding (receipts|payments)|مصروفات مقدمة|دفعات مقدمة|سلف|تأمينات لدى|أرصدة مدينة|عهد/],
   ["intangibles", /intangible|goodwill|patent|trademark|software|licen[cs]e|development cost|شهرة|برمجيات|علامة تجارية/],
   ["investments", /investments?|long.?term (deposit|receivable)|loans? to|استثمارات/],
-  ["fixed_assets", /property|plant|equipment|furniture|vehicles?|machinery|buildings?|land|fixed assets?|accumulated depreciation|leasehold|computers?|fit.?out|أصول ثابتة|معدات|سيارات|مباني|أراضي|مجمع (إهلاك|اهلاك)|آلات|أثاث/],
+  ["fixed_assets", /property|plant|equipment|furniture|vehicles?|machinery|buildings?|land|fixed assets?|accumulated depreciation|leasehold|computers?|fit.?out|أصول ثابتة|معدات|سيارات|وسائل (ال)?نقل|مباني|أراضي|مجمع (إهلاك|اهلاك)|آلات|أثاث/],
   ["cash", /cash|bank|banque|petty|treasury|safe|liquidity transfer|\bacc(ount)? ?(no|#|number)|\biban\b|نقدية|نقدي|بنك|خزينة|حساب جاري لدى/],
 ] as [ClassKey, RegExp][]).map(([k, rx]) => [k, arRx(rx)]);
 const ASSET = new Set<ClassKey>(["cash", "ar", "inventory", "wip", "other_ca", "fixed_assets", "intangibles", "investments"]);
@@ -92,7 +92,7 @@ export function stmtFromCode(code: string, chart: ChartHints = {}): "PL" | "BS" 
  */
 export interface ChartHints { fiveIsCos?: boolean; unified?: boolean }
 
-const EXPENSE_NAME = arRx(/اجور|أجور|مرتبات|رواتب|مستلزمات|مصروف|مصاريف|اهلاك|إهلاك|ايجار|إيجار|كهرباء|صيانة|مشتريات|عمولات|wages?|salar|expense|rent\b|depreciation|utilities|maintenance|purchases/);
+const EXPENSE_NAME = arRx(/اجور|أجور|مرتبات|رواتب|مستلزمات|مصروف|مصاريف|اهلاك|إهلاك|ايجار|إيجار|كهرباء|صيانة|مشتريات|عمولات|رسوم|تكلفة|wages?|salar|expense|rent\b|depreciation|utilities|maintenance|purchases/);
 const EQUITY_NAME = arRx(/رأس المال|راس المال|احتياطي|أرباح|ارباح|حقوق|جاري الشركاء|capital|equity|reserve|retained|drawings?|owner/);
 
 /** Reads the chart from all the accounts in an upload (codes and names), before any one account is classified. */

@@ -3,6 +3,7 @@ import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/buil
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 import { chartHints, classify, CONTRA_REVENUE } from "./classify";
+import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
 import { fmtDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
@@ -113,9 +114,12 @@ function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
 
 export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
   const roles = sheetRoles(rawIn, extractIssues.layouts ?? []);
-  const checkRaw = rawIn.filter((r) => roles.get(r.sheet) === "check");
-  const raw = rawIn.filter((r) => roles.get(r.sheet) !== "check");
   const issues = { warnings: [...extractIssues.warnings], notes: [] as string[], flips: [] as string[], subtotals: [] as string[], skippedCols: [...extractIssues.skippedCols] };
+  // Parent accounts printed with codes (1 → 11 → 1101) are headings: drop them before anything is summed.
+  const tree = dropParentAccounts(rawIn);
+  for (const p of tree.parents) issues.subtotals.push(`${p.sheet} row ${p.row}: '${p.label}' (parent account: equals the sum of its sub-accounts)`);
+  const checkRaw = tree.lines.filter((r) => roles.get(r.sheet) === "check");
+  const raw = tree.lines.filter((r) => roles.get(r.sheet) !== "check");
   // ---- subtotal removal (natural lines only; movement exports are per account)
   const skip = new Set<string>();
   raw.forEach((r) => {
@@ -218,7 +222,12 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
       if (fyOf(p0, opts.fyStart) === fyOf(p1, opts.fyStart)) { if (revBy(p0)) { tot++; if (revBy(p1) >= revBy(p0)) inc++; } }
       else if (revBy(p1) < revBy(p0) * 0.6) resets++;
     }
-    if (tot && inc / tot >= 0.9 && (resets || new Set(plP.map((p) => fyOf(p, opts.fyStart))).size === 1)) decum = true;
+    // Rising every month is not enough (a growing business rises too): a year-to-date column also grows roughly in
+    // proportion to the months it covers, so by the n-th month of a year it is several times the first month.
+    const byFy = new Map<number, string[]>();
+    for (const p of plP) byFy.set(fyOf(p, opts.fyStart), [...(byFy.get(fyOf(p, opts.fyStart)) ?? []), p]);
+    const piling = [...byFy.values()].filter((ps) => ps.length >= 3).every((ps) => revBy(ps[0]) > 0 && revBy(ps[ps.length - 1]) >= revBy(ps[0]) * 0.6 * ps.length);
+    if (tot && inc / tot >= 0.9 && piling && (resets || byFy.size === 1)) decum = true;
   }
   if (decum) {
     issues.notes.push("P&L columns were cumulative (year-to-date); converted to single months by subtracting the prior month inside each financial year.");
