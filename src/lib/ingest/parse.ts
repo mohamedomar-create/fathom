@@ -12,6 +12,16 @@ Object.assign(MONTHS, { janvier: 1, février: 2, fevrier: 2, mars: 3, avril: 4, 
 const AR_DIGITS: Record<string, string> = { "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4", "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9", "٫": ".", "٬": "," };
 export const arToLatin = (s: string) => s.replace(/[٠-٩٫٬]/g, (c) => AR_DIGITS[c] ?? c);
 
+/**
+ * Arabic spelling variants written interchangeably in account names: hamza forms of alef (أ إ آ ٱ → ا), ى → ي, ة → ه,
+ * ؤ → و, ئ → ي, Persian kaf/yeh, plus diacritics and the tatweel stretch (ـ). "الأصول الثابتـة" and "الاصول الثابته" match.
+ */
+export const normAr = (s: string) =>
+  s.replace(/[\u0610-\u061A\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و").replace(/ئ/g, "ي").replace(/ک/g, "ك").replace(/ی/g, "ي");
+/** A regular expression whose Arabic is spelled the way normAr spells text, so both sides compare alike. */
+export const arRx = (rx: RegExp) => new RegExp(normAr(rx.source), rx.flags);
+
 export type Cell = string | number | boolean | Date | null | undefined;
 
 /** '(1,234.5)' → -1234.5 ; '1.234,50-' handled ; '-' / '' → 0 ; text → null. */
