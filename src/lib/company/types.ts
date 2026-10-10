@@ -1,4 +1,4 @@
-import type { ClassKey, CompanySettings, MonthData } from "@/lib/engine";
+import type { Assumptions, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
 
 /** One general-ledger account with its monthly amounts in natural sign
  *  (P&L: movement for the month, positive for revenue and for costs; BS: closing balance, positive as presented). */
@@ -34,4 +34,6 @@ export interface CompanyBundle {
   health?: { failing: number };
   /** The latest month is a part month whose figures stop on this day ("2026-10-10"). */
   asOf?: string;
+  /** Economic assumptions (inflation, exchange rates, borrowing) for the bank and real-profit views. */
+  assumptions?: Assumptions;
 }

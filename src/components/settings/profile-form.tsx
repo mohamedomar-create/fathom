@@ -13,7 +13,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
   const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-green disabled:bg-band";
+  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand disabled:bg-band";
   const save = () => start(async () => {
     const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai });
     setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save" });
@@ -52,7 +52,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
       {!readOnly && (
         <div className="flex items-center justify-end gap-3 border-t border-line pt-4">
           {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
-          <button onClick={save} disabled={pending} className="rounded bg-green-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save profile"}</button>
+          <button onClick={save} disabled={pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save profile"}</button>
         </div>
       )}
       {canExport && <section className="rounded-md border border-line p-4">

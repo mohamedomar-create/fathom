@@ -6,11 +6,16 @@
   --color-mute: #76766f;
   --color-line: #e6e6e1;
   --color-band: #f5f5f3;
-  --color-bar: #2b2b2b;
-  --color-bar-2: #3a3a3a;
-  --color-green: #7cb46b;
-  --color-green-d: #4f8a41;
-  --color-green-bg: #e3f1de;
+  --color-bar: #0d3536;
+  --color-bar-2: #1a4a4b;
+  /* Brand (teal): actions, selection, links */
+  --color-brand: #0f8b8d;
+  --color-brand-d: #0b6e70;
+  --color-brand-bg: #ddf1f1;
+  /* Good / on track (kept apart from the brand so status never depends on it) */
+  --color-green: #2e9e6a;
+  --color-green-d: #237a51;
+  --color-green-bg: #e3f3ea;
   --color-red: #d9343a;
   --color-red-bg: #fce7e7;
   --color-amber: #e0a526;
@@ -21,7 +26,7 @@
   --color-s5: #e87ba4;
 }
 
-:root { --accent: var(--color-green); }
+:root { --accent: var(--color-brand); color-scheme: light; }
 html { -webkit-text-size-adjust: 100%; }
 body { background: #fff; color: var(--color-ink); font-family: var(--font-sans); font-size: 14px; line-height: 1.45; }
 
@@ -65,7 +70,7 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 .report .rcover .h-full { min-height: 1027px; }
 .report .rhead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid; padding-bottom: 8px; margin-bottom: 18px; }
 .report .rhead h2 { font-size: 24px; font-weight: 400; margin: 0; }
-.report .rcomment { background: var(--color-band); border-left: 3px solid var(--brand, var(--color-green)); padding: 10px 14px; margin: 16px 0 0; font-size: 12.5px; }
+.report .rcomment { background: var(--color-band); border-left: 3px solid var(--brand, var(--color-brand)); padding: 10px 14px; margin: 16px 0 0; font-size: 12.5px; }
 .report .tbl th { padding: 6px; }
 .report .tbl td { padding: 5px 6px; }
 @media print {
@@ -84,4 +89,4 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 .legal p { margin: 0 0 12px; }
 .legal ul { list-style: disc; padding-left: 20px; margin: 0 0 12px; }
 .legal li { margin-bottom: 4px; }
-.legal a { text-decoration: underline; }
+.legal a { text-decoration: underline; color: var(--color-brand-d); }

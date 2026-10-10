@@ -9,7 +9,7 @@ import { deleteAccount, leaveOrganisation, saveName } from "./actions";
 
 export interface OrgInfo { id: string; name: string; role: string; members: number; otherAdmins: number }
 
-const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-green";
+const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand";
 type Msg = { ok: boolean; text: string } | null;
 const Note = ({ msg }: { msg: Msg }) => msg && <span className={cn("text-sm", msg.ok ? "text-green-d" : "text-red")} role="status">{msg.text}</span>;
 
@@ -20,7 +20,7 @@ export function NameForm({ initial }: { initial: string }) {
   return (
     <form className="flex flex-wrap items-end gap-3" onSubmit={(e) => { e.preventDefault(); start(async () => { const r = await saveName(name); setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save." }); }); }}>
       <label className="min-w-60 flex-1"><span className="label mb-1 block">Your name</span><input className={field} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} autoComplete="name" /></label>
-      <button disabled={pending} className="rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save"}</button>
+      <button disabled={pending} className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save"}</button>
       <Note msg={msg} />
     </form>
   );
@@ -48,7 +48,7 @@ export function PasswordForm() {
       <label><span className="label mb-1 block">Repeat it</span><input type="password" className={field} value={again} onChange={(e) => setAgain(e.target.value)} minLength={MIN_PASSWORD} required autoComplete="new-password" /></label>
       <p className="text-xs text-mute sm:col-span-2">{PASSWORD_HINT}</p>
       <div className="flex items-center gap-3 sm:col-span-2">
-        <button disabled={busy} className="rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50">{busy ? "Saving…" : "Change password"}</button>
+        <button disabled={busy} className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{busy ? "Saving…" : "Change password"}</button>
         <Note msg={msg} />
       </div>
     </form>

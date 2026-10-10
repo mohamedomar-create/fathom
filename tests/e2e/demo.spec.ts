@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/financials"];
+const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/financials", "analysis/bank", "analysis/real-profit"];
 
 test("landing page leads to the demo", async ({ page }) => {
   await page.goto("/");
@@ -107,4 +107,26 @@ test("summary headline figures open their source accounts", async ({ page }) => 
   await page.goto("/demo/summary");
   await page.getByTestId("trace-cash").click();
   await expect(page.getByTestId("source-drawer")).toContainText("Cash on hand");
+});
+
+test("bank readiness reads the demo like a credit analyst and recomputes room to borrow", async ({ page }) => {
+  await page.goto("/demo/analysis/bank");
+  await expect(page.getByTestId("bank-basis")).toContainText("12 months to Sep 2026");
+  await expect(page.getByTestId("tile-dscr")).toContainText("x");
+  await expect(page.getByTestId("bank-ratios")).toContainText("Debt service cover");
+  await expect(page.getByTestId("bank-checklist")).toContainText("Audited financial statements");
+  const before = await page.getByTestId("tile-headroom").innerText();
+  await page.getByTestId("assume-rate").fill("30");
+  await expect(page.getByTestId("tile-headroom")).not.toHaveText(before);
+  await page.getByTestId("ratio-dscr").locator("summary").click();
+  await expect(page.getByTestId("ratio-dscr")).toContainText("What the bank sees");
+});
+
+test("real profit bridges reported to real profit and needs inflation for it", async ({ page }) => {
+  await page.goto("/demo/analysis/real-profit");
+  await expect(page.getByTestId("real-bridge")).toContainText("Real profit at today's prices");
+  await expect(page.getByTestId("collection")).toContainText("Collection rate");
+  await page.getByTestId("assume-inflation").fill("");
+  await expect(page.getByTestId("tile-real")).toContainText("enter inflation");
+  await expect(page.getByTestId("real-bridge")).toHaveCount(0);
 });

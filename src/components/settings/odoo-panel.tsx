@@ -53,18 +53,18 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
     });
   };
 
-  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-green";
+  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand";
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
       <div>
         {saved && (
           <div className="mb-5 flex flex-wrap items-center gap-3 rounded-md bg-band px-4 py-3 text-sm">
-            <PlugZap className="h-5 w-5 text-green-d" />
+            <PlugZap className="h-5 w-5 text-brand-d" />
             <div className="min-w-0 flex-1">
               <div className="font-medium">{connection!.odoo_company_name} · {connection!.url.replace("https://", "")}</div>
               <div className="text-xs text-mute">{connection!.last_sync_at ? `Last synced ${new Date(connection!.last_sync_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "Not synced yet"} · {connection!.months_history} months{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
             </div>
-            <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
+            <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
               {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? "Syncing…" : "Sync now"}
             </button>
           </div>
@@ -76,7 +76,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
           <label className="sm:col-span-2"><span className="label mb-1 block">API key</span><input className={field} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={saved ? "•••••••• (saved — leave blank to keep)" : "Paste the API key"} autoComplete="new-password" /></label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button onClick={test} disabled={pending || !url || !db || !login} className="flex items-center gap-1.5 rounded border border-green-d px-4 py-2 font-medium text-green-d disabled:opacity-50">
+          <button onClick={test} disabled={pending || !url || !db || !login} className="flex items-center gap-1.5 rounded border border-brand-d px-4 py-2 font-medium text-brand-d disabled:opacity-50">
             {step === "test" && <Loader2 className="h-4 w-4 animate-spin" />}Test connection
           </button>
         </div>
@@ -94,7 +94,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
             </label>
             <label className="flex items-end gap-2 pb-2 text-sm sm:col-span-2"><input type="checkbox" checked={branches} onChange={(e) => setBranches(e.target.checked)} /> Include branches (child companies)</label>
             <div className="sm:col-span-3">
-              <button onClick={save} disabled={pending || !company} className="rounded bg-green-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? "Saving…" : "Save connection"}</button>
+              <button onClick={save} disabled={pending || !company} className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? "Saving…" : "Save connection"}</button>
             </div>
           </div>
         )}
@@ -113,7 +113,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
           <li>Use a user with accounting read access. Only posted entries are read; nothing is written to Odoo.</li>
         </ol>
         <p className="mt-3 text-mute">Odoo Online (SaaS) allows the external API on the <b>Custom</b> plan; Odoo.sh and self-hosted Odoo 13–18 work out of the box. The server must be reachable on the internet.</p>
-        <a className="mt-3 inline-flex items-center gap-1 text-green-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">Odoo external API docs <ExternalLink className="h-3 w-3" /></a>
+        <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">Odoo external API docs <ExternalLink className="h-3 w-3" /></a>
         <p className="mt-3 text-xs text-mute">The API key is encrypted (AES-256) before it is stored and is only decrypted on the server during a sync.</p>
       </aside>
     </div>

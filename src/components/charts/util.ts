@@ -28,4 +28,4 @@ export function valueLabel(v: number | null | undefined, unit: Unit, cur: string
   return num(v, unit, cur);
 }
 
-export const C = { green: "#7CB46B", greenD: "#4F8A41", red: "#D9343A", ink: "#222", mute: "#8a8a85", s: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"] };
+export const C = { green: "#2E9E6A", greenD: "#237A51", red: "#D9343A", ink: "#222", mute: "#8a8a85", s: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"] };

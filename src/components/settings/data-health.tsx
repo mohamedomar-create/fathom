@@ -78,7 +78,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
       </div>
 
       {!coverage.range.length ? (
-        <p className="text-mute">No financial data yet. <Link className="text-green-d underline" href={`/company/${companyId}/settings/source-data`}>Upload an Odoo export</Link>.</p>
+        <p className="text-mute">No financial data yet. <Link className="text-brand-d underline" href={`/company/${companyId}/settings/source-data`}>Upload an Odoo export</Link>.</p>
       ) : (
         <section>
           <h2 className="mb-1 text-lg font-medium">Months</h2>
@@ -184,7 +184,7 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
         <thead><tr><th className="!text-left">When</th><th className="!text-left">What</th><th className="!text-left">Months</th><th className="!text-left">By</th><th /></tr></thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.id} className={cn("row", r.current && "bg-green-bg/40")}>
+            <tr key={r.id} className={cn("row", r.current && "bg-brand-bg/40")}>
               <td className="!text-left">{fmtDate(r.at)}</td>
               <td className="max-w-72 truncate !text-left">
                 {r.action === "restore" ? <span>Restored earlier data{r.file ? ` (${r.file})` : ""}</span> : <span><span className="capitalize">{r.kind === "odoo" ? "Odoo sync" : r.kind}</span>{r.file ? ` · ${r.file}` : ""}</span>}
@@ -194,8 +194,8 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
               <td className="!text-left text-mute">{r.action === "restore" ? "–" : [r.pl.length ? `P&L ${span(r.pl)}` : "", r.bs.length ? `BS ${span(r.bs)}` : ""].filter(Boolean).join(" · ") || "–"}</td>
               <td className="!text-left text-mute">{r.by ?? "–"}</td>
               <td>
-                {r.current ? <span className="text-xs font-semibold text-green-d">Current</span>
-                  : r.restorable && !readOnly ? <button disabled={pending} onClick={() => restore(r)} className="inline-flex items-center gap-1 text-xs text-green-d underline disabled:opacity-50" data-testid="restore"><RotateCcw className="h-3 w-3" />Restore</button>
+                {r.current ? <span className="text-xs font-semibold text-brand-d">Current</span>
+                  : r.restorable && !readOnly ? <button disabled={pending} onClick={() => restore(r)} className="inline-flex items-center gap-1 text-xs text-brand-d underline disabled:opacity-50" data-testid="restore"><RotateCcw className="h-3 w-3" />Restore</button>
                     : null}
               </td>
             </tr>

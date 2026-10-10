@@ -6,7 +6,7 @@ import { ChartTip } from "./tooltip";
 import { useStaticCharts } from "./static";
 import { niceTicks } from "./util";
 
-const G = "#7CB46B", R = "#D9343A", K = "#333";
+const G = "#2E9E6A", R = "#D9343A", K = "#333";
 
 export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: number; fixed: number; vcr: number; bep: number; cur: string }) {
   const st = useStaticCharts();

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_NAME } from "@/lib/brand";
+import { Logo } from "./logo";
 import { UserMenu } from "./user-menu";
 
 export function AppBar({ email, orgName, isAdmin, active }: { email: string; orgName?: string; isAdmin?: boolean; active?: "companies" | "dashboard" | "admin" }) {
@@ -8,7 +8,7 @@ export function AppBar({ email, orgName, isAdmin, active }: { email: string; org
   );
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-4 text-[13px] text-[#ddd]">
-      <Link href="/companies" className="mr-3 font-semibold text-white">{APP_NAME}</Link>
+      <Link href="/companies" className="mr-3" aria-label="Companies"><Logo tone="dark" size={22} /></Link>
       {tab("/companies", "Companies", "companies")}
       {tab("/dashboard", "Insights Dashboard", "dashboard")}
       <div className="ml-auto"><UserMenu email={email} orgName={orgName} isAdmin={isAdmin} /></div>

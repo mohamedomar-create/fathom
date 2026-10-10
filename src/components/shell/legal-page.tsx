@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { APP_NAME } from "@/lib/brand";
+import { Logo } from "./logo";
 import { LEGAL } from "@/lib/legal";
 import { SiteFooter } from "./site-footer";
 
@@ -8,7 +8,7 @@ export function LegalPage({ title, children }: { title: string; children: React.
   return (
     <div className="min-h-screen bg-white">
       <header className="mx-auto flex max-w-3xl items-center gap-4 px-6 py-5">
-        <Link href="/" className="text-lg font-semibold">{APP_NAME}</Link>
+        <Link href="/" className="text-lg"><Logo /></Link>
         <nav className="ml-auto flex gap-4 text-sm text-mute">
           <Link href="/privacy" className="hover:text-ink">Privacy</Link>
           <Link href="/terms" className="hover:text-ink">Terms</Link>

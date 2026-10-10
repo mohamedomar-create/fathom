@@ -22,10 +22,10 @@ export default async function SourceDataPage({ params, searchParams }: { params:
     <div>
       <div className="label">1 · Source Data</div>
       <h1 className="mb-1 text-3xl font-light">Financials</h1>
-      <p className="mb-5 text-mute">Bring in monthly P&amp;L and balance sheet data from Odoo. Uploads can add or replace single months; the P&amp;L and balance sheet can come from separate files. See <Link href={`/company/${id}/settings/data-health`} className="text-green-d underline">Data health</Link> for loaded months, checks and undo.</p>
+      <p className="mb-5 text-mute">Bring in monthly P&amp;L and balance sheet data from Odoo. Uploads can add or replace single months; the P&amp;L and balance sheet can come from separate files. See <Link href={`/company/${id}/settings/data-health`} className="text-brand-d underline">Data health</Link> for loaded months, checks and undo.</p>
       <div className="mb-6 flex gap-1 border-b border-line">
         {tabs.map((t) => (
-          <Link key={t.k} href={`?tab=${t.k}`} scroll={false} className={cn("-mb-px border-b-2 px-4 py-2 text-sm", tab === t.k ? "border-green-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.l}</Link>
+          <Link key={t.k} href={`?tab=${t.k}`} scroll={false} className={cn("-mb-px border-b-2 px-4 py-2 text-sm", tab === t.k ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.l}</Link>
         ))}
       </div>
       {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} />}

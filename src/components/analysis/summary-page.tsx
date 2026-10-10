@@ -60,7 +60,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
               ) : h.v}
             </div>
             <div className="text-xs">{h.d}</div>
-            {h.s.length > 1 && <div className="mt-1"><Sparkline values={h.s} color={h.neg ? "#D9343A" : "#7CB46B"} w={130} h={30} /></div>}
+            {h.s.length > 1 && <div className="mt-1"><Sparkline values={h.s} color={h.neg ? "#D9343A" : "#2E9E6A"} w={130} h={30} /></div>}
           </div>
         ))}
       </div>

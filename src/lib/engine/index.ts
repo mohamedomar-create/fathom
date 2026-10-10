@@ -10,3 +10,6 @@ export * from "./insights";
 export * from "./period";
 export * from "./analyze";
 export * from "./lines";
+export * from "./basis";
+export * from "./bank";
+export * from "./real-profit";

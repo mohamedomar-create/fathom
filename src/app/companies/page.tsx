@@ -72,8 +72,8 @@ export default async function CompaniesPage() {
                   <p className="mt-4 text-sm text-mute">No financial data yet.</p>
                 )}
                 <div className="mt-4 flex gap-2 border-t border-line pt-3 text-sm">
-                  <Link href={`/company/${c.id}/summary`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><BarChart3 className="h-4 w-4 text-green-d" />Analysis</Link>
-                  <Link href={`/company/${c.id}/reports`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><FileText className="h-4 w-4 text-green-d" />Reports</Link>
+                  <Link href={`/company/${c.id}/summary`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><BarChart3 className="h-4 w-4 text-brand-d" />Analysis</Link>
+                  <Link href={`/company/${c.id}/reports`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><FileText className="h-4 w-4 text-brand-d" />Reports</Link>
                   <Link href={`/company/${c.id}/settings/source-data`} className="ml-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band"><Settings className="h-4 w-4" />Settings</Link>
                 </div>
               </div>

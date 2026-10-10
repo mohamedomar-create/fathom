@@ -140,10 +140,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
           onClick={() => input.current?.click()}
-          className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line px-6 py-16 text-center transition hover:border-green hover:bg-green-bg/20"
+          className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line px-6 py-16 text-center transition hover:border-brand hover:bg-brand-bg/20"
           data-testid="dropzone"
         >
-          {busy ? <Loader2 className="h-10 w-10 animate-spin text-green" /> : <Upload className="h-10 w-10 text-green" strokeWidth={1.5} />}
+          {busy ? <Loader2 className="h-10 w-10 animate-spin text-brand" /> : <Upload className="h-10 w-10 text-brand" strokeWidth={1.5} />}
           <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
           <div className="mt-1 text-sm text-mute">One or several files · .xlsx, .xls, .csv or .txt · English or Arabic · read in your browser</div>
           <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
@@ -168,7 +168,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     return (
       <div data-testid="timeline-step" className="space-y-5">
         <div className="flex flex-wrap items-center gap-3">
-          <FileSpreadsheet className="h-5 w-5 text-green-d" />
+          <FileSpreadsheet className="h-5 w-5 text-brand-d" />
           <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
           <button onClick={() => setStep("map")} className="text-sm text-mute underline">Back to mapping</button>
         </div>
@@ -193,7 +193,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         {err && <p className="rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
           <span className="mr-auto text-xs text-mute">{preview.accounts} accounts will be stored. The previous data stays available to restore from Data health.</span>
-          <button disabled={saving || previewing || !canImport} onClick={commit} className="rounded bg-green-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="commit-import">
+          <button disabled={saving || previewing || !canImport} onClick={commit} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="commit-import">
             {saving ? "Importing…" : previewing ? "Checking…" : mode === "replace" && preview.hasData ? "Replace data" : "Import"}
           </button>
         </div>
@@ -204,7 +204,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   return (
     <div data-testid="review">
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <FileSpreadsheet className="h-5 w-5 text-green-d" />
+        <FileSpreadsheet className="h-5 w-5 text-brand-d" />
         <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
         <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
       </div>
@@ -272,8 +272,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
         <span className="mr-auto text-xs text-mute">{demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Your mapping choices are remembered for the next upload."}</span>
         {demo ? (
-          <a href="/login?mode=signup" className="rounded bg-green-d px-5 py-2.5 font-medium text-white" data-testid="commit-import">Create a free account to import</a>
-        ) : <button disabled={previewing || !res.periods.length} onClick={() => runPreview()} className="rounded bg-green-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
+          <a href="/login?mode=signup" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white" data-testid="commit-import">Create a free account to import</a>
+        ) : <button disabled={previewing || !res.periods.length} onClick={() => runPreview()} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
           {previewing ? "Checking…" : `Continue: check ${res.periods.length} months`}
         </button>}
       </div>

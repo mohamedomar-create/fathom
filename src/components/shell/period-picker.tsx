@@ -66,7 +66,7 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
             <div className="w-20 border-r border-line pr-2">
               <div className="label mb-1">Year</div>
               {years.map((y) => (
-                <button key={y} onClick={() => setYear(y)} className={cn("block w-full rounded px-2 py-1 text-left text-sm hover:bg-band", y === year && "font-semibold text-green-d")}>{y}</button>
+                <button key={y} onClick={() => setYear(y)} className={cn("block w-full rounded px-2 py-1 text-left text-sm hover:bg-band", y === year && "font-semibold text-brand-d")}>{y}</button>
               ))}
             </div>
             <div className="flex-1">
@@ -85,7 +85,7 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
                   return (
                     <button key={mm} disabled={!ok} data-testid={`month-${p}`} title={missing ? "No data loaded for this month" : undefined}
                       onClick={() => { set({ end: p }); setOpen(false); }}
-                      className={cn("rounded py-1.5 text-sm", ok ? "hover:bg-band" : "cursor-not-allowed text-[#ccc]", missing && "border border-dashed border-amber text-[#b38a2e]", p === sel.end && "bg-green-bg font-semibold text-green-d")}>
+                      className={cn("rounded py-1.5 text-sm", ok ? "hover:bg-band" : "cursor-not-allowed text-[#ccc]", missing && "border border-dashed border-amber text-[#b38a2e]", p === sel.end && "bg-brand-bg font-semibold text-brand-d")}>
                       {mm}
                     </button>
                   );
@@ -97,7 +97,7 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
           <div className="max-h-72 overflow-auto">
             {[...ends].reverse().map((e) => (
               <button key={e.end} onClick={() => { set({ end: e.end }); setOpen(false); }}
-                className={cn("block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-band", e.end === sel.end && "bg-green-bg font-semibold text-green-d")}>
+                className={cn("block w-full rounded px-2 py-1.5 text-left text-sm hover:bg-band", e.end === sel.end && "bg-brand-bg font-semibold text-brand-d")}>
                 {e.label}
               </button>
             ))}

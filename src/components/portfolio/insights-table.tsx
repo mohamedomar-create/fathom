@@ -90,7 +90,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
                   return (
                     <button key={m.key} disabled={!on && sel.length >= 6} onClick={() => setSel(on ? sel.filter((x) => x !== m.key) : [...sel, m.key])}
                       className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-band disabled:opacity-40">
-                      <Check className={cn("h-4 w-4 text-green-d", !on && "invisible")} />{m.label}
+                      <Check className={cn("h-4 w-4 text-brand-d", !on && "invisible")} />{m.label}
                     </button>
                   );
                 })}
@@ -132,7 +132,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
                   return [
                     <td key={m.key + "v"} className="num border-l border-line px-2 py-2 text-right">{fmt(v, m, r.c.currency)}</td>,
                     <td key={m.key + "g"} className="px-1 py-2">{g !== null && <span className={cn("rounded px-1.5 py-0.5 text-[11px]", good ? "bg-green-bg text-green-d" : "bg-red-bg text-red")}>{g > 0 ? "▲" : "▼"} {Math.abs(g).toFixed(1)}%</span>}</td>,
-                    <td key={m.key + "s"} className="px-1 py-2"><Sparkline values={r.calcs.slice(-12).map((x) => m.get(x))} w={70} h={22} color={good === false ? "#D9343A" : "#7CB46B"} /></td>,
+                    <td key={m.key + "s"} className="px-1 py-2"><Sparkline values={r.calcs.slice(-12).map((x) => m.get(x))} w={70} h={22} color={good === false ? "#D9343A" : "#2E9E6A"} /></td>,
                   ];
                 })}
               </tr>
@@ -140,7 +140,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-6 text-center text-sm text-mute">You&apos;ve reached the bottom! Would you like to <Link href="/companies" className="text-green-d underline">add more companies</Link>?</p>
+      <p className="mt-6 text-center text-sm text-mute">You&apos;ve reached the bottom! Would you like to <Link href="/companies" className="text-brand-d underline">add more companies</Link>?</p>
     </div>
   );
 }

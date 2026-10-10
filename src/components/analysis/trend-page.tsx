@@ -58,7 +58,7 @@ export function TrendPage() {
       <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
         <span className="mr-1 text-mute">Show:</span>
         {[...years, "All"].map((y) => (
-          <button key={y} onClick={() => setYear(y)} className={cn("rounded px-2.5 py-0.5", y === year ? "bg-green-bg font-semibold text-green-d" : "hover:bg-band")}>{y}</button>
+          <button key={y} onClick={() => setYear(y)} className={cn("rounded px-2.5 py-0.5", y === year ? "bg-brand-bg font-semibold text-brand-d" : "hover:bg-band")}>{y}</button>
         ))}
       </div>
       {note && <p className="mb-2 text-xs text-[#9a6b00]">{note}</p>}
@@ -85,7 +85,7 @@ function MetricPicker({ catalogue, onPick }: { catalogue: MetricDef[]; onPick: (
   const match = (m: MetricDef) => m.label.toLowerCase().includes(q.toLowerCase());
   return (
     <Popover>
-      <PopoverTrigger className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-green text-green-d hover:bg-green-bg" aria-label="Add a metric" data-testid="add-metric"><Plus className="h-4 w-4" /></PopoverTrigger>
+      <PopoverTrigger className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-brand text-brand-d hover:bg-brand-bg" aria-label="Add a metric" data-testid="add-metric"><Plus className="h-4 w-4" /></PopoverTrigger>
       <PopoverContent className="w-80 p-0">
         <div className="flex items-center gap-2 border-b border-line px-3 py-2"><Search className="h-4 w-4 text-mute" />
           <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search for a metric" className="w-full text-sm outline-none" />

@@ -1,4 +1,4 @@
-export function Sparkline({ values, color = "#7CB46B", w = 140, h = 34 }: { values: (number | null)[]; color?: string; w?: number; h?: number }) {
+export function Sparkline({ values, color = "#2E9E6A", w = 140, h = 34 }: { values: (number | null)[]; color?: string; w?: number; h?: number }) {
   const v = values.filter((x): x is number => x !== null && Number.isFinite(x));
   if (v.length < 2) return <svg width={w} height={h} />;
   const lo = Math.min(...v), hi = Math.max(...v), rng = hi - lo || 1;
@@ -15,10 +15,10 @@ export function Sparkline({ values, color = "#7CB46B", w = 140, h = 34 }: { valu
 export function MiniPie({ p }: { p: number | null }) {
   const f = Math.max(0, Math.min(Math.abs(p ?? 0), 100)) / 100;
   let arc = null;
-  if (f >= 0.999) arc = <circle cx={8} cy={8} r={7} fill="#7CB46B" />;
+  if (f >= 0.999) arc = <circle cx={8} cy={8} r={7} fill="#2E9E6A" />;
   else if (f > 0) {
     const a = 2 * Math.PI * f, x = 8 + 7 * Math.sin(a), y = 8 - 7 * Math.cos(a);
-    arc = <path d={`M8,8 L8,1 A7,7 0 ${f > 0.5 ? 1 : 0} 1 ${x.toFixed(2)},${y.toFixed(2)} Z`} fill="#7CB46B" />;
+    arc = <path d={`M8,8 L8,1 A7,7 0 ${f > 0.5 ? 1 : 0} 1 ${x.toFixed(2)},${y.toFixed(2)} Z`} fill="#2E9E6A" />;
   }
   return (
     <svg width={16} height={16} viewBox="0 0 16 16" className="inline-block align-[-3px]" aria-hidden>

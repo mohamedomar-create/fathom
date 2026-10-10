@@ -15,7 +15,7 @@ export function PeopleManager({ orgId, me, people, invites }: { orgId: string; m
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); act(() => invite(orgId, email, role), `Invitation saved for ${email}. Ask them to sign up at this site with that address.`); setEmail(""); }}>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@firm.com" className="min-w-64 flex-1 rounded border border-line px-3 py-2" />
         <select value={role} onChange={(e) => setR(e.target.value as Role)} className="rounded border border-line px-2"><option value="editor">Editor</option><option value="viewer">Viewer</option><option value="admin">Admin</option></select>
-        <button disabled={pending} className="rounded bg-green-d px-4 py-2 font-medium text-white">Invite a person</button>
+        <button disabled={pending} className="rounded bg-brand-d px-4 py-2 font-medium text-white">Invite a person</button>
       </form>
       {msg && <p className="text-sm text-green-d">{msg}</p>}
       <table className="tbl text-sm">

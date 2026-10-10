@@ -24,7 +24,7 @@ export function CashflowPage() {
             <MoneyTile label="Free cash flow" value={W.fcf} />
             <MoneyTile label="Net cash flow" value={W.ncf} testId="tile-ncf" />
           </div>
-          <Legend items={[{ label: "Cash Received", color: "#7CB46B" }, { label: "Cash Spent", color: "#D9343A" }]} />
+          <Legend items={[{ label: "Cash Received", color: "#2E9E6A" }, { label: "Cash Spent", color: "#D9343A" }]} />
           <CashWaterfall rows={W.rows} cur={cur} />
           <p className="mt-4 text-xs text-mute" data-testid="ncf-check">
             <b className="text-ink">NET CASH FLOW CAN ALSO BE CALCULATED AS:</b> Change in Cash on Hand {money(W.dcash, cur)} (Open: {money(W.cash0, cur)}, Close: {money(W.cash1, cur)}) − Change in Debt {money(W.ddebt, cur)} (Open: {money(W.debt0, cur)}, Close: {money(W.debt1, cur)})

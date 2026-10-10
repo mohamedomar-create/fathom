@@ -3,7 +3,7 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
-import { APP_NAME } from "@/lib/brand";
+import { LogoMark } from "./logo";
 import { cn } from "@/lib/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -35,7 +35,7 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
               {x.name}
             </Link>
           ))}
-          {!publicDemo && <Link prefetch={false} href="/companies" className="mt-1 block border-t border-line px-2 pt-2 text-sm text-green-d">All companies →</Link>}
+          {!publicDemo && <Link prefetch={false} href="/companies" className="mt-1 block border-t border-line px-2 pt-2 text-sm text-brand-d">All companies →</Link>}
         </PopoverContent>
       </Popover>
       <nav className="ml-1 hidden items-center gap-1 sm:flex">
@@ -48,7 +48,7 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
       <div className="ml-auto flex items-center gap-3">
         {publicDemo && <span className="rounded bg-amber/90 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-bar">Demo company</span>}
         {right}
-        <span className="hidden text-[12px] text-[#999] md:inline">{APP_NAME}</span>
+        <LogoMark size={20} className="hidden md:block" />
       </div>
     </header>
   );

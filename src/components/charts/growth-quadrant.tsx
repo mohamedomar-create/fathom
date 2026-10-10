@@ -34,12 +34,12 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
         <line x1={X(x0)} x2={X(x0)} y1={pt} y2={h - pb} stroke="#CCC" />
         <line y1={Y(y0)} y2={Y(y0)} x1={pl} x2={w - pr} stroke="#CCC" />
         {q.map(([t, x, y, anchor]) => (
-          <text key={t} x={x} y={y} textAnchor={anchor} fontSize={12} letterSpacing=".08em" fill={t === now ? (t === "STRESS" || t === "DECLINE" ? "#D9343A" : "#4F8A41") : "#a5a5a0"} fontWeight={t === now ? 600 : 400}>{t}</text>
+          <text key={t} x={x} y={y} textAnchor={anchor} fontSize={12} letterSpacing=".08em" fill={t === now ? (t === "STRESS" || t === "DECLINE" ? "#D9343A" : "#237A51") : "#a5a5a0"} fontWeight={t === now ? 600 : 400}>{t}</text>
         ))}
         <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.4, ease: "easeInOut" }} d={d} fill="none" stroke="#999" strokeWidth={10} opacity={0.2} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
           <motion.circle key={i} initial={st ? false : { r: 0 }} animate={{ r: i === points.length - 1 ? 10 : hover === i ? 8 : 5.5 }} transition={{ delay: 0.1 * i }}
-            cx={X(p.x)} cy={Y(p.y)} fill={i === points.length - 1 ? "#5E9A4F" : "#7CB46B"} stroke="#fff" strokeWidth={2}
+            cx={X(p.x)} cy={Y(p.y)} fill={i === points.length - 1 ? "#1F7F55" : "#2E9E6A"} stroke="#fff" strokeWidth={2}
             onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} style={{ cursor: "pointer" }} />
         ))}
         {points.map((p, i) => <circle key={`hit${i}`} cx={X(p.x)} cy={Y(p.y)} r={14} fill="transparent" onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} />)}

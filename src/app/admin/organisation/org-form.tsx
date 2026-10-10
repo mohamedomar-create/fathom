@@ -4,10 +4,10 @@ import type { OrganizationRow } from "@/lib/supabase/database.types";
 import { saveOrg } from "../actions";
 
 export function OrgForm({ org }: { org: OrganizationRow }) {
-  const [v, setV] = useState({ name: org.name, brand_colour: org.brand_colour ?? "#4F8A41", logo_url: org.logo_url ?? "", disclaimer: org.disclaimer, report_footer: org.report_footer ?? "" });
+  const [v, setV] = useState({ name: org.name, brand_colour: org.brand_colour ?? "#0B6E70", logo_url: org.logo_url ?? "", disclaimer: org.disclaimer, report_footer: org.report_footer ?? "" });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
-  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-green";
+  const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand";
   return (
     <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); start(async () => { const r = await saveOrg({ orgId: org.id, ...v, report_footer: v.report_footer || null }); setMsg(r.ok ? "Saved." : r.error ?? "Error"); }); }}>
       <label className="block"><span className="label mb-1 block">Organisation name</span><input className={field} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></label>
@@ -19,7 +19,7 @@ export function OrgForm({ org }: { org: OrganizationRow }) {
       <label className="block"><span className="label mb-1 block">Report footer</span><input className={field} maxLength={200} value={v.report_footer} onChange={(e) => setV({ ...v, report_footer: e.target.value })} placeholder="Company Name (Period) - Prepared by …" /></label>
       <label className="block"><span className="label mb-1 block">Report disclaimer</span><textarea rows={4} maxLength={1500} className={field} value={v.disclaimer} onChange={(e) => setV({ ...v, disclaimer: e.target.value })} />
         <span className="text-xs text-mute">{1500 - v.disclaimer.length} characters remaining</span></label>
-      <div className="flex items-center justify-end gap-3">{msg && <span className="mr-auto text-sm text-green-d">{msg}</span>}<button disabled={pending} className="rounded bg-green-d px-5 py-2 font-medium text-white">{pending ? "Saving…" : "Save"}</button></div>
+      <div className="flex items-center justify-end gap-3">{msg && <span className="mr-auto text-sm text-green-d">{msg}</span>}<button disabled={pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white">{pending ? "Saving…" : "Save"}</button></div>
     </form>
   );
 }

@@ -47,7 +47,7 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
             <g key={it.key} onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} onClick={() => onSelect?.(it.key)} style={{ cursor: onSelect ? "pointer" : "default" }}>
               <motion.g initial={st ? false : { opacity: 0, scale: 0.4 }} animate={{ opacity: 1, scale: hover === i ? 1.18 : 1 }} transition={{ delay: 0.03 * i, duration: 0.3 }} style={{ originX: `${x}px`, originY: `${y}px` }}>
                 <g transform={`translate(${x},${y}) rotate(${rot})`}>
-                  <rect x={-14} y={-14} width={28} height={28} rx={2} fill={it.ok ? "#7CB46B" : "#D9343A"} />
+                  <rect x={-14} y={-14} width={28} height={28} rx={2} fill={it.ok ? "#2E9E6A" : "#D9343A"} />
                   <text y={5} textAnchor="middle" fill="#fff" fontSize={15} fontWeight={700}>{it.ok ? "○" : "✕"}</text>
                 </g>
               </motion.g>

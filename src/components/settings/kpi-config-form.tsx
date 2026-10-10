@@ -102,7 +102,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
         {c.readOnly ? <span className="text-sm text-mute">{c.basePath === "/demo" ? "The demo company is read-only." : "You have view-only access."}</span> : (
           <>
             <button onClick={() => setCfg(initial)} disabled={!dirty || pending} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">Discard</button>
-            <button onClick={save} disabled={!dirty || pending} className="rounded bg-green-d px-5 py-2 font-medium text-white disabled:opacity-50" data-testid="save-kpis">{pending ? "Saving…" : "Save changes"}</button>
+            <button onClick={save} disabled={!dirty || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50" data-testid="save-kpis">{pending ? "Saving…" : "Save changes"}</button>
           </>
         )}
       </div>
@@ -113,7 +113,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
 export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChange: (v: boolean) => void; disabled?: boolean; label: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
-      className={cn("relative inline-flex h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50", on ? "bg-green-d" : "bg-[#d5d5d0]")}>
+      className={cn("relative inline-flex h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50", on ? "bg-brand-d" : "bg-[#d5d5d0]")}>
       <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition", on ? "left-[18px]" : "left-0.5")} />
     </button>
   );
@@ -123,7 +123,7 @@ function NumIn({ value, onChange, unit, disabled, label }: { value: number | nul
   return (
     <span className="inline-flex items-center gap-1.5">
       <input type="number" step="any" aria-label={label} disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        className="w-32 rounded border border-line px-2 py-1 text-right outline-none focus:border-green disabled:bg-band" />
+        className="w-32 rounded border border-line px-2 py-1 text-right outline-none focus:border-brand disabled:bg-band" />
       <span className="w-10 text-xs text-mute">{unit}</span>
     </span>
   );

@@ -79,7 +79,7 @@ export function CoaEditor() {
           <>
             <span className="text-sm text-mute">{Object.keys(changes).length} change(s)</span>
             <button onClick={() => setChanges({})} disabled={!Object.keys(changes).length} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">Discard</button>
-            <button onClick={save} disabled={!Object.keys(changes).length || pending} className="rounded bg-green-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save mapping"}</button>
+            <button onClick={save} disabled={!Object.keys(changes).length || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save mapping"}</button>
           </>
         )}
       </div>

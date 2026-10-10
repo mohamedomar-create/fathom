@@ -103,7 +103,7 @@ const rank = (c: PreviewCheck) => (c.severity === "block" && !c.accepted && !c.e
 export function ModeChoice({ mode, onChange, hasData }: { mode: ImportMode; onChange: (m: ImportMode) => void; hasData: boolean }) {
   if (!hasData) return null;
   const opt = (m: ImportMode, title: string, sub: string) => (
-    <label className={cn("flex flex-1 cursor-pointer gap-3 rounded-md border p-3", mode === m ? "border-green-d bg-green-bg/40" : "border-line")}>
+    <label className={cn("flex flex-1 cursor-pointer gap-3 rounded-md border p-3", mode === m ? "border-brand-d bg-brand-bg/40" : "border-line")}>
       <input type="radio" name="import-mode" checked={mode === m} onChange={() => onChange(m)} className="mt-1" data-testid={`mode-${m}`} />
       <span><span className="block font-medium">{title}</span><span className="text-xs text-mute">{sub}</span></span>
     </label>

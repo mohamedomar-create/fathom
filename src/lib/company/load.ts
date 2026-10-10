@@ -1,7 +1,7 @@
 import { cache } from "react";
 import "server-only";
 import { notFound } from "next/navigation";
-import type { ClassKey, CompanySettings, Importance } from "@/lib/engine";
+import type { Assumptions, ClassKey, CompanySettings, Importance } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts, type StoredAccount } from "./build";
@@ -9,6 +9,13 @@ import type { AlertSetting, CompanyBundle } from "./types";
 
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
+/** kpi_config also holds the economic assumptions under this key (not a KPI). */
+export const ECONOMY_KEY = "economy";
+
+export function assumptionsFromRow(c: Pick<CompanyRow, "kpi_config">): Assumptions {
+  const e = ((c.kpi_config ?? {}) as Record<string, unknown>)[ECONOMY_KEY];
+  return e && typeof e === "object" ? (e as Assumptions) : {};
+}
 
 export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month" | "tax_rate" | "kpi_config">): { settings: CompanySettings; alerts: Record<string, AlertSetting> } {
   const cfg = (c.kpi_config ?? {}) as KpiConfig;
@@ -18,6 +25,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
   const active: string[] = [];
   let anyActive = false;
   for (const [k, v] of Object.entries(cfg)) {
+    if (k === ECONOMY_KEY) continue;
     if (v.target !== undefined) targets[k] = v.target;
     if (v.importance) importance[k] = v.importance;
     if (v.alert_active !== undefined) alerts[k] = { active: !!v.alert_active, threshold: v.alert_threshold ?? null };
@@ -25,7 +33,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
   }
   if (anyActive) {
     // Only explicit entries are stored; defaults apply to the rest.
-    for (const [k, v] of Object.entries(cfg)) if (v.active) active.push(k);
+    for (const [k, v] of Object.entries(cfg)) if (k !== ECONOMY_KEY && v.active) active.push(k);
   }
   return {
     settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined },
@@ -91,6 +99,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: mem?.role ?? "viewer", orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf,
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, assumptions: assumptionsFromRow(c),
   };
 });

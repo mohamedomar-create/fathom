@@ -44,7 +44,7 @@ export function GoalseekPage() {
       <div className="mb-2 flex items-center gap-3 text-[11px] font-bold tracking-wider">
         <span className="w-24 shrink-0">START {pct(start)}</span>
         <div className="relative h-7 flex-1 border border-line" style={{ background: "repeating-linear-gradient(45deg,#f3f3f0,#f3f3f0 6px,#e9e9e5 6px,#e9e9e5 12px)" }}>
-          <div className="absolute inset-y-0 left-0 bg-green/35 transition-all" style={{ width: `${Math.min(progress, 1) * 100}%` }} />
+          <div className="absolute inset-y-0 left-0 bg-brand/30 transition-all" style={{ width: `${Math.min(progress, 1) * 100}%` }} />
           <div className="absolute -top-6 -translate-x-1/2 whitespace-nowrap rounded bg-bar px-1.5 py-0.5 text-[10px] text-white transition-all" style={{ left: `${Math.min(progress, 1) * 100}%` }} data-testid="now-marker">
             NOW {pct(now)}
           </div>
@@ -58,7 +58,7 @@ export function GoalseekPage() {
         {reached && " The goal is already reached — negative bars show how far each item could move before the ratio falls back to the goal."}
       </p>
       {Object.values(changes).some((v) => v) && (
-        <button onClick={() => setChanges({})} className="mb-2 inline-flex items-center gap-1 text-xs text-green-d hover:underline"><RotateCcw className="h-3 w-3" /> Reset changes</button>
+        <button onClick={() => setChanges({})} className="mb-2 inline-flex items-center gap-1 text-xs text-brand-d hover:underline"><RotateCcw className="h-3 w-3" /> Reset changes</button>
       )}
       {bands.map((band) => {
         const items = table.filter((t) => t.band === band && !(t.needed === null && (kpi === "gpm" || kpi === "opm") && ["other_income", "other_expenses", "exp_fixed", "exp_variable"].includes(t.key) && P[t.key as "exp_fixed"] === 0));
@@ -81,7 +81,7 @@ export function GoalseekPage() {
                   <label className="flex items-center justify-end gap-1 text-xs text-mute">
                     <input type="number" step="0.5" aria-label={`${t.name} change %`} value={changes[t.key] ?? 0}
                       onChange={(e) => setChanges((ch) => ({ ...ch, [t.key]: Number(e.target.value) }))}
-                      className="w-16 rounded border border-line px-1.5 py-0.5 text-right text-ink outline-none focus:border-green" />%
+                      className="w-16 rounded border border-line px-1.5 py-0.5 text-right text-ink outline-none focus:border-brand" />%
                   </label>
                 </div>
               );
