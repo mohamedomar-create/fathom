@@ -7,6 +7,13 @@ import { mlabel } from "@/lib/engine";
 import { restoreVersion, type AcceptedItem } from "@/app/company/[id]/settings/actions";
 import { cn } from "@/lib/cn";
 import { CheckList, type PreviewCheck } from "./import-timeline";
+import { SourceDrawer, type SourceLine } from "@/components/analysis/source-drawer";
+
+const TRACE: { key: string; label: string; st: "PL" | "BS" }[] = [
+  { key: "revenue", label: "Revenue", st: "PL" }, { key: "net_income", label: "Net income", st: "PL" },
+  { key: "cash", label: "Cash", st: "BS" }, { key: "ta", label: "Total assets", st: "BS" },
+  { key: "tl", label: "Total liabilities", st: "BS" }, { key: "te", label: "Total equity", st: "BS" },
+];
 
 export interface MonthSource { importId: string | null; file: string; at: string | null; by: string | null }
 export interface HistoryRow {
@@ -39,6 +46,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
   const failing = real.filter((c) => c.severity === "block" && !c.accepted);
   const acceptedNow = real.filter((c) => c.accepted);
   const warns = real.filter((c) => c.severity === "warn");
+  const [trace, setTrace] = useState<SourceLine | null>(null);
   const [sel, setSel] = useState<string | null>(failing[0]?.period ?? warns[0]?.period ?? coverage.range[coverage.range.length - 1] ?? null);
 
   const status = (p: string, st: "PL" | "BS"): Status => {
@@ -109,6 +117,14 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
           <div>
             <h2 className="mb-3 text-lg font-medium">{mlabel(sel)}: checks</h2>
             <CheckList checks={selChecks} empty={pl.has(sel) || bs.has(sel) ? "All checks pass for this month." : "No data for this month."} />
+            {(pl.has(sel) || bs.has(sel)) && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[12.5px]" data-testid="trace-buttons">
+                <span className="text-mute">See the accounts behind:</span>
+                {TRACE.filter((t) => (t.st === "PL" ? pl : bs).has(sel)).map((t) => (
+                  <button key={t.key} type="button" onClick={() => setTrace({ key: t.key, label: `${t.label}, ${mlabel(sel)}`, statement: t.st, periods: [sel] })} className="rounded-full border border-line px-2.5 py-0.5 hover:bg-band">{t.label}</button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <h2 className="mb-3 text-lg font-medium">Source</h2>
@@ -138,6 +154,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
         </section>
       )}
 
+      <SourceDrawer line={trace} onClose={() => setTrace(null)} />
       <section>
         <h2 className="mb-3 flex items-center gap-2 text-lg font-medium"><History className="h-4 w-4" />Import history</h2>
         <History_ rows={history} companyId={companyId} readOnly={readOnly} />

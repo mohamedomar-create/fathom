@@ -3,6 +3,7 @@ import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 import { MONTH_ABBR, mlabel, selectableEnds, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
+import { coverageOf } from "@/lib/company/checks";
 import { usePeriod } from "@/lib/company/use-period";
 import { cn } from "@/lib/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -46,6 +47,9 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
   const years = useMemo(() => [...new Set(periods.map((p) => Number(p.slice(0, 4))))].sort(), [periods]);
   const [year, setYear] = useState(Number(sel.end?.slice(0, 4)));
   const has = new Set(periods);
+  // Months inside the loaded range with no figures at all are gaps, not zero months.
+  const cov = useMemo(() => coverageOf(c.accounts), [c.accounts]);
+  const gap = (p: string) => has.has(p) && c.accounts.length > 0 && !cov.pl.has(p) && !cov.bs.has(p);
   const ends = useMemo(() => selectableEnds(c.months, type, fy), [c.months, type, fy]);
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setYear(Number(sel.end.slice(0, 4))); }}>
@@ -73,11 +77,12 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
               <div className="grid grid-cols-3 gap-1">
                 {MONTH_ABBR.slice(1).map((mm, i) => {
                   const p = `${year}-${String(i + 1).padStart(2, "0")}`;
-                  const ok = has.has(p);
+                  const missing = gap(p);
+                  const ok = has.has(p) && !missing;
                   return (
-                    <button key={mm} disabled={!ok} data-testid={`month-${p}`}
+                    <button key={mm} disabled={!ok} data-testid={`month-${p}`} title={missing ? "No data loaded for this month" : undefined}
                       onClick={() => { set({ end: p }); setOpen(false); }}
-                      className={cn("rounded py-1.5 text-sm", ok ? "hover:bg-band" : "cursor-not-allowed text-[#ccc]", p === sel.end && "bg-green-bg font-semibold text-green-d")}>
+                      className={cn("rounded py-1.5 text-sm", ok ? "hover:bg-band" : "cursor-not-allowed text-[#ccc]", missing && "border border-dashed border-amber text-[#b38a2e]", p === sel.end && "bg-green-bg font-semibold text-green-d")}>
                       {mm}
                     </button>
                   );

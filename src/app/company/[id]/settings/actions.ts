@@ -13,7 +13,7 @@ const ClassEnum = z.enum(ALL_CLASSES as [string, ...string[]]);
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Ref = z.object({ sheet: z.string().max(120).optional(), row: z.number().int().min(0).optional(), label: z.string().max(300).optional() });
 const CheckSchema = z.object({
-  id: z.enum(["bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month", "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign"]),
+  id: z.enum(["bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month", "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening"]),
   severity: z.enum(["block", "warn", "info"]), period: Period.optional(), statement: z.enum(["PL", "BS"]).optional(),
   title: z.string().max(200), detail: z.string().max(1000),
   expected: z.number().finite().optional(), actual: z.number().finite().optional(), diff: z.number().finite().optional(),
@@ -32,6 +32,7 @@ const PlanSchema = z.object({
   controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(200) })).max(3000).default([]),
   extra: z.array(CheckSchema).max(500).default([]),
   ranges: z.record(Period, z.number().int().min(1).max(60)).default({}),
+  openingFrom: Period.nullable().default(null),
 });
 const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),
@@ -55,7 +56,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
     supabase.from("imports").select("report").eq("company_id", d.companyId).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges });
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom });
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
 }
 

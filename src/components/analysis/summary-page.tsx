@@ -9,12 +9,15 @@ import { LineChart } from "@/components/charts/line-chart";
 import { cn } from "@/lib/cn";
 import { Delta } from "@/components/ui/status";
 import type { Finding } from "@/lib/engine";
+import { useState } from "react";
+import { SourceDrawer, type SourceLine } from "./source-drawer";
 
 export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNode }) {
   const c = useCompany();
   const a = useAnalysis();
   const comments = useComments();
   const { sel } = usePeriod();
+  const [src, setSrc] = useState<SourceLine | null>(null);
   if (!a) return null;
   const cur = c.settings.currency;
   const { P, B, B0, prior, series } = a.view;
@@ -25,10 +28,10 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   const ch = (x: number, y: number | null | undefined) => (y ? ((x - y) / Math.abs(y)) * 100 : null);
   const prevLabel = prior?.label ?? "";
   const hero = [
-    { l: "Revenue", v: money(P.revenue, cur), d: <><Delta value={ch(P.revenue, prior?.P.revenue)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.revenue < 0, s: sp.P.map((p) => p.revenue) },
+    { l: "Revenue", trace: ["revenue", "PL"] as const, v: money(P.revenue, cur), d: <><Delta value={ch(P.revenue, prior?.P.revenue)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.revenue < 0, s: sp.P.map((p) => p.revenue) },
     { l: "Gross margin", v: gpm === null ? "–" : pct(gpm, 1), d: <span className="text-mute">target {pct(tg, 0)}</span>, neg: gpm !== null && gpm < tg, s: sp.P.map((p) => (p.revenue ? (p.gross_profit / p.revenue) * 100 : null)) },
-    { l: "EBIT", v: money(P.ebit, cur), d: <><Delta value={ch(P.ebit, prior?.P.ebit)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.ebit < 0, s: sp.P.map((p) => p.ebit) },
-    { l: "Cash on hand", v: money(B.cash, cur), d: B0 ? <><Delta value={ch(B.cash, B0.cash)} /> <span className="text-mute">vs opening</span></> : <span className="text-mute">no opening balance</span>, neg: B.cash < 0, s: sp.B.map((b) => b.cash) },
+    { l: "EBIT", trace: ["ebit", "PL"] as const, v: money(P.ebit, cur), d: <><Delta value={ch(P.ebit, prior?.P.ebit)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.ebit < 0, s: sp.P.map((p) => p.ebit) },
+    { l: "Cash on hand", trace: ["cash", "BS"] as const, v: money(B.cash, cur), d: B0 ? <><Delta value={ch(B.cash, B0.cash)} /> <span className="text-mute">vs opening</span></> : <span className="text-mute">no opening balance</span>, neg: B.cash < 0, s: sp.B.map((b) => b.cash) },
     { l: "Operating cash flow", v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">{P.ebit ? `${Math.round((a.W.ocf / P.ebit) * 100)}% of EBIT` : ""}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
     { l: "Breakeven cushion", v: a.breakeven.ok ? pct(a.breakeven.mosPct, 0) : "–", d: a.breakeven.ok ? <span className="text-mute">breakeven {money(a.breakeven.bep, cur, true)}</span> : null, neg: a.breakeven.ok && a.breakeven.mosPct < 0, s: [] },
   ];
@@ -51,7 +54,11 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
         {hero.map((h) => (
           <div key={h.l} className={cn("fade-up border-t-[3px] pt-2.5", h.neg ? "border-red" : "border-green")}>
             <div className="label">{h.l}</div>
-            <div className="num my-0.5 whitespace-nowrap text-[21px]">{h.v}</div>
+            <div className="num my-0.5 whitespace-nowrap text-[21px]">
+              {"trace" in h && h.trace ? (
+                <button type="button" onClick={() => setSrc({ key: h.trace[0], label: h.l, statement: h.trace[1], periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title="Show the accounts and source file behind this figure" data-testid={`trace-${h.trace[0]}`}>{h.v}</button>
+              ) : h.v}
+            </div>
             <div className="text-xs">{h.d}</div>
             {h.s.length > 1 && <div className="mt-1"><Sparkline values={h.s} color={h.neg ? "#D9343A" : "#7CB46B"} w={130} h={30} /></div>}
           </div>
@@ -72,6 +79,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
             ]} />
         </div>
       </div>
+      <SourceDrawer line={src} onClose={() => setSrc(null)} />
       {sel.type !== "month" && !a.view.complete && <p className="mt-6 text-xs text-mute">Some months in this period are not loaded; totals cover the months available.</p>}
     </>
   );
