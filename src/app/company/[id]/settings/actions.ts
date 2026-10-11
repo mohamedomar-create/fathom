@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
+import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { ALL_CLASSES } from "@/lib/company/build";
 import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
@@ -208,18 +209,6 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
   return { ok: true };
 }
 
-const Rate = z.number().finite().nullable().optional();
-const AssumptionsSchema = z.object({
-  inflation: Rate.refine((v) => v == null || (v > -50 && v < 1000), "Inflation must be a yearly % between -50 and 1000"),
-  fxStart: Rate.refine((v) => v == null || (v > 0 && v < 100000), "Exchange rates must be positive"),
-  fxEnd: Rate.refine((v) => v == null || (v > 0 && v < 100000), "Exchange rates must be positive"),
-  importShare: Rate.refine((v) => v == null || (v >= 0 && v <= 100), "Imported share must be 0 to 100%"),
-  assetAge: Rate.refine((v) => v == null || (v >= 0 && v <= 100), "Asset age must be 0 to 100 years"),
-  rate: Rate.refine((v) => v == null || (v >= 0 && v < 200), "Borrowing rate must be 0 to 200%"),
-  principal12m: Rate.refine((v) => v == null || v >= 0, "Repayments cannot be negative"),
-  tenor: Rate.refine((v) => v == null || (v > 0 && v <= 40), "Tenor must be 1 to 40 years"),
-}).strict();
-
 /** Inflation, exchange rates and borrowing terms used by the bank-readiness and real-profit views. */
 export async function saveAssumptions(companyId: string, input: z.input<typeof AssumptionsSchema>): Promise<{ ok: boolean; error?: string }> {
   const v = AssumptionsSchema.safeParse(input);
@@ -230,7 +219,7 @@ export async function saveAssumptions(companyId: string, input: z.input<typeof A
   const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
   if (e1) return { ok: false, error: dbError(e1, "saveAssumptions") };
   if (!row) return { ok: false, error: "You do not have permission to change this." };
-  const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined));
+  const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined && x !== ""));
   const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [ECONOMY_KEY]: clean };
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveAssumptions") };

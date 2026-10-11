@@ -32,7 +32,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { data: row } = await supabase.from("companies").select("industry, ai_context").eq("id", id).single();
   try {
     const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts });
-    const context = buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes });
+    const context = buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions }, parsed.data.sections);
     const out = await writeCommentary(context, parsed.data.sections);
     const periodKey = `${parsed.data.type}:${parsed.data.end}`;
     const rows = Object.entries(out).map(([section, body]) => ({ company_id: id, period_key: periodKey, section, body: body!, source: "ai", updated_by: user.id, updated_at: new Date().toISOString() }));

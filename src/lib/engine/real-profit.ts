@@ -26,9 +26,22 @@ export interface Assumptions {
   principal12m?: number | null;
   /** Years over which a new loan would be repaid. */
   tenor?: number | null;
+  /** The loan or facility the company wants to ask the bank for. */
+  requestAmount?: number | null;
+  requestType?: RequestType | null;
+  requestPurpose?: string | null;
   /** The figures are examples (demo company), not the user's own. */
   example?: boolean;
 }
+
+export const REQUEST_TYPES = ["term_loan", "working_capital", "lc_guarantee", "other"] as const;
+export type RequestType = (typeof REQUEST_TYPES)[number];
+export const REQUEST_LABEL: Record<RequestType, string> = {
+  term_loan: "Term loan (repaid in instalments)",
+  working_capital: "Working-capital line / overdraft",
+  lc_guarantee: "Letters of credit or guarantee",
+  other: "Other facility",
+};
 
 export interface BridgeStep { key: string; label: string; value: number; explain: string }
 
@@ -150,4 +163,19 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
     };
   }
   return { reported: P.net_income, cashProfit: b.ocf, collection, inflation, fx };
+}
+
+/** Two or three plain sentences on the result, used when no commentary has been written. */
+export function realProfitSummary(x: RealProfit, cur: string): string {
+  const m = (v: number) => `${cur} ${Math.round(v).toLocaleString("en-US")}`;
+  const out: string[] = [];
+  if (x.inflation) {
+    const share = x.reported > 0 ? (x.inflation.real / x.reported) * 100 : null;
+    out.push(`Reported profit of ${m(x.reported)} is worth ${m(x.inflation.real)} at today's prices${share !== null ? ` (${Math.round(share)}% of what the books show)` : ""}, after ${x.inflation.periodRate.toFixed(1)}% inflation.`);
+    const worst = [...x.inflation.steps].sort((a, b) => a.value - b.value)[0];
+    if (worst && worst.value < 0) out.push(`The largest erosion is ${worst.label.toLowerCase()} (${m(-worst.value)}).`);
+    if (x.inflation.realRoe !== null) out.push(x.inflation.realRoe < 0 ? `In real terms the owners lost ${Math.abs(x.inflation.realRoe).toFixed(1)}% of their equity's value over the year.` : `Owners earned a real return of ${x.inflation.realRoe.toFixed(1)}% a year on their equity.`);
+  } else out.push(`Reported profit is ${m(x.reported)}; enter the inflation rate to see what it is worth at today's prices.`);
+  if (x.collection.release !== null && x.collection.release > 0) out.push(`Collecting from customers in ${Math.round(x.collection.targetDso)} days instead of ${Math.round(x.collection.dso!)} would release ${m(x.collection.release)} of cash.`);
+  return out.join(" ");
 }

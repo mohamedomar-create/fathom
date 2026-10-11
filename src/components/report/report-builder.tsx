@@ -41,7 +41,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
 
   const input = useMemo(() => ({
     title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
-    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [],
+    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {},
     preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
   }), [title, c, type, validEnd, sections, comments, org]);
 
@@ -54,7 +54,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   });
   const ai = (section?: string) => run(section ? `ai:${section}` : "ai", async () => {
     // One request per section keeps each call well inside the server function time limit.
-    const results = await Promise.allSettled((section ? [section] : [...COMMENTARY_SECTIONS]).map(async (s) => {
+    const results = await Promise.allSettled((section ? [section] : COMMENTARY_SECTIONS.filter((k) => sections.some((x) => x.enabled && SECTION_COMMENT[x.key] === k))).map(async (s) => {
       const res = await fetch(`/api/companies/${c.id}/commentary`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type, end: validEnd, sections: [s] }) });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error ?? "AI commentary failed");

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { money, pct, realProfit, twelveMonths, type WaterfallRow } from "@/lib/engine";
+import { money, pct, realProfit, realProfitSummary, twelveMonths, type WaterfallRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -8,6 +8,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { CashWaterfall } from "@/components/charts/waterfall";
 import { AssumptionsPanel, useAssumptions } from "./assumptions";
 import { Tile } from "./common";
+import { MemoBox } from "./memo-box";
 
 const usd = (v: number | null) => (v === null ? "–" : money(v, "USD"));
 
@@ -40,6 +41,8 @@ export function RealProfitPage() {
         <Tile label="Real profit" value={inf ? money(inf.real, cur, true) : "–"} neg={!!inf && inf.real < 0} sub={<span className="text-mute">{inf ? `after ${pct(inf.periodRate, 1)} inflation` : "enter inflation below"}</span>} testId="tile-real" />
         <Tile label="Profit in US dollars" value={x.fx ? usd(x.fx.reportedUsd) : "–"} neg={!!x.fx && x.fx.reportedUsd < 0} sub={<span className="text-mute">{x.fx ? `pound ${x.fx.devaluation >= 0 ? "fell" : "rose"} ${pct(Math.abs(x.fx.devaluation), 1)} against the dollar` : "enter exchange rates below"}</span>} />
       </div>
+
+      <div className="mb-8"><MemoBox section="realprofit" title="What this means" fallback={realProfitSummary(x, cur)} testId="real-memo" /></div>
 
       <div className="mb-10">
         <AssumptionsPanel fields={["inflation", "fxStart", "fxEnd", "importShare", "assetAge", "rate"]} a={a} setA={setA} saved={saved} />
