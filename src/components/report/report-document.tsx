@@ -15,6 +15,7 @@ import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { runChecks, type CheckId } from "@/lib/company/checks";
 import { SECTION_COMMENT, type ReportInput, type SectionKey } from "@/lib/report/types";
+import { ReportBank, ReportBankOutlook, ReportRealProfit } from "./report-bank";
 
 const AUTO_SECTIONS: Partial<Record<SectionKey, Finding["section"][]>> = { kpis: ["kpis"], profitability: ["profitability"], cashflow: ["cashflow"], trend: ["trend"], bs: ["bs"] };
 
@@ -37,6 +38,9 @@ export function ReportDocument({ input }: { input: ReportInput }) {
       <h2>{title}</h2>
       <div className="text-[12px] text-mute">{upto ? "Up to the " : "For the "}<b className="text-ink">{a.view.window.label}</b></div>
     </div>
+  );
+  const headOn = (title: string, label: string) => (
+    <div className="rhead" style={{ borderColor: brand }}><h2>{title}</h2><div className="text-[12px] text-mute">On the <b className="text-ink">{label}</b></div></div>
   );
   const sections: Record<SectionKey, () => React.ReactNode> = {
     cover: () => <Cover input={input} a={a} brand={brand} />,
@@ -62,6 +66,9 @@ export function ReportDocument({ input }: { input: ReportInput }) {
     trend: () => <>{head("Trend", true)}<Trend a={a} cur={cur} />{comment("trend")}</>,
     growth: () => <>{head("Growth", true)}<Growth input={input} a={a} cur={cur} />{comment("growth")}</>,
     goalseek: () => <>{head("Goalseek")}<Goalseek a={a} />{comment("goalseek")}</>,
+    bank: () => <ReportBank input={input} head={headOn} />,
+    bank_outlook: () => <ReportBankOutlook input={input} head={headOn} />,
+    realprofit: () => <ReportRealProfit input={input} head={headOn} />,
     basis: () => <>{head("Basis of Preparation")}<Basis input={input} a={a} cur={cur} /></>,
   };
   return (

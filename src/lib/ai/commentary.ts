@@ -13,7 +13,8 @@ const Schema = z.object(Object.fromEntries(COMMENTARY_SECTIONS.map((s) => [s, z.
 
 export class CommentaryError extends Error {}
 
-const MAX_SECTION = 1500;
+const MAX_SECTION: Partial<Record<CommentarySection, number>> = { bank: 3000 };
+const maxLen = (s: CommentarySection) => MAX_SECTION[s] ?? 1500;
 
 /** Text from the client's files can't close the data block or pose as markup: angle brackets are removed, strings capped. */
 export function asData(v: unknown): unknown {
@@ -44,7 +45,7 @@ export async function writeCommentary(context: unknown, sections: CommentarySect
     if (response.stop_reason === "max_tokens") throw new CommentaryError("The AI response was cut off. Try fewer sections at once.");
     const out = response.parsed_output;
     if (!out) throw new CommentaryError("The AI response could not be read. Please try again.");
-    return Object.fromEntries(sections.map((s) => [s, out[s].trim().slice(0, MAX_SECTION)]).filter(([, v]) => v));
+    return Object.fromEntries(sections.map((s) => [s, out[s].trim().slice(0, maxLen(s))]).filter(([, v]) => v));
   } catch (e) {
     if (e instanceof CommentaryError) throw e;
     if (e instanceof Anthropic.APIConnectionTimeoutError) throw new CommentaryError("The AI took too long. Try fewer sections at once.");

@@ -130,3 +130,30 @@ test("real profit bridges reported to real profit and needs inflation for it", a
   await expect(page.getByTestId("tile-real")).toContainText("enter inflation");
   await expect(page.getByTestId("real-bridge")).toHaveCount(0);
 });
+
+test("bank readiness tests a loan request, stresses the year and writes the memo", async ({ page }) => {
+  await page.goto("/demo/analysis/bank");
+  await expect(page.getByTestId("bank-memo")).toContainText("Lead with");
+  await expect(page.getByTestId("trend-table")).toContainText("Debt service cover");
+  await expect(page.getByTestId("trend-note")).toContainText("Upload earlier audited statements");
+  await expect(page.getByTestId("stress-table")).toContainText("Sales fall 20%");
+  await expect(page.getByTestId("breaking-points")).toContainText("Sales can fall");
+  await expect(page.getByTestId("tile-request")).toContainText("enter the amount");
+  await page.getByTestId("assume-requestAmount").fill("3000000");
+  await page.getByTestId("assume-requestType").selectOption("term_loan");
+  await page.getByTestId("assume-requestPurpose").fill("a second warehouse");
+  await expect(page.getByTestId("proforma")).toContainText("With the new facility");
+  await expect(page.getByTestId("tile-request")).toContainText("EGP 3.0M");
+  await expect(page.getByTestId("bank-memo")).toContainText("a second warehouse");
+});
+
+test("the report adds bank and real-profit pages and still downloads as a PDF", async ({ page }) => {
+  test.slow();
+  await page.goto("/demo/reports");
+  for (const label of ["Bank Readiness", "Bank: trend & stress test", "Real Profit"]) await page.getByRole("button", { name: `Show ${label}`, exact: true }).click();
+  await expect(page.locator('[data-section="bank"]')).toContainText("Debt service cover");
+  await expect(page.locator('[data-section="bank_outlook"]')).toContainText("Stress test");
+  await expect(page.locator('[data-section="realprofit"]')).toContainText("Real profit at today's prices");
+  const [dl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download-pdf").click()]);
+  expect(dl.suggestedFilename()).toMatch(/\.pdf$/);
+});
