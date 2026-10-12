@@ -22,6 +22,10 @@ export interface InsightCtx {
   cur: string;
   /** "last month" | "the prior quarter" | "the prior year" */
   priorLabel?: string;
+  /** "month" | "quarter" | "year": the length of the period shown. */
+  periodWord?: string;
+  /** Names of the KPIs the company tracks and rates critical that are off target; defaults to the standard set. */
+  critical?: string[];
 }
 
 /** Rule-based findings in plain language, ranked by severity (port of the reference engine). */
@@ -29,6 +33,7 @@ export function insights(ctx: InsightCtx): Finding[] {
   const { P, B, Pprev: Pp, K, W, tg, Ps, Bs, cur } = ctx;
   const m = (v: number) => money(v, cur);
   const prior = ctx.priorLabel ?? "last month";
+  const per = ctx.periodWord ?? "month";
   const out: Finding[] = [];
   const add = (sev: 1 | 2 | 3, kind: FindingKind, section: FindingSection, title: string, text: string) => out.push({ sev, kind, section, title, text });
   const R = P.revenue;
@@ -63,7 +68,7 @@ export function insights(ctx: InsightCtx): Finding[] {
         add(d < 0 ? 2 : 1, d < 0 ? "risk" : "win", "profitability", `Gross margin ${d < 0 ? "fell" : "rose"} ${fixed(Math.abs(d), 1)} points`,
           `Now ${pct(gpm, 1)} (was ${pct(gpm - d, 1)}). ` + (d < 0 ? "Check supplier prices, discounts and product mix." : "Hold on to whatever drove this."));
     }
-    if (gpm < tgtG) add(2, "risk", "kpis", `Gross margin ${pct(gpm, 1)} is under the ${pct(tgtG, 0)} target`, `Each 1 point is worth about ${m(R * 0.01)} a month at this revenue.`);
+    if (gpm < tgtG) add(2, "risk", "kpis", `Gross margin ${pct(gpm, 1)} is under the ${pct(tgtG, 0)} target`, `Each 1 point is worth about ${m(R * 0.01)} of gross profit a ${per} at this revenue.`);
   }
   const vcr = div(P.variable_costs, R);
   if (R && vcr !== null && vcr < 1) {
@@ -78,7 +83,7 @@ export function insights(ctx: InsightCtx): Finding[] {
       if (dol > 3) add(1, "watch", "profitability", `High operating leverage (${fixed(dol, 1)}x)`, `A 10% change in revenue moves EBIT by about ${fixed(dol * 10, 0)}%. Good when sales grow, painful when they fall.`);
     }
   }
-  if (P.ebit < 0) add(3, "risk", "profitability", "Operating loss this month", `EBIT is ${m(P.ebit)}.`);
+  if (P.ebit < 0) add(3, "risk", "profitability", `Operating loss this ${per}`, `EBIT is ${m(P.ebit)}.`);
   if (W) {
     const { ocf, ncf } = W;
     if (P.ebit > 0 && ocf < 0) add(3, "risk", "cashflow", "Profit is not turning into cash", `EBIT is ${m(P.ebit)} but operating cash flow is ${m(ocf)}. Look at receivables, stock and payables first.`);
@@ -89,8 +94,8 @@ export function insights(ctx: InsightCtx): Finding[] {
     const sum = ncfs.reduce((a, b) => a + b, 0);
     if (ncfs.length && sum < 0 && B.cash > 0) {
       const burn = -sum / ncfs.length;
-      add(B.cash / burn < 3 ? 3 : 2, "risk", "cashflow", `Cash is shrinking: about ${fixed(B.cash / burn, 1)} months of runway`,
-        `Average net cash outflow is ${m(burn)} a month over the last ${ncfs.length} months; cash on hand is ${m(B.cash)}.`);
+      add(B.cash / burn < 3 ? 3 : 2, "risk", "cashflow", `Net cash outflow: about ${fixed(B.cash / burn, 1)} months of cash left at this rate`,
+        `Before any new borrowing, the business used about ${m(burn)} a month over the last ${ncfs.length} months (change in cash less change in borrowing); cash on hand is ${m(B.cash)}.`);
     } else if (ncf > 0 && ncfs.length >= 2 && ncfs.every((x) => x > 0)) add(1, "win", "cashflow", `Cash has grown ${ncfs.length} months in a row`, `Cash on hand is ${m(B.cash)}.`);
   }
   if (B.cash < 0) add(3, "risk", "cashflow", "Negative cash balance", "Check for an overdraft that should sit in short-term debt.");
@@ -101,23 +106,20 @@ export function insights(ctx: InsightCtx): Finding[] {
     const v = K[key];
     const tgt = tg[key] ?? (key === "ar_days" ? 45 : 60);
     if (v !== null && v !== undefined && tgt && v > tgt * 1.1) {
-      const tied = ((v - tgt) / ctx.days) * (key === "ar_days" ? R : P.cos);
+      const tied = ((v - tgt) / ctx.days) * (key === "ar_days" ? R : P.cos - P.cos_depreciation);
       add(2, "risk", "kpis", `${nm} ${fixed(v, 0)} days (target ${fixed(tgt, 0)})`, `About ${m(tied)} extra cash is tied up. ${hint}`);
     }
   }
-  const { ap_days: ap, ar_days: ar, inv_days: inv } = K;
-  if (ap != null && ar != null && inv != null) {
-    const ccc = ar + inv - ap;
-    if (ccc > 60) add(1, "watch", "kpis", `Cash conversion cycle is ${fixed(ccc, 0)} days`, "That is how long money is out before it comes back (receivable days + stock days - supplier days).");
-  }
+  const ccc = K.ccc;
+  if (ccc != null && ccc > 60) add(1, "watch", "kpis", `Cash conversion cycle is ${fixed(ccc, 0)} days`, "That is how long money is out before it comes back (receivable days + stock and work-in-progress days − supplier days).");
   const cr = K.current;
   if (cr != null && cr < 1) add(3, "risk", "kpis", `Current ratio ${fixed(cr, 2)}: short-term bills exceed short-term assets`, "Risk of not meeting payments on time.");
   else if (cr != null && cr < 1.2) add(1, "watch", "kpis", `Current ratio only ${fixed(cr, 2)}`, "Thin buffer for short-term bills.");
   const ic = K.int_cover;
-  if (ic != null && ic < 1.5 && P.net_interest > 0) add(ic < 1 ? 3 : 2, "risk", "kpis", `Interest cover ${fixed(ic, 1)}x`, "Operating profit barely covers interest cost.");
+  if (ic != null && ic < 1.5) add(ic < 1 ? 3 : 2, "risk", "kpis", `Interest cover ${fixed(ic, 1)}x`, "Operating profit barely covers interest cost.");
   if (B.te > 0 && B.debt / B.te > 1.5) add(2, "watch", "kpis", `Debt is ${fixed(B.debt / B.te, 1)}x equity`, "High borrowing relative to owners' capital.");
   if (R && P.fixed_costs / R > 0.35) add(1, "watch", "profitability", `Fixed costs take ${fixed((P.fixed_costs / R) * 100, 0)}% of revenue`, "Costs that do not move with sales are what make slow months hurt.");
-  const crit = KPI_DEFS.filter((d) => d.importance === "Critical" && ctx.status[d.key] === false).map((d) => d.name);
+  const crit = ctx.critical ?? KPI_DEFS.filter((d) => d.importance === "Critical" && ctx.status[d.key] === false).map((d) => d.name);
   if (crit.length) add(2, "risk", "kpis", `${crit.length} critical KPI${crit.length > 1 ? "s" : ""} off target`, crit.join(", ") + ".");
   if (Math.abs(B.imbalance) > 0.5) add(3, "risk", "bs", "Balance sheet does not balance", `Out by ${m(B.imbalance)}. Fix the source data before relying on cash flow, ROE or liquidity numbers.`);
   out.sort((a, b) => b.sev - a.sev || Number(a.kind !== "risk") - Number(b.kind !== "risk"));

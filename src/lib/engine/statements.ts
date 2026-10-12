@@ -44,3 +44,10 @@ export function sumPL(list: PLInput[]): PLInput {
   for (const k of PL_KEYS) out[k] = list.reduce((s, p) => s + n(p[k]), 0);
   return out;
 }
+
+/** Average of month-end balance sheets, line by line: the base for days and returns over a period. */
+export function averageBS(list: BSCalc[]): BSCalc {
+  const out: Record<string, number> = {};
+  for (const k of Object.keys(list[0]) as (keyof BSCalc)[]) out[k] = list.reduce((s, b) => s + (b[k] as number), 0) / list.length;
+  return out as unknown as BSCalc;
+}

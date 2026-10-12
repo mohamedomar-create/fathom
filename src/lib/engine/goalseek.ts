@@ -3,7 +3,7 @@ import type { PLCalc } from "./types";
 export type GoalKpi = "profit_ratio" | "opm" | "gpm";
 export type LeverKey = "price" | "volume" | "cos_variable" | "exp_fixed" | "exp_variable" | "other_expenses" | "other_income";
 export const GOAL_KPIS: { key: GoalKpi; name: string; numerator: "ebit" | "operating_profit" | "gross_profit" }[] = [
-  { key: "profit_ratio", name: "Profitability Ratio", numerator: "ebit" },
+  { key: "profit_ratio", name: "EBIT Margin", numerator: "ebit" },
   { key: "opm", name: "Operating Profit Margin", numerator: "operating_profit" },
   { key: "gpm", name: "Gross Profit Margin", numerator: "gross_profit" },
 ];
@@ -68,4 +68,11 @@ export function applyChanges(P: PLCalc, kpi: GoalKpi, changes: Partial<Record<Le
 
 export function goalseekTable(P: PLCalc, kpi: GoalKpi, goalPct: number) {
   return LEVERS.map((l) => ({ ...l, needed: leverNeeded(P, kpi, goalPct, l.key) }));
+}
+
+/** The goal to seek: the target, or once it is met a stretch goal at the next multiple of 5 at least 2 points above today. */
+export function goalFor(start: number, target: number): { goal: number; stretch: boolean } {
+  if (start < target) return { goal: target, stretch: false };
+  const up = Math.ceil((start + 0.01) / 5) * 5;
+  return { goal: up - start < 2 ? up + 5 : up, stretch: true };
 }

@@ -1,5 +1,5 @@
 import { addMonths, daysIn, mlabel, MONTH_ABBR, monthIndex, parsePeriod, periodFromIndex } from "./format";
-import { bsCalc, plCalc, sumPL } from "./statements";
+import { averageBS, bsCalc, plCalc, sumPL } from "./statements";
 import type { BSCalc, MonthData, PeriodType, PLCalc } from "./types";
 
 export interface PeriodSel { type: PeriodType; end: string }
@@ -58,6 +58,8 @@ export interface PeriodView {
   P: PLCalc;
   B: BSCalc;
   B0: BSCalc | null;
+  /** Average of the month-end balances held, from the opening balance to the end (closing alone when only one is held). */
+  Bavg: BSCalc;
   days: number;
   prior: { P: PLCalc; B: BSCalc; label: string } | null;
   ly: { P: PLCalc; B: BSCalc; label: string } | null;
@@ -86,6 +88,7 @@ export function periodView(months: MonthData[], sel: PeriodSel, fyStart: number)
   const open = byPeriod.get(addMonths(window.start, -1));
   const B0 = open ? bsCalc(open.bs) : null;
   const days = window.periods.reduce((s, p) => s + daysIn(p), 0);
+  const Bavg = averageBS([...(B0 ? [B0] : []), ...got.map((m) => bsCalc(m.bs))]);
   const cmp = (shift: number) => {
     const w2 = shiftWindow(window, shift);
     const ms = w2.periods.map((p) => byPeriod.get(p));
@@ -96,7 +99,7 @@ export function periodView(months: MonthData[], sel: PeriodSel, fyStart: number)
   const ytdMonths = sorted.filter((m) => m.period >= fy0 && m.period <= window.end);
   const upto = sorted.filter((m) => m.period <= window.end);
   return {
-    sel, window, complete: got.length === window.periods.length, P, B, B0, days,
+    sel, window, complete: got.length === window.periods.length, P, B, B0, Bavg, days,
     prior: cmp(SHIFT[sel.type]), ly: sel.type === "year" ? cmp(12) : cmp(12),
     ytd: plCalc(sumPL(ytdMonths.map((m) => m.pl))),
     series: { periods: upto.map((m) => m.period), P: upto.map((m) => plCalc(m.pl)), B: upto.map((m) => bsCalc(m.bs)) },

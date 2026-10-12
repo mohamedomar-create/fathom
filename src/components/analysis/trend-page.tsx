@@ -21,7 +21,7 @@ export function TrendPage() {
   const [keys, setKeys] = useState<string[]>(["p:revenue"]);
   const [year, setYear] = useState<string>("All");
   const [note, setNote] = useState<string | null>(null);
-  const calcs = useMemo(() => monthCalcs(c.months, c.settings.taxRate), [c.months, c.settings.taxRate]);
+  const calcs = useMemo(() => monthCalcs(c.months), [c.months]);
   const cat = useMemo(() => metricCatalogue(c.accounts), [c.accounts]);
   if (!a) return null;
   const end = a.view.window.end;

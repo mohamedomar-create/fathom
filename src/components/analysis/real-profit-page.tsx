@@ -39,7 +39,7 @@ export function RealProfitPage() {
         <Tile label="Reported net profit" value={money(x.reported, cur, true)} neg={x.reported < 0} sub={<span className="text-mute">as in the books</span>} testId="tile-reported" />
         <Tile label="Cash from operations" value={x.cashProfit === null ? "–" : money(x.cashProfit, cur, true)} neg={(x.cashProfit ?? 0) < 0} sub={<span className="text-mute">{x.cashProfit === null ? "needs the month before" : "operating cash flow: what profit brought in"}</span>} />
         <Tile label="Real profit" value={inf ? money(inf.real, cur, true) : "–"} neg={!!inf && inf.real < 0} sub={<span className="text-mute">{inf ? `after ${pct(inf.periodRate, 1)} inflation` : "enter inflation below"}</span>} testId="tile-real" />
-        <Tile label="Profit in US dollars" value={x.fx ? usd(x.fx.reportedUsd) : "–"} neg={!!x.fx && x.fx.reportedUsd < 0} sub={<span className="text-mute">{x.fx ? `pound ${x.fx.devaluation >= 0 ? "fell" : "rose"} ${pct(Math.abs(x.fx.devaluation), 1)} against the dollar` : "enter exchange rates below"}</span>} />
+        <Tile label="Profit in US dollars" value={x.fx ? usd(x.fx.reportedUsd) : "–"} neg={!!x.fx && x.fx.reportedUsd < 0} sub={<span className="text-mute">{x.fx ? `pound ${x.fx.devaluation >= 0 ? "lost" : "gained"} ${pct(Math.abs(x.fx.poundChange), 1)} against the dollar` : "enter exchange rates below"}</span>} />
       </div>
 
       <div className="mb-8"><MemoBox section="realprofit" title="What this means" fallback={realProfitSummary(x, cur)} testId="real-memo" /></div>
@@ -89,7 +89,8 @@ export function RealProfitPage() {
       <p className="mb-4 text-sm text-mute">For owners and lenders who think in dollars. Exchange gains and losses on foreign-currency balances are already in reported profit when the books revalue them at the period end (EAS 13).</p>
       {x.fx ? (
         <table className="tbl mb-10 max-w-2xl" data-testid="fx"><tbody>
-          <tr className="row"><td>Change in the USD rate over the period</td><td>{pct(x.fx.devaluation, 1)}</td></tr>
+          <tr className="row"><td>Change in the USD rate over the period (EGP per USD)</td><td>{pct(x.fx.devaluation, 1)}</td></tr>
+          <tr className="row"><td>Change in the pound&apos;s value in dollars</td><td>{pct(-x.fx.poundChange, 1)}</td></tr>
           <tr className="row"><td>Reported profit in USD (average rate)</td><td>{usd(x.fx.reportedUsd)}</td></tr>
           {x.fx.realUsd !== null && <tr className="row"><td>Real profit in USD</td><td>{usd(x.fx.realUsd)}</td></tr>}
           <tr className="row"><td>Owners&apos; equity in USD at the start</td><td>{usd(x.fx.equityStartUsd)}</td></tr>
@@ -104,7 +105,8 @@ export function RealProfitPage() {
           <p>Money held or owed (cash, receivables, borrowing, suppliers, taxes) gains or loses purchasing power: average balance × inflation over the period. Average balances use every month-end held in the period.</p>
           <p>Stock sold was bought earlier at lower prices. Replacing it costs cost of sales × the price rise over the stock days; imported stock rises with the dollar, local stock with inflation.</p>
           <p>Depreciation is on what the assets cost when bought; at today&apos;s prices it is higher by the inflation since then.</p>
-          <p>Prepayments and other current assets are left out. This is a simplified form of the method in IAS 29 for high inflation, meant for management decisions, not statutory accounts.</p>
+          <p>Prepayments and other current assets are left out. This is a current-cost view in the spirit of IAS 29 (financial reporting in high inflation): it adjusts for the main effects of rising prices but does not restate every line to period-end money. It is meant for management decisions, not statutory accounts.</p>
+          <p>Return on equity after inflation is the owners&apos; real gain in purchasing power: (1 + return on equity) ÷ (1 + inflation) − 1. It looks at equity as a whole, so it can differ from the profit bridge above.</p>
         </div>
       </details>
     </>

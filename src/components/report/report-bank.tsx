@@ -90,7 +90,7 @@ export function ReportRealProfit({ input, head }: { input: ReportInput; head: (t
         <Tile label="Reported net profit" value={money(x.reported, cur, true)} />
         <Tile label="Cash from operations" value={x.cashProfit === null ? "–" : money(x.cashProfit, cur, true)} />
         <Tile label="Real profit" value={inf ? money(inf.real, cur, true) : "–"} sub={inf ? `after ${pct(inf.periodRate, 1)} inflation` : "inflation not entered"} />
-        <Tile label="Profit in USD" value={x.fx ? money(x.fx.reportedUsd, "USD", true) : "–"} sub={x.fx ? `USD rate ${pct(x.fx.devaluation, 1)}` : "rates not entered"} />
+        <Tile label="Profit in USD" value={x.fx ? money(x.fx.reportedUsd, "USD", true) : "–"} sub={x.fx ? `pound ${x.fx.devaluation >= 0 ? "lost" : "gained"} ${pct(Math.abs(x.fx.poundChange), 1)} vs USD` : "rates not entered"} />
       </div>
       {inf ? <CashWaterfall rows={rows} cur={cur} /> : <p className="text-mute">Enter the inflation rate in Real Profit to show the bridge.</p>}
       <div className="mt-5 grid grid-cols-2 gap-6 text-[11.5px]">
@@ -108,7 +108,7 @@ export function ReportRealProfit({ input, head }: { input: ReportInput; head: (t
       </div>
       <div className="rcomment whitespace-pre-line">{input.commentary.realprofit || realProfitSummary(x, cur)}</div>
       <p className="mt-2 text-[10px] text-mute">
-        Rates used: inflation {as.inflation ?? "–"}%, USD {as.fxStart ?? "–"} → {as.fxEnd ?? "–"}, imported stock {as.importShare ?? 0}%, asset age {as.assetAge ?? "–"} years{as.example ? " (example figures)" : ""}. A simplified form of IAS 29 for management use, not statutory accounts.
+        Rates used: inflation {as.inflation ?? "–"}%, USD {as.fxStart ?? "–"} → {as.fxEnd ?? "–"}, imported stock {as.importShare ?? 0}%, asset age {as.assetAge ?? "–"} years{as.example ? " (example figures)" : ""}. A current-cost view in the spirit of IAS 29, for management use, not statutory accounts.
       </p>
     </>
   );

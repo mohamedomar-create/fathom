@@ -32,7 +32,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
     { l: "Gross margin", v: gpm === null ? "–" : pct(gpm, 1), d: <span className="text-mute">target {pct(tg, 0)}</span>, neg: gpm !== null && gpm < tg, s: sp.P.map((p) => (p.revenue ? (p.gross_profit / p.revenue) * 100 : null)) },
     { l: "EBIT", trace: ["ebit", "PL"] as const, v: money(P.ebit, cur), d: <><Delta value={ch(P.ebit, prior?.P.ebit)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.ebit < 0, s: sp.P.map((p) => p.ebit) },
     { l: "Cash on hand", trace: ["cash", "BS"] as const, v: money(B.cash, cur), d: B0 ? <><Delta value={ch(B.cash, B0.cash)} /> <span className="text-mute">vs opening</span></> : <span className="text-mute">no opening balance</span>, neg: B.cash < 0, s: sp.B.map((b) => b.cash) },
-    { l: "Operating cash flow", v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">{P.ebit ? `${Math.round((a.W.ocf / P.ebit) * 100)}% of EBIT` : ""}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
+    { l: "Operating cash flow", v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">after tax, before interest{P.ebit > 0 ? ` · ${Math.round((a.W.ocf / P.ebit) * 100)}% of EBIT` : ""}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
     { l: "Breakeven cushion", v: a.breakeven.ok ? pct(a.breakeven.mosPct, 0) : "–", d: a.breakeven.ok ? <span className="text-mute">breakeven {money(a.breakeven.bep, cur, true)}</span> : null, neg: a.breakeven.ok && a.breakeven.mosPct < 0, s: [] },
   ];
   const headline = comments("summary") ||

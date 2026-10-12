@@ -2,7 +2,7 @@ import type { Basis } from "./basis";
 
 /**
  * Reported profit against the profit the owners really earned, after the time customers take to pay,
- * inflation and the pound's devaluation. Method (simplified IAS 29, financial capital maintenance):
+ * inflation and the pound's devaluation. Method (current-cost view in the spirit of IAS 29):
  *  - money held or owed loses or gains purchasing power: average balance × inflation over the period;
  *  - stock sold was bought earlier at lower prices: replacing it costs cost of sales × the price rise over the stock days
  *    (imported stock rises with the exchange rate, local stock with inflation);
@@ -79,7 +79,10 @@ export interface RealProfit {
   };
   /** Null until both exchange rates are entered. */
   fx: null | {
+    /** Rise in EGP per USD over the period, %. */
     devaluation: number;
+    /** Fall in the pound's value in dollars over the period, % (30 → 50 per USD is 40%). */
+    poundChange: number;
     annualDevaluation: number;
     reportedUsd: number;
     realUsd: number | null;
@@ -155,7 +158,7 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
   if (fx0 && fx1 && devaluation !== null && annualDev !== null) {
     const avgRate = (fx0 + fx1) / 2;
     fx = {
-      devaluation: devaluation * 100, annualDevaluation: annualDev * 100,
+      devaluation: devaluation * 100, poundChange: (1 - fx0 / fx1) * 100, annualDevaluation: annualDev * 100,
       reportedUsd: P.net_income / avgRate,
       realUsd: inflation ? inflation.real / avgRate : null,
       equityStartUsd: B0 ? B0.te / fx0 : null, equityEndUsd: B.te / fx1,

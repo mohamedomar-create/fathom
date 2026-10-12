@@ -62,7 +62,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const rows = useMemo(() => companies.map((c) => {
-    const calcs = monthCalcs(c.months, c.taxRate);
+    const calcs = monthCalcs(c.months);
     return { c, calcs, last: calcs[calcs.length - 1], prev: calcs[calcs.length - 2] };
   }), [companies]);
   const metrics = sel.map((k) => METRICS.find((m) => m.key === k)!);

@@ -1,7 +1,7 @@
 "use client";
 import { Info, RotateCcw } from "lucide-react";
 import { useState } from "react";
-import { applyChanges, currentRatio, GOAL_KPIS, goalseekTable, pct, type GoalKpi, type LeverKey } from "@/lib/engine";
+import { applyChanges, goalFor, currentRatio, GOAL_KPIS, goalseekTable, pct, type GoalKpi, type LeverKey } from "@/lib/engine";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
@@ -19,8 +19,9 @@ export function GoalseekPage() {
   const P = a.view.P;
   const start = currentRatio(P, kpi);
   const tgt = a.targets[kpi] ?? 15;
-  const stretch = start !== null && start >= tgt;
-  const goal = goalOverride ?? (stretch ? Math.ceil((start! + 0.01) / 5) * 5 + (Math.ceil((start! + 0.01) / 5) * 5 - start! < 2 ? 5 : 0) : tgt);
+  const auto = start === null ? null : goalFor(start, tgt);
+  const stretch = !!auto?.stretch;
+  const goal = goalOverride ?? auto?.goal ?? tgt;
   if (start === null) return (<><PageHeader title="Goalseek" right={<PeriodPicker />} /><EmptyState title="No revenue in this period" text="Goalseek needs revenue to work out the changes required." /></>);
   const now = applyChanges(P, kpi, changes) ?? start;
   const table = goalseekTable(P, kpi, goal);

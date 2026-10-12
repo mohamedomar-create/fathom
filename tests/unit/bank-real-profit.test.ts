@@ -21,7 +21,8 @@ describe("twelve-month basis", () => {
     expect(b.P.net_income).toBe(968750);
     expect(b.avg("ar")).toBe(2700000);
     expect(b.prior?.P.revenue).toBe(9500000);
-    expect(b.ocf).toBe(-100000);
+    // Interest paid is under financing (IAS 7.33): 968,750 profit + 450,000 interest + 300,000 depreciation − 1,368,750 working capital.
+    expect(b.ocf).toBe(350000);
   });
 
   it("scales part-year books to a year and says so", () => {

@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
-  CAT_COL, CAT_ORDER, explainKpi, formatTrend, kpiHistory, mlabel, money, mshort, num, type Comparison, type KpiRow,
+  analyze, CAT_COL, CAT_ORDER, explainKpi, formatTrend, kpiHistory, mlabel, money, mshort, num, resolveTargets, type Comparison, type KpiRow,
 } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis, usePeriod } from "@/lib/company/use-period";
@@ -97,6 +97,8 @@ function KpiTr({ r, cur, onOpen }: { r: KpiRow; cur: string; onOpen: () => void 
   );
 }
 
+const PRIOR = { month: "the prior month", quarter: "the prior quarter", year: "the prior year" } as const;
+
 function KpiModal({ row }: { row: KpiRow }) {
   const c = useCompany();
   const a = useAnalysis()!;
@@ -104,11 +106,16 @@ function KpiModal({ row }: { row: KpiRow }) {
   const hist = useMemo(() => kpiHistory(c.months, c.settings, a.view.window.end, 13), [c.months, c.settings, a.view.window.end]);
   const last12 = hist.slice(-12);
   const tgt = a.targets[row.def.key] ?? null;
+  // The chart shows monthly values, so it is drawn against the monthly target.
+  const monthTgt = resolveTargets(c.settings)[row.def.key] ?? null;
   const vals = last12.map((h) => h.K[row.def.key]);
-  const marks = vals.map((v) => (v === null || tgt === null ? null : row.def.direction === "up" ? v >= tgt : v <= tgt));
-  const prev = hist.length > 1 ? hist[hist.length - 2].K[row.def.key] : null;
-  const lyp = `${Number(a.view.window.end.slice(0, 4)) - 1}${a.view.window.end.slice(4)}`;
-  const ly = (() => { try { return kpiHistory(c.months, c.settings, lyp, 1).find((h) => h.period === lyp)?.K[row.def.key] ?? null; } catch { return null; } })();
+  const marks = vals.map((v) => (v === null || monthTgt === null ? null : row.def.direction === "up" ? v >= monthTgt : v <= monthTgt));
+  // Same-length comparisons: the prior month, quarter or year, and the same period a year earlier.
+  const cmp = useMemo(() => {
+    const at = (comparison: "prior" | "ly") => analyze(c.months, a.view.sel, c.settings, { comparison }).kpiRows.find((r) => r.def.key === row.def.key)?.compare ?? null;
+    return { prev: at("prior"), ly: at("ly") };
+  }, [c.months, c.settings, a.view.sel, row.def.key]);
+  const prev = cmp.prev, ly = cmp.ly;
   const nums = vals.filter((v): v is number => v !== null);
   const avg = nums.length ? nums.reduce((s, v) => s + v, 0) / nums.length : null;
   const fmt = (v: number | null) => num(v, row.def.unit, cur);
@@ -120,16 +127,16 @@ function KpiModal({ row }: { row: KpiRow }) {
           <div className="mb-3 flex items-center gap-3 pr-8"><StatusIcon ok={row.ok} size="lg" /><h2 className="text-2xl font-normal">{row.def.name}</h2></div>
           <p className="mb-3 text-[13.5px] leading-relaxed">{explainKpi(row.def, row.value, tgt, cur)}</p>
           <p className="mb-4 rounded bg-band px-3 py-2 font-mono text-xs">{row.def.formula}</p>
-          <LineChart labels={last12.map((h) => mshort(h.period))} unit={row.def.unit === "ratio" ? "num" : row.def.unit} cur={cur} target={tgt} marks={marks} height={260}
+          <LineChart labels={last12.map((h) => mshort(h.period))} unit={row.def.unit === "ratio" ? "num" : row.def.unit} cur={cur} target={monthTgt} marks={marks} height={260}
             series={[{ name: row.def.name, values: vals, color: "#2a78d6", fill: true }]} />
         </div>
         <div className="space-y-4 bg-band p-6 text-sm">
           {[
             [a.view.window.label, fmt(row.value)],
             ["Target", tgt === null ? "– –" : row.def.unit === "cur" ? money(tgt, cur) : fmt(tgt)],
-            ["Change from prior month", diff(row.value, prev)],
-            [`Change from ${mlabel(lyp)}`, diff(row.value, ly)],
-            [`Rolling avg (12 month starting ${last12[0] ? mlabel(last12[0].period) : "–"})`, fmt(avg)],
+            [`Change from ${a.view.prior?.label ?? PRIOR[a.view.sel.type]}`, diff(row.value, prev)],
+            [`Change from ${a.view.ly?.label ?? "a year earlier"}`, diff(row.value, ly)],
+            [`Average of the monthly values, 12 months from ${last12[0] ? mlabel(last12[0].period) : "–"}`, fmt(avg)],
             ["KPI importance", row.importance],
           ].map(([l, v]) => (
             <div key={l}><div className="label">{l}</div><div className={cn("num text-xl", l === a.view.window.label && (row.ok === false ? "text-red" : row.ok ? "text-green-d" : ""))}>{v}</div></div>
