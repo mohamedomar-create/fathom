@@ -14,7 +14,7 @@ import { SourceDrawer, type SourceLine } from "./source-drawer";
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly";
 
-const PL_ROWS: { l: string; k: keyof PLCalc; tot?: boolean; cost?: boolean; classes?: ClassKey[] }[] = [
+const PL_ROWS: { l: string; k: keyof PLCalc; tot?: boolean; cost?: boolean; classes?: ClassKey[]; ifAdjusted?: boolean }[] = [
   { l: "Revenue", k: "revenue", classes: ["revenue"] },
   { l: "Cost of Sales", k: "cos", cost: true, classes: ["cos_variable", "cos_fixed", "cos_depreciation"] },
   { l: "Gross Profit", k: "gross_profit", tot: true },
@@ -27,6 +27,8 @@ const PL_ROWS: { l: string; k: keyof PLCalc; tot?: boolean; cost?: boolean; clas
   { l: "Interest Expenses", k: "interest_expenses", cost: true, classes: ["interest_expenses"] },
   { l: "Earnings Before Tax", k: "ebt", tot: true },
   { l: "Tax Expenses", k: "tax_expenses", cost: true, classes: ["tax_expenses"] },
+  { l: "Earnings After Tax", k: "eat", tot: true, ifAdjusted: true },
+  { l: "Adjustments (prior-period and one-off items)", k: "adjustments", cost: true, classes: ["adjustments"], ifAdjusted: true },
   { l: "Net Income", k: "net_income", tot: true },
 ];
 type BsRow = { l: string; k?: keyof BSCalc; typ: 0 | 1 | 2 };
@@ -70,9 +72,11 @@ export function FinancialsPage() {
     cur: isBS ? x.amounts[a.view.window.end] ?? 0 : periods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
     cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
   })).filter((x) => x.cur || x.cmp);
-  const varCell = (x: number, y: number | undefined, cost = false) => {
+  // Balance-sheet movements are neither good nor bad in themselves, so they are not coloured.
+  const varCell = (x: number, y: number | undefined, cost: boolean | "neutral" = false) => {
     if (!y) return <td className="text-mute">–</td>;
     const v = ((x - y) / Math.abs(y)) * 100;
+    if (cost === "neutral") return <td>{pct(v)}</td>;
     const good = cost ? v <= 0 : v >= 0;
     return <td className={good ? "text-green-d" : "text-red"}>{pct(v)}</td>;
   };
@@ -93,7 +97,7 @@ export function FinancialsPage() {
           <table className="tbl min-w-[720px]" data-testid="pl-table">
             <thead><tr><th>Profit &amp; Loss</th><th>{a.view.window.short}</th><th>{compLabel}</th><th>Variance %</th><th>Common Size</th><th>YTD</th></tr></thead>
             <tbody>
-              {PL_ROWS.map((r) => [
+              {PL_ROWS.filter((r) => !r.ifAdjusted || P.adjustments || compP?.adjustments).map((r) => [
                 <tr key={r.k} className={cn("row", r.tot && "tot")}>
                   <td>{r.l}</td><td>{trace(r.k, r.l, "PL", P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
                   <td>{P.revenue ? <><MiniPie p={((P[r.k] as number) / P.revenue) * 100} /> {pct(((P[r.k] as number) / P.revenue) * 100, 0)}</> : "–"}</td>
@@ -128,11 +132,11 @@ export function FinancialsPage() {
                 return [
                   <tr key={r.l} className={cn("row", r.typ === 1 && "tot")}>
                     <td>{r.l}</td><td>{trace(k, r.l, "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
-                    <td className={dv === null ? "text-mute" : dv >= 0 ? "text-green-d" : "text-red"}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0)}
+                    <td className={dv === null ? "text-mute" : ""}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0, "neutral")}
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
                   ...accts(classes, true).map((x) => (
-                    <tr key={x.id} className="row text-[12.5px] text-mute"><td className="pl-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp)}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
+                    <tr key={x.id} className="row text-[12.5px] text-mute"><td className="pl-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp, "neutral")}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
                   )),
                 ];
               })}

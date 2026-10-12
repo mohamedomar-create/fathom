@@ -93,7 +93,7 @@ describe("automatic bank memo", () => {
     expect(ruleMemo("Delta Trading", a, { cur: "EGP" }).headline).toMatch(/Debt service cover \(DSCR\) and .* support the application; prepare for questions on cash conversion/);
     expect(m.lead.join(" ")).toMatch(/Debt service cover/);
     expect(m.lead.join(" ")).toMatch(/sales could fall 31%/);
-    expect(m.risks[0].risk).toMatch(/Profit but negative operating cash flow/);
+    expect(m.risks[0].risk).toMatch(/Profit but no cash left after interest/);
     expect(m.ask[0]).toMatch(/EGP 2,000,000 term loan .* for a new warehouse/);
     expect(m.ask[0]).toMatch(/Repaying over 8 years/);
     const text = memoText(m);

@@ -1,19 +1,22 @@
-import { bsCalc, cashWaterfall, computeKpis, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
+import { addMonths, averageBS, bsCalc, cashWaterfall, computeKpis, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 
 export interface MetricDef { key: string; label: string; group: "KPIs" | "Profit & Loss" | "Balance Sheet" | "Cash Flow" | "Chart of Accounts"; unit: Unit }
 export interface MonthCalc { period: string; P: PLCalc; B: BSCalc; K: Record<string, number | null>; W: { ocf: number; fcf: number; ncf: number } | null }
 
-export function monthCalcs(months: MonthData[], taxRate: number): MonthCalc[] {
+export function monthCalcs(months: MonthData[]): MonthCalc[] {
   const s = [...months].sort((a, b) => a.period.localeCompare(b.period));
-  return s.map((m, i) => {
+  const by = new Map(s.map((m) => [m.period, m]));
+  return s.map((m) => {
     const P = plCalc(m.pl), B = bsCalc(m.bs);
-    const B0 = i > 0 ? bsCalc(s[i - 1].bs) : null;
-    const Pp = i > 0 ? plCalc(s[i - 1].pl) : null;
-    const W = B0 ? cashWaterfall(P, B, B0, taxRate) : null;
+    // The calendar month before, not the previous loaded one: a gap must not turn two months' movement into one.
+    const before = by.get(addMonths(m.period, -1));
+    const B0 = before ? bsCalc(before.bs) : null;
+    const Pp = before ? plCalc(before.pl) : null;
+    const W = B0 ? cashWaterfall(P, B, B0) : null;
     const [y, mo] = m.period.split("-").map(Number);
     const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
-    return { period: m.period, P, B, K: computeKpis({ P, B, B0, Pprev: Pp, days, ocf: W?.ocf ?? null }), W: W && { ocf: W.ocf, fcf: W.fcf, ncf: W.ncf } };
+    return { period: m.period, P, B, K: computeKpis({ P, B, B0, Bavg: B0 ? averageBS([B0, B]) : B, Pprev: Pp, days, ocf: W?.ocf ?? null }), W: W && { ocf: W.ocf, fcf: W.fcf, ncf: W.ncf } };
   });
 }
 

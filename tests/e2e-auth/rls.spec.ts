@@ -1,15 +1,15 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { newEmail, PASSWORD, requireLocalStack } from "./helpers";
+import { localEnv, newEmail, PASSWORD, requireLocalStack } from "./helpers";
 
 requireLocalStack();
 
 // Straight to the database API, as an attacker with their own valid sign-in would: row level security must hold without the app.
-const URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const URL = localEnv("NEXT_PUBLIC_SUPABASE_URL");
+const KEY = localEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
 async function user(api: APIRequestContext, tag: string) {
   const r = await api.post(`${URL}/auth/v1/signup`, { headers: { apikey: KEY }, data: { email: newEmail(tag), password: PASSWORD, data: { full_name: tag, org_name: `${tag} org` } } });
-  expect(r.ok()).toBe(true);
+  expect(r.ok(), await r.text()).toBe(true);
   const token = (await r.json()).access_token as string;
   const h = { apikey: KEY, Authorization: `Bearer ${token}`, "content-type": "application/json", Prefer: "return=representation" };
   const get = async (path: string) => api.get(`${URL}/rest/v1/${path}`, { headers: h });

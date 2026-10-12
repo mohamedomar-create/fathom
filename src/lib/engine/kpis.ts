@@ -29,34 +29,34 @@ export const KPI_DEFS: KpiDef[] = [
   d("total_revenue", "Total Revenue", "Profitability", "cur", "up", null, "Critical", "Total Revenue = Sum of all revenue accounts", "The value of sales recognised in the period."),
   d("gpm", "Gross Profit Margin", "Profitability", "%", "up", 35, "Medium", "Gross Profit Margin = Gross Profit ÷ Revenue × 100", "A measure of the proportion of revenue that is left after deducting all costs directly related to the sales."),
   d("opm", "Operating Profit Margin", "Profitability", "%", "up", 15, "High", "Operating Profit Margin = Operating Profit ÷ Revenue × 100", "The share of revenue left after cost of sales and operating expenses."),
-  d("profit_ratio", "Profitability Ratio", "Profitability", "%", "up", 10, "Critical", "Profitability Ratio = EBIT ÷ Revenue × 100", "Earnings before interest and tax as a share of revenue: how much of each sale becomes operating profit."),
+  d("profit_ratio", "EBIT Margin", "Profitability", "%", "up", 10, "Critical", "EBIT Margin = EBIT ÷ Revenue × 100", "Earnings before interest and tax as a share of revenue: how much of each sale becomes operating profit."),
   d("npat", "Net Profit After Tax Margin", "Profitability", "%", "up", 7, "Medium", "Net Profit After Tax Margin = Earnings After Tax ÷ Revenue × 100", "What is left for the owners from each sale after every cost, interest and tax."),
-  d("activity", "Activity Ratio", "Activity", "times", "up", 2, "Critical", "Activity Ratio = Annualised Revenue ÷ Total Invested Capital", "How many times a year the capital invested in the business is turned into sales."),
-  d("ar_days", "Accounts Receivable Days", "Activity", "days", "down", 45, "Medium", "Accounts Receivable Days = Accounts Receivable × Days ÷ Revenue", "How long customers take, on average, to pay."),
-  d("inv_days", "Inventory Days", "Activity", "days", "down", 60, "Medium", "Inventory Days = Inventory × Days ÷ Cost of Sales", "How long stock sits before it is sold."),
-  d("ap_days", "Accounts Payable Days", "Activity", "days", "up", 45, "Medium", "Accounts Payable Days = Accounts Payable × Days ÷ Cost of Sales", "How long the business takes, on average, to pay its suppliers."),
-  d("roe", "Return on Equity", "Efficiency", "%", "up", 15, "Critical", "Return on Equity = Annualised Net Income ÷ Opening Total Equity × 100", "The annual return the owners earn on the equity they have in the business."),
-  d("roce", "Return on Capital Employed", "Efficiency", "%", "up", 12.5, "Critical", "Return on Capital Employed = Annualised EBIT ÷ Total Invested Capital × 100", "Operating return on all capital invested, from owners and lenders."),
+  d("activity", "Activity Ratio", "Activity", "times", "up", 2, "Critical", "Activity Ratio = Annualised Revenue ÷ Average Invested Capital (equity + borrowing)", "How many times a year the capital invested in the business is turned into sales."),
+  d("ar_days", "Accounts Receivable Days", "Activity", "days", "down", 45, "Medium", "Accounts Receivable Days = Average Accounts Receivable × Days ÷ Revenue", "How long customers take, on average, to pay. Receivables include VAT and revenue does not, so with 14% VAT the figure reads about 14% high."),
+  d("inv_days", "Inventory Days", "Activity", "days", "down", 60, "Medium", "Inventory Days = Average Inventory × Days ÷ Cost of Sales (before depreciation)", "How long stock sits before it is sold."),
+  d("ap_days", "Accounts Payable Days", "Activity", "days", "up", 45, "Medium", "Accounts Payable Days = Average Accounts Payable × Days ÷ Cost of Sales (before depreciation)", "How long the business takes, on average, to pay its suppliers."),
+  d("roe", "Return on Equity", "Efficiency", "%", "up", 15, "Critical", "Return on Equity = Annualised Net Income ÷ Opening Total Equity × 100", "The annual return the owners earn on the equity they have in the business. Not measured when opening equity is zero or negative."),
+  d("roce", "Return on Capital Employed", "Efficiency", "%", "up", 12.5, "Critical", "Return on Capital Employed = Annualised EBIT ÷ Average Invested Capital (equity + borrowing) × 100", "Operating return on all capital invested, from owners and lenders."),
   d("gmroi", "Gross Margin Return on Inventory", "Efficiency", "%", "up", 150, "Low", "GMROI = Annualised Gross Profit ÷ Average Inventory × 100", "Gross profit earned for each unit of money tied up in stock."),
-  d("asset_turn", "Asset Turnover", "Asset Usage", "times", "up", 2, "Medium", "Asset Turnover = Annualised Revenue ÷ Total Assets", "How much revenue each unit of assets generates in a year."),
+  d("asset_turn", "Asset Turnover", "Asset Usage", "times", "up", 2, "Medium", "Asset Turnover = Annualised Revenue ÷ Average Total Assets", "How much revenue each unit of assets generates in a year."),
   d("wca", "Working Capital Absorption", "Asset Usage", "%", "down", 25, "Low", "Working Capital Absorption = Operating Working Capital ÷ Annualised Revenue × 100", "How much working capital (receivables + stock − payables) each unit of annual sales needs."),
   d("current", "Current Ratio", "Liquidity", "ratio", "up", 2, "Medium", "Current Ratio = Total Current Assets ÷ Total Current Liabilities", "Short-term assets available to cover short-term bills."),
   d("quick", "Quick Ratio", "Liquidity", "ratio", "up", 1, "Medium", "Quick Ratio = (Cash & Equivalents + Accounts Receivable) ÷ Total Current Liabilities", "Cash and receivables available to cover short-term bills, without relying on stock."),
-  d("int_cover", "Interest Cover", "Coverage", "times", "up", 3, "Medium", "Interest Cover = EBIT ÷ (Interest Expenses − Interest Income)", "How many times operating profit covers net interest."),
+  d("int_cover", "Interest Cover", "Coverage", "times", "up", 3, "Medium", "Interest Cover = EBIT ÷ Interest Expenses", "How many times operating profit covers the interest the business pays. Not measured when there is no interest expense."),
   d("cash", "Cash on Hand", "Cash Flow", "cur", "up", null, "Medium", "Cash on Hand = Closing Cash & Equivalents", "Cash and bank balances at the end of the period."),
-  d("cf_margin", "Cash Flow Margin", "Cash Flow", "%", "up", 10, "Low", "Cash Flow Margin = Operating Cash Flow ÷ Revenue × 100", "How much of each sale turns into operating cash."),
+  d("cf_margin", "Cash Flow Margin", "Cash Flow", "%", "up", 10, "Low", "Cash Flow Margin = Operating Cash Flow (before interest) ÷ Revenue × 100", "How much of each sale turns into operating cash."),
   d("nvcf", "Net Variable Cash Flow", "Cash Flow", "%", "up", 0, "Medium", "Net Variable Cash Flow = (Ann. Revenue − Ann. Variable COS − Ann. Variable Expenses − Operating Working Capital) ÷ Ann. Revenue × 100", "Cash generated by sales after variable costs and the working capital they need.", { core: false }),
   d("rev_growth", "Revenue Growth", "Growth", "%", "up", 2, "Critical", "Revenue Growth = (Revenue − Prior Revenue) ÷ Prior Revenue × 100", "Change in revenue against the prior period."),
   d("gp_growth", "Gross Profit Growth", "Growth", "%", "up", 2, "Medium", "Gross Profit Growth = (Gross Profit − Prior Gross Profit) ÷ Prior Gross Profit × 100", "Change in gross profit against the prior period."),
   d("ebit_growth", "EBIT Growth", "Growth", "%", "up", 2, "High", "EBIT Growth = (EBIT − Prior EBIT) ÷ |Prior EBIT| × 100", "Change in operating profit against the prior period."),
   d("asset_change", "Asset Change", "Growth", "%", "up", 1, "Low", "Asset Change = (Total Assets − Opening Total Assets) ÷ Opening Total Assets × 100", "Growth in the asset base over the period."),
-  d("equity_change", "Equity Change", "Growth", "%", "up", 1, "Low", "Equity Change = (Total Equity − Opening Total Equity) ÷ Opening Total Equity × 100", "Growth in owners' equity over the period."),
+  d("equity_change", "Equity Change", "Growth", "%", "up", 1, "Low", "Equity Change = (Total Equity − Opening Total Equity) ÷ Opening Total Equity × 100", "Growth in owners' equity over the period. Not measured when opening equity is zero or negative."),
   // Library KPIs (off by default)
   d("ebitda_margin", "EBITDA Margin", "Profitability", "%", "up", 15, "Medium", "EBITDA Margin = EBITDA ÷ Revenue × 100", "Operating profit before depreciation and amortisation, as a share of revenue.", { core: false, active: false }),
   d("exp_ratio", "Expense-to-Revenue Ratio", "Profitability", "%", "down", 30, "Medium", "Expense-to-Revenue Ratio = Expenses ÷ Revenue × 100", "Operating expenses as a share of revenue.", { core: false, active: false }),
   d("mos", "Breakeven Margin of Safety", "Profitability", "%", "up", 20, "High", "Margin of Safety = (Revenue − Breakeven Revenue) ÷ Revenue × 100", "How far revenue can fall before the business makes an operating loss.", { core: false, active: false }),
-  d("ccc", "Cash Conversion Cycle", "Activity", "days", "down", 60, "Medium", "Cash Conversion Cycle = AR Days + Inventory Days + WIP Days − AP Days", "Days the business funds its own trading cycle before cash comes back.", { core: false, active: false }),
-  d("debt_equity", "Debt to Equity", "Gearing", "%", "down", 100, "Medium", "Debt to Equity = Total Debt ÷ Total Equity × 100", "Borrowing relative to owners' capital.", { core: false, active: false }),
+  d("ccc", "Cash Conversion Cycle", "Activity", "days", "down", 60, "Medium", "Cash Conversion Cycle = AR Days + Inventory Days + Work-in-Progress Days − AP Days", "Days the business funds its own trading cycle before cash comes back.", { core: false, active: false }),
+  d("debt_equity", "Debt to Equity", "Gearing", "%", "down", 100, "Medium", "Debt to Equity = Total Debt ÷ Total Equity × 100", "Borrowing relative to owners' capital. Not measured when equity is zero or negative: the company owes more than it owns.", { core: false, active: false }),
 ];
 
 export const KPI_BY_KEY = Object.fromEntries(KPI_DEFS.map((k) => [k.key, k]));
@@ -77,29 +77,36 @@ export interface KpiInputs {
   Pprev: PLCalc | null;
   days: number;
   ocf: number | null;
+  /** Average month-end balances over the period; closing balances are used when not given. */
+  Bavg?: BSCalc;
 }
 
-export function computeKpis({ P, B, B0, Pprev, days, ocf }: KpiInputs): Record<string, number | null> {
+export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg }: KpiInputs): Record<string, number | null> {
   const ann = (x: number) => (x * 365) / days;
   const R = P.revenue;
+  const A = Bavg ?? B;
+  // Stock and supplier days are measured against cost of sales before depreciation: the goods and services bought.
+  const cogs = P.cos - P.cos_depreciation;
   const k: Record<string, number | null> = {};
   k.total_revenue = P.revenue;
   k.gpm = R ? (P.gross_profit / R) * 100 : null;
   k.opm = R ? (P.operating_profit / R) * 100 : null;
   k.profit_ratio = R ? (P.ebit / R) * 100 : null;
   k.npat = R ? (P.eat / R) * 100 : null;
-  k.activity = div(ann(R), B.tic);
-  k.ar_days = div(B.ar * days, R);
-  k.inv_days = div(B.inventory * days, P.cos);
-  k.ap_days = div(B.ap * days, P.cos);
-  k.roe = B0 ? x100(div(ann(P.net_income), B0.te)) : null;
-  k.roce = x100(div(ann(P.ebit), B.tic));
+  k.activity = div(ann(R), A.tic);
+  k.ar_days = R > 0 ? div(A.ar * days, R) : null;
+  k.inv_days = cogs > 0 ? div(A.inventory * days, cogs) : null;
+  k.ap_days = cogs > 0 ? div(A.ap * days, cogs) : null;
+  // A return on negative equity has no meaning (a loss would read as a positive return).
+  k.roe = B0 && B0.te > 0 ? x100(div(ann(P.net_income), B0.te)) : null;
+  k.roce = A.tic > 0 ? x100(div(ann(P.ebit), A.tic)) : null;
   k.gmroi = B0 ? x100(div(ann(P.gross_profit), (B.inventory + B0.inventory) / 2)) : null;
-  k.asset_turn = div(ann(R), B.ta);
+  k.asset_turn = div(ann(R), A.ta);
   k.wca = x100(div(B.owc, ann(R)));
   k.current = div(B.tca, B.tcl);
   k.quick = div(B.cash + B.ar, B.tcl);
-  k.int_cover = div(P.ebit, P.net_interest);
+  // Gross interest expense, as lenders measure it; with no interest to pay there is nothing to cover.
+  k.int_cover = P.interest_expenses > 0 ? P.ebit / P.interest_expenses : null;
   k.cash = B.cash;
   k.cf_margin = ocf === null ? null : x100(div(ocf, R));
   k.nvcf = R ? x100(div(ann(R) - ann(P.cos_variable) - ann(P.exp_variable) - B.owc, ann(R))) : null;
@@ -107,14 +114,14 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf }: KpiInputs): Record<s
   k.gp_growth = Pprev ? growth(P.gross_profit, Pprev.gross_profit) : null;
   k.ebit_growth = Pprev ? growth(P.ebit, Pprev.ebit) : null;
   k.asset_change = B0 ? growth(B.ta, B0.ta) : null;
-  k.equity_change = B0 ? growth(B.te, B0.te) : null;
+  k.equity_change = B0 && B0.te > 0 ? growth(B.te, B0.te) : null;
   k.ebitda_margin = R ? (P.ebitda / R) * 100 : null;
   k.exp_ratio = R ? (P.expenses / R) * 100 : null;
   const vcr = div(P.variable_costs, R);
   k.mos = R && vcr !== null && vcr < 1 ? ((R - P.fixed_costs / (1 - vcr)) / R) * 100 : null;
-  const wipDays = div(B.wip * days, P.cos) ?? 0;
+  const wipDays = cogs > 0 ? div(A.wip * days, cogs) ?? 0 : 0;
   k.ccc = k.ar_days !== null && k.inv_days !== null && k.ap_days !== null ? k.ar_days + k.inv_days + wipDays - k.ap_days : null;
-  k.debt_equity = x100(div(B.debt, B.te));
+  k.debt_equity = B.te > 0 ? x100(div(B.debt, B.te)) : null;
   return k;
 }
 

@@ -36,6 +36,11 @@ export function resolveTargets(settings: CompanySettings): Record<string, number
   }));
 }
 
+/** Targets for flows are set per month (revenue); a quarter or a year is measured against the target for that many months. */
+export function scaleTargets(t: Record<string, number | null>, months: number): Record<string, number | null> {
+  return months === 1 || t.total_revenue === null || t.total_revenue === undefined ? t : { ...t, total_revenue: t.total_revenue * months };
+}
+
 export function activeKpiDefs(settings: CompanySettings): KpiDef[] {
   const act = settings.activeKpis;
   return KPI_DEFS.filter((d) => (act ? act.includes(d.key) : d.defaultActive));
@@ -49,11 +54,10 @@ export function analyze(
 ): Analysis {
   const view = periodView(months, sel, settings.fyStartMonth);
   const { P, B, B0 } = view;
-  const t = settings.taxRate;
-  const W = B0 ? cashWaterfall(P, B, B0, t) : null;
+  const W = B0 ? cashWaterfall(P, B, B0) : null;
   const CF = B0 ? cashFlowStatement(P, B, B0) : null;
-  const K = computeKpis({ P, B, B0, Pprev: view.prior?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
-  const targets = resolveTargets(settings);
+  const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: view.prior?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
+  const targets = scaleTargets(resolveTargets(settings), view.window.periods.length);
   const comparison = opts.comparison ?? "target";
   let compareK: Record<string, number | null> | null = null;
   if (comparison !== "target") {
@@ -62,8 +66,8 @@ export function analyze(
       const sel2 = { type: sel.type, end: c.label ? shiftEnd(sel.end, comparison === "prior" ? sel.type : "year") : sel.end };
       try {
         const v2 = periodView(months, sel2, settings.fyStartMonth);
-        const W2 = v2.B0 ? cashWaterfall(v2.P, v2.B, v2.B0, t) : null;
-        compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null });
+        const W2 = v2.B0 ? cashWaterfall(v2.P, v2.B, v2.B0) : null;
+        compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Bavg: v2.Bavg, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null });
       } catch { compareK = null; }
     }
   }
@@ -88,7 +92,8 @@ export function analyze(
   }
   const findings = insights({
     P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, days: view.days, status,
-    cur: settings.currency, priorLabel: PRIOR_LABEL[sel.type],
+    cur: settings.currency, priorLabel: PRIOR_LABEL[sel.type], periodWord: sel.type,
+    critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => r.def.name),
   });
   return { view, settings, W, CF, K, targets, kpiRows, onTrack, offTrack, findings, breakeven: breakeven(P) };
 }
@@ -105,7 +110,7 @@ export function kpiHistory(months: MonthData[], settings: CompanySettings, end: 
   const ps = [...months].map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
   return ps.map((p) => {
     const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth);
-    const W = v.B0 ? cashWaterfall(v.P, v.B, v.B0, settings.taxRate) : null;
-    return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
+    const W = v.B0 ? cashWaterfall(v.P, v.B, v.B0) : null;
+    return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
   });
 }

@@ -104,7 +104,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   const cashForDebt = Pa.ebitda - cashTax;
   const service = interest + principal12m;
   const R = P.revenue;
-  const avgAR = b.avg("ar"), avgInv = b.avg("inventory"), avgAP = b.avg("ap");
+  const avgAR = b.avg("ar"), avgInv = b.avg("inventory"), avgAP = b.avg("ap"), avgWip = b.avg("wip");
   const cogs = P.cos - P.cos_depreciation;
   const dso = R > 0 ? (avgAR / R) * b.days : null;
   const dio = cogs > 0 ? (avgInv / cogs) * b.days : null;
@@ -126,7 +126,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
       key: "dscr", group: "Repayment", name: "Debt service cover (DSCR)", value: dscr, unit: "x",
       band: service > 0 ? up(dscr, 1.25, 1) : "info", guide: "1.25x or more",
       formula: "(EBITDA − tax) ÷ (interest + loan principal due in 12 months)",
-      banker: service > 0 ? `Each ${cur} 1 of yearly loan payments is covered by ${cur} ${dscr!.toFixed(2)} of cash from operations. Below 1.0x the business cannot pay its loans from trading.` : "There is no interest or loan repayment to cover.",
+      banker: service > 0 ? `Each ${cur} 1 of yearly loan payments is covered by ${cur} ${dscr!.toFixed(2)} of operating cash profit (EBITDA after tax). Below 1.0x the business cannot pay its loans from trading.` : "There is no interest or loan repayment to cover.",
       advice: dscr === null ? "With no debt service, lead with the cash the business generates." : dscr >= 1.25 ? "Lead with this: it is the first figure a credit committee looks at." : "Ask for a longer tenor or a grace period so yearly payments fall; show a monthly cash-flow forecast proving each instalment is covered; consider part-funding with equity.",
       estimate: est,
     },
@@ -139,7 +139,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     },
     {
       key: "net_debt_ebitda", group: "Repayment", name: "Net debt to EBITDA", value: netLev, unit: "x",
-      band: netLev === null ? "info" : down(netLev, 2.5, 3.5), guide: "2.5x or less",
+      band: netLev === null ? (debt - B.cash > 0 ? "weak" : "info") : down(netLev, 2.5, 3.5), guide: "2.5x or less",
       formula: "(borrowing − cash) ÷ EBITDA (12 months)",
       banker: "Debt after using the cash on hand. Large cash beside large debt makes the bank ask why you borrow.",
       advice: B.cash > 0.5 * debt && debt > 0 ? "Explain the cash: customer advances, a payment due after the year end, or a deposit held as security." : "Fine as long as it moves with debt to EBITDA.",
@@ -211,35 +211,35 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     {
       key: "ocf_ebitda", group: "Performance", name: "Cash conversion", value: ocfE, unit: "%",
       band: ocfE === null ? "info" : up(ocfE, 70, 40), guide: "70% or more",
-      formula: "operating cash flow ÷ EBITDA",
+      formula: "operating cash flow (after tax, before interest) ÷ EBITDA",
       banker: ocfE === null ? "Needs the balance sheet before the period." : `${pct(ocfE, 0)} of operating profit turned into cash. Low conversion means profit is tied up in customers and stock.`,
       advice: ocfE !== null && ocfE < 70 ? "Prepare a short note showing where the cash went (receivables, stock) and the collections made since the year end." : "Strong earnings quality: point it out.",
     },
     {
       key: "dso", group: "Working capital", name: "Customer days (DSO)", value: dso, unit: "days",
       band: down(dso, 60, 90), guide: "60 days or less",
-      formula: "average receivables ÷ revenue × days",
+      formula: "average receivables ÷ revenue × days (receivables include VAT, so this reads slightly high)",
       banker: "How long customers take to pay. Banks often lend against receivables but exclude balances over 90 days.",
       advice: dso !== null && dso > 60 ? "Bring the ageing list; show which large customers are slow and that they always pay (government, multinationals)." : "Quick collection: mention it.",
     },
     {
       key: "dio", group: "Working capital", name: "Stock days", value: dio, unit: "days",
       band: dio === null ? "info" : down(dio, 90, 150), guide: "90 days or less (varies by sector)",
-      formula: "average inventory ÷ cost of sales × days",
+      formula: "average inventory ÷ cost of sales before depreciation × days",
       banker: "Slow stock may be obsolete; banks advance less against it than against receivables.",
       advice: dio !== null && dio > 90 ? "Explain seasonal or strategic stock (imports ahead of devaluation, a contract), and any slow items written down." : "No action needed.",
     },
     {
       key: "dpo", group: "Working capital", name: "Supplier days", value: dpo, unit: "days",
       band: "info", guide: "Context only",
-      formula: "average payables ÷ cost of sales × days",
+      formula: "average payables ÷ cost of sales before depreciation × days",
       banker: "Very long supplier days can mean the business is short of cash and paying late.",
       advice: "If suppliers give long terms by agreement, say so.",
     },
     {
-      key: "ccc", group: "Working capital", name: "Cash cycle", value: dso !== null && dio !== null && dpo !== null ? dso + dio - dpo : null, unit: "days",
+      key: "ccc", group: "Working capital", name: "Cash cycle", value: dso !== null && dio !== null && dpo !== null ? dso + dio + (cogs > 0 ? (avgWip / cogs) * b.days : 0) - dpo : null, unit: "days",
       band: "info", guide: "Context only",
-      formula: "customer days + stock days − supplier days",
+      formula: "customer days + stock days + work-in-progress days − supplier days",
       banker: "Days of trading the business must fund itself, and so the working-capital line it needs.",
       advice: "Size the working-capital facility you ask for from this cycle and next year's sales.",
     },
@@ -250,7 +250,8 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   if (Math.abs(B.imbalance) > 1) flag("imbalance", "high", "The balance sheet does not balance", `Assets differ from liabilities and equity by ${m(B.imbalance)}.`, "Fix the mapping in Data health before sharing anything with a bank.");
   if (B.te <= 0) flag("neg_equity", "high", "Negative equity", `Equity is ${m(B.te)}.`, "Restore equity (capital increase, converting shareholder loans) before applying. Under Egyptian company law, losses reaching half the capital also require an extraordinary general assembly to decide whether the company continues.");
   if (P.net_income < 0) flag("loss", "high", "A loss over the period", `Net result ${m(P.net_income)}.`, "Separate one-off items from the trading result and show the months since that prove recovery.");
-  if (P.net_income > 0 && b.ocf !== null && b.ocf < 0) flag("profit_no_cash", "high", "Profit but negative operating cash flow", `Profit ${m(P.net_income)}, operating cash flow ${m(b.ocf)}.`, "The first question the analyst will ask. Prepare the reconciliation and the collections after the period end.");
+  const cashAfterInterest = b.ocf === null ? null : b.ocf - P.net_interest;
+  if (P.net_income > 0 && cashAfterInterest !== null && cashAfterInterest < 0) flag("profit_no_cash", "high", "Profit but no cash left after interest", `Profit ${m(P.net_income)}; operating cash flow ${m(b.ocf!)} less net interest paid ${m(P.net_interest)} leaves ${m(cashAfterInterest)}.`, "The first question the analyst will ask. Prepare the reconciliation and the collections after the period end.");
   if (b.prior && b.prior.B.ar > 0 && b.prior.P.revenue > 0) {
     const arG = (B.ar / b.prior.B.ar - 1) * 100, rG = (Pa.revenue / b.prior.P.revenue - 1) * 100;
     if (arG - rG > 15) flag("ar_growth", "medium", "Receivables grew much faster than sales", `Receivables +${pct(arG, 0)} against sales +${pct(rG, 0)}.`, "Show the ageing and any large invoice billed near the year end; banks look for sales booked but not collectable.");

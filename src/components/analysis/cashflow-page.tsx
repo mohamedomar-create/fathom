@@ -20,9 +20,9 @@ export function CashflowPage() {
       {!W ? <NeedsOpening /> : (
         <>
           <div className="mb-6 grid gap-6 sm:grid-cols-3">
-            <MoneyTile label="Operating cash flow" value={W.ocf} testId="tile-ocf" />
-            <MoneyTile label="Free cash flow" value={W.fcf} />
-            <MoneyTile label="Net cash flow" value={W.ncf} testId="tile-ncf" />
+            <MoneyTile label="Operating cash flow" value={W.ocf} testId="tile-ocf" sub="after tax, before interest" />
+            <MoneyTile label="Free cash flow" value={W.fcf} sub="after investment in assets" />
+            <MoneyTile label="Net cash flow" value={W.ncf} testId="tile-ncf" sub="change in cash less change in borrowing" />
           </div>
           <Legend items={[{ label: "Cash Received", color: "#2E9E6A" }, { label: "Cash Spent", color: "#D9343A" }]} />
           <CashWaterfall rows={W.rows} cur={cur} />

@@ -38,7 +38,7 @@ export function buildContext(a: Analysis, months: MonthData[], company: { name: 
       cash: m(B.cash), receivables: m(B.ar), inventory: m(B.inventory), payables: m(B.ap), total_debt: m(B.debt), total_equity: m(B.te),
       balances: Math.abs(B.imbalance) <= 0.5, out_of_balance_by: Math.abs(B.imbalance) > 0.5 ? m(B.imbalance) : null,
     },
-    cash_flow: a.W ? { operating_cash_flow: m(a.W.ocf), free_cash_flow: m(a.W.fcf), net_cash_flow: m(a.W.ncf),
+    cash_flow: a.W ? { operating_cash_flow_before_interest: m(a.W.ocf), free_cash_flow: m(a.W.fcf), net_cash_flow: m(a.W.ncf),
       largest_movements: a.W.rows.filter((r) => r.sign !== "TOTAL" && Math.abs(r.value) >= 0.5).sort((x, y) => Math.abs(y.value) - Math.abs(x.value)).slice(0, 6).map((r) => `${r.sign} ${r.label}: ${m(r.value)}`) } : "not available (no opening balance)",
     breakeven: be.ok ? { breakeven_revenue: m(be.bep), margin_of_safety: m(be.mos), margin_of_safety_pct: pct(be.mosPct, 1), variable_cost_per_unit_revenue: be.vcr.toFixed(2) } : `not computable (${be.reason})`,
     kpis: a.kpiRows.map((r) => ({ kpi: r.def.name, result: num(r.value, r.def.unit, cur), target: r.compare === null ? null : num(r.compare, r.def.unit, cur), status: r.ok === null ? "n/a" : r.ok ? "on track" : "off track", importance: r.importance, lower_is_better: r.def.direction === "down" })),
@@ -89,7 +89,7 @@ export function realProfitContext(months: MonthData[], end: string, settings: Co
     reported_net_profit: m(r.reported), operating_cash_flow: m(r.cashProfit),
     collection: { collection_rate: r.collection.rate === null ? "n/a" : pct(r.collection.rate, 1), customer_days: r.collection.dso === null ? "n/a" : Math.round(r.collection.dso), cost_of_customer_credit: m(r.collection.creditCost), cash_released_at_target_days: m(r.collection.release) },
     inflation: r.inflation ? { rate_over_period: pct(r.inflation.periodRate, 1), real_profit: m(r.inflation.real), steps: r.inflation.steps.map((s) => `${s.label}: ${m(s.value)}`), roe: r.inflation.roe === null ? "n/a" : pct(r.inflation.roe, 1), real_roe: r.inflation.realRoe === null ? "n/a" : pct(r.inflation.realRoe, 1), profit_needed_to_stand_still: m(r.inflation.keepUp) } : "inflation rate not entered",
-    dollars: r.fx ? { usd_rate_change: pct(r.fx.devaluation, 1), reported_profit_usd: money(r.fx.reportedUsd, "USD"), equity_change_usd: r.fx.equityChangeUsd === null ? "n/a" : money(r.fx.equityChangeUsd, "USD") } : "exchange rates not entered",
+    dollars: r.fx ? { usd_rate_change_egp_per_usd: pct(r.fx.devaluation, 1), pound_value_change_in_usd: pct(-r.fx.poundChange, 1), reported_profit_usd: money(r.fx.reportedUsd, "USD"), equity_change_usd: r.fx.equityChangeUsd === null ? "n/a" : money(r.fx.equityChangeUsd, "USD") } : "exchange rates not entered",
     rates_are_examples: Boolean(as.example),
   };
 }

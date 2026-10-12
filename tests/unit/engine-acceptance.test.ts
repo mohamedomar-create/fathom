@@ -89,8 +89,11 @@ describe("quarter and year aggregation", () => {
     const a = analyze(months, { type: "quarter", end: "2026-09" }, settings);
     expect(Math.abs(a.W!.ncf - (a.W!.dcash - a.W!.ddebt))).toBeLessThan(0.5);
     expect(Math.abs(a.CF!.cfo + a.CF!.cfi + a.CF!.cff - a.CF!.dcash)).toBeLessThan(0.5);
-    // AR days use the 92 days of the quarter and the quarter's revenue
-    expect(a.K.ar_days).toBeCloseTo((a.view.B.ar * 92) / a.view.P.revenue, 9);
+    // AR days use the average of the four month-ends (Jun opening to Sep), the 92 days of the quarter and its revenue
+    expect(a.K.ar_days).toBeCloseTo((a.view.Bavg.ar * 92) / a.view.P.revenue, 9);
+    expect(a.view.Bavg.ar).toBeCloseTo(["2026-06", "2026-07", "2026-08", "2026-09"].reduce((s, p) => s + months.find((m) => m.period === p)!.bs.ar!, 0) / 4, 6);
+    // Operating cash flow is one figure: the waterfall's equals the statement's.
+    expect(a.W!.ocf).toBeCloseTo(a.CF!.cfo, 6);
   });
   it("year-to-date 2026 starts in January with Dec 2025 as opening", () => {
     const v = periodView(months, { type: "year", end: "2026-09" }, 1);

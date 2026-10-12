@@ -15,9 +15,9 @@ export function Tile({ label, value, neg, sub, children, testId }: { label: stri
   );
 }
 
-export function MoneyTile({ label, value, testId }: { label: string; value: number; testId?: string }) {
+export function MoneyTile({ label, value, testId, sub }: { label: string; value: number; testId?: string; sub?: string }) {
   const { settings } = useCompany();
-  return <Tile label={label} value={money(value, settings.currency)} neg={value < 0} testId={testId} />;
+  return <Tile label={label} value={money(value, settings.currency)} neg={value < 0} testId={testId} sub={sub ? <span className="text-mute">{sub}</span> : undefined} />;
 }
 
 export function Notes({ findings, comment, title = "Analyst notes" }: { findings: Finding[]; comment?: string; title?: string }) {

@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
@@ -5,6 +6,14 @@ import { expect, test, type Page } from "@playwright/test";
 export const AUTH_ON = process.env.E2E_AUTH === "1";
 export function requireLocalStack() {
   test.skip(!AUTH_ON, "Signed-in tests need the local Supabase: run scripts/local-supabase/start.sh and set E2E_AUTH=1");
+}
+
+/** A setting of the local stack: from the environment, or from the file start.sh writes. */
+export function localEnv(key: string): string {
+  if (process.env[key]) return process.env[key]!;
+  const file = path.join(__dirname, "../../.local-supabase/env");
+  const line = fs.existsSync(file) ? fs.readFileSync(file, "utf8").split("\n").find((l) => l.startsWith(`${key}=`)) : undefined;
+  return line ? line.slice(key.length + 1) : "";
 }
 
 export const PASSWORD = "testpass12345";

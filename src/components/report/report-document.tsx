@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useMemo } from "react";
 import {
-  analyze, bsCalc, CAT_COL, CAT_ORDER, formatTrend, goalseekTable, GOAL_KPIS, LEVERS, mlabel, money, mshort, num, pct, plCalc, quadrantOf, QUADRANT_TEXT,
+  analyze, bsCalc, CAT_COL, CAT_ORDER, formatTrend, goalFor, goalseekTable, GOAL_KPIS, LEVERS, mlabel, money, mshort, num, pct, plCalc, quadrantOf, QUADRANT_TEXT,
   type Analysis, type Finding, type PLCalc, type BSCalc,
 } from "@/lib/engine";
 import { BreakevenChart } from "@/components/charts/breakeven-chart";
@@ -276,7 +276,7 @@ function Goalseek({ a }: { a: Analysis }) {
   if (!P.revenue) return <p className="text-mute">No revenue in this period.</p>;
   const goal = a.targets.profit_ratio ?? 10;
   const start = (P.ebit / P.revenue) * 100;
-  const g = start >= goal ? Math.ceil((start + 0.01) / 5) * 5 : goal;
+  const g = goalFor(start, goal).goal;
   const t = goalseekTable(P, "profit_ratio", g);
   const lim = Math.max(10, ...t.filter((x) => x.band === "HIGH SENSITIVITY").map((x) => Math.abs(x.needed ?? 0))) * 1.15;
   return (
