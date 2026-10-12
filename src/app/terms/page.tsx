@@ -11,7 +11,7 @@ export default function TermsPage() {
   return (
     <LegalPage title="Terms of use">
       <p className="mt-6">
-        These terms are an agreement between you (and the organisation you act for) and {LEGAL.entity}, the operator of {APP_NAME}. By creating an account or using the service you accept them.
+        These terms are an agreement between you (and the organisation you act for) and {APP_NAME} (&ldquo;we&rdquo;). By creating an account or using the service you accept them.
         Our <Link href="/privacy">privacy policy</Link> explains how we handle data.
       </p>
 
@@ -70,7 +70,7 @@ export default function TermsPage() {
       <p>These terms are governed by the laws of the Arab Republic of Egypt. Disputes go to the competent courts of Cairo, after we have both tried in good faith to settle them by talking to each other.</p>
 
       <h2>Contact</h2>
-      <p>{LEGAL.entity}, operator of {APP_NAME}: {mail}.</p>
+      <p>{LEGAL.entity}: {mail}.</p>
     </LegalPage>
   );
 }

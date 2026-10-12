@@ -4,7 +4,7 @@
 set -e
 cd "$(dirname "$0")/.."
 DB_URL="${DB_URL:-postgres://postgres@localhost:5432/postgres}"
-TEST_DB="${TEST_DB:-ledgerlens_test}"
+TEST_DB="${TEST_DB:-ireport_test}"
 psql "$DB_URL" -q -c "drop database if exists $TEST_DB" -c "create database $TEST_DB"
 T=$(echo "$DB_URL" | sed "s#/[^/]*\$#/$TEST_DB#")
 psql "$T" -q -v ON_ERROR_STOP=1 -f supabase/tests/00_supabase_stub.sql
