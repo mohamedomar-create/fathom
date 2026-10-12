@@ -2,6 +2,7 @@ export const maxDuration = 60;
 
 import Link from "next/link";
 import { getUser } from "@/lib/supabase/server";
+import { loadCompanyBundle } from "@/lib/company/load";
 import { UploadWizard } from "@/components/settings/upload-wizard";
 import { OdooPanel, type OdooConn } from "@/components/settings/odoo-panel";
 import { cn } from "@/lib/cn";
@@ -10,6 +11,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const { id } = await params;
   const { tab = "upload" } = await searchParams;
   const { supabase } = await getUser();
+  const { role } = await loadCompanyBundle(id);
   const [{ data: c }, { data: imports }, { data: odoo }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
@@ -28,8 +30,12 @@ export default async function SourceDataPage({ params, searchParams }: { params:
           <Link key={t.k} href={`?tab=${t.k}`} scroll={false} className={cn("-mb-px border-b-2 px-4 py-2 text-sm", tab === t.k ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.l}</Link>
         ))}
       </div>
+      {role === "viewer" ? (
+        <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
+      ) : <>
       {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} />}
       {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
+      </>}
     </div>
   );
 }

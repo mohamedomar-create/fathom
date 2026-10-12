@@ -52,6 +52,17 @@ npm run dev
 | `npm run build && npm run e2e` | Playwright end-to-end tests (desktop + mobile) against the demo |
 | `node scripts/embed-fonts.mjs` | Regenerate the embedded report fonts |
 
+### Signed-in tests against a local Supabase
+The signed-in browser tests (sign-up, imports, reports and shared links, invites and roles, account deletion, and direct API checks of row level security) never touch the real project. They run against a local Supabase made of Postgres, GoTrue and PostgREST behind a small gateway, with no Docker needed (needs PostgreSQL installed):
+```bash
+npm run supabase:local                      # fresh database with every migration, ready in a few seconds
+set -a; . .local-supabase/env; set +a       # point the app at it
+npm run build && npm run e2e:auth           # signed-in tests (E2E_AUTH=1 npx playwright test runs everything)
+DB_URL=postgres://postgres@127.0.0.1:54322/postgres sh scripts/test-db.sh   # SQL tests of the database functions
+npm run supabase:stop
+```
+CI runs all of this on every push (`.github/workflows/ci.yml`, job `e2e`). Restart the local stack between full runs: rate limits (such as 5 demo PDFs per 10 minutes) are real there.
+
 ## Deploying to Vercel
 1. Vercel → **Add New → Project → Import** `mohamedomar-create/fathom`.
 2. Environment variables (Production and Preview):

@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "supabase:local": "scripts/local-supabase/start.sh",
+    "supabase:stop": "scripts/local-supabase/stop.sh",
+    "e2e:auth": "set -a && . .local-supabase/env && set +a && E2E_AUTH=1 playwright test tests/e2e-auth --project=desktop"
   },
   "engines": {
     "node": "20.x || 22.x || 24.x"
