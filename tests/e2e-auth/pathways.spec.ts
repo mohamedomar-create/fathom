@@ -1,0 +1,64 @@
+import { expect, test } from "@playwright/test";
+import { createCompany, importFiles, newEmail, requireLocalStack, signUp } from "./helpers";
+
+requireLocalStack();
+
+/** The settings a company admin uses, each saved and checked to have taken effect. */
+test("company settings, mapping, organisation and report download all work", async ({ page }) => {
+  test.setTimeout(240_000);
+  await signUp(page, { name: "Path Owner", org: "Path Advisory", email: newEmail("path") });
+  const id = await createCompany(page, "Path Co");
+  await importFiles(page, id, ["odoo-pl-bs.xlsx"]);
+
+  // Profile: the new name shows across the company.
+  await page.goto(`/company/${id}/settings/profile`);
+  await page.getByLabel("Company name").fill("Path Co Renamed");
+  await page.getByLabel("Industry").fill("Medical supplies");
+  await page.getByRole("button", { name: "Save profile" }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+  await page.goto(`/company/${id}/summary`);
+  await expect(page.getByText("Path Co Renamed").first()).toBeVisible();
+
+  // Mapping: moving an account changes the analysis.
+  await page.goto(`/company/${id}/analysis/profitability`);
+  const gpBefore = await page.getByTestId("tile-gp").innerText();
+  await page.goto(`/company/${id}/settings/chart-of-accounts`);
+  const select = page.locator('select[aria-label^="Reclassify"]').first();
+  const original = await select.inputValue();
+  await select.selectOption("other_income");
+  await page.getByRole("button", { name: "Save mapping" }).click();
+  await expect(page.getByText(/1 account\(s\) reclassified/)).toBeVisible();
+  await page.goto(`/company/${id}/analysis/profitability`);
+  if (original !== "other_income") await expect(page.getByTestId("tile-gp")).not.toHaveText(gpBefore);
+
+  // Alerts: a switch saves.
+  await page.goto(`/company/${id}/settings/alerts`);
+  await page.getByRole("switch").first().click();
+  await page.getByTestId("save-kpis").click();
+  await expect(page.getByText(/Saved\./)).toBeVisible();
+
+  // Organisation details.
+  await page.goto("/admin/organisation");
+  await page.getByLabel("Organisation name").fill("Path Advisory Group");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Saved.")).toBeVisible();
+
+  // A report downloads as a real PDF.
+  await page.goto(`/company/${id}/reports`);
+  await page.getByTestId("create-report").click();
+  await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/);
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 90_000 }), page.getByTestId("download-pdf").click()]);
+  const path = await download.path();
+  const fs = await import("node:fs");
+  expect(fs.readFileSync(path!).subarray(0, 5).toString()).toBe("%PDF-");
+
+  // Deleting the company asks for its name, then it is gone.
+  await page.goto(`/company/${id}/settings/profile`);
+  await page.getByRole("button", { name: "Delete this company" }).click();
+  const dialog = page.getByTestId("delete-company-dialog");
+  await dialog.getByRole("textbox").fill("Path Co Renamed");
+  await dialog.getByRole("button", { name: "Delete company" }).click();
+  await expect(page).toHaveURL(/\/companies/);
+  await expect(page.getByText("Path Co Renamed")).toHaveCount(0);
+  expect((await page.goto(`/company/${id}/summary`))?.status()).toBe(404);
+});
