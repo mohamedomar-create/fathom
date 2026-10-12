@@ -38,6 +38,22 @@ test("a new user signs up, imports Odoo data and works with their own numbers", 
   await page.goto(`/company/${id}/analysis/real-profit`);
   await expect(page.getByTestId("assume-rate")).toHaveValue("22");
 
+  // Forecast drivers are saved to the company and survive a KPI save.
+  await page.goto(`/company/${id}/analysis/forecast`);
+  await page.getByTestId("fc-dso").fill("30");
+  await page.getByTestId("fc-capex").fill("15000");
+  await page.getByTestId("save-forecast").click();
+  await expect(page.getByText("Saved for this company.")).toBeVisible();
+  await page.goto(`/company/${id}/settings/targets`);
+  await page.locator('input[type="number"]').first().fill("124");
+  await page.getByTestId("save-kpis").click();
+  await expect(page.getByText(/Saved\. KPIs/)).toBeVisible();
+  await page.goto(`/company/${id}/analysis/forecast`);
+  await expect(page.getByTestId("fc-dso")).toHaveValue("30");
+  await expect(page.getByTestId("fc-capex")).toHaveValue("15000");
+  await page.goto(`/company/${id}/analysis/real-profit`);
+  await expect(page.getByTestId("assume-rate")).toHaveValue("22");
+
   // Full data export.
   const xlsx = await page.request.get(`/api/export/${id}`);
   expect(xlsx.status()).toBe(200);

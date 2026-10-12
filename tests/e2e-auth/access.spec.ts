@@ -39,6 +39,10 @@ test("an invited viewer sees the company read-only, the last admin cannot delete
   await expect(viewer.getByTestId("tile-dscr")).toBeVisible();
   await expect(viewer.getByTestId("save-assumptions")).toHaveCount(0);
   await expect(viewer.getByText("You have view-only access")).toBeVisible();
+  // A viewer can try forecast drivers but not save them.
+  await viewer.goto(`/company/${id}/analysis/forecast`);
+  await expect(viewer.getByTestId("tile-fc-revenue")).toBeVisible();
+  await expect(viewer.getByTestId("save-forecast")).toHaveCount(0);
   await viewer.goto(`/company/${id}/reports`);
   await expect(viewer.getByTestId("create-report")).toHaveCount(0);
   await viewer.goto(`/company/${id}/settings/source-data`);

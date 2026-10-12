@@ -8,7 +8,8 @@ import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
-import { ECONOMY_KEY } from "@/lib/company/load";
+import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/load";
+import { ForecastSchema } from "@/lib/company/forecast-schema";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -196,12 +197,14 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
   if (!parsed.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid KPI settings" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  // The economic assumptions share this column; keep them when the KPI settings are saved.
+  // The economic assumptions and forecast drivers share this column; keep them when the KPI settings are saved.
   const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  const economy = ((row?.kpi_config ?? {}) as Record<string, unknown>)[ECONOMY_KEY];
+  const old = (row?.kpi_config ?? {}) as Record<string, unknown>;
   const next: Record<string, unknown> = { ...parsed.data };
-  delete next[ECONOMY_KEY];
-  if (economy !== undefined) next[ECONOMY_KEY] = economy;
+  for (const k of RESERVED_KEYS) {
+    delete next[k];
+    if (old[k] !== undefined) next[k] = old[k];
+  }
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveKpiConfig") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
@@ -223,6 +226,25 @@ export async function saveAssumptions(companyId: string, input: z.input<typeof A
   const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [ECONOMY_KEY]: clean };
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveAssumptions") };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}
+
+/** Forecast drivers: growth, margin, working-capital days, investment, borrowing and dividends. */
+export async function saveForecast(companyId: string, input: z.input<typeof ForecastSchema>): Promise<{ ok: boolean; error?: string }> {
+  const v = ForecastSchema.safeParse(input);
+  if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "Invalid figures" };
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company" };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+  if (e1) return { ok: false, error: dbError(e1, "saveForecast") };
+  if (!row) return { ok: false, error: "You do not have permission to change this." };
+  const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined && x !== ""));
+  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [FORECAST_KEY]: clean };
+  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
+  if (error) return { ok: false, error: dbError(error, "saveForecast") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };

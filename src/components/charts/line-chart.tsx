@@ -6,12 +6,14 @@ import { ChartTip } from "./tooltip";
 import { useStaticCharts } from "./static";
 import { axisLabel, niceTicks, valueLabel } from "./util";
 
-export interface Series { name: string; values: (number | null)[]; color: string; fill?: boolean; dashed?: boolean }
+export interface Series { name: string; values: (number | null)[]; color: string; fill?: boolean; dashed?: boolean; /** Draw a dot on each point (default true). */ dots?: boolean }
 
 export function LineChart({
-  labels, series, unit = "cur", cur = "$", target, marks, height = 300, testId,
+  labels, series, unit = "cur", cur = "$", target, marks, height = 300, testId, legend = true,
 }: {
   labels: string[]; series: Series[]; unit?: Unit; cur?: string; target?: number | null; marks?: (boolean | null)[]; height?: number; testId?: string;
+  /** Set false when the page draws its own legend. */
+  legend?: boolean;
 }) {
   const st = useStaticCharts();
   const box = useRef<HTMLDivElement>(null);
@@ -44,7 +46,7 @@ export function LineChart({
   };
   return (
     <div ref={box} className="relative" data-testid={testId}>
-      {series.length > 1 && (
+      {legend && series.length > 1 && (
         <div className="mb-1 flex flex-wrap gap-4 text-xs">
           {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</span>)}
         </div>
@@ -77,9 +79,15 @@ export function LineChart({
             return (
               <g key={s.name}>
                 {s.fill && <motion.path initial={st ? false : { opacity: 0 }} animate={{ opacity: 0.14 }} transition={{ duration: 0.8 }} d={`${d} L${pts[pts.length - 1][0]},${base} L${pts[0][0]},${base} Z`} fill={s.color} />}
-                <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
-                  d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" strokeDasharray={s.dashed ? "6 4" : undefined} />
-                {pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3.2} fill={s.color} stroke="#fff" strokeWidth={1} />)}
+                {/* The draw-on animation works through the dash pattern, so dashed lines fade in instead. */}
+                {s.dashed ? (
+                  <motion.path initial={st ? false : { opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
+                    d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" strokeDasharray="6 4" />
+                ) : (
+                  <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 0.9, ease: "easeOut" }}
+                    d={d} fill="none" stroke={s.color} strokeWidth={2.2} strokeLinejoin="round" />
+                )}
+                {s.dots !== false && pts.map(([x, y], i) => <circle key={i} cx={x} cy={y} r={3.2} fill={s.color} stroke="#fff" strokeWidth={1} />)}
               </g>
             );
           })}

@@ -1,4 +1,4 @@
-import type { Assumptions, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
+import type { Assumptions, ForecastDrivers, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
 
 /** One general-ledger account with its monthly amounts in natural sign
  *  (P&L: movement for the month, positive for revenue and for costs; BS: closing balance, positive as presented). */
@@ -36,4 +36,6 @@ export interface CompanyBundle {
   asOf?: string;
   /** Economic assumptions (inflation, exchange rates, borrowing) for the bank and real-profit views. */
   assumptions?: Assumptions;
+  /** Forecast drivers the company has saved. */
+  forecast?: ForecastDrivers;
 }

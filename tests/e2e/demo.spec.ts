@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/financials", "analysis/bank", "analysis/real-profit"];
+const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "analysis/bank", "analysis/real-profit"];
 
 test("landing page leads to the demo", async ({ page }) => {
   await page.goto("/");
@@ -156,4 +156,31 @@ test("the report adds bank and real-profit pages and still downloads as a PDF", 
   await expect(page.locator('[data-section="realprofit"]')).toContainText("Real profit at today's prices");
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download-pdf").click()]);
   expect(dl.suggestedFilename()).toMatch(/\.pdf$/);
+});
+
+test("forecast projects profit, cash and the balance sheet, tested on the company's own months", async ({ page }) => {
+  await page.goto("/demo/analysis/forecast");
+  await expect(page.getByTestId("fc-basis")).toContainText("Oct 2026");
+  await expect(page.getByTestId("tile-fc-revenue")).toContainText("EGP");
+  await expect(page.getByTestId("fc-accuracy")).toContainText("We hid your last 3 months");
+  await expect(page.getByTestId("fc-cash-verdict")).toContainText("Cash stays positive");
+  const before = (await page.getByTestId("tile-fc-revenue").textContent())!;
+  await page.getByTestId("fc-revenueGrowth").fill("40");
+  await expect(page.getByTestId("tile-fc-revenue")).not.toHaveText(before);
+  // A large dividend drains cash: the page says when it runs out and how much is needed.
+  await page.getByTestId("fc-dividends").fill("50000000");
+  await expect(page.getByTestId("fc-cash-verdict")).toContainText("Cash runs out in");
+  await page.getByTestId("fc-reset").click();
+  await expect(page.getByTestId("tile-fc-revenue")).toHaveText(before);
+  await page.getByTestId("fc-tab-bs").click();
+  await expect(page.getByTestId("fc-table")).toContainText("Total Assets");
+  await page.getByTestId("fc-horizon-select").click();
+  await page.getByRole("button", { name: "24 months", exact: true }).click();
+  await expect(page.getByTestId("fc-basis")).toContainText("Sep 2028");
+});
+
+test("the report includes the forecast", async ({ page }) => {
+  await page.goto("/demo/reports");
+  await expect(page.locator('[data-section="forecast"]')).toContainText("Revenue, next 12 months");
+  await expect(page.getByTestId("report-fc-table")).toContainText("Net profit");
 });

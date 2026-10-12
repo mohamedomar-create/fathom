@@ -1,4 +1,4 @@
-import type { Assumptions, CompanySettings, MonthData, PeriodSel } from "@/lib/engine";
+import type { Assumptions, CompanySettings, ForecastDrivers, MonthData, PeriodSel } from "@/lib/engine";
 import type { AccountLine, AlertSetting } from "@/lib/company/types";
 
 export const REPORT_SECTIONS = [
@@ -14,6 +14,7 @@ export const REPORT_SECTIONS = [
   { key: "trend", label: "Trend" },
   { key: "growth", label: "Growth" },
   { key: "goalseek", label: "Goalseek" },
+  { key: "forecast", label: "Forecast" },
   { key: "bank", label: "Bank Readiness" },
   { key: "bank_outlook", label: "Bank: trend & stress test" },
   { key: "realprofit", label: "Real Profit" },
@@ -49,6 +50,8 @@ export interface ReportInput {
   accepted?: AcceptedIssue[];
   /** Inflation, exchange rates and loan terms for the bank and real-profit pages. */
   assumptions?: Assumptions;
+  /** Saved forecast drivers. */
+  forecast?: ForecastDrivers;
 }
 
 export interface AcceptedIssue { title: string; period?: string; reason: string }
@@ -57,6 +60,11 @@ export function normaliseSections(raw: unknown): ReportSection[] {
   const arr = Array.isArray(raw) ? (raw as ReportSection[]) : [];
   const known = new Set(REPORT_SECTIONS.map((s) => s.key));
   const out = arr.filter((s) => s && known.has(s.key)).map((s) => ({ key: s.key, enabled: Boolean(s.enabled) }));
-  for (const d of DEFAULT_SECTIONS) if (!out.some((s) => s.key === d.key)) out.push(d);
+  // A section added since the report was saved goes in its usual place, after the section that comes before it.
+  DEFAULT_SECTIONS.forEach((d, i) => {
+    if (out.some((s) => s.key === d.key)) return;
+    const before = i > 0 ? out.findIndex((s) => s.key === DEFAULT_SECTIONS[i - 1].key) : -1;
+    out.splice(before + 1, 0, d);
+  });
   return out;
 }
