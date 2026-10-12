@@ -14,3 +14,4 @@ export * from "./basis";
 export * from "./bank";
 export * from "./real-profit";
 export * from "./bank-outlook";
+export * from "./forecast";

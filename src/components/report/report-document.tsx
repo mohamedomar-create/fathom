@@ -16,6 +16,7 @@ import { cn } from "@/lib/cn";
 import { runChecks, type CheckId } from "@/lib/company/checks";
 import { SECTION_COMMENT, type ReportInput, type SectionKey } from "@/lib/report/types";
 import { ReportBank, ReportBankOutlook, ReportRealProfit } from "./report-bank";
+import { ReportForecast } from "./report-forecast";
 
 const AUTO_SECTIONS: Partial<Record<SectionKey, Finding["section"][]>> = { kpis: ["kpis"], profitability: ["profitability"], cashflow: ["cashflow"], trend: ["trend"], bs: ["bs"] };
 
@@ -66,6 +67,7 @@ export function ReportDocument({ input }: { input: ReportInput }) {
     trend: () => <>{head("Trend", true)}<Trend a={a} cur={cur} />{comment("trend")}</>,
     growth: () => <>{head("Growth", true)}<Growth input={input} a={a} cur={cur} />{comment("growth")}</>,
     goalseek: () => <>{head("Goalseek")}<Goalseek a={a} />{comment("goalseek")}</>,
+    forecast: () => <ReportForecast input={input} head={(t, l) => <div className="rhead" style={{ borderColor: brand }}><h2>{t}</h2><div className="text-[12px] text-mute">From the latest month loaded: <b className="text-ink">{l}</b></div></div>} />,
     bank: () => <ReportBank input={input} head={headOn} />,
     bank_outlook: () => <ReportBankOutlook input={input} head={headOn} />,
     realprofit: () => <ReportRealProfit input={input} head={headOn} />,

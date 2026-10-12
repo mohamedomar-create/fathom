@@ -1,5 +1,5 @@
 import {
-  ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Scale, Sprout, Telescope, TrendingUp, Waves,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Scale, Sprout, Telescope, TrendingUp, Waves,
   type LucideIcon,
 } from "lucide-react";
 
@@ -14,6 +14,7 @@ export const ANALYSIS_NAV: NavItem[] = [
   { href: "analysis/growth", label: "Growth", title: "Growth", icon: Sprout },
   { href: "analysis/trend", label: "Trend", title: "Trend", icon: TrendingUp },
   { href: "analysis/goalseek", label: "Goalseek", title: "Goalseek", icon: Telescope },
+  { href: "analysis/forecast", label: "Forecast", title: "Forecast", icon: CalendarRange },
   { href: "analysis/financials", label: "Financials", title: "Financials", icon: FileSpreadsheet },
   { href: "analysis/bank", label: "Bank Readiness", title: "Bank Readiness", icon: Landmark, group: true },
   { href: "analysis/real-profit", label: "Real Profit", title: "Real Profit", icon: Scale },
