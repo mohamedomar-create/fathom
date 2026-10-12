@@ -3,6 +3,8 @@ import { SUPABASE_URL } from "./src/lib/supabase/env";
 
 const dev = process.env.NODE_ENV !== "production";
 const supabase = new URL(SUPABASE_URL);
+// The local test stack (scripts/local-supabase) runs over plain http; a real deployment never does.
+const plain = supabase.protocol === "http:";
 
 // Next.js bootstraps with inline scripts, so 'unsafe-inline' stays for scripts; everything else is locked to this site.
 const csp = [
@@ -11,12 +13,12 @@ const csp = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
-  `connect-src 'self' ${supabase.origin} wss://${supabase.host}${dev ? " ws:" : ""}`,
+  `connect-src 'self' ${supabase.origin} ${plain ? "ws" : "wss"}://${supabase.host}${dev ? " ws:" : ""}`,
   "frame-ancestors 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
-  ...(dev ? [] : ["upgrade-insecure-requests"]),
+  ...(dev || plain ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 export const SECURITY_HEADERS = [

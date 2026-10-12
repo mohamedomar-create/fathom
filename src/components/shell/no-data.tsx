@@ -12,7 +12,7 @@ export function NoDataGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto max-w-lg py-24 text-center">
       <DatabaseZap className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
-      <h2 className="text-2xl font-light">No financial data yet</h2>
+      <h1 className="text-2xl font-light">No financial data yet</h1>
       <p className="mt-2 text-mute">Upload an Odoo export or connect your Odoo database to see KPIs, breakeven, cash flow and more for {c.name}.</p>
       <Link href={`${c.basePath}/settings/source-data`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">Add financial data</Link>
     </div>

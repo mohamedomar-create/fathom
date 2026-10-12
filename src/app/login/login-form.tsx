@@ -80,6 +80,7 @@ export function LoginForm() {
       <div className="flex items-center justify-center p-6">
         <form onSubmit={submit} className="w-full max-w-sm" data-testid="login-form">
           <Link href="/" className="mb-8 block text-lg lg:hidden"><Logo /></Link>
+          <h1 className="mb-5 text-2xl font-light">{mode === "signin" ? "Sign in to your account" : "Create your free account"}</h1>
           <div className="mb-6 flex gap-1 rounded-md bg-band p-1 text-sm">
             {(["signin", "signup"] as Mode[]).map((m) => (
               <button type="button" key={m} onClick={() => { setMode(m); setMsg(null); }}
