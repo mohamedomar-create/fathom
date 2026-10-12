@@ -6,7 +6,7 @@ import { LEGAL } from "@/lib/legal";
 export function SiteFooter() {
   return (
     <footer className="border-t border-line py-6 text-center text-xs text-mute">
-      <span>© {new Date().getFullYear()} {APP_NAME} · operated by {LEGAL.entity}</span>
+      <span>© {new Date().getFullYear()} {LEGAL.entity === APP_NAME ? APP_NAME : `${APP_NAME} · operated by ${LEGAL.entity}`}</span>
       <nav className="mt-2 flex justify-center gap-4" aria-label="Legal">
         <Link href="/privacy" className="hover:text-ink">Privacy</Link>
         <Link href="/terms" className="hover:text-ink">Terms</Link>

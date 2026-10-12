@@ -5,7 +5,7 @@ test("privacy policy and terms are public and linked", async ({ page }) => {
     const res = await page.goto(path);
     expect(res?.status(), path).toBe(200);
     await expect(page.getByRole("heading", { level: 1, name: heading })).toBeVisible();
-    await expect(page.getByText("ReportY").first()).toBeVisible();
+    await expect(page.getByText("iReport").first()).toBeVisible();
   }
   await page.goto("/");
   await page.getByRole("navigation", { name: "Legal" }).getByRole("link", { name: "Privacy" }).click();

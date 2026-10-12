@@ -8,7 +8,7 @@ export function supportEmail(env: string | undefined = process.env.NEXT_PUBLIC_S
 }
 
 export const LEGAL = {
-  entity: "ReportY",
+  entity: "iReport",
   email: supportEmail().email,
   /** Last material change to the privacy policy or terms. */
   effective: "10 October 2026",

@@ -1,4 +1,4 @@
-# Ledgerlens
+# iReport
 
 Advisory-grade financial analytics for companies running **Odoo**. Upload an Odoo export or connect Odoo directly and get:
 

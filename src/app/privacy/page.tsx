@@ -12,7 +12,7 @@ export default function PrivacyPage() {
     <LegalPage title="Privacy policy">
       <h2>Who we are</h2>
       <p>
-        {APP_NAME} is a financial analysis service operated by {LEGAL.entity} (&ldquo;we&rdquo;). We are the controller of the personal data described here,
+        {APP_NAME} (&ldquo;we&rdquo;) is a financial analysis service. We are the controller of the personal data described here,
         within the meaning of Egypt&apos;s Personal Data Protection Law No. 151 of 2020. Questions or requests: {mail}.
       </p>
 
@@ -90,7 +90,7 @@ export default function PrivacyPage() {
       <p>If we change this policy in a way that matters, we will tell signed-in users before the change takes effect. The date at the top shows the latest version.</p>
 
       <h2>Contact</h2>
-      <p>{LEGAL.entity}, operator of {APP_NAME}: {mail}.</p>
+      <p>{LEGAL.entity}: {mail}.</p>
     </LegalPage>
   );
 }
