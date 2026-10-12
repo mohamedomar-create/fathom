@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { createCompany, importFiles, newEmail, requireLocalStack, signUp } from "./helpers";
+import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp } from "./helpers";
 
 requireLocalStack();
 
@@ -61,4 +61,29 @@ test("company settings, mapping, organisation and report download all work", asy
   await expect(page).toHaveURL(/\/companies/);
   await expect(page.getByText("Path Co Renamed")).toHaveCount(0);
   expect((await page.goto(`/company/${id}/summary`))?.status()).toBe(404);
+});
+
+/** Odoo's General Ledger, Trial Balance and P&L for the same dates import in one go, with nothing blocking. */
+test("an Odoo ledger with an unexplained opening adjustment imports cleanly and balances", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Ledger Owner", org: "Ledger Advisory", email: newEmail("ledger") });
+  const id = await createCompany(page, "Ledger Co");
+  await page.goto(`/company/${id}/settings/source-data`);
+  await page.waitForLoadState("networkidle");
+  await expect(async () => {
+    await page.getByTestId("file-input").setInputFiles(["general-ledger", "trial-balance", "profit-and-loss"].map((n) => fixture(`egypt-odoo-${n}.xlsx`)));
+    await expect(page.getByTestId("review")).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(page.getByTestId("review")).toContainText("Balances");
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("timeline-step")).toBeVisible();
+  await expect(page.locator('[data-testid="check-list"] [data-severity="block"]')).toHaveCount(0);
+  await expect(page.getByTestId("accept-box")).toHaveCount(0);
+  await page.getByTestId("commit-import").click();
+  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  await page.goto(`/company/${id}/analysis/financials`);
+  await page.getByTestId("period-picker").waitFor();
+  await page.goto(`/company/${id}/settings/chart-of-accounts`);
+  await page.getByRole("button", { name: "Balance Sheet" }).click();
+  await expect(page.locator('select[aria-label="Reclassify z Adjustment"]')).toHaveValue("other_equity");
 });

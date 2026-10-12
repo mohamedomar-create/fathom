@@ -40,10 +40,13 @@ describe("accounting checks", () => {
     expect(checks.filter((c) => c.id === "cash_flow").map((c) => [c.period, Math.round(c.diff!)])).toEqual([["2025-02", 50], ["2025-03", -50]]);
   });
 
-  it("warns when equity moves without matching profit", () => {
+  it("warns when retained earnings move without matching profit, but not for owners' capital", () => {
     const a = books(["2025-01", "2025-02"]);
-    a[3].amounts["2025-02"] += 400; a[2].amounts["2025-02"] += 400; // capital injection
-    const rf = runChecks({ accounts: a }).filter((c) => c.id === "re_rollforward");
+    a[3].amounts["2025-02"] += 400; a[2].amounts["2025-02"] += 400; // capital injection: normal, no warning
+    expect(runChecks({ accounts: a }).filter((c) => c.id === "re_rollforward")).toEqual([]);
+    const b = books(["2025-01", "2025-02"]);
+    b[4].amounts["2025-02"] += 400; b[2].amounts["2025-02"] += 400; // retained earnings jump with no profit behind it
+    const rf = runChecks({ accounts: b }).filter((c) => c.id === "re_rollforward");
     expect(rf.map((c) => [c.period, c.severity, Math.round(c.diff!)])).toEqual([["2025-02", "warn", 400]]);
   });
 

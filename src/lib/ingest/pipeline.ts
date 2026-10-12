@@ -2,7 +2,7 @@ import { addMonths, BS_KEYS, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/build";
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
-import { chartHints, classify, CONTRA_REVENUE } from "./classify";
+import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./classify";
 import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
 import { fmtDay } from "./odoo";
@@ -153,10 +153,10 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     const override = map[r.key] ?? map[normLabel(r.label)];
     const c = override !== undefined
       ? { cls: (override || null) as ClassKey | null, conf: 1, why: override ? "your mapping" : "excluded by you" }
-      : classify(r.name, r.section, r.stmt, {}, r.code, chart);
+      : classify(r.name, r.section, r.stmt, {}, r.code, chart, hintsOf(r));
     return { r, ...c, excluded: override === "", user: override !== undefined };
   });
-  const checkLines = checkRaw.map((r) => ({ r, ...classify(r.name, r.section, r.stmt, {}, r.code, chart), excluded: false }));
+  const checkLines = checkRaw.map((r) => ({ r, ...classify(r.name, r.section, r.stmt, {}, r.code, chart, hintsOf(r)), excluded: false }));
   // Code families: an account only placed by its code (a person's name, "Visa") takes the class its confident siblings share,
   // e.g. a custodian's account named after a person among the 1211xx cash accounts. Balance-sheet classes only; the closest shared prefix decides.
   for (const l of lines) {
@@ -251,8 +251,9 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
   // restrict to the chosen periods
   const result: IngestLine[] = lines.map((l) => {
-    // Unmapped lines keep their file values so their size can be judged (they are never stored).
-    const v = values.get(l.r.key) ?? (l.cls ? {} : l.r.values);
+    // Unmapped lines keep their file values so their size can be judged (they are never stored); a movement line with a
+    // balance brought forward is shown as its running balance.
+    const v = values.get(l.r.key) ?? (l.cls ? {} : rawBalance(l.r, periods));
     const vv = Object.fromEntries(Object.entries(v).filter(([p, x]) => periods.includes(p) && x));
     return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, stmt: l.r.stmt, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv };
   });
@@ -306,7 +307,13 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     }
   }
   const bad = bal.filter((b) => b.hasBS && Math.abs(b.imb) > 2);
-  if (bad.length) issues.warnings.push(`Balance sheet out of balance in ${bad.length} of ${bal.length} months (e.g. ${bad[bad.length - 1].p}: ${Math.round(bad[bad.length - 1].imb).toLocaleString("en-GB")}).`);
+  if (bad.length) {
+    const last = bad[bad.length - 1];
+    const same = bad.length > 1 && bad.every((b) => Math.abs(b.imb - last.imb) <= 1);
+    // A line left out whose balance equals the gap in every month is almost certainly the cause: name it.
+    const culprit = result.find((l) => !l.system && (!l.cls || l.excluded) && bad.every((b) => Math.abs(Math.abs(l.values[b.p] ?? 0) - Math.abs(b.imb)) <= 1));
+    issues.warnings.push(`Balance sheet out of balance in ${bad.length} of ${bal.length} months (${same ? `by the same ${Math.round(Math.abs(last.imb)).toLocaleString("en-GB")} every month, so one balance brought forward is missing` : `e.g. ${last.p}: ${Math.round(last.imb).toLocaleString("en-GB")}`}).${culprit ? ` It matches "${culprit.name || culprit.label}", which is ${culprit.why === "excluded by you" || culprit.cls ? "excluded" : "not mapped"}: choose its class to balance the books.` : ""}`);
+  }
   if (periods.length) {
     const unm = result.filter((l) => !l.cls && !l.system).length;
     if (unm) issues.warnings.push(`${unm} line${unm > 1 ? "s are" : " is"} not mapped and will be left out until you choose a class.`);
@@ -461,6 +468,19 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
 function sys(key: string, name: string, cls: ClassKey, values: Record<string, number>): IngestLine {
   return { key, sheet: "", row: 0, code: "", name, label: name, section: "", stmt: "BS", cls, conf: 1, why: "computed", excluded: false, system: true, values };
+}
+
+function hintsOf(r: RawLine): ClassifyHints {
+  return { openingOnly: r.kind === "movement" && Math.abs(r.opening) > 0.005 && !Object.values(r.values).some((v) => Math.abs(v) > 0.005) };
+}
+
+/** Debit-positive running balance of a movement line (opening plus movements), or its values as printed. */
+function rawBalance(r: RawLine, periods: string[]): Record<string, number> {
+  if (r.kind !== "movement" || !r.opening) return r.values;
+  const out: Record<string, number> = {};
+  let run = r.opening;
+  for (const p of periods) { run += r.values[p] ?? 0; out[p] = run; }
+  return out;
 }
 
 export function ingest(grids: Grid[], opts: IngestOptions, overrides: Overrides = {}): IngestResult {

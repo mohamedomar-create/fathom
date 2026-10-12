@@ -21,6 +21,7 @@ describe.skipIf(!dir)("real Odoo exports (local only)", () => {
     const checks = runChecks({ accounts: toAccountInputs(res).map((a, i) => ({ ...a, id: String(i) })), controls: res.controls, extra: res.checks });
     expect(res.controls.some((c) => c.metric === "net_income" && (c.months ?? 1) > 1)).toBe(true);
     expect(checks.filter((c) => ["control_total", "cross_check", "account_rollforward", "tb_zero"].includes(c.id))).toEqual([]);
-    if (Object.keys(mapping).length) expect(checks.filter((c) => c.severity === "block")).toEqual([]);
+    expect(checks.filter((c) => c.severity === "block")).toEqual([]);
+    expect(checks.filter((c) => c.id === "re_rollforward")).toEqual([]);
   }, 120_000);
 });

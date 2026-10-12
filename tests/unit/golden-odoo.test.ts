@@ -5,6 +5,7 @@ import { plCalc } from "@/lib/engine";
 import { buildMonths } from "@/lib/company/build";
 import type { Grid } from "@/lib/ingest/extract";
 import { ingest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import { classify } from "@/lib/ingest/classify";
 import { detectDateOrder, parsePeriod } from "@/lib/ingest/parse";
 import { ACCOUNTS, expected, generalLedger, MONTHS, PNL_NET_PROFIT, profitAndLoss, trialBalance } from "../fixtures/odoo-exports";
 
@@ -49,7 +50,7 @@ describe("Odoo exports of an Egyptian company (General Ledger, Trial Balance, P&
     expect(res.layouts[1]).toMatchObject({ kind: "skipped", source: "Report filters (no figures)" });
     expect(res.issues.warnings.some((w) => /Filters/.test(w))).toBe(false);
     expect(res.periods).toEqual(MONTHS);
-    expectExact(res, MONTHS);
+    expectExact(res, MONTHS, { "z Adjustment": "other_equity" });
   });
 
   it("leaves out an entry dated in the future and says so; marks October as a part month", () => {
@@ -62,14 +63,29 @@ describe("Odoo exports of an Egyptian company (General Ledger, Trial Balance, P&
     expect(res.checks.find((c) => c.id === "partial_month")).toMatchObject({ period: "2026-10", severity: "warn" });
   });
 
-  it("asks about a vaguely named account instead of guessing, and balances once it is placed", () => {
+  it("an opening adjustment that never moves is kept in equity and flagged for review; the books balance", () => {
     const res = ingest(generalLedger(), OPTS);
     const z = res.lines.find((l) => l.name === "z Adjustment")!;
-    expect(z.cls).toBeNull();
-    expect(Object.values(res.imbalance).map((v) => c2(Math.abs(v)))).toEqual(MONTHS.map(() => 175000.4));
-    const fixed = ingest(generalLedger(), { ...OPTS, mapping: { "z adjustment": "other_ca" } });
-    expect(Object.values(fixed.imbalance).every((v) => Math.abs(v) < 0.01)).toBe(true);
-    expect(checksOf(fixed).filter((c) => c.severity === "block")).toEqual([]);
+    // Only balance-sheet accounts carry a balance into a new year in Odoo, so a vague name with a balance and no
+    // movement is an unexplained opening difference: equity, as Odoo itself carries one, with low confidence.
+    expect(z).toMatchObject({ cls: "other_equity", excluded: false });
+    expect(z.conf).toBeLessThan(0.7);
+    expect(z.why).toMatch(/brought forward/);
+    expect(Object.values(res.imbalance).every((v) => Math.abs(v) < 0.01)).toBe(true);
+    expect(checksOf(res).filter((c) => c.severity === "block")).toEqual([]);
+    // The user can still place it elsewhere; the books balance either way.
+    const moved = ingest(generalLedger(), { ...OPTS, mapping: { "z adjustment": "other_ca" } });
+    expect(Object.values(moved.imbalance).every((v) => Math.abs(v) < 0.01)).toBe(true);
+  });
+
+  it("a vague name that moves during the year is still the user's call", () => {
+    expect(classify("z Adjustment", "", null, {}, "", {}, { openingOnly: false }).cls).toBeNull();
+    expect(classify("Suspense", "(No Group)", null, {}, "", {}, { openingOnly: true }).cls).toBe("other_equity");
+  });
+
+  it("when a left-out account explains the balance-sheet gap, the warning names it", () => {
+    const res = ingest(generalLedger(), { ...OPTS, mapping: { "z adjustment": "" } });
+    expect(res.issues.warnings.join(" ")).toMatch(/by the same 175,000 every month.*It matches "z Adjustment", which is excluded/);
   });
 
   it("with the Trial Balance and P&L in the same upload, they check the ledger and are not imported", () => {

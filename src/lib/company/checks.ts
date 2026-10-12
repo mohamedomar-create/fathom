@@ -103,9 +103,12 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
     if (m0 && cov.bs.has(p) && cov.bs.has(prev) && cov.pl.has(p)) {
       const B0 = bsCalc(m0.bs);
       const tol2 = Math.max(tol, tolerance(B0.ta));
-      const unexplained = B.te - B0.te - P.retained_income;
+      // Retained earnings move only by the month's profit less dividends. Owners' capital and current accounts (other
+      // equity) move with money paid in or drawn, which is normal and shown in the cash flow, so they are not tested here.
+      const dRe = B.retained_earnings - B0.retained_earnings;
+      const unexplained = dRe - P.retained_income;
       if (Math.abs(B.imbalance) <= tol && Math.abs(B0.imbalance) <= tol2 && Math.abs(unexplained) > tol2) {
-        out.push({ id: "re_rollforward", severity: "warn", period: p, statement: "BS", title: "Equity moved more than the month's profit", detail: `Equity changed by ${fmt(B.te - B0.te)} but retained profit for the month is ${fmt(P.retained_income)} (unexplained ${fmt(unexplained)}). Expected for capital injections or prior-period adjustments; otherwise check the mapping of equity and P&L accounts.`, expected: P.retained_income, actual: B.te - B0.te, diff: unexplained });
+        out.push({ id: "re_rollforward", severity: "warn", period: p, statement: "BS", title: "Retained earnings moved more than the month's profit", detail: `Retained earnings changed by ${fmt(dRe)} but profit after dividends for the month is ${fmt(P.retained_income)} (unexplained ${fmt(unexplained)}). Expected for prior-period adjustments; otherwise check that every P&L account is mapped and that no capital account is mapped as retained earnings.`, expected: P.retained_income, actual: dRe, diff: unexplained });
       }
       // The indirect cash-flow statement needs a balancing line exactly when the imbalance changed.
       const plug = B.imbalance - B0.imbalance;
@@ -147,3 +150,22 @@ export function summarize(checks: Check[]): CheckSummary {
 
 /** Stable identity for accepting a specific failure ("import anyway"). */
 export const checkKey = (c: Pick<Check, "id" | "period" | "statement">) => `${c.id}:${c.statement ?? ""}:${c.period ?? ""}`;
+
+/** The same failure in several months, shown once: same check and statement, and the same difference each month. */
+export function groupChecks<T extends Check>(checks: T[]): { check: T; periods: string[] }[] {
+  const out: { check: T; periods: string[] }[] = [];
+  for (const c of checks) {
+    const g = c.period && c.diff !== undefined ? out.find((x) => x.check.id === c.id && x.check.statement === c.statement && x.check.severity === c.severity
+      && Boolean(x.check.existing) === Boolean(c.existing) && x.check.diff !== undefined && Math.abs(x.check.diff - c.diff!) <= 1 && x.periods.length) : undefined;
+    if (g) g.periods.push(c.period!);
+    else out.push({ check: c, periods: c.period ? [c.period] : [] });
+  }
+  return out;
+}
+
+/** "Jan 2026", or "Jan 2026 – Oct 2026 (10 months)". */
+export function periodsLabel(ps: string[], label: (p: string) => string): string {
+  if (!ps.length) return "";
+  const s = [...ps].sort();
+  return s.length === 1 ? label(s[0]) : `${label(s[0])} – ${label(s[s.length - 1])} (${s.length} months)`;
+}
