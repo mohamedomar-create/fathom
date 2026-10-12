@@ -308,7 +308,7 @@ function Basis({ input, a, cur }: { input: ReportInput; a: Analysis; cur: string
   };
   const checks: [string, boolean, string][] = [
     row("Balance sheet balances (assets = liabilities + equity)", ["bs_balance"], "difference within rounding"),
-    row("Equity movement equals retained profit", ["re_rollforward"], a.view.B0 ? "reconciles" : "no opening balance sheet"),
+    row("Retained earnings move with profit", ["re_rollforward"], a.view.B0 ? "reconciles" : "no opening balance sheet"),
     row("Cash flow reconciles to the change in cash without a balancing line", ["cash_flow"], a.CF ? "reconciles" : "no opening balance sheet"),
     row("Imported totals match the source file", ["control_total"], "match"),
     row("Every month in the period has data", ["gap"], a.view.complete ? "complete" : "some months missing"),

@@ -1,7 +1,7 @@
 "use client";
 import { AlertTriangle, CheckCircle2, Info, XCircle } from "lucide-react";
 import { mlabel, money, mshort } from "@/lib/engine";
-import { checkKey, type Check } from "@/lib/company/checks";
+import { checkKey, groupChecks, periodsLabel, type Check } from "@/lib/company/checks";
 import type { ImportMode, MonthDiff, SliceState, TimelineCell } from "@/lib/company/import-plan";
 import { cn } from "@/lib/cn";
 
@@ -77,20 +77,25 @@ export function OverwriteDiffs({ diffs, currency }: { diffs: MonthDiff[]; curren
 }
 
 export function CheckList({ checks, empty = "All checks passed." }: { checks: PreviewCheck[]; empty?: string }) {
-  const shown = [...checks].sort((a, b) => rank(a) - rank(b) || (a.period ?? "").localeCompare(b.period ?? ""));
-  if (!shown.length) return <p className="flex items-center gap-2 text-sm text-green-d"><CheckCircle2 className="h-4 w-4" />{empty}</p>;
+  const sorted = [...checks].sort((a, b) => rank(a) - rank(b) || (a.period ?? "").localeCompare(b.period ?? ""));
+  if (!sorted.length) return <p className="flex items-center gap-2 text-sm text-green-d"><CheckCircle2 className="h-4 w-4" />{empty}</p>;
+  // One problem repeated month after month is listed once, with the months it affects.
+  const shown = groupChecks(sorted.map((c) => ({ ...c, existing: c.existing || undefined, accepted: c.accepted || undefined })));
   return (
     <ul className="space-y-1.5 text-[13px]" data-testid="check-list">
-      {shown.map((c) => {
+      {shown.map(({ check: c, periods }) => {
         const blocking = c.severity === "block" && !c.accepted && !c.existing;
+        const many = periods.length > 1;
         return (
           <li key={checkKey(c) + c.title} className={cn("flex gap-2 rounded px-3 py-2", blocking ? "bg-red-bg" : c.severity === "info" ? "bg-band" : "bg-amber/15")} data-severity={blocking ? "block" : c.severity}>
             {blocking ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : c.severity === "info" ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-mute" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />}
             <div>
-              <b className="font-semibold">{c.period ? `${mlabel(c.period)}: ` : ""}{c.title}</b>
+              <b className="font-semibold">{periods.length ? `${periodsLabel(periods, mlabel)}: ` : ""}{c.title}</b>
               {c.accepted && <span className="ml-2 rounded bg-white px-1.5 text-[11px] text-mute">accepted earlier</span>}
               {c.existing && <span className="ml-2 rounded bg-white px-1.5 text-[11px] text-mute">already in your data</span>}
-              <div className="text-mute">{c.detail}</div>
+              <div className="text-mute">{many && c.id === "bs_balance" && c.diff !== undefined
+                ? `Out by ${Math.round(Math.abs(c.diff)).toLocaleString("en-GB")} in each of these months. The same gap every month means one balance brought forward is missing: usually an account that is not mapped or is excluded (check the mapping), or an opening entry left out of the export.`
+                : c.detail}</div>
             </div>
           </li>
         );

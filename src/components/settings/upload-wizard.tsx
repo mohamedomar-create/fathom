@@ -9,7 +9,7 @@ import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { readWorkbooks } from "@/lib/ingest/read";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
-import { checkKey, runChecks, type Check } from "@/lib/company/checks";
+import { checkKey, groupChecks, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
@@ -184,7 +184,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           <CheckList checks={preview.checks} />
           {blocking.length > 0 && (
             <div className="rounded-md border border-red/40 p-3 text-sm" data-testid="accept-box">
-              <p className="mb-2">The import is stopped until these {blocking.length === 1 ? "issue is" : `${blocking.length} issues are`} fixed: go back to the mapping, or import anyway and record why. The reason is shown on Data health and in report notes.</p>
+              <p className="mb-2">The import is stopped until {groupChecks(blocking).length === 1 ? "this issue is" : `these ${groupChecks(blocking).length} issues are`} fixed: go back to the mapping, or import anyway and record why. The reason is shown on Data health and in report notes.</p>
               <label className="flex items-center gap-2"><input type="checkbox" checked={acceptOn} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Import anyway</label>
               {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why these figures are right, e.g. 'Odoo's own balance sheet is out by this suspense balance; being fixed by the accountant.'" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
             </div>

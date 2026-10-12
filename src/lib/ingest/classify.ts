@@ -94,7 +94,12 @@ export function stmtFromCode(code: string, chart: ChartHints = {}): "PL" | "BS" 
  * expenses; charts without 6xxx accounts (common in Egypt) use 5xxx for every expense. unified: Egypt's unified chart,
  * where 3xxx are expenses and 4xxx revenues.
  */
-export interface ChartHints { fiveIsCos?: boolean; unified?: boolean }
+export interface ChartHints {
+  fiveIsCos?: boolean;
+  unified?: boolean;
+  /** Two-digit 5x group the company uses for cost of sales ("51" holding "Cost of Sales"), when 5xxx holds every cost. */
+  cosGroup?: string;
+}
 
 const EXPENSE_NAME = arRx(/اجور|أجور|مرتبات|رواتب|مستلزمات|مصروف|مصاريف|اهلاك|إهلاك|ايجار|إيجار|كهرباء|صيانة|مشتريات|عمولات|رسوم|تكلفة|wages?|salar|expense|rent\b|depreciation|utilities|maintenance|purchases/);
 const EQUITY_NAME = arRx(/رأس المال|راس المال|احتياطي|أرباح|ارباح|حقوق|جاري الشركاء|capital|equity|reserve|retained|drawings?|owner/);
@@ -105,8 +110,12 @@ export function chartHints(accounts: { code: string; name: string }[]): ChartHin
   const fiveIsCos = new Set(coded.filter((a) => /^6\d{2,}/.test(a.code)).map((a) => a.code)).size >= 2;
   const threes = coded.filter((a) => a.code.trim()[0] === "3").map((a) => words(a.name));
   const exp = threes.filter((n) => EXPENSE_NAME.test(n)).length, eq = threes.filter((n) => EQUITY_NAME.test(n)).length;
-  return { fiveIsCos, unified: exp >= 2 && exp > eq * 2 };
+  // A chart that puts all costs in 5xxx usually gives cost of sales its own group (51 "Cost of Goods Sold"): the rest are expenses.
+  const cos = coded.filter((a) => /^5\d/.test(a.code.trim()) && COS_NAME.test(words(a.name))).map((a) => a.code.trim().slice(0, 2));
+  const cosGroup = !fiveIsCos && cos.length && cos.every((g) => g === cos[0]) ? cos[0] : undefined;
+  return { fiveIsCos, unified: exp >= 2 && exp > eq * 2, cosGroup };
 }
+const COS_NAME = arRx(/\bcost of (sales|goods|revenue)|\bcogs\b|تكلفة (المبيعات|البضاعة)/);
 
 /**
  * Unified-chart groups (first two digits) where the group itself decides the class; names refine it first.
@@ -120,13 +129,23 @@ const UNIFIED_GROUP: Record<string, ClassKey> = {
   "32": "cos_variable", "34": "cos_variable", "41": "revenue",
 };
 
-export function classify(label: string, section: string, stmt: "PL" | "BS" | null, mapping: Record<string, ClassKey> = {}, code = "", chart: ChartHints = {}): Classification {
+export interface ClassifyHints {
+  /** The account has a balance brought forward and no movement in the period (only balance-sheet accounts carry a balance into a new year in Odoo). */
+  openingOnly?: boolean;
+}
+
+export function classify(label: string, section: string, stmt: "PL" | "BS" | null, mapping: Record<string, ClassKey> = {}, code = "", chart: ChartHints = {}, hints: ClassifyHints = {}): Classification {
   const key = normLabel(label);
   if (mapping[key]) return { cls: mapping[key], conf: 1, why: "your mapping" };
   const low = words(label);
   const sec = normAr((section || "").toLowerCase());
-  // A name that says nothing ("Adjustment", "Suspense") outside any section is the user's call, never a guess.
-  if (AMBIGUOUS.test(low.replace(/^[a-z]{1,2}\d*(\.\d+)? /, "")) && (!sec || /^\(no group\)$/.test(sec)) && stmt === null) return { cls: null, conf: 0, why: "name too vague to place: choose a class" };
+  // A name that says nothing ("Adjustment", "Suspense") outside any section is the user's call, never a guess, unless it
+  // is an opening balance that never moves: then it is an unexplained opening difference, which Odoo itself carries in equity.
+  if (AMBIGUOUS.test(low.replace(/^[a-z]{1,2}\d*(\.\d+)? /, "")) && (!sec || /^\(no group\)$/.test(sec)) && stmt === null) {
+    return hints.openingOnly
+      ? { cls: "other_equity", conf: 0.6, why: "balance brought forward with no movement this year: an opening adjustment, kept in equity. Check it" }
+      : { cls: null, conf: 0, why: "name too vague to place: choose a class" };
+  }
   const side = sideOf(code, chart);
   const dep = DEPRECIATION.test(low);
   const inCos = IN_COS.test(sec);
@@ -170,6 +189,8 @@ export function classify(label: string, section: string, stmt: "PL" | "BS" | nul
       if (d === "4") return { cls: "revenue", conf: 0.55, why: "account code 4xxx (check)" };
       // 5xxx is cost of sales in some charts and operating expenses in others (Odoo, Egypt): only the name can say cost of sales.
       if (d === "5" && chart.fiveIsCos) return { cls: FIXED_COS_HINT.test(low) ? "cos_fixed" : "cos_variable", conf: 0.5, why: "account code 5xxx with 6xxx expenses: cost of sales (check)" };
+      if (d === "5" && chart.cosGroup && code.trim().slice(0, 2) !== chart.cosGroup) return { cls: VARIABLE_HINT.test(low) ? "exp_variable" : "exp_fixed", conf: 0.8, why: `account code 5xxx outside the cost-of-sales group ${chart.cosGroup}: operating expense` };
+      if (d === "5" && chart.cosGroup) return { cls: FIXED_COS_HINT.test(low) ? "cos_fixed" : "cos_variable", conf: 0.8, why: `cost-of-sales group ${chart.cosGroup}` };
       if (d === "5") return { cls: VARIABLE_HINT.test(low) ? "exp_variable" : "exp_fixed", conf: 0.5, why: "account code 5xxx: expense (check)" };
     }
     if (st === "PL" || inCos || inExp || inRev) {

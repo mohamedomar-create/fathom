@@ -1,4 +1,4 @@
-import { addMonths, bsCalc, plCalc, type ClassKey } from "@/lib/engine";
+import { addMonths, mlabel, bsCalc, plCalc, type ClassKey } from "@/lib/engine";
 import { normLabel } from "@/lib/ingest/parse";
 import { buildMonths, isPL, toNatural, toRaw } from "./build";
 import { checkKey, coverageOf, runChecks, type Check, type ControlTotal } from "./checks";
@@ -194,7 +194,7 @@ function deriveRanges(current: VersionAccount[], incoming: IncomingAccount[], op
     const missing = earlier.filter((q) => !fromFile(q) && !storedCov.has(q));
     if (missing.length) {
       rangeChecks.push({ id: "multi_month", severity: "block", period: p, statement: "PL", title: `P&L figure covers ${k} months, not one`,
-        detail: `The ${p} column holds ${k} months (${earlier[0]} to ${p}). To store ${p} on its own, the earlier months must be loaded first (missing: ${missing.slice(0, 6).join(", ")}${missing.length > 6 ? "…" : ""}). Upload the monthly P&L, change the column's month under "How the file was read", or accept to store the ${k}-month total as ${p}.` });
+        detail: `This file has one total for ${mlabel(earlier[0])} to ${mlabel(p)}, not a figure for each month. For monthly analysis, upload Odoo's General Ledger for the same dates (it gives every month; this file can go with it to check the totals). Or load ${missing.length === k - 1 ? "the earlier months" : `the missing months (${missing.slice(0, 4).map(mlabel).join(", ")}${missing.length > 4 ? "…" : ""})`} first, or import anyway to keep the ${k}-month total in ${mlabel(p)}.` });
       continue;
     }
     const prior = (key: string, cls: ClassKey) => earlier.reduce((s, q) => {
