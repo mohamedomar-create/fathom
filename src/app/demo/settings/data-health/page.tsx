@@ -10,7 +10,7 @@ export default function DemoDataHealth() {
   for (const a of c.accounts) for (const p of Object.keys(a.amounts)) sources[`${statementOf(a.cls)}|${p}`] ??= [{ importId: null, file: "Demo data", at: null, by: null }];
   return (
     <div>
-      <div className="label">2 · Data Health</div>
+      <div className="label">3 · Data Health</div>
       <h1 className="mb-1 text-3xl font-light">Data health</h1>
       <p className="mb-6 text-mute">Which months are loaded, where each one came from, and whether the accounting checks pass.</p>
       <DataHealth companyId="demo" readOnly justImported={false} coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}

@@ -1,8 +1,9 @@
-import { addMonths, BS_KEYS, PL_KEYS, type ClassKey } from "@/lib/engine";
+import { addMonths, BS_KEYS, type ClassKey } from "@/lib/engine";
 import { buildMonths, CREDIT_CLASSES, isPL, toNatural } from "@/lib/company/build";
 import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./classify";
+import { CLASS_LABEL } from "./classes";
 import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type LedgerEntry, type RawLine, type SheetLayout } from "./extract";
 import { fmtDay } from "./odoo";
@@ -128,13 +129,14 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   const skip = new Set<string>();
   raw.forEach((r) => {
     // Movement exports are per account, but their grand-total row ("Total") must still go.
+    if (r.template) return;
     const isTotal = r.kind === "movement" ? !r.code && /^\s*(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(r.name) : SUBTOTAL.test(r.name);
     if (isTotal && !(r.stmt === "BS" && /^\s*net (profit|income|loss|earnings)/i.test(r.name))) {
       skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (name looks like a computed total)`);
     }
   });
   raw.forEach((r, i) => {
-    if (r.kind !== "natural" || skip.has(r.key) || !r.row) return;
+    if (r.kind !== "natural" || r.template || skip.has(r.key) || !r.row) return;
     const ps = Object.keys(r.values);
     if (!ps.some((p) => r.values[p])) return;
     const run: Record<string, number> = Object.fromEntries(ps.map((p) => [p, 0]));
@@ -154,9 +156,11 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   const chart = chartHints(rawIn);
   if (chart.unified) issues.notes.push("Egypt's unified chart of accounts recognised (3xxx expenses, 4xxx revenues): accounts were placed by their code group where the name alone was not enough.");
   const lines = used.map((r) => {
-    const override = map[r.key] ?? map[normLabel(r.label)];
+    // The class a template states beats a mapping remembered from earlier uploads; a choice made on this upload beats both.
+    const override = map[r.key] ?? (r.forcedCls ? undefined : map[normLabel(r.label)]);
     const c = override !== undefined
       ? { cls: (override || null) as ClassKey | null, conf: 1, why: override ? "your mapping" : "excluded by you" }
+      : r.forcedCls ? { cls: r.forcedCls, conf: 1, why: "class given in the iReport template" }
       : classify(r.name, r.section, r.stmt, {}, r.code, chart, hintsOf(r));
     return { r, ...c, excluded: override === "", user: override !== undefined };
   });
@@ -524,17 +528,7 @@ export function toAccountInputs(res: IngestResult) {
   return [...m.values()].filter((a) => Object.keys(a.amounts).length > 0);
 }
 
-export const CLASS_LABEL: Record<ClassKey, string> = {
-  revenue: "Revenue", cos_variable: "Cost of Sales · Variable", cos_fixed: "Cost of Sales · Fixed", cos_depreciation: "Cost of Sales · Depreciation",
-  exp_variable: "Expenses · Variable", exp_fixed: "Expenses · Fixed", exp_depreciation: "Expenses · Depreciation & Amortisation",
-  other_income: "Other Income", other_expenses: "Other Expenses", interest_income: "Interest Income", interest_expenses: "Interest Expenses",
-  tax_expenses: "Tax Expenses", adjustments: "Adjustments", dividends: "Dividends",
-  cash: "Cash & Equivalents", ar: "Accounts Receivable", inventory: "Inventory", wip: "Work In Progress", other_ca: "Other Current Assets",
-  fixed_assets: "Fixed Assets", intangibles: "Intangible Assets", investments: "Investments / Other Non-Current Assets",
-  std: "Short Term Debt", ap: "Accounts Payable", tax_liab: "Tax Liability", other_cl: "Other Current Liabilities",
-  ltd: "Long Term Debt", other_ncl: "Other Non-Current Liabilities", retained_earnings: "Retained Earnings", other_equity: "Other Equity",
-};
-export const CLASS_OPTIONS = [...PL_KEYS, ...BS_KEYS] as ClassKey[];
+export { CLASS_LABEL, CLASS_OPTIONS } from "./classes";
 
 /** Unmapped lines large enough to distort the statements (0.5% of revenue or total assets): they block the import until mapped, excluded or accepted. */
 export function materialUnmapped(res: IngestResult) {

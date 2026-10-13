@@ -11,6 +11,7 @@ import { Delta } from "@/components/ui/status";
 import type { Finding } from "@/lib/engine";
 import { useState } from "react";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
+import { ReadinessCard } from "@/components/setup/readiness-view";
 
 export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNode }) {
   const c = useCompany();
@@ -41,6 +42,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   return (
     <>
       <PageHeader title="Executive Summary" right={<PeriodPicker />} />
+      <ReadinessCard sector="financials" />
       <div className="fade-up mb-6 flex flex-wrap items-center gap-6 bg-band px-5 py-4">
         <div className={cn("text-[52px] font-light leading-none", score >= 60 ? "text-green-d" : "text-red")} data-testid="score">{Math.round(score)}%</div>
         <div>

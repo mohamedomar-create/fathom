@@ -20,7 +20,7 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
   const tabs = [
     ...SECTORS.map((s) => ({ href: `${c.basePath}/${s.items[0].href}`, label: s.label, keepQuery: true, active: !elsewhere && here === s.key })),
     { href: `${c.basePath}/reports`, label: "Reports", keepQuery: false, active: rel.startsWith("/reports") },
-    { href: `${c.basePath}/settings/source-data`, label: "Settings", keepQuery: false, active: rel.startsWith("/settings") },
+    { href: `${c.basePath}/settings/data-setup`, label: "Settings", keepQuery: false, active: rel.startsWith("/settings") },
   ];
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-3 text-[13px] text-[#ddd] no-print">

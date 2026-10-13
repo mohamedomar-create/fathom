@@ -14,6 +14,7 @@ import { SentenceSelect } from "@/components/ui/sentence-select";
 import { LineChart } from "@/components/charts/line-chart";
 import { cn } from "@/lib/cn";
 import { EmptyState, Legend, Tile } from "./common";
+import { ReadinessCard } from "@/components/setup/readiness-view";
 
 type DriverKey = Exclude<keyof ForecastDrivers, "horizon" | "loanMonth">;
 const DRIVERS: { key: DriverKey; label: string; unit: "%" | "days" | "amount"; hint: (auto: ResolvedDrivers, cur: string) => string; step: string }[] = [
@@ -56,7 +57,7 @@ export function ForecastPage() {
         options={FORECAST_HORIZONS.map((h) => ({ value: String(h), label: `${h} months` }))} />
     </div>
   );
-  if (!f.ok) return (<><PageHeader title="Forecast" right={horizonPicker} /><EmptyState title="Not enough history to forecast" text={f.reason} /></>);
+  if (!f.ok) return (<><PageHeader title="Forecast" right={horizonPicker} /><ReadinessCard sector="forecast" /><EmptyState title="Not enough history to forecast" text={f.reason} /></>);
 
   const s = f.summary;
   // Actual months up to the month the forecast starts from (months holding a P&L; a part month the forecast skips is left out).
@@ -75,6 +76,7 @@ export function ForecastPage() {
           Revenue method: <b className="text-ink">{METHOD_LABEL[f.method]}</b>.
         </p>
       </PageHeader>
+      <ReadinessCard sector="forecast" />
 
       <div className="mb-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <Tile label="Revenue, next 12 months" value={money(s.revenue12, cur, true)} testId="tile-fc-revenue"

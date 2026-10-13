@@ -226,3 +226,15 @@ test("cash flow shows each month and the change in cash", async ({ page }) => {
   await expect(page.getByTestId("cash-monthly")).toBeVisible();
   await expect(page.getByTestId("cash-monthly-table").locator("tbody tr").first()).toBeVisible();
 });
+
+test("data setup lists each step and each sector's readiness, with templates to download", async ({ page }) => {
+  await page.goto("/demo/settings/data-setup");
+  await expect(page.getByTestId("step-financials")).toBeVisible();
+  await expect(page.getByTestId("radar-financials")).toBeVisible();
+  await expect(page.getByTestId("readiness-sales")).toBeVisible();
+  const href = await page.getByTestId("template-financials").first().getAttribute("href");
+  const res = await page.request.get(href!);
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("spreadsheetml");
+  expect(res.headers()["content-disposition"]).toContain("ireport-financials-template");
+});
