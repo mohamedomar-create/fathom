@@ -43,6 +43,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
     if (!bal || bal.length < 1000) break;
   }
 
+  const sales: NonNullable<CompanyExport["sales"]> = [];
+  for (let from = 0; from < 200_000; from += 1000) {
+    const { data: ls, error: e3 } = await supabase.from("sales_lines")
+      .select("day, period, doc, series, customer, product, category, salesperson, qty, amount, cost, source")
+      .eq("company_id", c.id).order("period").order("id").range(from, from + 999);
+    if (e3) return NextResponse.json({ error: dbError(e3, "export:sales") }, { status: 500 });
+    sales.push(...(ls ?? []));
+    if (!ls || ls.length < 1000) break;
+  }
+
   const exportedAt = new Date().toISOString();
   const data: CompanyExport = {
     exportedAt,
@@ -52,6 +62,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
     imports: imports.data ?? [],
     commentary: commentary.data ?? [],
     reports: (reports.data ?? []).map(({ share_token, ...r }) => ({ ...r, shared: !!share_token })),
+    sales,
     odoo: odoo.data ?? null, // viewers cannot read the connection (RLS) and simply get no sheet
   };
   const file = await toXlsx(companySheets(data));

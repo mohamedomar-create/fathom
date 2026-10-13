@@ -35,7 +35,7 @@ test("an invited viewer sees the company read-only, the last admin cannot delete
   const viewer = await (await browser.newContext()).newPage();
   await signUp(viewer, { name: "Vera Viewer", org: "Vera's Firm", email: viewerEmail });
   await expect(viewer.getByText("Shared Trading")).toBeVisible();
-  await viewer.goto(`/company/${id}/analysis/bank`);
+  await viewer.goto(`/company/${id}/banking`);
   await expect(viewer.getByTestId("tile-dscr")).toBeVisible();
   await expect(viewer.getByTestId("save-assumptions")).toHaveCount(0);
   await expect(viewer.getByText("You have view-only access")).toBeVisible();

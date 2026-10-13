@@ -4,6 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { ArrowLeft, ChevronDown } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
 import { LogoMark } from "./logo";
+import { SECTORS, sectorOf } from "./nav";
 import { cn } from "@/lib/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -13,10 +14,13 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
   const pathname = usePathname();
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
+  const rel = pathname.slice(c.basePath.length);
+  const elsewhere = rel.startsWith("/reports") || rel.startsWith("/settings");
+  const here = sectorOf(rel).key;
   const tabs = [
-    { href: `${c.basePath}/summary`, label: "Analysis", match: (p: string) => p.includes("/analysis") || p.endsWith("/summary") },
-    { href: `${c.basePath}/reports`, label: "Reports", match: (p: string) => p.includes("/reports") },
-    { href: `${c.basePath}/settings/source-data`, label: "Settings", match: (p: string) => p.includes("/settings") },
+    ...SECTORS.map((s) => ({ href: `${c.basePath}/${s.items[0].href}`, label: s.label, keepQuery: true, active: !elsewhere && here === s.key })),
+    { href: `${c.basePath}/reports`, label: "Reports", keepQuery: false, active: rel.startsWith("/reports") },
+    { href: `${c.basePath}/settings/source-data`, label: "Settings", keepQuery: false, active: rel.startsWith("/settings") },
   ];
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-3 text-[13px] text-[#ddd] no-print">
@@ -40,7 +44,7 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
       </Popover>
       <nav className="ml-1 hidden items-center gap-1 sm:flex">
         {tabs.map((t) => (
-          <Link prefetch={false} key={t.label} href={t.href + (t.label === "Analysis" ? q : "")} className={cn("rounded px-3 py-1 hover:text-white", t.match(pathname) ? "bg-bar-2 text-white" : "")}>
+          <Link prefetch={false} key={t.label} href={t.href + (t.keepQuery ? q : "")} aria-current={t.active ? "page" : undefined} data-testid={`tab-${t.label.toLowerCase()}`} className={cn("rounded px-3 py-1 hover:text-white", t.active ? "bg-bar-2 text-white" : "")}>
             {t.label}
           </Link>
         ))}

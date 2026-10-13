@@ -13,6 +13,9 @@ import { checkKey, groupChecks, runChecks, type Check } from "@/lib/company/chec
 import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
+import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
+import { saveSales } from "@/lib/company/save-sales";
+import { readSales, SalesPreview } from "./sales-preview";
 
 type Filter = "review" | "all" | "excluded";
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
@@ -36,10 +39,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [acceptOn, setAcceptOn] = useState(false);
   const [reason, setReason] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  // Sales exports (invoice lines or a pivot) uploaded alongside, or instead of, the accounting files.
+  const [salesGrids, setSalesGrids] = useState<Grid[] | null>(null);
+  const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
+  const salesRead = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null);
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null); setSalesGrids(null); setSalesOv({});
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -48,10 +55,15 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       let grids: Grid[];
       try { grids = await readWorkbooks(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
       catch { throw new Error(`${fs.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
-      const { raw: lines, issues } = extractAll(grids);
-      setDiag(diagnostic(fs, grids, issues));
+      // A sales export is read by the sales reader; everything else by the accounting reader.
+      const sales = grids.filter((g) => readSalesGrid(g));
+      const accounting = grids.filter((g) => !sales.includes(g));
+      if (sales.length) setSalesGrids(sales);
+      if (!accounting.length) { setGrids(null); return; }
+      const { raw: lines, issues } = extractAll(accounting);
+      setDiag(diagnostic(fs, accounting, issues));
       if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-      setOverrides({}); setGrids(grids);
+      setOverrides({}); setGrids(accounting);
     } catch (e) {
       console.error("upload read failed", e);
       setErr((e as Error).message || "The file could not be read."); setGrids(null);
@@ -124,6 +136,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
+        // The General Ledger's invoice lines become sales; a sales file uploaded with it is saved too.
+        const filename = files.map((f) => f.name).join(" + ");
+        for (const [source, ls] of [["ledger", salesFromLedger(res.lines)], ["file", salesRead?.lines ?? []]] as const) {
+          const saved = await saveSales(companyId, source, [...ls], filename);
+          if (!saved.ok) { setErr(`The figures were imported, but the sales could not be saved: ${saved.error}`); return; }
+        }
         router.push(`/company/${companyId}/settings/data-health?imported=1`);
         router.refresh();
       } catch (e) {
@@ -131,6 +149,35 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         setErr(`The import could not be saved (${(e as Error).message || "network error"}). If the file is very large, export a shorter date range and try again.`);
       }
     });
+  }
+
+  if (!res && salesRead && salesRead.lines.length) {
+    return (
+      <div data-testid="sales-only">
+        <div className="mb-5 flex flex-wrap items-center gap-3">
+          <FileSpreadsheet className="h-5 w-5 text-brand-d" />
+          <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
+          <button onClick={() => { setSalesGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
+        </div>
+        <SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />
+        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
+          <span className="mr-auto text-xs text-mute">{demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Only sales are saved from this file; the financial figures are not changed."}</span>
+          {!demo && (
+            <button disabled={saving} data-testid="save-sales" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50"
+              onClick={() => start(async () => {
+                setErr(null);
+                const out = await saveSales(companyId, "file", salesRead.lines, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })) });
+                if (!out.ok) { setErr(out.error); return; }
+                router.push(`/company/${companyId}/sales`);
+                router.refresh();
+              })}>
+              {saving ? "Saving…" : `Save ${salesRead.lines.length.toLocaleString("en-US")} sales lines`}
+            </button>
+          )}
+        </div>
+      </div>
+    );
   }
 
   if (!res) {
@@ -145,7 +192,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         >
           {busy ? <Loader2 className="h-10 w-10 animate-spin text-brand" /> : <Upload className="h-10 w-10 text-brand" strokeWidth={1.5} />}
           <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
-          <div className="mt-1 text-sm text-mute">One or several files · .xlsx, .xls, .csv or .txt · English or Arabic · read in your browser</div>
+          <div className="mt-1 text-sm text-mute">One or several files · accounting reports or sales exports · .xlsx, .xls, .csv or .txt · English or Arabic · read in your browser</div>
           <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
           {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
@@ -156,6 +203,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
             <li><b>Best:</b> Accounting → Reporting → <b>General Ledger</b> for the year → Export XLSX. It gives every month and the opening balances.</li>
             <li>Add the <b>Trial Balance</b> and <b>Profit and Loss</b> for the same dates in the same upload: they are used to prove the figures, account by account, and are not counted twice.</li>
             <li>Or a <b>Trial Balance</b> / <b>P&amp;L</b> + <b>Balance Sheet</b> with monthly comparison periods, or <b>Journal Items</b> (Account, Date, Debit, Credit).</li>
+            <li><b>For Sales:</b> the General Ledger already gives sales by customer and product. Add Sales → Reporting → <b>Sales</b> or Invoicing → Reporting → <b>Invoice Analysis</b> (list view → Export) for quantities, salespeople and margins.</li>
           </ol>
           <p className="mt-3 text-mute">Nothing is uploaded until you confirm. Budget, variance and total columns are skipped automatically.</p>
         </aside>
@@ -209,6 +257,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
       </div>
       <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
+      {salesRead && salesRead.lines.length > 0 && <p className="mb-5 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="sales-alongside">Also in this upload: a sales file ({salesRead.layouts.map((l) => l.sheet).join(", ")}) with {salesRead.lines.length.toLocaleString("en-US")} lines. It is saved to the Sales sector when you import.</p>}
+      {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="mb-5 text-[13px] text-mute" data-testid="ledger-sales-note">The invoice lines on revenue accounts become sales by customer, product and month in the Sales sector.</p>}
       <div className="mb-5 grid gap-4 sm:grid-cols-4">
         <Stat label="Months" value={res.periods.length ? `${res.periods.length}` : "0"} sub={res.periods.length ? `${mlabel(res.periods[0])} – ${mlabel(lastP!)}` : ""} />
         <Stat label="Accounts mapped" value={`${lines.filter((l) => l.cls && !l.excluded).length} / ${lines.length}`} sub={`${review.length} to review`} tone={review.length ? "warn" : "ok"} />

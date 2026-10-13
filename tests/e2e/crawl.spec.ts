@@ -2,7 +2,7 @@ import { test } from "@playwright/test";
 import { brokenLinks, expectClean, inspect, internalLinks, type PageIssues } from "./crawl-helpers";
 
 /** Every page a visitor can reach without an account, in every period view, on desktop and phone. */
-const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "analysis/bank", "analysis/real-profit"];
+const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend"];
 const SETTINGS = ["settings/profile", "settings/source-data", "settings/data-health", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
 const PUBLIC = ["/", "/login", "/login?mode=signup", "/privacy", "/terms", "/auth/reset"];
 

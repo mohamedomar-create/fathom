@@ -20,6 +20,8 @@ const INITIAL_GROUP = arRx(/initial|opening|beginning|افتتاحي|أول ال
 const END_GROUP = arRx(/^(end(ing)?( balance)?|closing( balance)?|balance|رصيد آخر المدة|رصيد اخر المدة|رصيد نهاية المدة|رصيد نهاية الفترة|الرصيد الختامي|رصيد ختامي|الرصيد النهائي|الرصيد|رصيد|solde final)$/i);
 const GRAND_TOTAL = arRx(/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي|الإجمالي العام|المجموع الكلي)$/i);
 const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)\b/i);
+const PARTNER_HDR = arRx(/^(partner|customer|الشريك|العميل|الطرف|partenaire)$/i);
+const LABEL_HDR = arRx(/^(communication|label|description|memo|البيان|الوصف|البيان التفصيلي|libellé)$/i);
 const NO_GROUP = arRx(/^\(no group\)$|^\(بدون مجموعة\)$/i);
 /** Words around a period in a trial-balance column group ("حركة شهر يناير 2025", "Movement Jan 2025"). */
 const PERIOD_WORDS = arRx(/(الحركة|حركة|خلال|الفترة|فترة|شهر|عن|movements?|transactions|period|month|for|of)\s*/gi);
@@ -68,7 +70,7 @@ export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][],
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/i.test(x));
     const debits = cells.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
     // A heading row that turns out not to be one of these layouts (e.g. the group row above Debit/Credit) lets the next row try.
-    if (dat > last && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)));
+    if (dat > last && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)), cells.findIndex((x) => PARTNER_HDR.test(x)), cells.findIndex((x) => LABEL_HDR.test(x)));
     if (debits.length >= 2 || (debits.length === 1 && dat < 0)) { const tb = trialBalance(ctx, r, cCode, cName); if (tb) return tb; continue; }
     const vals = cells.map((x, i) => (i > last && x ? i : -1)).filter((i) => i >= 0);
     if (vals.length) { const st = statement(ctx, r, cCode, cName, vals); if (st) return st; layout.columns = []; }
@@ -87,7 +89,7 @@ const monthEnd = (day: string) => { const [y, m] = day.split("-").map(Number); r
 /** "2026-10-10" when the figures stop before the month ends; undefined for a full month. */
 export const partialDay = (day?: string | null) => (day && Number(day.slice(8)) < monthEnd(day) ? day : undefined);
 
-function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number): RawLine[] | null {
+function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
   if (cCred < 0) return null;
   const found = detectDateOrder(rows.slice(r + 1).map((row) => row[cDate]));
   const order: DateOrder = ov.dateOrder ?? found.order ?? "dmy";
@@ -111,7 +113,7 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
     // Odoo 17+ accounts can lack a code in a company (shared charts): a dated-less heading with amounts is still an account.
     const codeless = !code && noDate && name && !INITIAL.test(name) && !TOTAL_PREFIX.test(name) && !GRAND_TOTAL.test(name) && (num(row[cDeb]) !== null || num(row[cCred]) !== null);
     if ((code && noDate) || codeless) {
-      cur = { key: `${g.name}|gl|${code || "-"}|${name}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: "", stmt: null, kind: "movement", values: {}, opening: 0, closing: dc(row), initial: false, moves: 0 };
+      cur = { key: `${g.name}|gl|${code || "-"}|${name}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: "", stmt: null, kind: "movement", values: {}, opening: 0, closing: dc(row), initial: false, moves: 0, entries: [] };
       accounts.push(cur);
       continue;
     }
@@ -121,7 +123,9 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
     if (p) {
       const day = parseDay(date, order);
       if (day && day > cutoff) { late.push({ acc: cur.label, ref: name, day, amt: dc(row) }); cur.closing = (cur.closing ?? 0) - dc(row); continue; }
-      cur.values[p] = (cur.values[p] ?? 0) + dc(row); cur.moves++; continue;
+      cur.values[p] = (cur.values[p] ?? 0) + dc(row); cur.moves++;
+      cur.entries!.push({ day: day ?? `${p}-01`, period: p, ref: name, label: cLabel >= 0 ? str(row[cLabel]) : "", partner: cPartner >= 0 ? str(row[cPartner]) : "", amount: dc(row) });
+      continue;
     }
     if (!code && (GRAND_TOTAL.test(name) || TOTAL_PREFIX.test(name))) { if (GRAND_TOTAL.test(name)) cur = null; continue; }
   }
