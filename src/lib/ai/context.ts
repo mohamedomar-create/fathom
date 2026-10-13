@@ -1,10 +1,10 @@
 import {
   bankPack, breakeven, formatBankValue, goalseekTable, mlabel, money, num, pct, quadrantOf, bsCalc, plCalc, realProfit, REQUEST_LABEL, twelveMonths,
-  type Analysis, type Assumptions, type CompanySettings, type MonthData,
+  type Analysis, type Assumptions, type CompanySettings, type LoanAccount, type MonthData,
 } from "@/lib/engine";
 
 /** Compact, numbers-only context for the commentary model (every figure comes from the engine). */
-export function buildContext(a: Analysis, months: MonthData[], company: { name: string; currency: string; industry?: string | null; aiContext?: Record<string, string>; notes?: string[]; assumptions?: Assumptions }, sections?: readonly string[]) {
+export function buildContext(a: Analysis, months: MonthData[], company: { name: string; currency: string; industry?: string | null; aiContext?: Record<string, string>; notes?: string[]; assumptions?: Assumptions; accounts?: LoanAccount[] }, sections?: readonly string[]) {
   // The bank and real-profit blocks are large: send them only when those sections are being written.
   const want = (s: string) => !sections || sections.includes(s);
   const cur = company.currency;
@@ -47,7 +47,7 @@ export function buildContext(a: Analysis, months: MonthData[], company: { name: 
     monthly_trend_last_12: last(12),
     growth_quadrant_since_start_of_window: quadrant,
     goalseek_to_profitability_target: goalseekTable(P, "profit_ratio", a.targets.profit_ratio ?? 10).map((g) => `${g.name}: ${g.needed === null ? "n/a" : pct(g.needed)}`),
-    ...(want("bank") ? { bank: bankContext(months, window.end, a.settings, company.assumptions ?? {}, company.name) } : {}),
+    ...(want("bank") ? { bank: bankContext(months, window.end, a.settings, company.assumptions ?? {}, company.name, company.accounts) } : {}),
     ...(want("realprofit") ? { real_profit: realProfitContext(months, window.end, a.settings, company.assumptions ?? {}) } : {}),
     data_limits: company.notes ?? [],
     business_context_from_management: company.aiContext ?? {},
@@ -55,11 +55,11 @@ export function buildContext(a: Analysis, months: MonthData[], company: { name: 
 }
 
 /** The bank view for the twelve months to the period end: ratios, questions, room to borrow, the request, stress and trend. */
-export function bankContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, name: string) {
+export function bankContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, name: string, accounts?: LoanAccount[]) {
   const cur = settings.currency;
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, cur));
   const x = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : `${v.toFixed(2)}x`);
-  const p = bankPack(months, end, settings, as, name);
+  const p = bankPack(months, end, settings, as, name, accounts);
   const { assessment: a, stress, pf, trend, basis } = p;
   return {
     basis: basis.label + (basis.annualColumn ? " (audited annual statements)" : basis.covered < 12 ? " (scaled to a year)" : ""),

@@ -1,4 +1,4 @@
-import { bankAssessment, type BankAssessment, type BankInputs, type BankRatio } from "./bank";
+import { BANK_LIMITS, bankAssessment, type BankAssessment, type BankInputs, type BankRatio, type LoanAccount } from "./bank";
 import { twelveMonths, type Basis } from "./basis";
 import { addMonths, mlabel, money, pct } from "./format";
 import { REQUEST_LABEL, type Assumptions, type RequestType } from "./real-profit";
@@ -129,7 +129,7 @@ export function stressTest(b: Basis, a: BankAssessment, inp: StressInputs): Stre
       debtEbitda: ebitda > 0 ? (debt + extraCash) / ebitda : null,
     };
   };
-  const band = (d: number | null): StressScenario["band"] => (d === null ? "na" : d >= 1.25 ? "pass" : d >= 1 ? "tight" : "fail");
+  const band = (d: number | null): StressScenario["band"] => (d === null ? "na" : d >= BANK_LIMITS.dscr ? "pass" : d >= BANK_LIMITS.dscrFloor ? "tight" : "fail");
   const notes: string[] = [];
   const defs: [string, string, string, StressShock][] = [
     ["base", "As reported", "The last 12 months as they are.", {}],
@@ -282,10 +282,10 @@ export interface BankPack {
   memo: string;
 }
 
-export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string): BankPack {
+export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[]): BankPack {
   const cur = settings.currency;
   const basis = twelveMonths(months, end, settings.fyStartMonth);
-  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation };
+  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts };
   const assessment = bankAssessment(basis, inputs, cur);
   const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur);
   const stress = stressTest(basis, assessment, { taxRate: settings.taxRate, importShare: a.importShare, rate: a.rate });
@@ -293,3 +293,31 @@ export function bankPack(months: MonthData[], end: string, settings: { currency:
   const memo = memoText(ruleMemo(name, assessment, { stress, pf, trend, cur, purpose: a.requestPurpose }));
   return { basis, assessment, trend, stress, pf, memo };
 }
+
+// ------------------------------------------------------------------ memos written for a set of inputs
+
+/** The inputs each AI-written memo depends on: when one changes, the saved memo no longer describes the figures. */
+const MEMO_INPUTS: Record<"bank" | "realprofit", (keyof Assumptions)[]> = {
+  bank: ["requestAmount", "requestType", "requestPurpose", "rate", "tenor", "principal12m", "inflation", "importShare"],
+  realprofit: ["inflation", "fxStart", "fxEnd", "importShare", "assetAge", "rate"],
+};
+const STAMP = /\n*<!-- inputs:(.*?) -->\s*$/;
+
+export function memoInputsKey(section: "bank" | "realprofit", a: Assumptions): string {
+  return MEMO_INPUTS[section].map((k) => (a[k] === null || a[k] === undefined || a[k] === "" ? "" : String(a[k]))).join("|");
+}
+
+/** Adds the inputs a memo was written for, as a hidden line at its end. */
+export function stampMemo(body: string, section: "bank" | "realprofit", a: Assumptions): string {
+  return `${body.replace(STAMP, "")}\n\n<!-- inputs:${memoInputsKey(section, a)} -->`;
+}
+
+/** The memo text without its stamp, and whether it was written for different inputs than today's. Unstamped (typed) memos never go stale. */
+export function readMemo(body: string | null | undefined, section: "bank" | "realprofit", a: Assumptions): { text: string | null; stale: boolean } {
+  if (!body) return { text: null, stale: false };
+  const m = body.match(STAMP);
+  return { text: body.replace(STAMP, "").trim(), stale: m !== null && m[1] !== memoInputsKey(section, a) };
+}
+
+/** Memo text with the hidden inputs line removed (for editing: an edited memo becomes the user's own and never goes stale). */
+export const stripMemoStamp = (body: string | null | undefined) => (body ?? "").replace(STAMP, "");

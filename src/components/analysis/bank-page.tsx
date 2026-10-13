@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { AlertTriangle, ChevronDown, FileUp, Landmark } from "lucide-react";
-import { BANK_CHECKLIST, bankPack, formatBankValue, money, pct, type Band, type BankGroup } from "@/lib/engine";
+import { BANK_CHECKLIST, BANK_LIMITS, bankPack, formatBankValue, money, pct, type Band, type BankGroup } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -38,7 +38,7 @@ export function BankPage() {
   const { sel } = usePeriod();
   const cur = c.settings.currency;
   const { a, setA, saved } = useAssumptions();
-  const pack = useMemo(() => (sel.end ? bankPack(c.months, sel.end, c.settings, a, c.name) : null), [c.months, sel.end, c.settings, a, c.name]);
+  const pack = useMemo(() => (sel.end ? bankPack(c.months, sel.end, c.settings, a, c.name, c.accounts) : null), [c.months, sel.end, c.settings, a, c.name, c.accounts]);
   if (!pack) return null;
   const { basis, assessment: res, trend, stress, pf } = pack;
   const r = (k: string) => res.ratios.find((x) => x.key === k)!;
@@ -57,8 +57,8 @@ export function BankPage() {
       </div>
 
       <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label="Debt service cover" value={fmtX(r("dscr").value)} sub={<><BandChip band={r("dscr").band} /> <span className="text-mute">target 1.25x</span></>} testId="tile-dscr" />
-        <Tile label="Debt to EBITDA" value={fmtX(r("debt_ebitda").value)} sub={<><BandChip band={r("debt_ebitda").band} /> <span className="text-mute">target 3x or less</span></>} />
+        <Tile label="Debt service cover" value={fmtX(r("dscr").value)} sub={<><BandChip band={r("dscr").band} /> <span className="text-mute">target {BANK_LIMITS.dscr}x</span></>} testId="tile-dscr" />
+        <Tile label="Debt to EBITDA" value={fmtX(r("debt_ebitda").value)} sub={<><BandChip band={r("debt_ebitda").band} /> <span className="text-mute">target {BANK_LIMITS.debtEbitda}x or less</span></>} />
         <Tile label="Room to borrow (estimate)" value={cap.headroom === null ? "–" : money(cap.headroom, cur, true)} sub={<span className="text-mute">{cap.rate === null ? "enter a borrowing rate below" : `at ${pct(cap.rate, 1)} over ${cap.tenor} years`}</span>} testId="tile-headroom" />
         <Tile label="Your request" value={pf ? money(pf.amount, cur, true) : "–"} testId="tile-request"
           sub={pf ? <span className={pf.fits === true ? "text-green-d" : pf.fits === false ? "text-red" : "text-mute"}>{pf.fits === true ? "fits the bank's tests" : pf.fits === false ? "beyond common limits" : pf.type === "lc_guarantee" ? "non-cash facility" : "enter a borrowing rate"}</span> : <a href="#request" className="text-brand-d hover:underline">enter the amount below</a>} />

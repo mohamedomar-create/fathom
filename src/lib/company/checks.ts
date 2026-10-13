@@ -1,4 +1,4 @@
-import { addMonths, bsCalc, plCalc, type MonthData } from "@/lib/engine";
+import { addMonths, bsCalc, mlabel, plCalc, type MonthData } from "@/lib/engine";
 import { buildMonths, isPL } from "./build";
 import type { AccountLine } from "./types";
 
@@ -8,7 +8,7 @@ export type CheckSeverity = "block" | "warn" | "info";
 export const CHECK_IDS = [
   "bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month",
   "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening",
-  "account_rollforward", "cross_check", "future_dated", "partial_month",
+  "account_rollforward", "cross_check", "future_dated", "partial_month", "contra_balance",
 ] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
@@ -61,7 +61,7 @@ export function coverageOf(accounts: Pick<AccountLine, "cls" | "amounts">[]): Co
 export const tolerance = (scale: number) => Math.max(1, Math.abs(scale) * 0.0001);
 
 export interface CheckInput {
-  accounts: Pick<AccountLine, "cls" | "amounts">[];
+  accounts: (Pick<AccountLine, "cls" | "amounts"> & { name?: string })[];
   months?: MonthData[];
   controls?: ControlTotal[];
   /** Extra checks computed elsewhere (ingest: unmapped lines, trial-balance sums, duplicate sheets…). */
@@ -117,6 +117,36 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
     if (cov.pl.has(p) && P.revenue < -tol) out.push({ id: "sign", severity: "warn", period: p, statement: "PL", title: "Negative revenue", detail: `Revenue is ${fmt(P.revenue)}. Check that sales accounts are not mapped as costs or carry the wrong sign.`, actual: P.revenue });
     if (cov.bs.has(p) && B.ta < -tol) out.push({ id: "sign", severity: "warn", period: p, statement: "BS", title: "Negative total assets", detail: `Total assets are ${fmt(B.ta)}. The balance sheet signs look inverted.`, actual: B.ta });
     else if (cov.bs.has(p) && B.cash < -tol) out.push({ id: "sign", severity: "info", period: p, statement: "BS", title: "Negative cash", detail: `Cash is ${fmt(B.cash)}. If this is a bank overdraft, map it to Short Term Debt.`, actual: B.cash });
+  }
+
+  // Balances on the wrong side at the latest month: customers in credit, suppliers in debit, a liability with a debit
+  // balance. Totals still balance, but days and liquidity measures built on them mean nothing.
+  const lastBs = [...cov.bs].sort().pop();
+  const mLast = lastBs ? byP.get(lastBs) : undefined;
+  if (lastBs && mLast) {
+    const B = bsCalc(mLast.bs);
+    const material = Math.max(tolerance(B.ta), Math.abs(B.ta) * 0.005);
+    const at = (a: CheckInput["accounts"][number]) => a.amounts[lastBs] ?? 0;
+    const LIAB = new Set(["ap", "other_cl", "tax_liab"]);
+    // "Advance from Customers: debit 39,851,154": the side the balance is on, in the bookkeeper's words.
+    const named = (cls: string, neg: boolean) => accounts.filter((a) => a.cls === cls && (neg ? at(a) < -material : at(a) > material))
+      .map((a) => `${a.name ?? cls}: ${(at(a) < 0) === LIAB.has(cls) ? "debit" : "credit"} ${fmt(Math.abs(at(a)))}`);
+    const LABEL: Record<string, string> = { ar: "Accounts Receivable", inventory: "Inventory", ap: "Accounts Payable", other_cl: "Other Current Liabilities", tax_liab: "Tax Liability", other_ca: "Other Current Assets" };
+    for (const cls of ["ar", "ap", "inventory", "other_cl", "tax_liab", "other_ca"] as const) {
+      const v = B[cls];
+      if (v >= -material) continue;
+      const own = named(cls, true);
+      let hint = "";
+      if (cls === "ar") {
+        const elsewhere = named("other_cl", true);
+        hint = elsewhere.length ? ` A liability account has a debit balance (${elsewhere.join("; ")}): if customers' unpaid invoices are posted there, change its class to Accounts Receivable in Settings ▸ Chart of accounts.` : " Customer payments or advances exceed invoices: map customer advances to Other Current Liabilities, or correct the postings in Odoo.";
+      } else if (cls === "ap") {
+        const elsewhere = named("other_ca", true);
+        hint = elsewhere.length ? ` An asset account has a credit balance (${elsewhere.join("; ")}): if supplier bills are posted there, change its class to Accounts Payable.` : " Payments to suppliers exceed their bills: map supplier advances to Other Current Assets, or correct the postings in Odoo.";
+      } else hint = ` A ${["other_cl", "tax_liab"].includes(cls) ? "liability with a debit balance is money owed to the company and belongs with assets" : "debit-side account with a credit balance belongs with liabilities"}: check each account's class in Settings ▸ Chart of accounts.`;
+      out.push({ id: "contra_balance", severity: "warn", period: lastBs, statement: "BS", title: `${LABEL[cls]} on the wrong side`,
+        detail: `${LABEL[cls]} total ${fmt(v)} in ${mlabel(lastBs)}${own.length ? ` (${own.join("; ")})` : ""}. ${cls === "ar" ? "Customer days cannot be measured." : cls === "ap" ? "Supplier days cannot be measured." : "Liquidity measures read wrongly."}${hint}`, actual: v });
+    }
   }
 
   // control totals from the source file

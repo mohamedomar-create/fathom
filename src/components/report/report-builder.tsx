@@ -1,7 +1,7 @@
 "use client";
 import { ArrowDown, ArrowUp, Copy, Download, Eye, EyeOff, Globe, Loader2, Printer, Save, Sparkles } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
-import { selectableEnds, windowFor, type PeriodType } from "@/lib/engine";
+import { selectableEnds, stripMemoStamp, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { downloadReportPdf } from "@/lib/report/export";
 import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
@@ -143,7 +143,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
                   </div>
                   {ck && editing === ck && (
                     <div className="border-t border-line p-2">
-                      <textarea rows={5} value={comments[ck] ?? ""} onChange={(e) => setComments((x) => ({ ...x, [ck]: e.target.value }))} placeholder="Leave empty to use the automatic analyst notes" className="w-full rounded border border-line px-2 py-1.5 text-[13px] outline-none focus:border-brand" />
+                      <textarea rows={5} value={stripMemoStamp(comments[ck])} onChange={(e) => setComments((x) => ({ ...x, [ck]: e.target.value }))} placeholder="Leave empty to use the automatic analyst notes" className="w-full rounded border border-line px-2 py-1.5 text-[13px] outline-none focus:border-brand" />
                       <div className="mt-1.5 flex gap-2">
                         {c.aiEnabled && !demo && <button onClick={() => ai(ck)} disabled={!!busy} className="flex items-center gap-1 rounded bg-[#efe9fb] px-2 py-1 text-xs text-[#5b3aa8]">{busy === `ai:${ck}` ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}Write with AI</button>}
                         <button onClick={() => saveComment(ck)} disabled={!!busy} className="ml-auto rounded bg-brand-d px-2.5 py-1 text-xs text-white">{demo ? "Done" : "Save comment"}</button>

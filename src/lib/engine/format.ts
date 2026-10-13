@@ -16,7 +16,8 @@ export function money(v: number | null | undefined, cur = "$", short = false): s
   const neg = v < 0;
   const a = Math.abs(v);
   let s: string;
-  if (short) s = a >= 1e6 ? `${(a / 1e6).toFixed(1)}M` : a >= 1e3 ? `${grouped(a / 1e3, 0).replace(/,/g, "")}K` : grouped(a, 0).replace(/,/g, "");
+  // 999,600 rounds to 1.0M, not "1000K"; 999.6 to 1K, not "1000".
+  if (short) s = a >= 999_500 ? `${(a / 1e6).toFixed(1)}M` : a >= 999.5 ? `${grouped(a / 1e3, 0).replace(/,/g, "")}K` : grouped(a, 0).replace(/,/g, "");
   else s = grouped(a, 0);
   if (s === "0" || s === "0K" || s === "0.0M") return `${cur} ${s}`;
   return (neg ? "-" : "") + `${cur} ` + s;

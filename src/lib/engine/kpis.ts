@@ -94,13 +94,15 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg }: KpiInputs): Re
   k.profit_ratio = R ? (P.ebit / R) * 100 : null;
   k.npat = R ? (P.eat / R) * 100 : null;
   k.activity = div(ann(R), A.tic);
-  k.ar_days = R > 0 ? div(A.ar * days, R) : null;
-  k.inv_days = cogs > 0 ? div(A.inventory * days, cogs) : null;
-  k.ap_days = cogs > 0 ? div(A.ap * days, cogs) : null;
+  // A balance on the wrong side (customers in credit, suppliers in debit) gives negative days, which mean nothing: n/a.
+  k.ar_days = R > 0 && A.ar >= 0 ? div(A.ar * days, R) : null;
+  k.inv_days = cogs > 0 && A.inventory >= 0 ? div(A.inventory * days, cogs) : null;
+  k.ap_days = cogs > 0 && A.ap >= 0 ? div(A.ap * days, cogs) : null;
   // A return on negative equity has no meaning (a loss would read as a positive return).
   k.roe = B0 && B0.te > 0 ? x100(div(ann(P.net_income), B0.te)) : null;
   k.roce = A.tic > 0 ? x100(div(ann(P.ebit), A.tic)) : null;
-  k.gmroi = B0 ? x100(div(ann(P.gross_profit), (B.inventory + B0.inventory) / 2)) : null;
+  // Average month-end stock, as for stock days (with one month and its opening balance this is the two-point average).
+  k.gmroi = A.inventory > 0 ? x100(div(ann(P.gross_profit), A.inventory)) : null;
   k.asset_turn = div(ann(R), A.ta);
   k.wca = x100(div(B.owc, ann(R)));
   k.current = div(B.tca, B.tcl);
