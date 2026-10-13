@@ -2,8 +2,9 @@ import { breakeven } from "./breakeven";
 import { cashFlowStatement, cashWaterfall } from "./cashflow";
 import { insights, type Finding } from "./insights";
 import { computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
+import { daysIn, MONTH_ABBR } from "./format";
 import { periodView, type PeriodSel, type PeriodView } from "./period";
-import type { CompanySettings, Comparison, Importance, MonthData } from "./types";
+import { hasPL, type CompanySettings, type Comparison, type Importance, type MonthData } from "./types";
 
 export interface KpiRow {
   def: KpiDef;
@@ -50,10 +51,25 @@ const PRIOR_LABEL = { month: "last month", quarter: "the prior quarter", year: "
 
 export function analyze(
   months: MonthData[], sel: PeriodSel, settings: CompanySettings,
-  opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }> } = {},
+  opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null } = {},
 ): Analysis {
   const view = periodView(months, sel, settings.fyStartMonth);
-  const { P, B, B0 } = view;
+  // The books stop inside the last month: days-based measures (debtor, stock and supplier days) count the days covered.
+  const end = view.window.end;
+  if (opts.asOf && opts.asOf.startsWith(end)) {
+    const day = Number(opts.asOf.slice(8)), full = daysIn(end);
+    if (day > 0 && day < full) {
+      view.days -= full - day;
+      view.partDay = day;
+      const to = `${day} ${MONTH_ABBR[Number(end.slice(5))]}`;
+      // "Year 2026 (to Oct)" becomes "Year 2026 (to 10 Oct)"; a month gets "(to 10 Oct)".
+      const label = /\(to [A-Z][a-z]{2}\)$/.test(view.window.label) ? view.window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${to})`) : `${view.window.label} (to ${to})`;
+      view.window = { ...view.window, label };
+    }
+  }
+  const { P, B } = view;
+  // Cash flow needs the balance sheets at both ends of the window: never one stood in from another month.
+  const B0 = view.missing.endBS ? null : view.B0;
   const W = B0 ? cashWaterfall(P, B, B0) : null;
   const CF = B0 ? cashFlowStatement(P, B, B0) : null;
   const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: view.prior?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
@@ -66,7 +82,7 @@ export function analyze(
       const sel2 = { type: sel.type, end: c.label ? shiftEnd(sel.end, comparison === "prior" ? sel.type : "year") : sel.end };
       try {
         const v2 = periodView(months, sel2, settings.fyStartMonth);
-        const W2 = v2.B0 ? cashWaterfall(v2.P, v2.B, v2.B0) : null;
+        const W2 = v2.B0 && !v2.missing.endBS ? cashWaterfall(v2.P, v2.B, v2.B0) : null;
         compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Bavg: v2.Bavg, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null });
       } catch { compareK = null; }
     }
@@ -107,10 +123,10 @@ function shiftEnd(end: string, type: "month" | "quarter" | "year") {
 
 /** Monthly KPI values for the n months ending at `end` (used for KPI detail charts and rolling averages). */
 export function kpiHistory(months: MonthData[], settings: CompanySettings, end: string, n = 12): { period: string; K: Record<string, number | null> }[] {
-  const ps = [...months].map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
+  const ps = months.filter(hasPL).map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
   return ps.map((p) => {
     const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth);
-    const W = v.B0 ? cashWaterfall(v.P, v.B, v.B0) : null;
+    const W = v.B0 && !v.missing.endBS ? cashWaterfall(v.P, v.B, v.B0) : null;
     return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
   });
 }

@@ -27,8 +27,13 @@ describe("account storage round-trip", () => {
     expect(Math.abs(a.view.B.imbalance)).toBeLessThan(0.5);
   });
 
-  it("fills gaps so the month list is continuous", () => {
-    const m = buildMonths([{ id: "1", code: "", name: "Sales", cls: "revenue", amounts: { "2026-01": 10, "2026-04": 20 } }]);
-    expect(m.map((x) => x.period)).toEqual(["2026-01", "2026-02", "2026-03", "2026-04"]);
+  it("leaves missing months out instead of filling them with zeros, and says what each month holds", () => {
+    const m = buildMonths([
+      { id: "1", code: "", name: "Sales", cls: "revenue", amounts: { "2026-01": 10, "2026-04": 20 } },
+      { id: "2", code: "", name: "Cash", cls: "cash", amounts: { "2025-12": 5, "2026-01": 15 } },
+    ]);
+    expect(m.map((x) => [x.period, x.has])).toEqual([
+      ["2025-12", { pl: false, bs: true }], ["2026-01", { pl: true, bs: true }], ["2026-04", { pl: true, bs: false }],
+    ]);
   });
 });

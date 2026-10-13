@@ -219,3 +219,10 @@ test("demo sales reconcile to the P&L and break down by category, product and cu
   await page.goto("/demo/sales/trend");
   await expect(page.getByTestId("reconciliation-table")).toContainText("EGP 1,066,138");
 });
+
+test("cash flow shows each month and the change in cash", async ({ page }) => {
+  await page.goto("/demo/analysis/cashflow?type=year");
+  await expect(page.getByTestId("tile-dcash")).toBeVisible();
+  await expect(page.getByTestId("cash-monthly")).toBeVisible();
+  await expect(page.getByTestId("cash-monthly-table").locator("tbody tr").first()).toBeVisible();
+});

@@ -57,6 +57,8 @@ export interface IngestResult {
   controls: ControlTotal[];
   /** First month of a movement file that has no opening balances: its balance sheet must continue from the month before. */
   openingFrom: string | null;
+  /** The month before a movement file starts, holding its opening balances as a balance sheet (no P&L). */
+  openingMonth: string | null;
   /** File-level checks: the same account in two sheets, debits not equal to credits. */
   checks: Check[];
   layouts: SheetLayout[];
@@ -242,21 +244,29 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     }
   }
 
+  // The opening balances of a ledger or trial balance are the balance sheet at the end of the month before it starts:
+  // stored as that month, the first month (and a quarter or year starting on it) has a cash flow.
+  const openingMonth = mov.some((l) => l.r.opening) && periods.length && movP[0] === periods[0] && !bsP.includes(addMonths(periods[0], -1)) ? addMonths(periods[0], -1) : null;
   // movement lines → natural (P&L: monthly movement; BS: opening + cumulative movement)
   for (const l of mov) {
     const cls = l.cls!;
     const out: Record<string, number> = {};
     if (isPL(cls)) for (const p of periods) { const v = l.r.values[p]; if (v) out[p] = toNatural(cls, v); }
-    else { let run = l.r.opening; for (const p of periods) { run += l.r.values[p] ?? 0; if (run) out[p] = toNatural(cls, run); } }
+    else {
+      let run = l.r.opening;
+      if (openingMonth && run) out[openingMonth] = toNatural(cls, run);
+      for (const p of periods) { run += l.r.values[p] ?? 0; if (run) out[p] = toNatural(cls, run); }
+    }
     values.set(l.r.key, out);
   }
+  const kept = openingMonth ? [openingMonth, ...periods] : periods;
 
   // restrict to the chosen periods
   const result: IngestLine[] = lines.map((l) => {
     // Unmapped lines keep their file values so their size can be judged (they are never stored); a movement line with a
     // balance brought forward is shown as its running balance.
     const v = values.get(l.r.key) ?? (l.cls ? {} : rawBalance(l.r, periods));
-    const vv = Object.fromEntries(Object.entries(v).filter(([p, x]) => periods.includes(p) && x));
+    const vv = Object.fromEntries(Object.entries(v).filter(([p, x]) => (l.cls && !isPL(l.cls) ? kept : periods).includes(p) && x));
     return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, stmt: l.r.stmt, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv, ...(l.r.entries?.length ? { entries: l.r.entries.filter((e) => periods.includes(e.period)) } : {}) };
   });
 
@@ -264,6 +274,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   if (mov.length) {
     const re: Record<string, number> = {};
     let run = mov.filter((l) => isPL(l.cls!)).reduce((s, l) => s + l.r.opening, 0);
+    if (openingMonth && run) re[openingMonth] = -run;
     for (const p of periods) {
       run += mov.filter((l) => isPL(l.cls!)).reduce((s, l) => s + (l.r.values[p] ?? 0), 0);
       if (run) re[p] = -run;
@@ -451,6 +462,12 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   if (asOf && lastP) fileChecks.push({ id: "partial_month", severity: "warn", period: lastP, title: `Part month: figures to ${Number(asOf.slice(8))} ${monthName(lastP).split(" ")[0]}`, detail: `The figures stop on ${fmtDay(asOf)}, so ${monthName(lastP)} covers ${Number(asOf.slice(8))} of ${daysIn(lastP)} days. Comparisons with full months will look low; they are labelled as part month.` });
 
   const months = buildMonths(result.filter((l) => !l.excluded && l.cls).map((l) => ({ id: l.key, code: l.code, name: l.name, cls: l.cls!, amounts: l.values })));
+  if (openingMonth) {
+    const m0 = months.find((m) => m.period === openingMonth);
+    const imb = m0 ? bsCalc(m0.bs).imbalance : 0;
+    if (Math.abs(imb) > Math.max(1, Math.abs(m0 ? bsCalc(m0.bs).ta : 0) * 0.0001)) issues.warnings.push(`The opening balances (balance sheet at the end of ${monthName(openingMonth)}) do not balance: they are out by ${Math.round(imb).toLocaleString("en-GB")}. Check that every account with an initial balance is mapped.`);
+    else issues.notes.push(`The opening balances are stored as the balance sheet at the end of ${monthName(openingMonth)}, so ${monthName(periods[0])} has a full cash flow.`);
+  }
   const pick = (k: "revenue" | "cash" | "assets") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : k === "cash" ? m.bs.cash ?? 0 : bsCalc(m.bs).ta]));
   const movPL = mov.some((l) => isPL(l.cls!)), movBS = mov.length > 0;
   return {
@@ -461,10 +478,11 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     totals: { revenue: pick("revenue"), cash: pick("cash"), assets: pick("assets") },
     slices: {
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
-      BS: [...new Set([...bsP, ...(movBS ? movP : [])])].filter((p) => periods.includes(p)).sort(),
+      BS: [...new Set([...bsP, ...(movBS ? movP : []), ...(openingMonth ? [openingMonth] : [])])].filter((p) => kept.includes(p)).sort(),
     },
     ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
+    openingMonth,
   };
 }
 

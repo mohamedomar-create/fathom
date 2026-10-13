@@ -40,7 +40,7 @@ describe("TypeScript engine matches the Python reference on every sample month",
       if (a.breakeven.ok) { close(a.breakeven.bep, g.bep, "bep"); close(a.breakeven.mos, g.mos, "mos"); }
       expect(Math.abs(a.W!.ncf - (a.W!.dcash - a.W!.ddebt))).toBeLessThan(0.5);
       expect(Math.abs(a.view.B.imbalance)).toBeLessThan(0.5);
-      expect(Math.abs(a.CF!.cfo + a.CF!.cfi + a.CF!.cff - a.CF!.dcash)).toBeLessThan(0.5);
+      expect(Math.abs(a.CF!.cfo + a.CF!.cfi + a.CF!.cff + a.CF!.unreconciled - a.CF!.dcash)).toBeLessThan(0.5);
       close(a.W!.ocf, a.CF!.cfo, "one operating cash flow");
     });
   }

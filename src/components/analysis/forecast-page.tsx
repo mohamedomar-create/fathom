@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import {
   forecast, FORECAST_HORIZONS, METHOD_ABOUT, METHOD_LABEL, mlabel, money, mshort, pct, plCalc, bsCalc,
   type ForecastDrivers, type ForecastMonth, type Horizon, type ResolvedDrivers,
+  hasPL,
 } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { saveForecast } from "@/app/company/[id]/settings/actions";
@@ -37,7 +38,7 @@ export function ForecastPage() {
   const [tab, setTab] = useState<"pl" | "cf" | "bs">("pl");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const f = useMemo(() => forecast(c.months, c.settings, d, c.assumptions ?? {}), [c.months, c.settings, d, c.assumptions]);
+  const f = useMemo(() => forecast(c.months, c.settings, d, c.assumptions ?? {}, c.asOf), [c.months, c.settings, d, c.assumptions, c.asOf]);
   const canSave = !c.readOnly && c.source !== "demo";
   const saved = c.forecast ?? {};
   const dirty = JSON.stringify(clean(d)) !== JSON.stringify(clean(saved));
@@ -58,7 +59,8 @@ export function ForecastPage() {
   if (!f.ok) return (<><PageHeader title="Forecast" right={horizonPicker} /><EmptyState title="Not enough history to forecast" text={f.reason} /></>);
 
   const s = f.summary;
-  const hist = [...c.months].sort((a, b) => a.period.localeCompare(b.period)).slice(-24);
+  // Actual months up to the month the forecast starts from (months holding a P&L; a part month the forecast skips is left out).
+  const hist = [...c.months].filter((m) => hasPL(m) && m.period < f.months[0].period).sort((a, b) => a.period.localeCompare(b.period)).slice(-24);
   const labels = [...hist.map((m) => m.period), ...f.months.map((m) => m.period)];
   const H = hist.length;
   const histRev = hist.map((m) => plCalc(m.pl).revenue), histCash = hist.map((m) => bsCalc(m.bs).cash);

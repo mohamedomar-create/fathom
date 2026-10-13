@@ -57,9 +57,9 @@ export function ReportDocument({ input }: { input: ReportInput }) {
     },
     profitability: () => <>{head("Profitability")}<Profitability a={a} cur={cur} />{comment("profitability")}</>,
     cashflow: () => <>{head("Cash Flow")}{a.W ? <>
-      <Tiles items={[["Operating cash flow", a.W.ocf], ["Free cash flow", a.W.fcf], ["Net cash flow", a.W.ncf]]} cur={cur} />
+      <Tiles items={[["Operating cash flow", a.W.ocf], ["Free cash flow", a.W.fcf], ["Cash flow before borrowing", a.W.ncf], ["Change in cash", a.W.dcash]]} cur={cur} />
       <CashWaterfall rows={a.W.rows} cur={cur} />
-      <p className="mt-2 text-[10px] text-mute"><b>NET CASH FLOW CAN ALSO BE CALCULATED AS:</b> Change in Cash on Hand {money(a.W.dcash, cur)} − Change in Debt {money(a.W.ddebt, cur)}</p>
+      <p className="mt-2 text-[10px] text-mute"><b>CASH FLOW BEFORE BORROWING CAN ALSO BE CALCULATED AS:</b> Change in Cash on Hand {money(a.W.dcash, cur)} − Change in Debt {money(a.W.ddebt, cur)}</p>
     </> : <p className="text-mute">Needs an opening balance sheet (the month before this period).</p>}{comment("cashflow")}</>,
     pl: () => <>{head("Profit & Loss")}<PLTable a={a} cur={cur} />{comment("pl")}</>,
     bs: () => <>{head("Balance Sheet")}<BSTable a={a} cur={cur} />{comment("bs")}</>,

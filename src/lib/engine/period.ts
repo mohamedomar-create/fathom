@@ -1,6 +1,6 @@
 import { addMonths, daysIn, mlabel, MONTH_ABBR, monthIndex, parsePeriod, periodFromIndex } from "./format";
 import { averageBS, bsCalc, plCalc, sumPL } from "./statements";
-import type { BSCalc, MonthData, PeriodType, PLCalc } from "./types";
+import { hasBS, hasPL, type BSCalc, type MonthData, type PeriodType, type PLCalc } from "./types";
 
 export interface PeriodSel { type: PeriodType; end: string }
 
@@ -53,11 +53,21 @@ export function shiftWindow(w: Window, months: number): Window {
 export interface PeriodView {
   sel: PeriodSel;
   window: Window;
-  /** All periods in the window are loaded. */
+  /** Every month of the window has its P&L loaded (or one annual column covers the year). */
   complete: boolean;
   P: PLCalc;
+  /** Balance sheet at the window end; when the end month has none, the latest one before it (see bsAt). */
   B: BSCalc;
+  /** Month of the balance sheet in B; null when no balance sheet is loaded up to the window end. */
+  bsAt: string | null;
+  /** Balance sheet the month before the window starts; null when that month has none. */
   B0: BSCalc | null;
+  /** What the window lacks: months without a P&L, and whether the end and opening balance sheets are missing. */
+  missing: { pl: string[]; endBS: boolean; openingBS: boolean; opening: string };
+  /** The window end is an annual column (audited statements): its P&L is the whole year. */
+  annual: boolean;
+  /** Set when the books stop inside the last month: the day they run to (days already counts only the days covered). */
+  partDay?: number;
   /** Average of the month-end balances held, from the opening balance to the end (closing alone when only one is held). */
   Bavg: BSCalc;
   days: number;
@@ -77,38 +87,58 @@ function windowLabel(w: Window, type: PeriodType, fyStart: number) {
   return windowFor({ type, end: w.end }, fyStart).label;
 }
 
-export function periodView(months: MonthData[], sel: PeriodSel, fyStart: number): PeriodView {
+/** A year-end month with no other month of its financial year holding a P&L: an annual column from audited statements. */
+export function isAnnualColumn(months: MonthData[], p: string, fyStart: number) {
+  if (parsePeriod(p).m !== ((fyStart + 10) % 12) + 1) return false;
+  const pl = new Set(months.filter(hasPL).map((m) => m.period));
+  if (!pl.has(p)) return false;
+  for (let i = 1; i <= 11; i++) if (pl.has(addMonths(p, -i))) return false;
+  return true;
+}
+
+export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: number): PeriodView {
   const { sorted, byPeriod } = indexMonths(months);
+  const endMonth = byPeriod.get(selIn.end);
+  if (!endMonth) throw new Error(`No data for ${selIn.end}`);
+  // An annual column holds a whole year: it is read as that year whichever period type was asked for.
+  const annual = isAnnualColumn(sorted, selIn.end, fyStart);
+  const sel: PeriodSel = annual ? { type: "year", end: selIn.end } : selIn;
   const window = windowFor(sel, fyStart);
-  const got = window.periods.map((p) => byPeriod.get(p)).filter(Boolean) as MonthData[];
-  const endMonth = byPeriod.get(window.end);
-  if (!endMonth) throw new Error(`No data for ${window.end}`);
+  const plAt = (p: string) => { const m = byPeriod.get(p); return m && hasPL(m) ? m : undefined; };
+  const bsAtOrBefore = (p: string) => { for (let i = sorted.length - 1; i >= 0; i--) if (sorted[i].period <= p && hasBS(sorted[i])) return sorted[i]; return undefined; };
+  const got = annual ? [endMonth] : (window.periods.map(plAt).filter(Boolean) as MonthData[]);
   const P = plCalc(sumPL(got.map((m) => m.pl)));
-  const B = bsCalc(endMonth.bs);
-  const open = byPeriod.get(addMonths(window.start, -1));
-  const B0 = open ? bsCalc(open.bs) : null;
+  const bsMonth = bsAtOrBefore(window.end);
+  const B = bsCalc(bsMonth?.bs ?? {});
+  const opening = addMonths(window.start, -1);
+  const open = byPeriod.get(opening);
+  const B0 = open && hasBS(open) ? bsCalc(open.bs) : null;
   const days = window.periods.reduce((s, p) => s + daysIn(p), 0);
-  const Bavg = averageBS([...(B0 ? [B0] : []), ...got.map((m) => bsCalc(m.bs))]);
+  const points = annual ? [] : window.periods.map((p) => byPeriod.get(p)).filter((m): m is MonthData => !!m && hasBS(m)).map((m) => bsCalc(m.bs));
+  const Bavg = averageBS([...(B0 ? [B0] : []), ...(points.length ? points : [B])]);
   const cmp = (shift: number) => {
     const w2 = shiftWindow(window, shift);
-    const ms = w2.periods.map((p) => byPeriod.get(p));
+    const ms = annual ? [plAt(w2.end)] : w2.periods.map(plAt);
     if (ms.some((x) => !x)) return null;
-    return { P: plCalc(sumPL(ms.map((m) => m!.pl))), B: bsCalc(ms[ms.length - 1]!.bs), label: windowLabel(w2, sel.type, fyStart) };
+    const b2 = bsAtOrBefore(w2.end);
+    return { P: plCalc(sumPL(ms.map((m) => m!.pl))), B: bsCalc(b2?.bs ?? {}), label: windowLabel(w2, sel.type, fyStart) };
   };
   const fy0 = fyStartOf(window.end, fyStart);
-  const ytdMonths = sorted.filter((m) => m.period >= fy0 && m.period <= window.end);
-  const upto = sorted.filter((m) => m.period <= window.end);
+  const ytdMonths = sorted.filter((m) => hasPL(m) && m.period >= fy0 && m.period <= window.end);
+  // The monthly series: months holding a P&L, each with the balance sheet held at or before it.
+  const upto = sorted.filter((m) => hasPL(m) && m.period <= window.end);
   return {
-    sel, window, complete: got.length === window.periods.length, P, B, B0, Bavg, days,
-    prior: cmp(SHIFT[sel.type]), ly: sel.type === "year" ? cmp(12) : cmp(12),
+    sel, window, complete: got.length === (annual ? 1 : window.periods.length), P, B, bsAt: bsMonth?.period ?? null, B0, Bavg, days, annual,
+    missing: { pl: annual ? [] : window.periods.filter((p) => !plAt(p)), endBS: bsMonth?.period !== window.end, openingBS: !B0, opening },
+    prior: cmp(SHIFT[sel.type]), ly: cmp(12),
     ytd: plCalc(sumPL(ytdMonths.map((m) => m.pl))),
-    series: { periods: upto.map((m) => m.period), P: upto.map((m) => plCalc(m.pl)), B: upto.map((m) => bsCalc(m.bs)) },
+    series: { periods: upto.map((m) => m.period), P: upto.map((m) => plCalc(m.pl)), B: upto.map((m) => bsCalc((hasBS(m) ? m : bsAtOrBefore(m.period))?.bs ?? {})) },
   };
 }
 
 /** Periods selectable in the picker for a given type. */
 export function selectableEnds(months: MonthData[], type: PeriodType, fyStart: number): { end: string; label: string }[] {
-  const ps = indexMonths(months).sorted.map((m) => m.period);
+  const ps = indexMonths(months).sorted.filter(hasPL).map((m) => m.period);
   if (!ps.length) return [];
   const last = ps[ps.length - 1];
   if (type === "month") return ps.map((p) => ({ end: p, label: mlabel(p) }));

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { forecast, METHOD_LABEL, mlabel, money, mshort, pct, plCalc, bsCalc, type ForecastMonth } from "@/lib/engine";
+import { forecast, METHOD_LABEL, mlabel, money, mshort, pct, plCalc, bsCalc, type ForecastMonth, hasPL } from "@/lib/engine";
 import { LineChart } from "@/components/charts/line-chart";
 import type { ReportInput } from "@/lib/report/types";
 
@@ -14,7 +14,8 @@ export function ReportForecast({ input, head }: { input: ReportInput; head: (tit
   const f = useMemo(() => forecast(input.months, input.settings, input.forecast ?? {}, input.assumptions ?? {}), [input.months, input.settings, input.forecast, input.assumptions]);
   if (!f.ok) return <>{head("Forecast", "latest figures")}<p className="text-mute">{f.reason}</p></>;
   const s = f.summary;
-  const hist = [...input.months].sort((a, b) => a.period.localeCompare(b.period)).slice(-12);
+  // Actual months up to the month the forecast starts from (months holding a P&L; a part month the forecast skips is left out).
+  const hist = [...input.months].filter((m) => hasPL(m) && m.period < f.months[0].period).sort((a, b) => a.period.localeCompare(b.period)).slice(-12);
   const H = hist.length;
   const labels = [...hist.map((m) => m.period), ...f.months.map((m) => m.period)].map(mshort);
   const joined = (actual: number[], fc: number[]) => [...actual.slice(0, -1).map(() => null), actual[H - 1], ...fc];
