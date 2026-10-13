@@ -45,6 +45,8 @@ const ImportSchema = PlanSchema.extend({
     kind: z.string(), periods: z.array(Period), warnings: z.array(z.string()), notes: z.array(z.string()), flips: z.array(z.string()),
     mapping: z.record(z.string(), z.string()),
     asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    // Figures read from PDF pages: how many pages, and how many figures the person corrected before importing.
+    pdf: z.object({ pages: z.number().int().min(0).max(1000), corrected: z.number().int().min(0).max(100000), flagged: z.number().int().min(0).max(100000) }).optional(),
   }),
   accept: z.object({ keys: z.array(z.string().max(80)).max(500), reason: z.string().trim().min(10, "Give a reason of at least 10 characters.").max(500) }).optional(),
 });

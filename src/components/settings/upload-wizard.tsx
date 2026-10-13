@@ -16,6 +16,8 @@ import { cn } from "@/lib/cn";
 import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { readSales, SalesPreview } from "./sales-preview";
+import { isPdfLike } from "@/lib/ingest/pdf-client";
+import { PdfRead, type PdfSummary } from "./pdf-read";
 
 type Filter = "review" | "all" | "excluded";
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
@@ -43,6 +45,21 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [salesGrids, setSalesGrids] = useState<Grid[] | null>(null);
   const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
   const salesRead = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
+  // PDFs and scanned images are read page by page and checked by the person before joining the spreadsheets.
+  const [pdfJob, setPdfJob] = useState<{ files: File[]; sheets: Grid[] } | null>(null);
+  const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null);
+
+  /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
+  const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
+    const sales = grids.filter((g) => readSalesGrid(g));
+    const accounting = grids.filter((g) => !sales.includes(g));
+    if (sales.length) setSalesGrids(sales);
+    if (!accounting.length) { setGrids(null); return; }
+    const { raw: lines, issues } = extractAll(accounting);
+    setDiag(diagnostic(fs, accounting, issues));
+    if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
+    setOverrides({}); setGrids(accounting);
+  }, []);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
@@ -51,24 +68,28 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
       if (fs.reduce((a, f) => a + f.size, 0) > 40 * 1024 * 1024 || fs.some((f) => f.size > 25 * 1024 * 1024)) throw new Error("That upload is too large (25 MB per file, 40 MB in all). Export a shorter date range or the monthly Trial Balance instead of journal items.");
-      if (fs.some((f) => /\.pdf$/i.test(f.name))) throw new Error("PDF reports can't be read. In Odoo, open the report and use Export → XLSX instead of Print.");
-      let grids: Grid[];
-      try { grids = await readWorkbooks(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
-      catch { throw new Error(`${fs.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
-      // A sales export is read by the sales reader; everything else by the accounting reader.
-      const sales = grids.filter((g) => readSalesGrid(g));
-      const accounting = grids.filter((g) => !sales.includes(g));
-      if (sales.length) setSalesGrids(sales);
-      if (!accounting.length) { setGrids(null); return; }
-      const { raw: lines, issues } = extractAll(accounting);
-      setDiag(diagnostic(fs, accounting, issues));
-      if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-      setOverrides({}); setGrids(accounting);
+      const pdfs = fs.filter(isPdfLike), sheets = fs.filter((f) => !isPdfLike(f));
+      if (pdfs.length && demo) throw new Error("Reading PDFs and scanned pages needs a free account: each page is read by Claude. In the demo, upload an Excel or CSV export.");
+      let grids: Grid[] = [];
+      if (sheets.length) {
+        try { grids = await readWorkbooks(await Promise.all(sheets.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
+        catch { throw new Error(`${sheets.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
+      }
+      setPdfSummary(null);
+      if (pdfs.length) { setGrids(null); setPdfJob({ files: pdfs, sheets: grids }); return; }
+      takeSheets(fs, grids);
     } catch (e) {
       console.error("upload read failed", e);
       setErr((e as Error).message || "The file could not be read."); setGrids(null);
     } finally { setBusy(false); }
-  }, []);
+  }, [demo, takeSheets]);
+
+  function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
+    const job = pdfJob;
+    setPdfJob(null); setPdfSummary(summary); setErr(null);
+    try { takeSheets(files, [...(job?.sheets ?? []), ...pdfGrids]); }
+    catch (e) { setErr((e as Error).message || "The figures could not be read."); setGrids(null); }
+  }
 
   // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
   const [res, ingestErr]: [IngestResult | null, string | null] = useMemo(() => {
@@ -132,7 +153,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       try {
         const out = await commitImport({
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
-          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
@@ -150,6 +171,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       }
     });
   }
+
+  if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
 
   if (!res && salesRead && salesRead.lines.length) {
     return (
@@ -192,8 +215,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         >
           {busy ? <Loader2 className="h-10 w-10 animate-spin text-brand" /> : <Upload className="h-10 w-10 text-brand" strokeWidth={1.5} />}
           <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
-          <div className="mt-1 text-sm text-mute">One or several files · accounting reports or sales exports · .xlsx, .xls, .csv or .txt · English or Arabic · read in your browser</div>
-          <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
+          <div className="mt-1 text-sm text-mute">One or several files · accounting reports or sales exports · .xlsx, .xls, .csv, .txt, or .pdf (scanned or digital) · English or Arabic</div>
+          <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf,.jpg,.jpeg,.png" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
           {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
         </div>
@@ -205,7 +228,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
             <li>Or a <b>Trial Balance</b> / <b>P&amp;L</b> + <b>Balance Sheet</b> with monthly comparison periods, or <b>Journal Items</b> (Account, Date, Debit, Credit).</li>
             <li><b>For Sales:</b> the General Ledger already gives sales by customer and product. Add Sales → Reporting → <b>Sales</b> or Invoicing → Reporting → <b>Invoice Analysis</b> (list view → Export) for quantities, salespeople and margins.</li>
           </ol>
-          <p className="mt-3 text-mute">Nothing is uploaded until you confirm. Budget, variance and total columns are skipped automatically.</p>
+          <p className="mt-3"><b>Only have a PDF?</b> Printed or scanned statements, trial balances and sales reports can be uploaded too. Each page is read by Claude (Anthropic) and is not kept; you check the figures before anything is imported. Excel exports remain the most exact.</p>
+          <p className="mt-3 text-mute">Spreadsheets are read in your browser and nothing is saved until you confirm. Budget, variance and total columns are skipped automatically.</p>
         </aside>
       </div>
     );
