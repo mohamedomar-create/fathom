@@ -16,6 +16,7 @@ export function dbError(error: { code?: string; message: string; details?: strin
   switch (error.code) {
     case "42501": return "You don't have permission to do that.";
     case "PGRST116": return "Not found.";
+    case "PGRST202": return "This part of the database has not been set up yet (a database update is missing). Ask the site owner to run the latest update.";
     case "23505": return "That already exists.";
     case "23503": return "That refers to something that no longer exists. Refresh the page and try again.";
     case "22P02": case "22001": case "23502": case "23514": case "22023": return "That value isn't valid.";

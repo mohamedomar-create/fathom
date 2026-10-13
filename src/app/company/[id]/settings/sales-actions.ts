@@ -36,11 +36,19 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, `sales:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
   try {
+    const periods = [...new Set(v.data.periods)].sort();
     const { data, error } = await supabase.rpc("begin_sales_batch", {
-      p_company: v.data.companyId, p_source: v.data.source, p_periods: [...new Set(v.data.periods)].sort(), p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
+      p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
     });
-    if (error) return { ok: false, error: dbError(error, "begin_sales_batch") };
-    return { ok: true, batch: data as string };
+    if (!error) return { ok: true, batch: data as string };
+    // A database without the function (its update not yet applied) does the same steps through the table rules,
+    // which let only the company's editors delete and add its sales.
+    if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "begin_sales_batch") };
+    const del = await supabase.from("sales_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source).in("period", periods);
+    if (del.error) return { ok: false, error: dbError(del.error, "sales_lines delete") };
+    const ins = await supabase.from("sales_batches").insert({ company_id: v.data.companyId, source: v.data.source, periods, filename: v.data.filename?.slice(0, 300) ?? null, report: (v.data.report ?? {}) as Json, created_by: user.id }).select("id").single();
+    if (ins.error) return { ok: false, error: dbError(ins.error, "sales_batches insert") };
+    return { ok: true, batch: ins.data.id };
   } catch (e) {
     return { ok: false, error: safeError(e, "startSalesBatch") };
   }
