@@ -1,19 +1,23 @@
-import { addMonths, averageBS, bsCalc, cashWaterfall, computeKpis, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
+import { addMonths, averageBS, bsCalc, cashWaterfall, computeKpis, hasBS, hasPL, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 
 export interface MetricDef { key: string; label: string; group: "KPIs" | "Profit & Loss" | "Balance Sheet" | "Cash Flow" | "Chart of Accounts"; unit: Unit }
 export interface MonthCalc { period: string; P: PLCalc; B: BSCalc; K: Record<string, number | null>; W: { ocf: number; fcf: number; ncf: number } | null }
 
 export function monthCalcs(months: MonthData[]): MonthCalc[] {
-  const s = [...months].sort((a, b) => a.period.localeCompare(b.period));
-  const by = new Map(s.map((m) => [m.period, m]));
-  return s.map((m) => {
-    const P = plCalc(m.pl), B = bsCalc(m.bs);
+  const all = [...months].sort((a, b) => a.period.localeCompare(b.period));
+  const by = new Map(all.map((m) => [m.period, m]));
+  // A month holding only a balance sheet (the opening balance) is not a month of activity; a P&L-only month carries the last balance sheet.
+  let lastB = bsCalc({});
+  return all.filter((m) => { if (!hasPL(m)) { if (hasBS(m)) lastB = bsCalc(m.bs); return false; } return true; }).map((m) => {
+    const P = plCalc(m.pl);
+    const B = hasBS(m) ? bsCalc(m.bs) : lastB;
+    lastB = B;
     // The calendar month before, not the previous loaded one: a gap must not turn two months' movement into one.
     const before = by.get(addMonths(m.period, -1));
-    const B0 = before ? bsCalc(before.bs) : null;
-    const Pp = before ? plCalc(before.pl) : null;
-    const W = B0 ? cashWaterfall(P, B, B0) : null;
+    const B0 = before && hasBS(before) ? bsCalc(before.bs) : null;
+    const Pp = before && hasPL(before) ? plCalc(before.pl) : null;
+    const W = B0 && hasBS(m) ? cashWaterfall(P, B, B0) : null;
     const [y, mo] = m.period.split("-").map(Number);
     const days = new Date(Date.UTC(y, mo, 0)).getUTCDate();
     return { period: m.period, P, B, K: computeKpis({ P, B, B0, Bavg: B0 ? averageBS([B0, B]) : B, Pprev: Pp, days, ocf: W?.ocf ?? null }), W: W && { ocf: W.ocf, fcf: W.fcf, ncf: W.ncf } };

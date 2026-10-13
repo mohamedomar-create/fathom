@@ -17,8 +17,16 @@ function classTotals(res: IngestResult) {
 }
 
 function expectMatchesSample(res: IngestResult, from = 0) {
-  const got = classTotals(res);
+  let got = classTotals(res);
   const want = months.slice(from);
+  // Opening balances become the balance sheet of the month before the file: it must equal that month's balance sheet, with no P&L.
+  if (res.openingMonth) {
+    const o = got.find((m) => m.period === res.openingMonth)!, w = months[from - 1];
+    expect(res.openingMonth).toBe(w.period);
+    expect(o.has).toEqual({ pl: false, bs: true });
+    for (const k of BS_KEYS) expect(Math.round(o.bs[k] ?? 0), `opening ${k}`).toBe(Math.round((w.bs as Record<string, number>)[k] ?? 0));
+    got = got.filter((m) => m !== o);
+  }
   expect(got.map((m) => m.period)).toEqual(want.map((m) => m.period));
   for (const w of want) {
     const g = got.find((x) => x.period === w.period)!;
@@ -115,8 +123,11 @@ describe("Odoo exports reproduce the source numbers", () => {
     const res = ingest(trialBalanceSinglePeriod(3), OPTS);
     expect(res.periods).toEqual([months[3].period]);
     expect(res.issues.warnings.some((w) => /covers/.test(w))).toBe(false);
-    const got = classTotals(res)[0];
+    // The initial balances give the month before as an opening balance sheet.
+    expect(res.openingMonth).toBe(months[2].period);
+    const got = classTotals(res).find((m) => m.period === months[3].period)!;
     const want = months[3];
+    for (const k of BS_KEYS) expect(Math.round(classTotals(res)[0].bs[k] ?? 0), `opening ${k}`).toBe(Math.round((months[2].bs as Record<string, number>)[k] ?? 0));
     for (const k of PL_KEYS) expect(Math.round(got.pl[k] ?? 0), k).toBe(Math.round((want.pl as Record<string, number>)[k] ?? 0));
     for (const k of BS_KEYS) expect(Math.round(got.bs[k] ?? 0), k).toBe(Math.round((want.bs as Record<string, number>)[k] ?? 0));
   });

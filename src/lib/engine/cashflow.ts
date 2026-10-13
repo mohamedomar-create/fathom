@@ -1,4 +1,6 @@
-import type { BSCalc, PLCalc } from "./types";
+import { addMonths } from "./format";
+import { bsCalc, plCalc } from "./statements";
+import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types";
 
 export type WaterfallSign = "ADD" | "LESS" | "TOTAL";
 export interface WaterfallRow {
@@ -10,6 +12,8 @@ export interface WaterfallRow {
 export interface Waterfall {
   rows: WaterfallRow[];
   ocf: number; fcf: number; ncf: number;
+  /** Movement the statements cannot explain (an unbalanced balance sheet or an unmapped account); 0 when they reconcile. */
+  unreconciled: number;
   dcash: number; ddebt: number; cash0: number; cash1: number; debt0: number; debt1: number;
 }
 
@@ -57,9 +61,9 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
   const unbal = target - ncfPre;
   if (Math.abs(unbal) > 0.5) add("Unreconciled Difference", "ADD", unbal, "The balance sheet does not balance in one of the two months, so this amount cannot be explained.");
   const ncf = ncfPre + (Math.abs(unbal) > 0.5 ? unbal : 0);
-  add("NET CASH FLOW", "TOTAL", ncf, "Change in cash less change in borrowing.");
+  add("CASH FLOW BEFORE BORROWING", "TOTAL", ncf, "Change in cash less change in borrowing: the cash the business made or used before new loans and repayments.");
   return {
-    rows, ocf, fcf, ncf,
+    rows, ocf, fcf, ncf, unreconciled: Math.abs(unbal) > 0.5 ? unbal : 0,
     dcash: d("cash"), ddebt: d("std") + d("ltd"),
     cash0: B0.cash, cash1: B.cash, debt0: B0.std + B0.ltd, debt1: B.std + B.ltd,
   };
@@ -68,7 +72,7 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
 export interface StatementLine { label: string; value: number; total?: boolean; heading?: boolean }
 
 /** Indirect cash-flow statement (IAS 7), interest paid under financing. Reconciles to the change in cash. */
-export function cashFlowStatement(P: PLCalc, B: BSCalc, B0: BSCalc): { lines: StatementLine[]; cfo: number; cfi: number; cff: number; dcash: number } {
+export function cashFlowStatement(P: PLCalc, B: BSCalc, B0: BSCalc, opts: { showUnreconciled?: boolean } = {}): { lines: StatementLine[]; cfo: number; cfi: number; cff: number; unreconciled: number; dcash: number } {
   const d = (k: keyof BSCalc) => (B[k] as number) - (B0[k] as number);
   const op: [string, number][] = [
     ["Net Income", P.net_income],
@@ -97,10 +101,10 @@ export function cashFlowStatement(P: PLCalc, B: BSCalc, B0: BSCalc): { lines: St
     ["Change in Long Term Debt", d("ltd")],
     ["Change in Other Non-Current Liabilities", d("other_ncl")],
   ];
-  const pre = cfo + cfi + fn.reduce((s, [, v]) => s + v, 0);
-  const unbal = d("cash") - pre;
-  if (Math.abs(unbal) > 0.5) fn.push(["Unreconciled Difference (balance sheet out of balance)", unbal]);
   const cff = fn.reduce((s, [, v]) => s + v, 0);
+  // Whatever the movements cannot explain is shown on its own line, never folded into financing.
+  const gap = d("cash") - (cfo + cfi + cff);
+  const unreconciled = Math.abs(gap) > 0.5 ? gap : 0;
   const lines: StatementLine[] = [
     { label: "OPERATING ACTIVITIES", value: 0, heading: true },
     ...op.map(([label, value]) => ({ label, value })),
@@ -111,9 +115,29 @@ export function cashFlowStatement(P: PLCalc, B: BSCalc, B0: BSCalc): { lines: St
     { label: "FINANCING ACTIVITIES", value: 0, heading: true },
     ...fn.map(([label, value]) => ({ label, value })),
     { label: "Cash Flow from Financing Activities", value: cff, total: true },
-    { label: "Change in Cash & Equivalents", value: cfo + cfi + cff, total: true },
+    ...(unreconciled || opts.showUnreconciled ? [{ label: "Unreconciled Difference (balance sheet out of balance)", value: unreconciled }] : []),
+    { label: "Change in Cash & Equivalents", value: cfo + cfi + cff + unreconciled, total: true },
     { label: "Opening Balance", value: B0.cash },
-    { label: "Closing Balance", value: B0.cash + cfo + cfi + cff, total: true },
+    { label: "Closing Balance", value: B0.cash + cfo + cfi + cff + unreconciled, total: true },
   ];
-  return { lines, cfo, cfi, cff, dcash: d("cash") };
+  return { lines, cfo, cfi, cff, unreconciled, dcash: d("cash") };
+}
+
+export interface MonthCash { period: string; cfo: number; cfi: number; cff: number; unreconciled: number; dcash: number; cash: number }
+
+/**
+ * The cash flow statement month by month for the periods asked for. A month is left out when its P&L or balance sheet,
+ * or the balance sheet of the month before, is not loaded: a missing month never reads as zero activity.
+ */
+export function cashFlowByMonth(months: MonthData[], periods: string[]): { rows: MonthCash[]; skipped: string[] } {
+  const by = new Map(months.map((m) => [m.period, m]));
+  const rows: MonthCash[] = [], skipped: string[] = [];
+  for (const p of periods) {
+    const m = by.get(p), before = by.get(addMonths(p, -1));
+    if (!m || !hasPL(m) || !hasBS(m) || !before || !hasBS(before)) { skipped.push(p); continue; }
+    const B = bsCalc(m.bs);
+    const cf = cashFlowStatement(plCalc(m.pl), B, bsCalc(before.bs));
+    rows.push({ period: p, cfo: cf.cfo, cfi: cf.cfi, cff: cf.cff, unreconciled: cf.unreconciled, dcash: cf.dcash, cash: B.cash });
+  }
+  return { rows, skipped };
 }

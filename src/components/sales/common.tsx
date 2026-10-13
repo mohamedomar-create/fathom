@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { ShoppingBag } from "lucide-react";
-import { money, pct, salesAnalysis, salesMonths, type SalesFinding, type SalesRow } from "@/lib/engine";
+import { hasPL, money, pct, salesAnalysis, salesMonths, type SalesFinding, type SalesRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useSales } from "@/lib/company/sales-context";
@@ -19,7 +19,7 @@ export function useSalesAnalysis() {
     const months = salesMonths(data);
     if (!months.length) return null;
     const end = sel.end && months.includes(sel.end) ? sel.end : sel.end && sel.end <= months[months.length - 1] && sel.end >= months[0] ? sel.end : months[months.length - 1];
-    const revenue = Object.fromEntries(c.months.filter((m) => Object.keys(m.pl).length).map((m) => [m.period, m.pl.revenue ?? 0]));
+    const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
     return salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue });
   }, [data, sel.type, sel.end, cmp, c.months, c.settings.fyStartMonth]);
 }

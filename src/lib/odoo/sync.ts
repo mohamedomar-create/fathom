@@ -128,6 +128,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   while (periods.length > 1 && !active.has(periods[periods.length - 1])) periods.pop();
 
   // ---- build natural-sign accounts
+  const openingP = addMonths(startP, -1);
   const out: SyncedAccount[] = [];
   const unmapped: string[] = [];
   let plRun = 0;
@@ -148,12 +149,15 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
       for (const p of periods) { const x = mv[p] ?? 0; if (x) { amounts[p] = toNatural(c.cls, x); plMoves[p] = (plMoves[p] ?? 0) + x; } }
     } else {
       let run = op;
+      // The balance before the first month is stored as the month before it, so the first month has a cash flow.
+      if (Math.abs(run) > 0.004) amounts[openingP] = toNatural(c.cls, run);
       for (const p of periods) { run += mv[p] ?? 0; if (Math.abs(run) > 0.004) amounts[p] = toNatural(c.cls, run); }
     }
     out.push({ code: a.code || "", name: a.name, cls: c.cls, amounts, odoo_id: a.id, odoo_type: type || null, confidence: c.conf, mapped_by: "auto" });
   }
   // Odoo never closes P&L accounts: carry all earnings to date into retained earnings.
   const re: Record<string, number> = {};
+  if (Math.abs(plRun) > 0.004) re[openingP] = -plRun;
   for (const p of periods) { plRun += plMoves[p] ?? 0; if (Math.abs(plRun) > 0.004) re[p] = -plRun; }
   out.push({ code: "", name: "Earnings to date (computed from P&L accounts)", cls: "retained_earnings", amounts: re, odoo_id: null, odoo_type: null, confidence: 1, mapped_by: "system" });
 

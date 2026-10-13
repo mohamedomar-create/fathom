@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState } from "react";
-import { bsCalc, mlabel, plCalc, quadrantOf, QUADRANT_TEXT } from "@/lib/engine";
+import { bsCalc, hasPL, mlabel, plCalc, quadrantOf, QUADRANT_TEXT } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -14,7 +14,7 @@ export function GrowthPage() {
   const a = useAnalysis();
   const comments = useComments();
   const end = a?.view.window.end ?? "";
-  const avail = useMemo(() => c.months.map((m) => m.period).sort().filter((p) => p <= end), [c.months, end]);
+  const avail = useMemo(() => c.months.filter(hasPL).map((m) => m.period).sort().filter((p) => p <= end), [c.months, end]);
   const [startSel, setStart] = useState<string | null>(null);
   if (!a) return null;
   const defaultStart = avail[Math.max(0, avail.length - 13)];

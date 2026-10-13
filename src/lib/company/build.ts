@@ -30,10 +30,15 @@ export function periodRange(accounts: AccountLine[]): string[] {
   return out;
 }
 
-/** Aggregate natural-sign accounts into the 30 classes per month (engine input). */
+/**
+ * Aggregate natural-sign accounts into the 30 classes per month (engine input).
+ * Only months that were loaded are returned, each saying whether it holds a P&L, a balance sheet or both:
+ * a missing month is never stood in for by an empty one, which would read as a month of zero activity and zero balances.
+ */
 export function buildMonths(accounts: AccountLine[]): MonthData[] {
-  const periods = periodRange(accounts);
-  return periods.map((period) => {
+  const plHeld = new Set<string>(), bsHeld = new Set<string>();
+  for (const a of accounts) for (const [p, v] of Object.entries(a.amounts)) if (v) (isPL(a.cls) ? plHeld : bsHeld).add(p);
+  return periodRange(accounts).filter((p) => plHeld.has(p) || bsHeld.has(p)).map((period) => {
     const pl: PLInput = {}, bs: BSInput = {};
     for (const a of accounts) {
       const v = a.amounts[period] ?? 0;
@@ -41,6 +46,6 @@ export function buildMonths(accounts: AccountLine[]): MonthData[] {
       if (isPL(a.cls)) pl[a.cls as keyof PLInput] = (pl[a.cls as keyof PLInput] ?? 0) + v;
       else bs[a.cls as keyof BSInput] = (bs[a.cls as keyof BSInput] ?? 0) + v;
     }
-    return { period, pl, bs };
+    return { period, pl, bs, has: { pl: plHeld.has(period), bs: bsHeld.has(period) } };
   });
 }

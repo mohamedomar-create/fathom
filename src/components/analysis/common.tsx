@@ -1,6 +1,6 @@
 "use client";
 import { cn } from "@/lib/cn";
-import { money } from "@/lib/engine";
+import { mlabel, money, type PeriodView } from "@/lib/engine";
 import type { Finding } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 
@@ -46,6 +46,34 @@ export function EmptyState({ icon, title, text, action }: { icon?: React.ReactNo
 
 export function NeedsOpening() {
   return <EmptyState title="Opening balances needed" text="This view compares the balance sheet with the month before. The selected period is the first month loaded, so there is nothing to compare with yet. Choose a later month, or load one more month of history." />;
+}
+
+/**
+ * Says exactly which statements the selected period lacks and what to upload. `need` picks the view's requirements:
+ * "cash" needs both balance sheets (the period's end and the month before it), "pl" needs every month's P&L.
+ */
+export function MissingData({ view, basePath, need }: { view: PeriodView; basePath: string; need: "cash" | "pl" }) {
+  const m = view.missing;
+  const items: string[] = [];
+  if (m.pl.length) items.push(`No P&L is loaded for ${listMonths(m.pl)}.`);
+  if (need === "cash" && m.endBS) items.push(`No balance sheet is loaded for ${mlabel(view.window.end)}${view.bsAt ? ` (the latest one is ${mlabel(view.bsAt)})` : ""}.`);
+  if (need === "cash" && m.openingBS) items.push(`No balance sheet is loaded for ${mlabel(m.opening)}, the month before the period: cash flow is the change between the two balance sheets.`);
+  if (!items.length) return null;
+  const blocking = need === "cash" ? m.endBS || m.openingBS : false;
+  return (
+    <div className={`mb-5 rounded-md border px-4 py-3 text-sm ${blocking ? "border-amber/60 bg-amber/10" : "border-line bg-band"}`} data-testid="missing-data" role="status">
+      <div className="mb-1 font-medium">{blocking ? "Data needed for this view" : "Part of this period is not loaded"}</div>
+      <ul className="list-disc space-y-0.5 pl-5">{items.map((t) => <li key={t}>{t}</li>)}</ul>
+      <p className="mt-2 text-mute">
+        Best fix: upload Odoo&apos;s <b>General Ledger</b> (Accounting → Reporting → General Ledger, Export XLSX) from the start of the financial year to the latest month. It gives every month&apos;s P&amp;L and balance sheet, and its opening balances fill the month before.
+      </p>
+      <a href={`${basePath}/settings/source-data`} className="mt-2 inline-block rounded bg-brand-d px-3 py-1.5 text-white" data-testid="missing-upload">Upload data</a>
+    </div>
+  );
+}
+
+function listMonths(ps: string[]) {
+  return ps.length <= 3 ? ps.map(mlabel).join(", ") : `${ps.length} months (${mlabel(ps[0])} to ${mlabel(ps[ps.length - 1])})`;
 }
 
 export function Legend({ items }: { items: { label: string; color: string; dashed?: boolean }[] }) {

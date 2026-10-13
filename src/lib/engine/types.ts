@@ -18,7 +18,14 @@ export interface MonthData {
   period: string;
   pl: PLInput;
   bs: BSInput;
+  /** Which statements were loaded for the month. Absent means both (hand-built data, the demo). */
+  has?: { pl: boolean; bs: boolean };
 }
+
+/** The month's P&L was loaded (a month holding only a balance sheet, such as the opening balance, has none). */
+export const hasPL = (m: Pick<MonthData, "has">) => !m.has || m.has.pl;
+/** The month's balance sheet was loaded (a P&L uploaded on its own has none). */
+export const hasBS = (m: Pick<MonthData, "has">) => !m.has || m.has.bs;
 
 export type PLCalc = Record<PLKey, number> & {
   cos: number; expenses: number; gross_profit: number; operating_profit: number; ebit: number; ebt: number;

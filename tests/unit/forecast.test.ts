@@ -68,14 +68,36 @@ describe("three-way forecast", () => {
     expect(f.backtest!.tried.length).toBeGreaterThan(1);
   });
 
-  it("customers, stock and suppliers follow the days held", () => {
-    const f = forecast(company(12), S0);
+  it("customers, stock and suppliers follow the days held, on a rolling three months of flows", () => {
+    const hist = company(12);
+    const f = forecast(hist, S0);
     if (!f.ok) throw new Error(f.reason);
     expect(f.auto.dso).toBeCloseTo(45, 0);
     expect(f.auto.dio).toBeCloseTo(30, 0);
-    const m = f.months[0];
-    expect(m.B.ar).toBeCloseTo((m.P.revenue * f.used.dso) / daysIn(m.period), 6);
-    expect(m.B.ap).toBeCloseTo(((m.P.cos - m.P.cos_depreciation) * f.used.dpo) / daysIn(m.period), 6);
+    // Month 3: the rolling window is the first three forecast months.
+    const r = f.months.slice(0, 3), d = r.reduce((s, m) => s + daysIn(m.period), 0);
+    const rev = r.reduce((s, m) => s + m.P.revenue, 0), cogs = r.reduce((s, m) => s + m.P.cos - m.P.cos_depreciation, 0);
+    expect(r[2].B.ar).toBeCloseTo((rev * f.used.dso) / d, 6);
+    expect(r[2].B.ap).toBeCloseTo((cogs * f.used.dpo) / d, 6);
+  });
+
+  it("days are today's: the first forecast month carries debtors on from the last balance, not a step to an average", () => {
+    const hist = company(12);
+    // Debtors jump in the last month: averaging older balances would release that cash in forecast month one.
+    hist[hist.length - 1] = { ...hist[hist.length - 1], bs: { ...hist[hist.length - 1].bs, ar: (hist[hist.length - 1].bs.ar ?? 0) * 3, cash: (hist[hist.length - 1].bs.cash ?? 0) - (hist[hist.length - 1].bs.ar ?? 0) * 2 } };
+    const f = forecast(hist, S0);
+    if (!f.ok) throw new Error(f.reason);
+    const ar0 = hist[hist.length - 1].bs.ar!;
+    expect(Math.abs(f.months[0].B.ar - ar0) / ar0).toBeLessThan(0.15);
+  });
+
+  it("a credit balance on debtors is held, not turned into days", () => {
+    const hist = company(12);
+    hist[hist.length - 1] = { ...hist[hist.length - 1], bs: { ...hist[hist.length - 1].bs, cash: (hist[hist.length - 1].bs.cash ?? 0) + (hist[hist.length - 1].bs.ar ?? 0) + 5000, ar: -5000 } };
+    const f = forecast(hist, S0);
+    if (!f.ok) throw new Error(f.reason);
+    expect(f.used.hold?.ar).toBe(true);
+    f.months.forEach((m) => expect(m.B.ar).toBe(-5000));
   });
 
   it("drivers move the numbers as they should", () => {

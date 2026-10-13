@@ -2,7 +2,7 @@ import { cashFlowStatement } from "./cashflow";
 import { addMonths, daysIn, mlabel, monthIndex, parsePeriod } from "./format";
 import { indexMonths } from "./period";
 import { bsCalc, plCalc, sumPL } from "./statements";
-import type { BSCalc, MonthData, PLCalc } from "./types";
+import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types";
 
 /**
  * The twelve months to a chosen month: the basis lenders use (a full year, or trailing twelve months).
@@ -45,10 +45,13 @@ function isAnnualAt(held: Set<string>, p: string, fyStart: number) {
 }
 
 export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Basis {
-  const { sorted, byPeriod } = indexMonths(months);
+  const { sorted: all, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(end);
   if (!endMonth) throw new Error(`No data for ${end}`);
+  // Flows come from months holding a P&L; balances from months holding a balance sheet.
+  const sorted = all.filter(hasPL);
   const held = new Set(sorted.map((m) => m.period));
+  const bsAt = (p: string) => { for (let i = all.length - 1; i >= 0; i--) if (all[i].period <= p && hasBS(all[i])) return all[i]; return undefined; };
   const winStart = addMonths(end, -11);
   const inWindow = sorted.filter((m) => m.period >= winStart && m.period <= end);
   const annualColumn = isAnnualAt(held, end, fyStart);
@@ -64,19 +67,20 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Bas
   const flows = sumPL(used.map((m) => m.pl));
   const P = plCalc(flows);
   const Pa = plCalc(Object.fromEntries(Object.entries(flows).map(([k, v]) => [k, (v ?? 0) * factor])));
-  const B = bsCalc(endMonth.bs);
+  const B = bsCalc(bsAt(end)?.bs ?? {});
   const open = byPeriod.get(addMonths(start, -1));
-  const B0 = open ? bsCalc(open.bs) : null;
+  const B0 = open && hasBS(open) && hasBS(endMonth) ? bsCalc(open.bs) : null;
   let days = 0;
   if (annualColumn) for (let i = 0; i < 12; i++) days += daysIn(addMonths(winStart, i));
   else for (const m of used) days += daysIn(m.period);
-  const points = [...(B0 ? [B0] : []), ...used.map((m) => bsCalc(m.bs))];
+  const points = [...(B0 ? [B0] : []), ...used.filter(hasBS).map((m) => bsCalc(m.bs))];
+  if (!points.length) points.push(B);
   const avg = (k: keyof BSCalc) => points.reduce((s, b) => s + (b[k] as number), 0) / points.length;
   const priorEnd = addMonths(end, -12);
   const priorHeld = sorted.filter((m) => m.period > addMonths(priorEnd, -12) && m.period <= priorEnd);
   const priorEndMonth = byPeriod.get(priorEnd);
   const priorOk = priorEndMonth && (priorHeld.length === 12 || isAnnualAt(held, priorEnd, fyStart));
-  const prior = priorOk ? { P: plCalc(sumPL((priorHeld.length === 12 ? priorHeld : [priorEndMonth]).map((m) => m.pl))), B: bsCalc(priorEndMonth.bs) } : null;
+  const prior = priorOk ? { P: plCalc(sumPL((priorHeld.length === 12 ? priorHeld : [priorEndMonth]).map((m) => m.pl))), B: bsCalc(bsAt(priorEnd)?.bs ?? {}) } : null;
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,

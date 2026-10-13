@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { bsCalc, cashFlowStatement, money, mlabel, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
+import { bsCalc, cashFlowStatement, hasBS, type MonthData, money, mlabel, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -8,7 +8,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { SentenceSelect } from "@/components/ui/sentence-select";
 import { MiniPie } from "@/components/charts/spark";
 import { cn } from "@/lib/cn";
-import { NeedsOpening, Notes } from "./common";
+import { MissingData, Notes } from "./common";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
 
 type View = "pl" | "bs" | "cf";
@@ -119,7 +119,7 @@ export function FinancialsPage() {
             {Math.abs(B.imbalance) > 0.5 && <span className="text-sm text-red" data-testid="oob">Out of balance by {m(B.imbalance)}</span>}
           </div>
           <table className="tbl min-w-[720px]" data-testid="bs-table">
-            <thead><tr><th>Balance Sheet</th><th>{mlabel(a.view.window.end)}</th><th>{comp ? mlabel(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>Variance {cur}</th><th>Variance %</th><th>Common Size</th></tr></thead>
+            <thead><tr><th>Balance Sheet</th><th>{mlabel(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? mlabel(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>Variance {cur}</th><th>Variance %</th><th>Common Size</th></tr></thead>
             <tbody>
               {BS_ROWS.map((r) => {
                 if (r.typ === 2) return <tr key={r.l} className="cat"><td colSpan={6}>{r.l}</td></tr>;
@@ -146,22 +146,24 @@ export function FinancialsPage() {
         </div>
       )}
       <SourceDrawer line={src} onClose={() => setSrc(null)} />
-      {view === "cf" && (!B0 ? <NeedsOpening /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={a.view.window.short} />)}
+      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={a.view.window.short} />)}
     </>
   );
 }
 
-function compB0(months: { period: string; bs: object }[], start: string) {
+function compB0(months: MonthData[], start: string) {
   const [y, mo] = start.split("-").map(Number);
   const i = y * 12 + mo - 2;
   const p = `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
   const m = months.find((x) => x.period === p);
-  return m ? bsCalc(m.bs) : null;
+  return m && hasBS(m) ? bsCalc(m.bs) : null;
 }
 
 function CashFlowTable({ P, B, B0, comp, compLabel, cur, label }: { P: PLCalc; B: BSCalc; B0: BSCalc; comp: { P: PLCalc; B: BSCalc; B0: BSCalc } | null; compLabel: string; cur: string; label: string }) {
-  const s = cashFlowStatement(P, B, B0);
-  const s2 = comp ? cashFlowStatement(comp.P, comp.B, comp.B0) : null;
+  // Both columns list the same lines (an unexplained difference in either shows in both), so rows line up.
+  const gap = Math.abs(cashFlowStatement(P, B, B0).unreconciled) > 0 || (comp ? Math.abs(cashFlowStatement(comp.P, comp.B, comp.B0).unreconciled) > 0 : false);
+  const s = cashFlowStatement(P, B, B0, { showUnreconciled: gap });
+  const s2 = comp ? cashFlowStatement(comp.P, comp.B, comp.B0, { showUnreconciled: gap }) : null;
   return (
     <div className="-mx-4 overflow-x-auto px-4">
       <table className="tbl min-w-[560px]" data-testid="cf-table">
@@ -169,7 +171,7 @@ function CashFlowTable({ P, B, B0, comp, compLabel, cur, label }: { P: PLCalc; B
         <tbody>
           {s.lines.map((l, i) => l.heading
             ? <tr key={l.label} className="cat"><td colSpan={3}>{l.label}</td></tr>
-            : <tr key={l.label + i} className={cn("row", l.total && "tot")}><td>{l.label}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines.find((x) => x.label === l.label)?.value ?? 0, cur) : "–"}</td></tr>)}
+            : <tr key={l.label + i} className={cn("row", l.total && "tot")}><td>{l.label}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
         </tbody>
       </table>
     </div>

@@ -1,9 +1,9 @@
 import { cashWaterfall, type Waterfall } from "./cashflow";
 import { addMonths, daysIn, mlabel, monthIndex, parsePeriod } from "./format";
-import { fyStartOf, indexMonths } from "./period";
+import { fyStartOf, indexMonths, isAnnualColumn } from "./period";
 import type { Assumptions } from "./real-profit";
 import { bsCalc, plCalc } from "./statements";
-import { type BSCalc, type BSInput, type CompanySettings, type MonthData, type PLCalc, type PLInput } from "./types";
+import { hasBS, hasPL, type BSCalc, type BSInput, type CompanySettings, type MonthData, type PLCalc, type PLInput } from "./types";
 
 /**
  * Three-way forecast: profit and loss, balance sheet and cash flow projected together month by month, so the balance
@@ -70,6 +70,8 @@ export interface ResolvedDrivers {
   repayment: number;
   dividends: number;
   rate: number;
+  /** Balances held at today's level instead of following days (a credit or zero balance, or no matching flow to measure days on). */
+  hold?: { ar?: boolean; inventory?: boolean; ap?: boolean };
 }
 
 export interface ForecastMonth {
@@ -219,25 +221,20 @@ function mape(actual: number[], fc: number[]) {
 
 /** Interest expense over the last twelve months as a % of average borrowing; null with no borrowing. */
 function impliedRate(hist: MonthData[]): number | null {
-  const ttm = hist.slice(-12).map((m) => plCalc(m.pl)), ttmB = hist.slice(-13).map((m) => bsCalc(m.bs));
+  const ttm = hist.slice(-12).map((m) => plCalc(m.pl)), ttmB = hist.slice(-13).filter(hasBS).map((m) => bsCalc(m.bs));
   const debtAvg = mean(ttmB.map((b) => b.debt));
   return debtAvg > 0 ? ((sumBy(ttm, (p) => p.interest_expenses) * (12 / ttm.length)) / debtAvg) * 100 : null;
 }
 
-/** Drivers measured on the recent history. */
+/** Drivers measured on the recent history. Balance-sheet drivers use only months whose balance sheet was loaded. */
 function autoDrivers(hist: MonthData[], settings: CompanySettings, a: Assumptions, horizon: Horizon): ResolvedDrivers {
-  const Ps = hist.map((m) => plCalc(m.pl)), Bs = hist.map((m) => bsCalc(m.bs));
-  const q = Math.min(3, hist.length - 1);
-  const recentP = Ps.slice(-q), recentB = Bs.slice(-(q + 1));
-  const days = sumBy(hist.slice(-q), (m) => daysIn(m.period));
-  const rev = sumBy(recentP, (p) => p.revenue), cogs = sumBy(recentP, (p) => p.cos - p.cos_depreciation);
-  const avgB = (k: keyof BSCalc) => mean(recentB.map((b) => b[k] as number));
-  const dso = rev > 0 ? (avgB("ar") / rev) * days : 0;
-  const dio = cogs > 0 ? (avgB("inventory") / cogs) * days : 0;
-  const dpo = cogs > 0 ? (avgB("ap") / cogs) * days : 0;
+  const Ps = hist.map((m) => plCalc(m.pl)), Bs = hist.map((m) => (hasBS(m) ? bsCalc(m.bs) : null));
+  // Days are measured on today's balances (the last month end) against the last three months' flows, so the forecast
+  // carries on from where the business stands: averaging older balances would step debtors or stock to another level in month one.
+  const { dso, dio, dpo, hold } = currentDays(hist);
   const t = Math.min(12, hist.length - 1);
   const capexHist: number[] = [];
-  for (let i = hist.length - t; i < hist.length; i++) capexHist.push(Bs[i].fixed_assets - Bs[i - 1].fixed_assets + Ps[i].da);
+  for (let i = hist.length - t; i < hist.length; i++) { const b = Bs[i], b0 = Bs[i - 1]; if (b && b0) capexHist.push(b.fixed_assets - b0.fixed_assets + Ps[i].da); }
   const capex = Math.max(0, mean(capexHist));
   const implied = impliedRate(hist) ?? 0;
   // Without a rate entered, the rate the books show (interest over average borrowing) keeps interest at its recorded level.
@@ -245,10 +242,23 @@ function autoDrivers(hist: MonthData[], settings: CompanySettings, a: Assumption
   return {
     horizon, revenueGrowth: null, grossMargin: null,
     costInflation: has(a.inflation) ? a.inflation : 0,
-    dso, dio, dpo, capex, loanAmount: 0, loanMonth: null,
+    dso, dio, dpo, hold, capex, loanAmount: 0, loanMonth: null,
     repayment: has(a.principal12m) ? a.principal12m / 12 : 0,
     dividends: 0, rate,
   };
+}
+
+/** Debtor, stock and supplier days on the last month-end balances over the last three months' flows. */
+function currentDays(hist: MonthData[]): { dso: number; dio: number; dpo: number; hold: NonNullable<ResolvedDrivers["hold"]> } {
+  const q = Math.min(3, hist.length);
+  const recent = hist.slice(-q).map((m) => plCalc(m.pl));
+  const days = sumBy(hist.slice(-q), (m) => daysIn(m.period));
+  const rev = sumBy(recent, (p) => p.revenue), cogs = sumBy(recent, (p) => p.cos - p.cos_depreciation);
+  const last = hist[hist.length - 1];
+  const b = hasBS(last) ? bsCalc(last.bs) : bsCalc({});
+  const per = (bal: number, flow: number) => (bal > 0 && flow > 0 ? (bal / flow) * days : null);
+  const dso = per(b.ar, rev), dio = per(b.inventory, cogs), dpo = per(b.ap, cogs);
+  return { dso: dso ?? 0, dio: dio ?? 0, dpo: dpo ?? 0, hold: { ar: dso === null, inventory: dio === null, ap: dpo === null } };
 }
 
 function resolve(auto: ResolvedDrivers, d: ForecastDrivers): ResolvedDrivers {
@@ -259,6 +269,8 @@ function resolve(auto: ResolvedDrivers, d: ForecastDrivers): ResolvedDrivers {
     grossMargin: has(d.grossMargin) ? d.grossMargin : null,
     costInflation: pick(d.costInflation, auto.costInflation),
     dso: Math.max(0, pick(d.dso, auto.dso)), dio: Math.max(0, pick(d.dio, auto.dio)), dpo: Math.max(0, pick(d.dpo, auto.dpo)),
+    // A days figure entered by the person replaces holding the balance.
+    hold: { ar: auto.hold?.ar && !has(d.dso), inventory: auto.hold?.inventory && !has(d.dio), ap: auto.hold?.ap && !has(d.dpo) },
     capex: Math.max(0, pick(d.capex, auto.capex)),
     loanAmount: Math.max(0, pick(d.loanAmount, 0)), loanMonth: d.loanMonth ?? null,
     repayment: Math.max(0, pick(d.repayment, auto.repayment)),
@@ -284,6 +296,10 @@ function project(hist: MonthData[], revenue: number[], dv: ResolvedDrivers, sett
   const fcos0 = run("cos_fixed"), fexp0 = run("exp_fixed"), cosDep0 = run("cos_depreciation"), expDep0 = run("exp_depreciation");
   const otherInc = mean(ttm.map((p) => p.other_income)), otherExp = mean(ttm.map((p) => p.other_expenses)), intInc = mean(ttm.map((p) => p.interest_income));
   const B0 = bsCalc(last.bs);
+  const start = currentDays(hist);
+  const roll = hist.slice(-3).map((m) => { const p = plCalc(m.pl); return { rev: p.revenue, cogs: p.cos - p.cos_depreciation, days: daysIn(m.period) }; });
+  // A balance that was held (no days to measure) but now has days entered starts from the days its balance implies.
+  for (const [k, key] of [["dso", "ar"], ["dio", "inventory"], ["dpo", "ap"]] as const) if (start.hold[key] && !dv.hold?.[key]) start[k] = dv[k];
   const daAnnual = (cosDep0 + expDep0) * 12;
   const life = daAnnual > 0 && B0.fixed_assets > 0 ? clamp(B0.fixed_assets / daAnnual, 2, 30) : 5;
   const tax = settings.taxRate;
@@ -329,9 +345,16 @@ function project(hist: MonthData[], revenue: number[], dv: ResolvedDrivers, sett
     const P = plCalc(pl);
     const cogs = P.cos - P.cos_depreciation;
     const bs: BSInput = { ...prev };
-    bs.ar = (rev * dv.dso) / days;
-    bs.inventory = (cogs * dv.dio) / days;
-    bs.ap = (cogs * dv.dpo) / days;
+    // Days move from today's level to the days used over the first three months, not in one step.
+    const phase = Math.min(1, (i + 1) / 3);
+    const toward = (start: number, target: number) => start + (target - start) * phase;
+    // Balances follow a rolling three months of flows (the basis days are measured on), so one month's sales or costs do not swing them.
+    roll.push({ rev, cogs, days });
+    if (roll.length > 3) roll.shift();
+    const rRev = sumBy(roll, (x) => x.rev), rCogs = sumBy(roll, (x) => x.cogs), rDays = sumBy(roll, (x) => x.days);
+    if (!dv.hold?.ar) bs.ar = (rRev * toward(start.dso, dv.dso)) / rDays;
+    if (!dv.hold?.inventory) bs.inventory = (rCogs * toward(start.dio, dv.dio)) / rDays;
+    if (!dv.hold?.ap) bs.ap = (rCogs * toward(start.dpo, dv.dpo)) / rDays;
     bs.fixed_assets = fa0 + dv.capex - dep;
     bs.ltd = ltd;
     bs.retained_earnings = (prev.retained_earnings ?? 0) + P.net_income - P.dividends;
@@ -371,12 +394,20 @@ function backtest(hist: MonthData[], settings: CompanySettings, a: Assumptions):
   };
 }
 
-export function forecast(months: MonthData[], settings: CompanySettings, drivers: ForecastDrivers = {}, assumptions: Assumptions = {}): Forecast {
-  const { sorted } = indexMonths(months);
+export function forecast(months: MonthData[], settings: CompanySettings, drivers: ForecastDrivers = {}, assumptions: Assumptions = {}, asOf?: string): Forecast {
+  // History is the months holding a P&L; a month with only a balance sheet (the opening balance) is not activity.
+  const all = indexMonths(months).sorted;
+  let sorted = all.filter(hasPL);
   if (!sorted.length) return { ok: false, reason: "Load at least six months of monthly figures to forecast." };
+  const lastP = sorted[sorted.length - 1].period;
+  if (isAnnualColumn(all, lastP, settings.fyStartMonth))
+    return { ok: false, reason: "The figures loaded are annual (audited statements), so there is no monthly pattern to forecast from. Upload the General Ledger for at least the last six months (Odoo: Accounting → Reporting → General Ledger → Export XLSX)." };
+  // A part month (the books run only to a day inside it) would understate the base: the forecast starts after the last full month.
+  const partNote = asOf && asOf.startsWith(lastP) && Number(asOf.slice(8)) < daysIn(lastP) ? `${mlabel(lastP)} runs only to day ${Number(asOf.slice(8))}, so the forecast is built on the months to ${mlabel(addMonths(lastP, -1))}, the last full month, and ${mlabel(lastP)} is forecast in full.` : null;
+  if (partNote) sorted = sorted.slice(0, -1);
   const hist = consecutiveTail(sorted);
-  // Audited annual columns are a year apart: they cannot drive a monthly forecast.
-  if (hist.length < 6) return { ok: false, reason: `Forecasting needs at least six consecutive months of figures; the latest run has ${hist.length}.` };
+  if (hist.length < 6) return { ok: false, reason: `Forecasting needs at least six consecutive months of figures; the latest run has ${hist.length}. Upload the General Ledger covering the missing months.` };
+  if (!hasBS(hist[hist.length - 1])) return { ok: false, reason: `${mlabel(hist[hist.length - 1].period)} has a P&L but no balance sheet, so the forecast has no starting cash, debtors or loans. Upload the balance sheet for that month, or the General Ledger, which gives both.` };
   const revHist = hist.map((m) => plCalc(m.pl).revenue);
   if (sumBy(revHist.slice(-6), (x) => x) <= 0) return { ok: false, reason: "There is no revenue in the last six months to forecast from." };
   const bt = backtest(hist, settings, assumptions);
@@ -410,6 +441,13 @@ export function forecast(months: MonthData[], settings: CompanySettings, drivers
     cashNegativeFrom: neg?.period ?? null, fundingNeed: Math.max(0, -low.B.cash),
   };
   const notes: string[] = [];
+  if (partNote) notes.push(partNote);
+  // Large working-capital moves change cash a lot: say where they come from so they can be checked or changed.
+  const lastB = bsCalc(hist[hist.length - 1].bs), m3 = fm[Math.min(2, fm.length - 1)].B;
+  for (const [k, label, driver] of [["inventory", "Stock", "stock days"], ["ar", "Customer balances", "customer days"], ["ap", "Supplier balances", "supplier days"]] as const) {
+    const a0 = lastB[k], a3 = m3[k];
+    if (a0 > 0 && Math.abs(a3 - a0) > Math.max(0.2 * a0, 0.05 * Math.abs(lastB.ta))) notes.push(`${label} ${k === "inventory" ? "moves" : "move"} from ${Math.round(a0).toLocaleString("en-US")} to ${Math.round(a3).toLocaleString("en-US")} over the first three months, because forecast ${k === "ar" ? "sales" : "costs"} differ from the last three months while ${driver} stay at ${Math.round(used[k === "ar" ? "dso" : k === "inventory" ? "dio" : "dpo"])}. This ${a3 < a0 ? "frees" : "uses"} ${Math.round(Math.abs(a3 - a0)).toLocaleString("en-US")} of cash${k === "ap" ? " in the opposite direction" : ""}; enter ${driver} to change it.`);
+  }
   if (hist.length < sorted.length) notes.push(`A gap in the months loaded: the forecast uses the ${hist.length} consecutive months from ${mlabel(hist[0].period)}.`);
   if (hist.length < 24) notes.push(hist.length < 12 ? "With under a year of figures there is no seasonal pattern to learn; load 24 months or more for one." : "With under two years of figures the seasonal pattern rests on one year; 24 months or more make it reliable.");
   if (Math.abs(bsCalc(hist[hist.length - 1].bs).imbalance) > 1) notes.push("The latest balance sheet does not balance; the difference is carried unchanged through the forecast.");
