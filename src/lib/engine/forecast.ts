@@ -1,6 +1,6 @@
 import { cashWaterfall, type Waterfall } from "./cashflow";
 import { addMonths, daysIn, mlabel, monthIndex, parsePeriod } from "./format";
-import { indexMonths } from "./period";
+import { fyStartOf, indexMonths } from "./period";
 import type { Assumptions } from "./real-profit";
 import { bsCalc, plCalc } from "./statements";
 import { type BSCalc, type BSInput, type CompanySettings, type MonthData, type PLCalc, type PLInput } from "./types";
@@ -289,7 +289,12 @@ function project(hist: MonthData[], revenue: number[], dv: ResolvedDrivers, sett
   const tax = settings.taxRate;
   let prev: BSInput = { ...last.bs };
   let prevB = B0;
-  let cumCapex = 0, ytdEbt = 0, ytdTax = 0;
+  // The financial year to date carries into the forecast: a loss in its earlier actual months is offset before tax is
+  // charged. The actual months are taken as fully taxed at the rate (their booked tax may be accrued only at year end).
+  const fy0 = fyStartOf(last.period, settings.fyStartMonth);
+  let ytdEbt = sumBy(hist.filter((m) => m.period >= fy0), (m) => plCalc(m.pl).ebt);
+  let ytdTax = Math.max(0, ytdEbt * settings.taxRate);
+  let cumCapex = 0;
   const out: ForecastMonth[] = [];
   revenue.forEach((rev, i) => {
     const period = addMonths(last.period, i + 1);

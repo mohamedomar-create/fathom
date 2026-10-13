@@ -5,6 +5,7 @@ import { Loader2, Sparkles } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
 import { useComments, usePeriod } from "@/lib/company/use-period";
 import { cn } from "@/lib/cn";
+import { readMemo } from "@/lib/engine";
 
 const HEADINGS = /^(lead with|risks and how to answer them|what to ask for|questions to expect)\s*:?$/i;
 
@@ -39,7 +40,8 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const saved = comments(section);
+  const memo = readMemo(comments(section), section, c.assumptions ?? {});
+  const saved = memo.text;
   const canAi = Boolean(c.aiEnabled) && !c.readOnly && c.source !== "demo";
   const draft = () => start(async () => {
     setErr(null);
@@ -57,6 +59,7 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
         {canAi && <button onClick={draft} disabled={pending} className="ml-auto inline-flex items-center gap-1.5 rounded border border-brand-d px-3 py-1.5 text-xs font-medium text-brand-d disabled:opacity-60" data-testid={`ai-${section}`}>
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{saved ? "Redraft with AI" : "Draft with AI"}</button>}
       </div>
+      {memo.stale && <p className="mb-3 rounded bg-white px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid={`${section}-memo-stale`}>Written before the {section === "bank" ? "request or loan terms" : "rates"} changed, so some figures below may no longer match.{canAi ? " Redraft it to update." : ""}</p>}
       {text ? <MemoText text={text} /> : <p className="text-sm text-mute">Nothing to say yet for this period.</p>}
       {err && <p className="mt-2 text-sm text-red" role="alert">{err}</p>}
       {!canAi && c.source !== "demo" && !c.aiEnabled && <p className="mt-3 text-xs text-mute">AI drafting is not switched on for this workspace; the automatic memo is built from the figures alone.</p>}

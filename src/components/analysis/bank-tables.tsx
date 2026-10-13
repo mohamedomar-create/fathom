@@ -1,4 +1,4 @@
-import { money, pct, REQUEST_LABEL, type BankAssessment, type ProForma, type StressResult, type TrendRow, type YearTrend } from "@/lib/engine";
+import { BANK_LIMITS, money, pct, REQUEST_LABEL, type BankAssessment, type ProForma, type StressResult, type TrendRow, type YearTrend } from "@/lib/engine";
 import { cn } from "@/lib/cn";
 
 const x2 = (v: number | null) => (v === null ? "n/a" : `${v.toFixed(2)}x`);
@@ -80,9 +80,9 @@ export function ProFormaTable({ pf, a, cur, small }: { pf: ProForma; a: BankAsse
         <thead><tr><th>Measure</th><th>Today</th><th>With the new facility</th><th>Guide</th></tr></thead>
         <tbody>
           <tr className="row"><td>Yearly payment added</td><td>–</td><td>{pf.payment === null ? "n/a" : money(pf.payment, cur)}</td><td>{pf.type === "working_capital" ? "interest only" : pf.type === "lc_guarantee" ? "none" : `${pf.tenor} years${pf.rate !== null ? ` at ${pct(pf.rate, 1)}` : ""}`}</td></tr>
-          <tr className="row"><td>Debt service cover</td><td>{x2(pf.dscrBefore)}</td><td>{x2(pf.dscr)}</td><td>1.25x or more</td></tr>
-          <tr className="row"><td>Debt to EBITDA</td><td>{x2(pf.debtEbitdaBefore)}</td><td>{x2(pf.debtEbitda)}</td><td>3x or less</td></tr>
-          <tr className="row"><td>Interest cover</td><td>{x2(pf.icrBefore)}</td><td>{x2(pf.icr)}</td><td>2.5x or more</td></tr>
+          <tr className="row"><td>Debt service cover</td><td>{x2(pf.dscrBefore)}</td><td>{x2(pf.dscr)}</td><td>{BANK_LIMITS.dscr}x or more</td></tr>
+          <tr className="row"><td>Debt to EBITDA</td><td>{x2(pf.debtEbitdaBefore)}</td><td>{x2(pf.debtEbitda)}</td><td>{BANK_LIMITS.debtEbitda}x or less</td></tr>
+          <tr className="row"><td>Interest cover</td><td>{x2(pf.icrBefore)}</td><td>{x2(pf.icr)}</td><td>{BANK_LIMITS.intCover}x or more</td></tr>
         </tbody>
       </table>
     </div>

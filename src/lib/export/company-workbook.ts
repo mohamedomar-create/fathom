@@ -1,3 +1,5 @@
+import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/config-keys";
+
 /**
  * Everything stored for one company, as plain sheets (arrays of rows) and then an .xlsx file.
  * Secrets never enter: the caller passes no Odoo API key and no share tokens, and the builder has no field for them.
@@ -29,9 +31,11 @@ export function companySheets(d: CompanyExport): Sheet[] {
     ["Corporate tax rate", c.tax_rate], ["Industry", c.industry], ["Source", c.source], ["Data version", c.data_version],
     ["Last updated", day(c.last_synced_at)], ["Exported", d.exportedAt],
   ];
-  const kpis = Object.entries(obj(c.kpi_config)).filter(([k]) => k !== "economy");
-  const econ = Object.entries(obj(obj(c.kpi_config).economy)).filter(([, v]) => v !== null && v !== undefined);
+  const kpis = Object.entries(obj(c.kpi_config)).filter(([k]) => !RESERVED_KEYS.includes(k));
+  const econ = Object.entries(obj(obj(c.kpi_config)[ECONOMY_KEY])).filter(([, v]) => v !== null && v !== undefined);
   if (econ.length) { company.push([], ["Economic assumptions"]); for (const [k, v] of econ) company.push([k, cell(v)]); }
+  const fc = Object.entries(obj(obj(c.kpi_config)[FORECAST_KEY])).filter(([, v]) => v !== null && v !== undefined);
+  if (fc.length) { company.push([], ["Forecast drivers"]); for (const [k, v] of fc) company.push([k, cell(v)]); }
   if (kpis.length) {
     company.push([], ["KPI", "Active", "Importance", "Target", "Alert on", "Alert threshold"]);
     for (const [k, v] of kpis) { const o = obj(v); company.push([k, cell(o.active), cell(o.importance), cell(o.target), cell(o.alert_active), cell(o.alert_threshold)]); }

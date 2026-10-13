@@ -99,7 +99,7 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
   const yr = b.days / 365;
   const R = P.revenue;
   const avgAR = b.avg("ar");
-  const dso = R > 0 ? (avgAR / R) * b.days : null;
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / R) * b.days : null;
   const rate = pos(a.rate) === null ? null : a.rate! / 100;
   const stuck = B0 ? B.ar - B0.ar : null;
   const daily = R > 0 ? R / b.days : null;

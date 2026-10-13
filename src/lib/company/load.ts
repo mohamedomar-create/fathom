@@ -9,13 +9,8 @@ import type { AlertSetting, CompanyBundle } from "./types";
 
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
-/** kpi_config also holds the economic assumptions under this key (not a KPI). */
-export const ECONOMY_KEY = "economy";
-
-/** kpi_config holds the saved forecast drivers under this key (not a KPI). */
-export const FORECAST_KEY = "forecast";
-/** Keys in kpi_config that are not KPIs. */
-export const RESERVED_KEYS = [ECONOMY_KEY, FORECAST_KEY];
+import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "./config-keys";
+export { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS };
 
 export function forecastFromRow(c: Pick<CompanyRow, "kpi_config">): ForecastDrivers {
   const e = ((c.kpi_config ?? {}) as Record<string, unknown>)[FORECAST_KEY];

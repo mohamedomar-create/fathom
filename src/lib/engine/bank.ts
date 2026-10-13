@@ -57,8 +57,34 @@ export interface BankInputs {
   principal12m?: number | null;
   /** Annual inflation, %, used to judge growth in real terms. */
   inflation?: number | null;
-  targetDscr?: number;
-  maxLeverage?: number;
+  /** Account lines (natural sign), so the current portion of long-term loans can be found among short-term borrowing. */
+  accounts?: LoanAccount[];
+}
+
+/** The fields of an account line the bank view needs. */
+export interface LoanAccount { name: string; cls: string; amounts: Record<string, number> }
+
+/** The lender rules of thumb used across the bank page, the stress test, the loan request and the report. */
+export const BANK_LIMITS = {
+  /** Debt service cover: at least this is "strong" and what a new loan must keep. */
+  dscr: 1.25,
+  /** Below this the business cannot pay its loans from trading. */
+  dscrFloor: 1,
+  /** Debt to EBITDA: at most this is "strong" and the cap for new lending. */
+  debtEbitda: 3,
+  debtEbitdaWatch: 4,
+  intCover: 2.5,
+  intCoverWatch: 1.5,
+  /** Years over which existing long-term loans are assumed to be repaid when no schedule is entered. */
+  existingLoanYears: 5,
+} as const;
+
+const CURRENT_PORTION = /current (portion|maturit)|due within (one|1|12)|instal?ments? due|الجزء المتداول|[اأإ]قساط/i;
+
+/** Short-term borrowing accounts that are the part of long-term loans due within a year, and their balance at `period`. */
+export function currentPortionOfLoans(accounts: LoanAccount[] | undefined, period: string): { amount: number; names: string[] } {
+  const hits = (accounts ?? []).filter((a) => a.cls === "std" && CURRENT_PORTION.test(a.name) && (a.amounts[period] ?? 0) > 0);
+  return { amount: hits.reduce((s, a) => s + (a.amounts[period] ?? 0), 0), names: hits.map((a) => a.name) };
 }
 
 export interface BankAssessment {
@@ -71,6 +97,8 @@ export interface BankAssessment {
   /** Principal due in 12 months was estimated rather than entered. */
   principalEstimated: boolean;
   principal12m: number;
+  /** Where the 12-month principal came from: the user's loan schedule, the current portion in the books, or an estimate. */
+  principalSource: "entered" | "current_portion" | "estimate";
 }
 
 const ratio = (a: number, b: number) => (b ? a / b : null);
@@ -96,27 +124,36 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   const m = (v: number) => money(v, cur, true);
   const debt = B.std + B.ltd;
   const interest = Pa.interest_expenses;
+  // The tenor applies to a new loan only; it never changes what is due on today's loans.
   const tenor = inp.tenor && inp.tenor > 0 ? inp.tenor : 5;
   const principalEstimated = inp.principal12m === null || inp.principal12m === undefined;
-  // Without a loan schedule: long-term loans repaid evenly over the tenor. Overdrafts and revolving lines are assumed renewed.
-  const principal12m = principalEstimated ? B.ltd / tenor : Math.max(0, inp.principal12m!);
-  const cashTax = Math.max(0, Pa.tax_expenses);
-  const cashForDebt = Pa.ebitda - cashTax;
+  const cp = currentPortionOfLoans(inp.accounts, b.end);
+  // Without a loan schedule: the current portion of long-term loans when the books show one (it is what falls due within
+  // a year), otherwise long-term loans repaid evenly over five years. Overdrafts and revolving lines are assumed renewed.
+  const principalSource: BankAssessment["principalSource"] = !principalEstimated ? "entered" : cp.amount > 0 ? "current_portion" : "estimate";
+  const principal12m = principalSource === "entered" ? Math.max(0, inp.principal12m!) : principalSource === "current_portion" ? cp.amount : B.ltd / BANK_LIMITS.existingLoanYears;
+  // The tax charge for the year stands in for the tax paid on it.
+  const taxCharge = Math.max(0, Pa.tax_expenses);
+  const cashForDebt = Pa.ebitda - taxCharge;
   const service = interest + principal12m;
   const R = P.revenue;
   const avgAR = b.avg("ar"), avgInv = b.avg("inventory"), avgAP = b.avg("ap"), avgWip = b.avg("wip");
   const cogs = P.cos - P.cos_depreciation;
-  const dso = R > 0 ? (avgAR / R) * b.days : null;
-  const dio = cogs > 0 ? (avgInv / cogs) * b.days : null;
-  const dpo = cogs > 0 ? (avgAP / cogs) * b.days : null;
+  // Negative days (a receivable in credit, payables in debit) mean nothing: shown as n/a.
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / R) * b.days : null;
+  const dio = cogs > 0 && avgInv >= 0 ? (avgInv / cogs) * b.days : null;
+  const dpo = cogs > 0 && avgAP >= 0 ? (avgAP / cogs) * b.days : null;
   const tnw = B.te - B.intangibles;
   const ltFunding = B.te + B.tncl - B.tnca;
   const growth = b.prior && b.prior.P.revenue > 0 ? ((Pa.revenue - b.prior.P.revenue) / b.prior.P.revenue) * 100 : null;
   const infl = inp.inflation ?? null;
-  const est = principalEstimated && B.ltd > 0 ? `Repayments estimated as long-term loans ÷ ${tenor} years (${m(principal12m)}). Enter the real figure from your loan schedule.` : undefined;
+  const est = principalSource === "current_portion"
+    ? `Repayments taken from the current portion of long-term loans in the books (${cp.names.join(", ")}: ${m(principal12m)}). Enter the figure from your loan schedule if it differs.`
+    : principalSource === "estimate" && B.ltd > 0 ? `Repayments estimated as long-term loans ÷ ${BANK_LIMITS.existingLoanYears} years (${m(principal12m)}). Enter the real figure from your loan schedule.` : undefined;
 
   const dscr = service > 0 ? cashForDebt / service : null;
-  const lev = Pa.ebitda > 0 ? debt / Pa.ebitda : debt > 0 ? null : 0;
+  // No borrowing and no operating profit: there is nothing to measure (not "strong").
+  const lev = Pa.ebitda > 0 ? debt / Pa.ebitda : null;
   const netLev = Pa.ebitda > 0 ? (debt - B.cash) / Pa.ebitda : null;
   const icr = interest > 0 ? Pa.ebit / interest : null;
   const ocfE = b.ocf !== null && P.ebitda > 0 ? (b.ocf / P.ebitda) * 100 : null;
@@ -124,18 +161,18 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   const ratios: BankRatio[] = [
     {
       key: "dscr", group: "Repayment", name: "Debt service cover (DSCR)", value: dscr, unit: "x",
-      band: service > 0 ? up(dscr, 1.25, 1) : "info", guide: "1.25x or more",
+      band: service > 0 ? up(dscr, BANK_LIMITS.dscr, BANK_LIMITS.dscrFloor) : "info", guide: `${BANK_LIMITS.dscr}x or more`,
       formula: "(EBITDA − tax) ÷ (interest + loan principal due in 12 months)",
       banker: service > 0 ? `Each ${cur} 1 of yearly loan payments is covered by ${cur} ${dscr!.toFixed(2)} of operating cash profit (EBITDA after tax). Below 1.0x the business cannot pay its loans from trading.` : "There is no interest or loan repayment to cover.",
-      advice: dscr === null ? "With no debt service, lead with the cash the business generates." : dscr >= 1.25 ? "Lead with this: it is the first figure a credit committee looks at." : "Ask for a longer tenor or a grace period so yearly payments fall; show a monthly cash-flow forecast proving each instalment is covered; consider part-funding with equity.",
+      advice: dscr === null ? "With no debt service, lead with the cash the business generates." : dscr >= BANK_LIMITS.dscr ? "Lead with this: it is the first figure a credit committee looks at." : "Ask for a longer tenor or a grace period so yearly payments fall; show a monthly cash-flow forecast proving each instalment is covered; consider part-funding with equity.",
       estimate: est,
     },
     {
       key: "debt_ebitda", group: "Repayment", name: "Debt to EBITDA", value: lev, unit: "x",
-      band: lev === null ? "weak" : down(lev, 3, 4), guide: "3x or less",
+      band: lev === null ? (debt > 0 ? "weak" : "info") : down(lev, BANK_LIMITS.debtEbitda, BANK_LIMITS.debtEbitdaWatch), guide: `${BANK_LIMITS.debtEbitda}x or less`,
       formula: "(short-term + long-term borrowing) ÷ EBITDA (12 months)",
-      banker: lev === null ? "Operating profit before depreciation is negative, so the debt cannot be repaid from trading." : `It would take about ${lev.toFixed(1)} years of operating cash profit to repay all borrowing.`,
-      advice: lev !== null && lev <= 3 ? "Room to borrow: say so, and show how the new loan keeps this under 3x." : "Show the plan that lifts EBITDA (contracts signed, price increases) or reduce debt first; banks usually cap new lending around 3 to 4x.",
+      banker: lev === null ? (debt > 0 ? "Operating profit before depreciation is negative, so the debt cannot be repaid from trading." : "No borrowing, and no operating profit before depreciation to measure against.") : `It would take about ${lev.toFixed(1)} years of operating cash profit to repay all borrowing.`,
+      advice: lev !== null && lev <= BANK_LIMITS.debtEbitda ? "Room to borrow: say so, and show how the new loan keeps this under 3x." : "Show the plan that lifts EBITDA (contracts signed, price increases) or reduce debt first; banks usually cap new lending around 3 to 4x.",
     },
     {
       key: "net_debt_ebitda", group: "Repayment", name: "Net debt to EBITDA", value: netLev, unit: "x",
@@ -146,10 +183,10 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     },
     {
       key: "int_cover", group: "Repayment", name: "Interest cover", value: icr, unit: "x",
-      band: interest > 0 ? up(icr, 2.5, 1.5) : "info", guide: "2.5x or more",
+      band: interest > 0 ? up(icr, BANK_LIMITS.intCover, BANK_LIMITS.intCoverWatch) : "info", guide: `${BANK_LIMITS.intCover}x or more`,
       formula: "EBIT ÷ interest expense",
       banker: interest > 0 ? `Operating profit pays the interest bill ${icr!.toFixed(1)} times. At today's Egyptian rates this falls quickly when you borrow more.` : "No interest expense in the period.",
-      advice: icr !== null && icr < 2.5 ? "Show the cover after the new loan at the quoted rate, and what happens if rates rise 2 to 3 points." : "Keep it: it shows the business carries its interest comfortably.",
+      advice: icr !== null && icr < BANK_LIMITS.intCover ? "Show the cover after the new loan at the quoted rate, and what happens if rates rise 2 to 3 points." : "Keep it: it shows the business carries its interest comfortably.",
     },
     {
       key: "current", group: "Liquidity", name: "Current ratio", value: B.tcl ? B.tca / B.tcl : null, unit: "x",
@@ -219,8 +256,8 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
       key: "dso", group: "Working capital", name: "Customer days (DSO)", value: dso, unit: "days",
       band: down(dso, 60, 90), guide: "60 days or less",
       formula: "average receivables ÷ revenue × days (receivables include VAT, so this reads slightly high)",
-      banker: "How long customers take to pay. Banks often lend against receivables but exclude balances over 90 days.",
-      advice: dso !== null && dso > 60 ? "Bring the ageing list; show which large customers are slow and that they always pay (government, multinationals)." : "Quick collection: mention it.",
+      banker: dso === null && avgAR < 0 ? "Receivables are in credit on average: customers have paid more than they were invoiced, or unpaid invoices sit in another account. Customer days cannot be measured." : "How long customers take to pay. Banks often lend against receivables but exclude balances over 90 days.",
+      advice: dso === null && avgAR < 0 ? "Check in Data health which account holds customers' unpaid invoices and map it to Accounts Receivable before showing this to a bank." : dso !== null && dso > 60 ? "Bring the ageing list; show which large customers are slow and that they always pay (government, multinationals)." : "Quick collection: mention it.",
     },
     {
       key: "dio", group: "Working capital", name: "Stock days", value: dio, unit: "days",
@@ -256,21 +293,23 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     const arG = (B.ar / b.prior.B.ar - 1) * 100, rG = (Pa.revenue / b.prior.P.revenue - 1) * 100;
     if (arG - rG > 15) flag("ar_growth", "medium", "Receivables grew much faster than sales", `Receivables +${pct(arG, 0)} against sales +${pct(rG, 0)}.`, "Show the ageing and any large invoice billed near the year end; banks look for sales booked but not collectable.");
   }
-  if (b.prior && b.prior.B.inventory > 0 && b.prior.P.cos > 0) {
-    const iG = (B.inventory / b.prior.B.inventory - 1) * 100, cG = ((Pa.cos / b.prior.P.cos) - 1) * 100;
+  // Stock is compared with the goods bought (cost of sales before depreciation), as stock days are.
+  const priorCogs = b.prior ? b.prior.P.cos - b.prior.P.cos_depreciation : 0;
+  if (b.prior && b.prior.B.inventory > 0 && priorCogs > 0) {
+    const iG = (B.inventory / b.prior.B.inventory - 1) * 100, cG = (((Pa.cos - Pa.cos_depreciation) / priorCogs) - 1) * 100;
     if (iG - cG > 20) flag("inv_growth", "medium", "Stock grew much faster than cost of sales", `Stock +${pct(iG, 0)} against cost of sales +${pct(cG, 0)}.`, "Explain the build-up (imports ahead of price rises, a contract) and confirm slow items are written down.");
   }
   if (B.ta > 0 && B.other_ca / B.ta > 0.15) flag("other_ca", "medium", "Large other current assets", `${m(B.other_ca)}, ${pct((B.other_ca / B.ta) * 100, 0)} of total assets.`, "If this includes amounts due from shareholders or sister companies, settle or document them: banks usually deduct them from net worth.");
   if (debt > 0 && B.cash > 0.5 * debt && interest > 0) flag("cash_and_debt", "medium", "High cash alongside borrowing", `Cash ${m(B.cash)} against borrowing ${m(debt)}.`, "Be ready to explain why the cash is not used to cut debt (deposits held as security, customer advances, timing).");
   if (b.prior && b.prior.B.tax_liab > 0 && B.tax_liab > b.prior.B.tax_liab * 1.5 && B.tax_liab > 0.05 * B.tcl) flag("tax_build", "medium", "Taxes payable building up", `Tax liabilities ${m(B.tax_liab)}, up from ${m(b.prior.B.tax_liab)}.`, "Show the tax payment receipts after the period end; overdue taxes worry lenders.");
-  if (P.dividends > 0 && (lev === null || lev > 3)) flag("dividends", "medium", "Distributions while debt is high", `${m(P.dividends)} distributed with debt at ${lev === null ? "n/a" : lev.toFixed(1) + "x"} EBITDA.`, "Expect a covenant restricting dividends; offering one yourself can win better terms.");
+  if (P.dividends > 0 && debt > 0 && (lev === null || lev > BANK_LIMITS.debtEbitda)) flag("dividends", "medium", "Distributions while debt is high", `${m(P.dividends)} distributed with debt at ${lev === null ? "n/a" : lev.toFixed(1) + "x"} EBITDA.`, "Expect a covenant restricting dividends; offering one yourself can win better terms.");
   if (b.covered < 12 && !b.annualColumn) flag("coverage", "medium", `Only ${b.covered} months of figures`, "Yearly figures are scaled up from the months held.", "Upload the last audited statements as well, so the bank sees full years.");
 
   const rate = inp.rate && inp.rate > 0 ? inp.rate / 100 : null;
   const avgDebt = b.avg("std") + b.avg("ltd");
   const implied = !rate && avgDebt > 0 && P.interest_expenses > 0 ? (P.interest_expenses / avgDebt) * (365 / b.days) : null;
   const r = rate ?? implied;
-  const targetDscr = inp.targetDscr ?? 1.25, maxLeverage = inp.maxLeverage ?? 3;
+  const targetDscr = BANK_LIMITS.dscr, maxLeverage = BANK_LIMITS.debtEbitda;
   const maxService = cashForDebt / targetDscr;
   const spare = maxService - service;
   const af = r ? (1 - Math.pow(1 + r, -tenor)) / r : null;
@@ -287,6 +326,6 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   return {
     ratios, flags: flags.sort((a, c) => (a.severity === c.severity ? 0 : a.severity === "high" ? -1 : 1)),
     strengths: scored.filter((x) => x.band === "strong"), weaknesses: scored.filter((x) => x.band === "weak"),
-    capacity, counts, principalEstimated, principal12m,
+    capacity, counts, principalEstimated, principal12m, principalSource,
   };
 }

@@ -91,7 +91,7 @@ export function analyze(
     kpiRows.push({ def, value, compare, ok: st.ok, trend: cmp.trend, importance: settings.importance?.[def.key] ?? def.importance, alert });
   }
   const findings = insights({
-    P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, days: view.days, status,
+    P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
     cur: settings.currency, priorLabel: PRIOR_LABEL[sel.type], periodWord: sel.type,
     critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => r.def.name),
   });

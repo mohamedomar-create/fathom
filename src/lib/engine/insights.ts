@@ -17,6 +17,8 @@ export interface InsightCtx {
   tg: Record<string, number | null>;
   Ps: PLCalc[];
   Bs: BSCalc[];
+  /** The month of each entry in Ps and Bs; when given, only calendar-consecutive months are compared. */
+  periods?: string[];
   days: number;
   status: Record<string, boolean | null>;
   cur: string;
@@ -77,10 +79,11 @@ export function insights(ctx: InsightCtx): Finding[] {
     if (R < bep) add(3, "risk", "profitability", "Below breakeven: the business is losing money on operations", `It needs ${m(bep)} of revenue to cover its costs and made ${m(R)}, a shortfall of ${m(bep - R)}.`);
     else if (mos < 15) add(2, "watch", "profitability", `Thin safety cushion: revenue can fall only ${fixed(mos, 0)}% before losses start`, `Breakeven is ${m(bep)} against revenue of ${m(R)}.`);
     else add(1, "win", "profitability", `Comfortable cushion: revenue can fall ${fixed(mos, 0)}% before losses start`, `Breakeven is ${m(bep)}.`);
+    // Operating leverage: contribution over operating profit (contribution less fixed costs).
     const cm = R - P.variable_costs;
-    if (P.ebit > 0) {
-      const dol = cm / P.ebit;
-      if (dol > 3) add(1, "watch", "profitability", `High operating leverage (${fixed(dol, 1)}x)`, `A 10% change in revenue moves EBIT by about ${fixed(dol * 10, 0)}%. Good when sales grow, painful when they fall.`);
+    if (P.operating_profit > 0) {
+      const dol = cm / P.operating_profit;
+      if (dol > 3) add(1, "watch", "profitability", `High operating leverage (${fixed(dol, 1)}x)`, `A 10% change in revenue moves operating profit by about ${fixed(dol * 10, 0)}%. Good when sales grow, painful when they fall.`);
     }
   }
   if (P.ebit < 0) add(3, "risk", "profitability", `Operating loss this ${per}`, `EBIT is ${m(P.ebit)}.`);
@@ -89,8 +92,9 @@ export function insights(ctx: InsightCtx): Finding[] {
     if (P.ebit > 0 && ocf < 0) add(3, "risk", "cashflow", "Profit is not turning into cash", `EBIT is ${m(P.ebit)} but operating cash flow is ${m(ocf)}. Look at receivables, stock and payables first.`);
     else if (ocf > 0 && P.ebit > 0 && ocf < 0.5 * P.ebit) add(1, "watch", "cashflow", "Less than half of profit became cash", `Operating cash flow ${m(ocf)} vs EBIT ${m(P.ebit)}.`);
     const ncfs: number[] = [];
+    const next = (a: string, b: string) => { const [y, m] = a.split("-").map(Number); return b === `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}`; };
     for (let i = Math.max(1, Bs.length - 3); i < Bs.length; i++)
-      ncfs.push(Bs[i].cash - Bs[i - 1].cash - (Bs[i].std + Bs[i].ltd - (Bs[i - 1].std + Bs[i - 1].ltd)));
+      if (!ctx.periods || next(ctx.periods[i - 1], ctx.periods[i])) ncfs.push(Bs[i].cash - Bs[i - 1].cash - (Bs[i].std + Bs[i].ltd - (Bs[i - 1].std + Bs[i - 1].ltd)));
     const sum = ncfs.reduce((a, b) => a + b, 0);
     if (ncfs.length && sum < 0 && B.cash > 0) {
       const burn = -sum / ncfs.length;

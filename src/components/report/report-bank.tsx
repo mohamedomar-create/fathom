@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { bankPack, formatBankValue, money, pct, realProfit, realProfitSummary, twelveMonths, type Band, type WaterfallRow } from "@/lib/engine";
+import { BANK_LIMITS, bankPack, formatBankValue, readMemo, money, pct, realProfit, realProfitSummary, twelveMonths, type Band, type WaterfallRow } from "@/lib/engine";
 import { CashWaterfall } from "@/components/charts/waterfall";
 import { breakingPoints, ProFormaTable, StressTable, TrendTable } from "@/components/analysis/bank-tables";
 import { MemoText } from "@/components/analysis/memo-box";
@@ -12,7 +12,7 @@ const BAND: Record<Band, [string, string]> = {
 };
 
 function useBank(input: ReportInput) {
-  return useMemo(() => bankPack(input.months, input.sel.end, input.settings, input.assumptions ?? {}, input.companyName), [input.months, input.sel.end, input.settings, input.assumptions, input.companyName]);
+  return useMemo(() => bankPack(input.months, input.sel.end, input.settings, input.assumptions ?? {}, input.companyName, input.accounts), [input.months, input.sel.end, input.settings, input.assumptions, input.companyName, input.accounts]);
 }
 
 const Tile = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
@@ -25,13 +25,16 @@ export function ReportBank({ input, head }: { input: ReportInput; head: (title: 
   const cur = input.settings.currency;
   const { assessment: a, pf } = p;
   const r = (k: string) => a.ratios.find((x) => x.key === k)!;
-  const memo = input.commentary.bank || p.memo;
+  const saved = readMemo(input.commentary.bank, "bank", input.assumptions ?? {});
+  // A memo written before the request or loan terms changed no longer matches the figures: the automatic memo is printed instead.
+  const own = saved.text && !saved.stale ? saved.text : null;
+  const memo = own ?? p.memo;
   return (
     <>
       {head("Bank Readiness", p.basis.label)}
       <div className="mb-4 grid grid-cols-4 gap-4">
-        <Tile label="Debt service cover" value={formatBankValue(r("dscr"), cur)} sub="guide 1.25x or more" />
-        <Tile label="Debt to EBITDA" value={formatBankValue(r("debt_ebitda"), cur)} sub="guide 3x or less" />
+        <Tile label="Debt service cover" value={formatBankValue(r("dscr"), cur)} sub={`guide ${BANK_LIMITS.dscr}x or more`} />
+        <Tile label="Debt to EBITDA" value={formatBankValue(r("debt_ebitda"), cur)} sub={`guide ${BANK_LIMITS.debtEbitda}x or less`} />
         <Tile label="Room to borrow" value={a.capacity.headroom === null ? "–" : money(a.capacity.headroom, cur, true)} sub={a.capacity.rate === null ? "rate not given" : `at ${pct(a.capacity.rate, 1)}, ${a.capacity.tenor} years`} />
         <Tile label="Request" value={pf ? money(pf.amount, cur, true) : "–"} sub={pf ? (pf.fits === true ? "fits common limits" : pf.fits === false ? "beyond common limits" : "") : "none entered"} />
       </div>
@@ -42,7 +45,7 @@ export function ReportBank({ input, head }: { input: ReportInput; head: (title: 
             <tr key={x.key}><td>{x.name}{x.estimate ? "*" : ""}</td><td>{formatBankValue(x, cur)}</td><td className="text-mute">{x.guide}</td><td className={cn("font-medium", BAND[x.band][1])}>{BAND[x.band][0]}</td></tr>
           ))}</tbody>
         </table>
-        <div className="rcomment"><div className="label mb-1">{input.commentary.bank ? "Bank discussion memo" : "Bank discussion memo (automatic)"}</div><MemoText text={memo} className="!space-y-2 !text-[11px] [&>div:not(:first-child)]:break-inside-avoid columns-2 gap-6" /></div>
+        <div className="rcomment"><div className="label mb-1">{own ? "Bank discussion memo" : "Bank discussion memo (automatic)"}</div><MemoText text={memo} className="!space-y-2 !text-[11px] [&>div:not(:first-child)]:break-inside-avoid columns-2 gap-6" /></div>
       </div>
       {a.principalEstimated && a.principal12m > 0 && <p className="mt-2 text-[10px] text-mute">* Loan repayments estimated as long-term loans ÷ {a.capacity.tenor} years.</p>}
       <p className="mt-3 text-[10px] text-mute">Guides are common lender rules of thumb for small and mid-sized companies; each bank applies its own policy. Not a credit decision.</p>
@@ -106,7 +109,7 @@ export function ReportRealProfit({ input, head }: { input: ReportInput; head: (t
           {x.fx && <><tr><td>Owners&apos; equity in USD, start</td><td>{x.fx.equityStartUsd === null ? "–" : money(x.fx.equityStartUsd, "USD")}</td></tr><tr><td>Owners&apos; equity in USD, end</td><td>{money(x.fx.equityEndUsd, "USD")}</td></tr></>}
         </tbody></table>
       </div>
-      <div className="rcomment whitespace-pre-line">{input.commentary.realprofit || realProfitSummary(x, cur)}</div>
+      <div className="rcomment whitespace-pre-line">{(() => { const r = readMemo(input.commentary.realprofit, "realprofit", input.assumptions ?? {}); return r.text && !r.stale ? r.text : realProfitSummary(x, cur); })()}</div>
       <p className="mt-2 text-[10px] text-mute">
         Rates used: inflation {as.inflation ?? "–"}%, USD {as.fxStart ?? "–"} → {as.fxEnd ?? "–"}, imported stock {as.importShare ?? 0}%, asset age {as.assetAge ?? "–"} years{as.example ? " (example figures)" : ""}. A current-cost view in the spirit of IAS 29, for management use, not statutory accounts.
       </p>
