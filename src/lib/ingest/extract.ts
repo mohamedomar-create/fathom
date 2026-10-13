@@ -1,5 +1,7 @@
 import { cleanNum, detectDateOrder, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell, type DateOrder } from "./parse";
 import { extractOdoo } from "./odoo";
+import { readFinancialTemplate, templateMarkOf } from "./template";
+import type { ClassKey } from "@/lib/engine";
 import type { Check } from "@/lib/company/checks";
 
 export interface Grid { name: string; rows: Cell[][] }
@@ -24,6 +26,10 @@ export interface RawLine {
   closing?: number;
   /** General Ledger move lines behind the monthly figures (kept so revenue lines can become sales lines). */
   entries?: LedgerEntry[];
+  /** The class the file states for the line (iReport templates): used as given, never guessed. */
+  forcedCls?: ClassKey;
+  /** The line comes from an iReport template: an account row as entered, never a total to detect. */
+  template?: boolean;
 }
 
 /** One dated line of a General Ledger. amount is debit − credit. */
@@ -379,6 +385,14 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   }
   const num = numReader(layout.scale, layout.decimal);
   const done = (kind: SheetLayout["kind"], lines: RawLine[]) => { layout.kind = kind; layout.lines = lines.length; return lines; };
+  // iReport's own templates are read exactly by their layout (their mistakes are listed before the import starts).
+  const mark = templateMarkOf(g);
+  if (mark === "pl" || mark === "bs") {
+    const t = readFinancialTemplate(g);
+    layout.source = mark === "pl" ? "iReport template: P&L by month" : "iReport template: balance sheet by month";
+    layout.scale = 1; layout.columns = t.periods.map((p, i) => ({ col: 3 + i, header: p, period: p, months: 1, used: true }));
+    return done("columns", t.lines);
+  }
   // Known exports first: Odoo's General Ledger, Trial Balance and statements are read by their exact layout.
   const odoo = extractOdoo(g, rows, num, ov, layout, issues, today);
   if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" ? "ledger" : "trial-balance", odoo);

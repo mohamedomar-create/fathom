@@ -18,11 +18,13 @@ import { saveSales } from "@/lib/company/save-sales";
 import { readSales, SalesPreview } from "./sales-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
+import { isTemplateGrid, problemText, templateProblems } from "@/lib/ingest/template";
+import { TemplateButton } from "@/components/setup/readiness-view";
 
 type Filter = "review" | "all" | "excluded";
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" }) {
   const router = useRouter();
   const [files, setFiles] = useState<File[]>([]);
   const [grids, setGrids] = useState<Grid[] | null>(null);
@@ -50,16 +52,24 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null);
 
   /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
+  const [notice, setNotice] = useState<string | null>(null);
   const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
+    // iReport templates are checked first: any mistake stops the upload with its sheet, row and fix.
+    const problems = templateProblems(grids);
+    if (problems.length) throw new Error(problemText(problems));
     const sales = grids.filter((g) => readSalesGrid(g));
     const accounting = grids.filter((g) => !sales.includes(g));
     if (sales.length) setSalesGrids(sales);
+    // Opened from a setup step: say so when the file is not the kind that step asks for.
+    const meaningful = accounting.filter((g) => isTemplateGrid(g) || g.rows.some((r) => r?.some((v) => typeof v === "number")));
+    setNotice(setupStep === "sales" && !sales.length ? "This file has no sales lines (it looks like accounting figures), so it is read as financials. For sales, upload the Invoice Analysis export or the sales template."
+      : setupStep === "financials" && !meaningful.length && sales.length ? "This file holds sales lines, not financial statements: only the sales are saved. For the P&L and balance sheet, upload the General Ledger or the financials template." : null);
     if (!accounting.length) { setGrids(null); return; }
     const { raw: lines, issues } = extractAll(accounting);
     setDiag(diagnostic(fs, accounting, issues));
     if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
     setOverrides({}); setGrids(accounting);
-  }, []);
+  }, [setupStep]);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
@@ -83,6 +93,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       setErr((e as Error).message || "The file could not be read."); setGrids(null);
     } finally { setBusy(false); }
   }, [demo, takeSheets]);
+  const stepHelp = setupStep === "sales"
+    ? { title: "Step: sales lines", text: "Upload Odoo's Invoice Analysis export (list view: Invoice Date, Number, Partner, Product, Product Category, Salesperson, Quantity, Untaxed Total, Margin) or the filled sales template.", kind: "sales" as const }
+    : setupStep === "financials" ? { title: "Step: monthly financials", text: "Upload Odoo's General Ledger for the financial year (with Initial Balance), optionally with the Trial Balance and P&L for the same dates, or the filled monthly financials template.", kind: "financials" as const } : null;
 
   function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
@@ -182,6 +195,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
           <button onClick={() => { setSalesGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
         </div>
+        {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
         <SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
@@ -205,6 +219,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   if (!res) {
     return (
+      <>
+      {stepHelp && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-brand/40 bg-brand-bg/40 px-4 py-3 text-sm" data-testid="upload-step">
+          <div className="min-w-0 flex-1"><b>{stepHelp.title}.</b> {stepHelp.text}</div>
+          <TemplateButton kind={stepHelp.kind} compact />
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -217,7 +238,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
           <div className="mt-1 text-sm text-mute">One or several files · accounting reports or sales exports · .xlsx, .xls, .csv, .txt, or .pdf (scanned or digital) · English or Arabic</div>
           <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf,.jpg,.jpeg,.png" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
-          {(err || ingestErr) && <p className="mt-4 max-w-md rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err || ingestErr}</p>}
+          {(err || ingestErr) && <p className="mt-4 max-w-xl whitespace-pre-line rounded bg-red-bg px-3 py-2 text-left text-sm text-red" role="alert" data-testid="upload-error" onClick={(e) => e.stopPropagation()}>{err || ingestErr}</p>}
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
         </div>
         <aside className="rounded-lg bg-band p-4 text-[13px]">
@@ -229,9 +250,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
             <li><b>For Sales:</b> the General Ledger already gives sales by customer and product. Add Sales → Reporting → <b>Sales</b> or Invoicing → Reporting → <b>Invoice Analysis</b> (list view → Export) for quantities, salespeople and margins.</li>
           </ol>
           <p className="mt-3"><b>Only have a PDF?</b> Printed or scanned statements, trial balances and sales reports can be uploaded too. Each page is read by Claude (Anthropic) and is not kept; you check the figures before anything is imported. Excel exports remain the most exact.</p>
+          <p className="mt-3"><b>No Odoo?</b> Use iReport&apos;s templates: each is read exactly, and any mistake is listed with its sheet and row.</p>
+          <div className="mt-2 flex flex-col items-start gap-2"><TemplateButton kind="financials" compact /><TemplateButton kind="sales" compact /></div>
           <p className="mt-3 text-mute">Spreadsheets are read in your browser and nothing is saved until you confirm. Budget, variance and total columns are skipped automatically.</p>
         </aside>
       </div>
+      </>
     );
   }
 
@@ -280,6 +304,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
         <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
       </div>
+      {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
       <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
       {salesRead && salesRead.lines.length > 0 && <p className="mb-5 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="sales-alongside">Also in this upload: a sales file ({salesRead.layouts.map((l) => l.sheet).join(", ")}) with {salesRead.lines.length.toLocaleString("en-US")} lines. It is saved to the Sales sector when you import.</p>}
       {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="mb-5 text-[13px] text-mute" data-testid="ledger-sales-note">The invoice lines on revenue accounts become sales by customer, product and month in the Sales sector.</p>}

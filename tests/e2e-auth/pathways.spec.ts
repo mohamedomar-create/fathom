@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import ExcelJS from "exceljs";
 import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp } from "./helpers";
 
 requireLocalStack();
@@ -181,4 +182,56 @@ test("PDF statements are read, checked, corrected and imported", async ({ page }
   // The year's revenue from the corrected reading, not the first misreading.
   await page.goto(`/company/${id}/analysis/financials?type=year&end=2025-12`);
   await expect(page.getByText(/12,000,000|12\.0M/).first()).toBeVisible();
+});
+
+/** iReport's own templates: downloaded, filled in, uploaded and read exactly; a template with mistakes is stopped with each one listed. */
+test("filled templates import exactly, and mistakes are listed before anything is imported", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Tpl Owner", org: "Tpl Advisory", email: newEmail("tpl") });
+  const id = await createCompany(page, "Tpl Co");
+  const get = async (kind: string) => { const wb = new ExcelJS.Workbook(); const body = await (await page.request.get(`/api/templates/${kind}?fy=1&currency=EGP&year=2026`)).body(); await wb.xlsx.load(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer); return wb; };
+  const rowOf = (ws: ExcelJS.Worksheet, name: string) => { let n = 0; ws.eachRow((r, i) => { if (r.getCell(2).value === name) n = i; }); return ws.getRow(n); };
+  const fin = await get("financials");
+  const pl = fin.getWorksheet("P&L")!, bs = fin.getWorksheet("Balance Sheet")!;
+  for (const [n, a, b] of [["Sales revenue", 100000, 120000], ["Cost of goods sold", 60000, 70000], ["Salaries and wages", 20000, 20000], ["Rent", 5000, 5000], ["Income tax", 3000, 5000]] as const) { const r = rowOf(pl, n); r.getCell(4).value = a; r.getCell(5).value = b; }
+  for (const [n, o, a, b] of [["Cash in hand and banks", 50000, 57000, 72000], ["Customers", 30000, 35000, 40000], ["Inventory", 20000, 20000, 25000], ["Suppliers", 25000, 25000, 30000], ["Share capital", 50000, 50000, 50000], ["Retained earnings incl. profit to date", 25000, 37000, 57000]] as const) { const r = rowOf(bs, n); r.getCell(4).value = o; r.getCell(5).value = a; r.getCell(6).value = b; }
+  const good = Buffer.from(await fin.xlsx.writeBuffer());
+  rowOf(pl, "Rent").getCell(5).value = "five thousand";
+  const bad = Buffer.from(await fin.xlsx.writeBuffer());
+
+  await page.goto(`/company/${id}/settings/source-data?step=financials`);
+  await page.waitForLoadState("networkidle");
+  await expect(page.getByTestId("upload-step")).toContainText("monthly financials");
+  // A mistake stops the upload and is named by sheet, row and column.
+  await expect(async () => {
+    await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: bad });
+    await expect(page.getByTestId("upload-error")).toContainText("P&L, row 11, column E", { timeout: 4000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: good });
+  await expect(page.getByTestId("review")).toBeVisible();
+  await expect(page.getByTestId("review")).toContainText("Balances");
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("timeline-step")).toBeVisible();
+  await page.getByTestId("commit-import").click();
+  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  await expect(page.getByTestId("import-readiness")).toBeVisible();
+  await expect(page.getByTestId("ready-item-financials-opening")).toHaveAttribute("data-status", "done");
+  await page.goto(`/company/${id}/analysis/cashflow?type=month&end=2026-01`);
+  await expect(page.getByTestId("tile-dcash")).toContainText("7,000");
+
+  // Sales template: one row per invoice line, saved to the Sales sector.
+  const sales = await get("sales");
+  const ws = sales.getWorksheet("Sales")!;
+  [[new Date(Date.UTC(2026, 0, 15)), "INV/2026/0001", "Clinic A", "Concentrator", "Devices", "Sara", 2, 60000, 36000], [new Date(Date.UTC(2026, 0, 20)), "INV/2026/0002", "Clinic B", "Mask", "Consumables", "Omar", 100, 40000, 24000]]
+    .forEach((r, i) => r.forEach((v, j) => { ws.getRow(5 + i).getCell(j + 1).value = v; }));
+  await page.goto(`/company/${id}/settings/source-data?step=sales`);
+  await page.waitForLoadState("networkidle");
+  await expect(async () => {
+    await page.getByTestId("file-input").setInputFiles({ name: "sales.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await sales.xlsx.writeBuffer()) });
+    await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByTestId("save-sales").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
+  await page.goto(`/company/${id}/settings/data-setup`);
+  await expect(page.getByTestId("ready-item-sales-reconciled")).toHaveAttribute("data-status", "done");
 });

@@ -5,6 +5,7 @@ import { statementOf } from "@/lib/company/import-plan";
 import { getUser } from "@/lib/supabase/server";
 import { DataHealth, type HistoryRow, type MonthSource } from "@/components/settings/data-health";
 import type { AcceptedItem } from "../actions";
+import { ImportReadiness } from "@/components/setup/import-readiness";
 
 export default async function DataHealthPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ imported?: string }> }) {
   const { id } = await params;
@@ -56,9 +57,10 @@ export default async function DataHealthPage({ params, searchParams }: { params:
 
   return (
     <div>
-      <div className="label">2 · Data Health</div>
+      <div className="label">3 · Data Health</div>
       <h1 className="mb-1 text-3xl font-light">Data health</h1>
       <p className="mb-6 text-mute">Which months are loaded, where each one came from, and whether the accounting checks pass.</p>
+      {imported === "1" && <ImportReadiness />}
       <DataHealth
         companyId={id} readOnly={bundle.readOnly} justImported={imported === "1"}
         coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}

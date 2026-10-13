@@ -60,7 +60,7 @@ export function salesFromLedger(lines: { cls: string | null; excluded: boolean; 
 
 export type SalesField = "date" | "doc" | "customer" | "product" | "category" | "salesperson" | "qty" | "untaxed" | "total" | "cost" | "margin" | "period";
 const FIELD_RX: [SalesField, RegExp][] = [
-  ["untaxed", arRx(/^(untaxed( total| amount)?|amount untaxed|subtotal|sub ?total|price subtotal|net (sales|amount|revenue|total)|sales value|revenue|net|المبلغ قبل الضريبة|الصافي|صافي المبيعات|الإجمالي قبل الضريبة|قيمة المبيعات|المبيعات|الإيراد)$/i)],
+  ["untaxed", arRx(/^(untaxed( total| amount)?|amount untaxed|subtotal|sub ?total|price subtotal|net (sales|amount|revenue|total)|net sales amount|sales value|revenue|net|المبلغ قبل الضريبة|الصافي|صافي المبيعات|الإجمالي قبل الضريبة|قيمة المبيعات|المبيعات|الإيراد)$/i)],
   ["total", arRx(/^(total|amount|amount total|total amount|grand total|value|الإجمالي|الاجمالي|القيمة|المبلغ|إجمالي)$/i)],
   ["date", arRx(/^(date|invoice date|order date|accounting date|التاريخ|تاريخ الفاتورة|تاريخ الطلب|تاريخ)$/i)],
   ["period", arRx(/^(month|period|الشهر|الفترة)$/i)],
@@ -70,10 +70,14 @@ const FIELD_RX: [SalesField, RegExp][] = [
   ["category", arRx(/^(product category|category|brand|product line|family|الفئة|التصنيف|المجموعة|فئة المنتج|العلامة التجارية)$/i)],
   ["salesperson", arRx(/^(salesperson|sales ?person|sales ?rep|user|seller|sales team|المندوب|مندوب المبيعات|البائع|فريق المبيعات)$/i)],
   ["qty", arRx(/^(quantity|qty|qty (invoiced|delivered|ordered)|units|الكمية|العدد)$/i)],
-  ["cost", arRx(/^(cost|total cost|cost of sales|cogs|التكلفة|تكلفة المبيعات)$/i)],
+  ["cost", arRx(/^(cost|total cost|cost of sales|cost of goods sold|cogs|التكلفة|تكلفة المبيعات)$/i)],
   ["margin", arRx(/^(margin|gross margin|profit|الربح|هامش الربح|مجمل الربح)$/i)],
 ];
-const fieldOf = (h: string): SalesField | null => FIELD_RX.find(([, rx]) => rx.test(normAr(h.replace(/\s+/g, " ").trim())))?.[0] ?? null;
+/** A heading's field; a required-mark "*" and "(excl. VAT)" are ignored, as in iReport's sales template. */
+const fieldOf = (h: string): SalesField | null => {
+  const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
+  return FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
+};
 const TOTAL_ROW = arRx(/^(total|grand total|sum|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i);
 const MEASURE = arRx(/^(untaxed total|untaxed amount|total untaxed|price subtotal|subtotal|quantity|qty|margin|المبلغ قبل الضريبة|الصافي|الكمية)$/i);
 const ACCOUNT_HDR = arRx(/^(code|account|account code|account name|الحساب|اسم الحساب|كود الحساب|رقم الحساب)$/i);

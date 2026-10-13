@@ -7,12 +7,13 @@ import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
 import { DataNotes, Findings, NoSales, SalesTile, useSalesAnalysis, vs, SalesPicker } from "./common";
+import { ReadinessCard } from "@/components/setup/readiness-view";
 
 export function SalesOverview() {
   const c = useCompany();
   const s = useSalesAnalysis();
   const cur = c.settings.currency;
-  if (!s) return <><PageHeader title="Sales Overview" /><NoSales /></>;
+  if (!s) return <><PageHeader title="Sales Overview" /><ReadinessCard sector="sales" /><NoSales /></>;
   const cu = s.customers;
   const last12 = s.trend.slice(-12);
   const prev12 = s.trend.slice(0, 12);
@@ -21,6 +22,7 @@ export function SalesOverview() {
   return (
     <>
       <PageHeader title="Sales Overview" right={<SalesPicker s={s} />} />
+      <ReadinessCard sector="sales" />
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="sales-headline">{headline}</p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
         <SalesTile label="Net sales" value={money(s.total, cur)} sub={vs(s.growth, s.compareLabel)} neg={s.total < 0 || (s.growth ?? 0) < 0} testId="tile-sales" />

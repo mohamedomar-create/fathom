@@ -12,6 +12,7 @@ import { AssumptionsPanel, fmtX, useAssumptions } from "./assumptions";
 import { breakingPoints, ProFormaTable, StressTable, TrendTable } from "./bank-tables";
 import { Tile } from "./common";
 import { MemoBox } from "./memo-box";
+import { ReadinessCard } from "@/components/setup/readiness-view";
 
 const BAND: Record<Band, { label: string; cls: string }> = {
   strong: { label: "Strong", cls: "bg-green-bg text-green-d" },
@@ -48,6 +49,7 @@ export function BankPage() {
       <PageHeader title="Bank Readiness" right={<PeriodPicker />}>
         <p className="text-sm text-mute" data-testid="bank-basis">How a credit analyst reads these accounts, on the <b className="text-ink">{basis.label}</b>{basis.annualColumn ? " (annual statements)" : basis.covered < 12 ? ", scaled to a year" : ""}.</p>
       </PageHeader>
+      <ReadinessCard sector="banking" />
 
       <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <span className="flex items-center gap-1.5"><BandChip band="strong" /> {res.counts.strong}</span>

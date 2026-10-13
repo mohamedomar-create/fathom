@@ -7,9 +7,9 @@ import { UploadWizard } from "@/components/settings/upload-wizard";
 import { OdooPanel, type OdooConn } from "@/components/settings/odoo-panel";
 import { cn } from "@/lib/cn";
 
-export default async function SourceDataPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string }> }) {
+export default async function SourceDataPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; step?: string }> }) {
   const { id } = await params;
-  const { tab = "upload" } = await searchParams;
+  const { tab = "upload", step } = await searchParams;
   const { supabase } = await getUser();
   const { role } = await loadCompanyBundle(id);
   const [{ data: c }, { data: imports }, { data: odoo }] = await Promise.all([
@@ -22,7 +22,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const tabs = [{ k: "upload", l: "Upload Odoo export" }, { k: "odoo", l: "Connect Odoo (live)" }];
   return (
     <div>
-      <div className="label">1 · Source Data</div>
+      <div className="label">2 · Source Data</div>
       <h1 className="mb-1 text-3xl font-light">Financials</h1>
       <p className="mb-5 text-mute">Bring in monthly P&amp;L and balance sheet data from Odoo. Uploads can add or replace single months; the P&amp;L and balance sheet can come from separate files. See <Link href={`/company/${id}/settings/data-health`} className="text-brand-d underline">Data health</Link> for loaded months, checks and undo.</p>
       <div className="mb-6 flex gap-1 border-b border-line">
@@ -33,7 +33,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
-      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} />}
+      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" ? step : undefined} />}
       {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
       </>}
     </div>
