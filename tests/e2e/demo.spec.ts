@@ -187,13 +187,15 @@ test("the report includes the forecast", async ({ page }) => {
 
 test("the sector tabs switch the side rail, and the old bank address still works", async ({ page }) => {
   await page.goto("/demo/summary");
-  await expect(page.getByTestId("tab-financials")).toHaveAttribute("aria-current", "page");
-  await page.getByTestId("tab-sales").click();
+  // Phones get the sectors as chips above the page; wider screens as tabs in the top bar.
+  const desktop = await page.getByTestId("tab-sales").isVisible();
+  if (desktop) await expect(page.getByTestId("tab-financials")).toHaveAttribute("aria-current", "page");
+  await page.getByTestId(desktop ? "tab-sales" : "sector-sales").click();
   await expect(page).toHaveURL(/\/demo\/sales/);
-  await expect(page.getByTestId("tab-sales")).toHaveAttribute("aria-current", "page");
+  if (desktop) await expect(page.getByTestId("tab-sales")).toHaveAttribute("aria-current", "page");
   await page.goto("/demo/analysis/bank?type=month");
   await expect(page).toHaveURL(/\/demo\/banking\?type=month/);
-  await expect(page.getByTestId("tab-banking")).toHaveAttribute("aria-current", "page");
+  if (desktop) await expect(page.getByTestId("tab-banking")).toHaveAttribute("aria-current", "page");
 });
 
 test("demo sales reconcile to the P&L and break down by category, product and customer", async ({ page }) => {

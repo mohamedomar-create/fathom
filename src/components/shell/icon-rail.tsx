@@ -44,7 +44,7 @@ export function IconRail() {
       {/* mobile nav */}
       <nav className="sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-white px-2 py-1.5 md:hidden no-print" aria-label="Sections">
         {SECTORS.filter((s) => s.key !== sector.key).map((s) => (
-          <Link prefetch={false} key={s.key} href={`${c.basePath}/${s.items[0].href}${q}`} className="flex shrink-0 items-center rounded-full border border-line px-3 py-1 text-xs text-[#555]">{s.label}</Link>
+          <Link prefetch={false} key={s.key} href={`${c.basePath}/${s.items[0].href}${q}`} data-testid={`sector-${s.key}`} className="flex shrink-0 items-center rounded-full border border-line px-3 py-1 text-xs text-[#555]">{s.label}</Link>
         ))}
         <span className="mx-1 w-px shrink-0 bg-line" aria-hidden="true" />
         {items.map((n) => {

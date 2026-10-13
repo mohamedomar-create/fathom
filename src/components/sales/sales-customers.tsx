@@ -2,9 +2,8 @@
 import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
-import { PeriodPicker } from "@/components/shell/period-picker";
 import { BarList } from "@/components/charts/bar-list";
-import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis } from "./common";
+import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
 
 export function SalesCustomers() {
   const c = useCompany();
@@ -15,7 +14,7 @@ export function SalesCustomers() {
   const cmpCol = s.compareLabel ? `vs ${s.compareLabel}` : "";
   return (
     <>
-      <PageHeader title="Customers" right={<PeriodPicker />} />
+      <PageHeader title="Customers" right={<SalesPicker s={s} />} />
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-5">
         <SalesTile label="Active customers" value={cu.active} testId="tile-active" />
         <SalesTile label="New" value={cu.new ?? "–"} sub={<span className="text-mute">{cu.new === null ? "needs 3 earlier months" : "first purchase in this period"}</span>} />

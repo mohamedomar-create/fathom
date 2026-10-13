@@ -7,6 +7,7 @@ import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useSales } from "@/lib/company/sales-context";
 import { Delta } from "@/components/ui/status";
+import { PeriodPicker } from "@/components/shell/period-picker";
 import { cn } from "@/lib/cn";
 
 /** The sales analysis for the period in the URL, with P&L revenue for the reconciliation. */
@@ -21,6 +22,13 @@ export function useSalesAnalysis() {
     const revenue = Object.fromEntries(c.months.filter((m) => Object.keys(m.pl).length).map((m) => [m.period, m.pl.revenue ?? 0]));
     return salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue });
   }, [data, sel.type, sel.end, cmp, c.months, c.settings.fyStartMonth]);
+}
+
+/** The period picker, which reads the financial months; with sales only, the latest sales month is shown instead. */
+export function SalesPicker({ s, mode }: { s: { window: { label: string } } | null; mode?: "for" | "upto" }) {
+  const c = useCompany();
+  if (c.months.length) return <PeriodPicker mode={mode} />;
+  return s ? <span className="text-[15px]" data-testid="sales-period">For <b>{s.window.label}</b> <span className="text-xs text-mute">(add the General Ledger to choose other periods)</span></span> : null;
 }
 
 export function NoSales() {
