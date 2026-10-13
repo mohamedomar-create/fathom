@@ -83,7 +83,33 @@ test("an Odoo ledger with an unexplained opening adjustment imports cleanly and 
   await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
   await page.goto(`/company/${id}/analysis/financials`);
   await page.getByTestId("period-picker").waitFor();
+  // The ledger's revenue lines became sales, and they agree with the P&L.
+  await page.getByTestId("tab-sales").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`));
+  await expect(page.getByTestId("sales-headline")).toBeVisible();
+  await expect(page.getByTestId("sales-reconciled")).toBeVisible();
   await page.goto(`/company/${id}/settings/chart-of-accounts`);
   await page.getByRole("button", { name: "Balance Sheet" }).click();
   await expect(page.locator('select[aria-label="Reclassify z Adjustment"]')).toHaveValue("other_equity");
+});
+
+/** A sales export on its own: read, previewed with its columns, saved to the Sales sector without touching the financial figures. */
+test("an Odoo Invoice Analysis export becomes sales by customer and product", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signUp(page, { name: "Sales Owner", org: "Sales Advisory", email: newEmail("sales") });
+  const id = await createCompany(page, "Sales Co");
+  await page.goto(`/company/${id}/settings/source-data`);
+  await page.waitForLoadState("networkidle");
+  await expect(async () => {
+    await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+    await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 4000 });
+  }).toPass({ timeout: 30_000 });
+  await expect(page.getByTestId("sales-total")).toContainText("197,800");
+  await expect(page.getByTestId("tax-warning")).toHaveCount(0);
+  await page.getByTestId("save-sales").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
+  await expect(page.getByTestId("tile-sales")).toContainText("93,800");
+  await page.goto(`/company/${id}/sales/products?type=year&end=2026-02`);
+  await expect(page.getByTestId("product-table")).toContainText("CPAP Machine");
+  await expect(page.getByTestId("product-table")).toContainText("Margin");
 });

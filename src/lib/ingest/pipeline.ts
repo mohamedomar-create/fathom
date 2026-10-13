@@ -4,7 +4,7 @@ import { bsCalc, plCalc } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./classify";
 import { dropParentAccounts } from "./hierarchy";
-import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type RawLine, type SheetLayout } from "./extract";
+import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type LedgerEntry, type RawLine, type SheetLayout } from "./extract";
 import { fmtDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normAr, normLabel } from "./parse";
@@ -37,6 +37,8 @@ export interface IngestLine {
   system: boolean;
   /** Natural presentation sign, per period (P&L: month; BS: closing). */
   values: Record<string, number>;
+  /** General Ledger move lines behind the figures (General Ledger uploads only). */
+  entries?: LedgerEntry[];
 }
 
 export interface IngestResult {
@@ -255,7 +257,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     // balance brought forward is shown as its running balance.
     const v = values.get(l.r.key) ?? (l.cls ? {} : rawBalance(l.r, periods));
     const vv = Object.fromEntries(Object.entries(v).filter(([p, x]) => periods.includes(p) && x));
-    return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, stmt: l.r.stmt, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv };
+    return { key: l.r.key, sheet: l.r.sheet, row: l.r.row, code: l.r.code, name: l.r.name, label: l.r.label, section: l.r.section, stmt: l.r.stmt, cls: l.cls, conf: l.conf, why: l.why, excluded: l.excluded || !l.cls, system: false, values: vv, ...(l.r.entries?.length ? { entries: l.r.entries.filter((e) => periods.includes(e.period)) } : {}) };
   });
 
   // Movement exports: P&L accounts are never closed in Odoo, so earnings to date are carried into retained earnings.

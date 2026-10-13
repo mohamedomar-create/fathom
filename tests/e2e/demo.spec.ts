@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
-const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "analysis/bank", "analysis/real-profit"];
+const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend"];
 
 test("landing page leads to the demo", async ({ page }) => {
   await page.goto("/");
@@ -110,7 +110,7 @@ test("summary headline figures open their source accounts", async ({ page }) => 
 });
 
 test("bank readiness reads the demo like a credit analyst and recomputes room to borrow", async ({ page }) => {
-  await page.goto("/demo/analysis/bank");
+  await page.goto("/demo/banking");
   await expect(page.getByTestId("bank-basis")).toContainText("12 months to Sep 2026");
   await expect(page.getByTestId("tile-dscr")).toContainText("x");
   await expect(page.getByTestId("bank-ratios")).toContainText("Debt service cover");
@@ -132,7 +132,7 @@ test("real profit bridges reported to real profit and needs inflation for it", a
 });
 
 test("bank readiness tests a loan request, stresses the year and writes the memo", async ({ page }) => {
-  await page.goto("/demo/analysis/bank");
+  await page.goto("/demo/banking");
   await expect(page.getByTestId("bank-memo")).toContainText("Lead with");
   await expect(page.getByTestId("trend-table")).toContainText("Debt service cover");
   await expect(page.getByTestId("trend-note")).toContainText("Upload earlier audited statements");
@@ -183,4 +183,31 @@ test("the report includes the forecast", async ({ page }) => {
   await page.goto("/demo/reports");
   await expect(page.locator('[data-section="forecast"]')).toContainText("Revenue, next 12 months");
   await expect(page.getByTestId("report-fc-table")).toContainText("Net profit");
+});
+
+test("the sector tabs switch the side rail, and the old bank address still works", async ({ page }) => {
+  await page.goto("/demo/summary");
+  await expect(page.getByTestId("tab-financials")).toHaveAttribute("aria-current", "page");
+  await page.getByTestId("tab-sales").click();
+  await expect(page).toHaveURL(/\/demo\/sales/);
+  await expect(page.getByTestId("tab-sales")).toHaveAttribute("aria-current", "page");
+  await page.goto("/demo/analysis/bank?type=month");
+  await expect(page).toHaveURL(/\/demo\/banking\?type=month/);
+  await expect(page.getByTestId("tab-banking")).toHaveAttribute("aria-current", "page");
+});
+
+test("demo sales reconcile to the P&L and break down by category, product and customer", async ({ page }) => {
+  await page.goto("/demo/sales");
+  await expect(page.getByTestId("sales-headline")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("tile-sales")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("sales-reconciled")).toBeVisible();
+  await expect(page.getByTestId("category-bars").getByRole("listitem").first()).toBeVisible();
+  await page.goto("/demo/sales/products");
+  await expect(page.getByTestId("pvm-table")).toContainText("Total change");
+  await page.getByTestId("category-bars").getByRole("listitem").first().click();
+  await expect(page.getByTestId("category-filter")).toBeVisible();
+  await page.goto("/demo/sales/customers");
+  await expect(page.getByTestId("customer-table")).toBeVisible();
+  await page.goto("/demo/sales/trend");
+  await expect(page.getByTestId("reconciliation-table")).toContainText("EGP 1,066,138");
 });

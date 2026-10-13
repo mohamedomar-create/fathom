@@ -4,7 +4,7 @@ import { createCompany, importFiles, newEmail, requireLocalStack, signUp } from 
 
 requireLocalStack();
 
-const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "analysis/bank", "analysis/real-profit"];
+const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend"];
 const SETTINGS = ["settings/profile", "settings/source-data", "settings/data-health", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
 const ACCOUNT = ["/companies", "/dashboard", "/account", "/admin/organisation", "/admin/people"];
 

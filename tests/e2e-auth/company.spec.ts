@@ -19,7 +19,7 @@ test("a new user signs up, imports Odoo data and works with their own numbers", 
   await expect(page.locator("h1")).toHaveText("Financials");
 
   // Bank assumptions are saved to the company and come back after a reload.
-  await page.goto(`/company/${id}/analysis/bank`);
+  await page.goto(`/company/${id}/banking`);
   await page.getByTestId("assume-rate").fill("22");
   await page.getByTestId("assume-requestAmount").fill("1000000");
   await page.getByTestId("assume-requestType").selectOption("working_capital");

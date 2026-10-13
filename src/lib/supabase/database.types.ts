@@ -32,6 +32,8 @@ export type ReportRow = {
   id: string; company_id: string; title: string; period_type: string; period_end: string; sections: Json; status: string; share_token: string | null; expires_at: string | null;
   published_at: string | null; created_by: string | null; created_at: string; updated_at: string;
 }
+export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null }
+export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 
 export type Database = {
   public: {
@@ -47,6 +49,8 @@ export type Database = {
       odoo_connections: Table<OdooConnectionRow, "company_id" | "url" | "db" | "login" | "api_key_enc">;
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
+      sales_batches: Table<SalesBatchRow, "company_id" | "source">;
+      sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -60,6 +64,10 @@ export type Database = {
       leave_organisation: { Args: { p_org: string }; Returns: undefined };
       delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };
       delete_my_account: { Args: { p_email: string }; Returns: undefined };
+      begin_sales_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json }; Returns: string };
+      add_sales_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
+      sales_summary: { Args: { p_company: string }; Returns: Json };
+      get_published_sales: { Args: { p_token: string }; Returns: Json };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

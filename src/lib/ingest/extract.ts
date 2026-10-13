@@ -22,7 +22,12 @@ export interface RawLine {
   spans?: Record<string, number>;
   /** Movement lines: the (debit − credit) closing balance the file prints for the account, to prove opening + movements = closing. */
   closing?: number;
+  /** General Ledger move lines behind the monthly figures (kept so revenue lines can become sales lines). */
+  entries?: LedgerEntry[];
 }
+
+/** One dated line of a General Ledger. amount is debit − credit. */
+export interface LedgerEntry { day: string; period: string; ref: string; label: string; partner: string; amount: number }
 
 /** How one column of a sheet was read. */
 export interface ColumnInfo { col: number; header: string; period: string | null; months: number; used: boolean; reason?: string }
