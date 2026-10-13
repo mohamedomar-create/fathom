@@ -71,6 +71,8 @@ describe("reading a sales export", () => {
 
   it("accounting reports are left to the accounting reader", () => {
     expect(readSalesGrid({ name: "TB", rows: [["Code", "Account Name", "Debit", "Credit"], ["4000", "Sales", 0, 100]] })).toBeNull();
+    // A P&L with month columns and an empty corner cell is not a sales pivot.
+    expect(readSalesGrid({ name: "P&L", rows: [["", "Jan 2026", "Feb 2026"], ["Revenue", 100, 120], ["Cost of sales", 60, 70]] })).toBeNull();
   });
 });
 
@@ -146,4 +148,22 @@ describe("the demo company's sales", () => {
     expect(d.customers[0]).toMatchObject({ a: 100.5, q: 2, k: null });
     expect(parseSalesSummary(null).customers).toEqual([]);
   });
+});
+
+describe("accounting files are never taken for sales exports", async () => {
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const { readWorkbooks } = await import("@/lib/ingest/read");
+  const { corpus } = await import("../fixtures/egypt-corpus");
+  const dir = path.join(__dirname, "../fixtures/files");
+  const files = [
+    ...corpus().map((f) => ({ name: f.name, data: f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.byteLength) as ArrayBuffer })),
+    ...fs.readdirSync(dir).filter((f) => f.endsWith(".xlsx") && !f.includes("invoice-analysis")).map((f) => { const b = fs.readFileSync(path.join(dir, f)); return { name: f, data: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer }; }),
+  ];
+  for (const f of files) {
+    it(f.name, async () => {
+      const grids = await readWorkbooks([f]);
+      expect(grids.filter((g) => readSalesGrid(g)).map((g) => g.name)).toEqual([]);
+    });
+  }
 });

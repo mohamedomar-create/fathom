@@ -2,11 +2,10 @@
 import { mlabel, money, mshort } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
-import { PeriodPicker } from "@/components/shell/period-picker";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import { cn } from "@/lib/cn";
-import { DataNotes, NoSales, useSalesAnalysis } from "./common";
+import { DataNotes, NoSales, useSalesAnalysis, SalesPicker } from "./common";
 
 export function SalesTrend() {
   const c = useCompany();
@@ -19,7 +18,7 @@ export function SalesTrend() {
   const cats = [...s.topCategories, ...(rows.some((t) => t.categories.Other) ? ["Other"] : [])];
   return (
     <>
-      <PageHeader title="Sales Trend" right={<PeriodPicker mode="upto" />} />
+      <PageHeader title="Sales Trend" right={<SalesPicker s={s} mode="upto" />} />
       <h2 className="mb-1 text-xl font-light">Monthly sales by category</h2>
       <p className="mb-2 text-xs text-mute">The five largest categories in the period, the rest as Other. Months to {mlabel(s.window.end)}.</p>
       <LineChart labels={rows.map((t) => mshort(t.period))} cur={cur} height={300} testId="category-trend"

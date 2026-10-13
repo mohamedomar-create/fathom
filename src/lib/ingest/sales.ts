@@ -75,6 +75,7 @@ const FIELD_RX: [SalesField, RegExp][] = [
 ];
 const fieldOf = (h: string): SalesField | null => FIELD_RX.find(([, rx]) => rx.test(normAr(h.replace(/\s+/g, " ").trim())))?.[0] ?? null;
 const TOTAL_ROW = arRx(/^(total|grand total|sum|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i);
+const MEASURE = arRx(/^(untaxed total|untaxed amount|total untaxed|price subtotal|subtotal|quantity|qty|margin|المبلغ قبل الضريبة|الصافي|الكمية)$/i);
 const ACCOUNT_HDR = arRx(/^(code|account|account code|account name|الحساب|اسم الحساب|كود الحساب|رقم الحساب)$/i);
 
 export interface SalesLayout {
@@ -107,7 +108,10 @@ export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLi
     if ((has("untaxed") || has("total")) && (has("customer") || has("product")) && (has("date") || has("period"))) return readList(g.name, rows, r, heads, fields);
     // A pivot: a product, category or customer column and two or more month columns.
     const dim = fields.findIndex((f) => f === "product" || f === "category" || f === "customer");
-    if (months.length >= 2 && (dim >= 0 || (months[0].c > 0 && !heads[0]))) return readPivot(g.name, rows, r, heads, dim >= 0 ? dim : 0, (dim >= 0 ? fields[dim] : "product") as "product" | "category" | "customer", months.map((m) => ({ c: m.c, p: m.p!.p })), [...rows.slice(0, r), rows[r + 1] ?? []].map((x) => x.map(str).join(" ")).join(" "));
+    // Without a Product / Category / Customer heading, only Odoo's pivot layout counts: an empty corner cell and a measure
+    // row ("Untaxed Total", "Quantity") under the months. A P&L with month columns has neither.
+    const measureRow = (rows[r + 1] ?? []).some((v) => MEASURE.test(normAr(str(v))));
+    if (months.length >= 2 && (dim >= 0 || (months[0].c > 0 && !heads[0] && measureRow))) return readPivot(g.name, rows, r, heads, dim >= 0 ? dim : 0, (dim >= 0 ? fields[dim] : "product") as "product" | "category" | "customer", months.map((m) => ({ c: m.c, p: m.p!.p })), [...rows.slice(0, r), rows[r + 1] ?? []].map((x) => x.map(str).join(" ")).join(" "));
   }
   return null;
 }

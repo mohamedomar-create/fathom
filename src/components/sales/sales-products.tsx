@@ -3,10 +3,9 @@ import { useState } from "react";
 import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
-import { PeriodPicker } from "@/components/shell/period-picker";
 import { BarList } from "@/components/charts/bar-list";
 import { cn } from "@/lib/cn";
-import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis } from "./common";
+import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
 
 export function SalesProducts() {
   const c = useCompany();
@@ -18,7 +17,7 @@ export function SalesProducts() {
   const cmpCol = s.compareLabel ? `vs ${s.compareLabel}` : "";
   return (
     <>
-      <PageHeader title="Products and Categories" right={<PeriodPicker />} />
+      <PageHeader title="Products and Categories" right={<SalesPicker s={s} />} />
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
         <SalesTile label="Categories sold" value={s.byCategory.filter((r) => r.amount > 0).length} sub={<span className="text-mute">{s.byProduct.filter((r) => r.amount > 0).length} products</span>} />
         {(["A", "B", "C"] as const).map((k) => (

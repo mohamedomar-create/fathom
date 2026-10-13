@@ -3,11 +3,10 @@ import { CheckCircle2, TriangleAlert } from "lucide-react";
 import { mlabel, money, mshort, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
-import { PeriodPicker } from "@/components/shell/period-picker";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
-import { DataNotes, Findings, NoSales, SalesTile, useSalesAnalysis, vs } from "./common";
+import { DataNotes, Findings, NoSales, SalesTile, useSalesAnalysis, vs, SalesPicker } from "./common";
 
 export function SalesOverview() {
   const c = useCompany();
@@ -21,7 +20,7 @@ export function SalesOverview() {
   const headline = `${c.name} invoiced ${money(s.total, cur)} in ${s.window.label}${s.growth !== null ? `, ${s.growth >= 0 ? "up" : "down"} ${Math.abs(s.growth).toFixed(1)}% on ${s.compareLabel}` : ""}, across ${s.invoices.toLocaleString("en-US")} invoice${s.invoices === 1 ? "" : "s"} to ${cu.active} customer${cu.active === 1 ? "" : "s"}${s.byCategory[0] ? `; ${s.byCategory[0].name} is the largest category at ${pct(s.byCategory[0].share, 0)} of sales` : ""}.`;
   return (
     <>
-      <PageHeader title="Sales Overview" right={<PeriodPicker />} />
+      <PageHeader title="Sales Overview" right={<SalesPicker s={s} />} />
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="sales-headline">{headline}</p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
         <SalesTile label="Net sales" value={money(s.total, cur)} sub={vs(s.growth, s.compareLabel)} neg={s.total < 0 || (s.growth ?? 0) < 0} testId="tile-sales" />
