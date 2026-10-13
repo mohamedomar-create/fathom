@@ -51,12 +51,16 @@ test("the navigation rail and menus take a user everywhere", async ({ page }) =>
   page.on("pageerror", (e) => issues.push(`script error: ${e.message}`));
   // Each analysis view by clicking its link in the rail, as a user would.
   for (const p of ANALYSIS) {
+    // The rail lists the current sector's pages; another sector is reached through its tab first.
+    const link = page.locator(`a[href$="/company/${id}/${p}"]`).first();
+    if (!(await link.isVisible())) await page.getByTestId(`tab-${p.startsWith("sales") ? "sales" : p === "banking" ? "banking" : "financials"}`).click();
     await page.locator(`a[href$="/company/${id}/${p}"]`).first().click();
     await expect(page).toHaveURL(new RegExp(`/company/${id}/${p}`));
     await expect(page.locator("h1")).toBeVisible();
     for (const i of await textAndLayout(page)) issues.push(`${p}: ${i}`);
   }
   // The period picker carries the chosen period from page to page.
+  await page.getByTestId("tab-financials").click();
   await page.getByTestId("period-type").click();
   await page.getByRole("button", { name: "Quarter", exact: true }).click();
   await expect(page).toHaveURL(/type=quarter/);
