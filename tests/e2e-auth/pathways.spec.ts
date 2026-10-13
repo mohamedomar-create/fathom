@@ -113,3 +113,72 @@ test("an Odoo Invoice Analysis export becomes sales by customer and product", as
   await expect(page.getByTestId("product-table")).toContainText("CPAP Machine");
   await expect(page.getByTestId("product-table")).toContainText("Margin");
 });
+
+/** A scanned PDF of audited statements: pages read (by a stand-in for the reader), totals checked, a misread figure corrected, then imported. */
+test("PDF statements are read, checked, corrected and imported", async ({ page }) => {
+  test.setTimeout(180_000);
+  const { PDFDocument, StandardFonts } = await import("pdf-lib");
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  // Page heights tell the stand-in reader which page it was sent.
+  for (const [h, title] of [[800, "Income statement"], [801, "Statement of financial position"]] as const) doc.addPage([600, h]).drawText(title, { x: 40, y: h - 60, size: 18, font });
+  const pdf = Buffer.from(await doc.save());
+
+  const r = (label: string, values: number[], o: Record<string, boolean> = {}) => ({ code: "", label, values, total: false, heading: false, unclear: false, ...o });
+  const t = (label: string, values: number[]) => r(label, values, { total: true });
+  const base = { company: "Delta Trading S.A.E.", currency: "EGP", scale: "units", columns: ["2025", "2024"] };
+  const pl = (revenue: number) => ({ ...base, kind: "pl", title: "Income statement", dateText: "For the year ended 31 December 2025", rows: [
+    r("Revenue", [revenue, 9500000]), r("Cost of sales", [-8000000, -6500000]), t("Gross profit", [4000000, 3000000]),
+    r("General and administrative expenses", [-2750000, -2250000]), t("Profit before tax", [1250000, 750000]), r("Income tax", [-281250, -168750]), t("Net profit for the year", [968750, 581250]),
+  ] });
+  const bs = { ...base, kind: "bs", title: "Statement of financial position", dateText: "As at 31 December 2025", rows: [
+    r("Property, plant and equipment", [2500000, 2300000]), r("Inventories", [1800000, 1400000]), r("Trade receivables", [3200000, 2200000]),
+    r("Cash and cash equivalents", [60000, 800000]), t("Total assets", [8100000, 6700000]),
+    r("Share capital", [2000000, 2000000], { unclear: true }), r("Retained earnings", [2068750, 1100000]), t("Total equity", [4068750, 3100000]),
+    r("Long-term loans", [1200000, 1000000]), r("Bank overdraft", [1100000, 900000]), r("Trade payables", [1450000, 1450000]), r("Income tax payable", [281250, 250000]),
+    t("Total liabilities", [4031250, 3600000]), t("Total equity and liabilities", [8100000, 6700000]),
+  ] };
+  const asked: string[] = [];
+  await page.route("**/read-page", async (route) => {
+    const body = route.request().postDataBuffer()?.toString("latin1") ?? "";
+    const second = body.includes('name="check"');
+    asked.push(`${body.includes(" 801 ]") ? "bs" : "pl"}${second ? " again" : ""}`);
+    // The P&L is misread the first time (revenue 1,200,000) and read right when asked to look again; the cash figure stays misread.
+    const read = body.includes(" 801 ]") ? bs : pl(second ? 12000000 : 1200000);
+    await route.fulfill({ json: { read } });
+  });
+
+  await signUp(page, { name: "Pdf Owner", org: "Pdf Advisory", email: newEmail("pdf") });
+  const id = await createCompany(page, "Pdf Co");
+  await page.goto(`/company/${id}/settings/source-data`);
+  await page.waitForLoadState("networkidle");
+  await expect(async () => {
+    await page.getByTestId("file-input").setInputFiles({ name: "statements.pdf", mimeType: "application/pdf", buffer: pdf });
+    await expect(page.getByTestId("pdf-review")).toBeVisible({ timeout: 8000 });
+  }).toPass({ timeout: 60_000 });
+  expect(asked.sort()).toEqual(["bs", "bs again", "pl", "pl again"]);
+
+  // Left to check: total assets (cash misread) and the unclear share capital.
+  await expect(page.getByTestId("pdf-flag-count")).toContainText("2 rows to check");
+  await expect(page.getByTestId("pdf-page")).toHaveCount(2);
+  await expect(page.getByRole("img", { name: "Page 1 of statements.pdf" })).toBeVisible({ timeout: 15_000 });
+  const cash = page.getByLabel("Cash and cash equivalents 2025");
+  await cash.fill("600000");
+  await cash.blur();
+  await page.getByRole("button", { name: "Figures are right" }).click();
+  await expect(page.getByTestId("pdf-all-add-up")).toBeVisible();
+  await page.getByTestId("pdf-use").click();
+
+  await expect(page.getByTestId("review")).toBeVisible();
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("timeline-step")).toBeVisible();
+  if (await page.getByTestId("accept-box").isVisible()) {
+    await page.getByTestId("accept-check").check();
+    await page.getByTestId("accept-reason").fill("Annual audited statements read from PDF.");
+  }
+  await page.getByTestId("commit-import").click();
+  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  // The year's revenue from the corrected reading, not the first misreading.
+  await page.goto(`/company/${id}/analysis/financials?type=year&end=2025-12`);
+  await expect(page.getByText(/12,000,000|12\.0M/).first()).toBeVisible();
+});

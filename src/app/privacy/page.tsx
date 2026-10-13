@@ -36,17 +36,18 @@ export default function PrivacyPage() {
         We do not sell your data, use it for advertising, or use your financial data to train AI models.
       </p>
 
-      <h2>AI commentary</h2>
+      <h2>AI commentary and PDF reading</h2>
       <p>
         When someone in your organisation asks for AI-written commentary, the figures and business context needed for that commentary are sent to Anthropic, our AI provider, to generate the text.
-        Anthropic processes it on our behalf and does not use it to train its models. Nothing is sent to the AI provider unless a user asks for commentary.
+        When someone uploads a PDF or a scanned page, each page is sent to Anthropic to read its figures. We do not store the page; only the figures you confirm are imported. Anthropic may keep requests for a limited period under its commercial terms (for example to prevent abuse).
+        Anthropic processes this data on our behalf and does not use it to train its models. Nothing is sent to the AI provider unless a user asks for commentary or uploads a PDF.
       </p>
 
       <h2>Who processes data for us</h2>
       <ul>
         <li><strong>Supabase</strong>: database and sign-in. Data is stored in {LEGAL.dataRegion}.</li>
         <li><strong>Vercel</strong>: hosting of the application.</li>
-        <li><strong>Anthropic</strong>: AI commentary, only when requested.</li>
+        <li><strong>Anthropic</strong>: AI commentary and reading uploaded PDF pages, only when requested.</li>
         <li><strong>Email delivery</strong>: the provider that sends sign-in and invitation emails.</li>
       </ul>
       <p>

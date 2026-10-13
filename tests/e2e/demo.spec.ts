@@ -67,6 +67,12 @@ test("an Odoo ledger, trial balance and P&L uploaded together: the ledger is imp
   await expect(page.getByTestId("review")).toContainText("z Adjustment");
 });
 
+test("a PDF in the demo says reading it needs an account", async ({ page }) => {
+  await page.goto("/demo/settings/source-data");
+  await page.getByTestId("file-input").setInputFiles({ name: "statements.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n") });
+  await expect(page.getByText(/Reading PDFs and scanned pages needs a free account/)).toBeVisible();
+});
+
 test("demo report downloads as a PDF", async ({ page }) => {
   test.slow();
   await page.goto("/demo/reports");
