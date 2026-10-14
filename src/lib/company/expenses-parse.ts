@@ -1,8 +1,10 @@
-import { EMPTY_EXPENSES, PL_KEYS, type ClassKey, type ExpensesData } from "@/lib/engine";
+import { BS_KEYS, EMPTY_EXPENSES, PL_KEYS, type ClassKey, type ExpensesData } from "@/lib/engine";
 
 /** Numbers from the database summary, made safe: a missing or non-numeric value is 0. */
 const n = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v !== "" && Number.isFinite(Number(v)) ? Number(v) : 0);
-const cls = (v: unknown): ClassKey | null => ((PL_KEYS as readonly string[]).includes(String(v)) ? (v as ClassKey) : null);
+const CLASSES: readonly string[] = [...PL_KEYS, ...BS_KEYS];
+/** A cost class, or a stock account's class for goods bought for stock (shown under suppliers, never in costs). */
+const cls = (v: unknown): ClassKey | null => (CLASSES.includes(String(v)) ? (v as ClassKey) : null);
 const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
 
 export function parseExpenseSummary(raw: unknown): ExpensesData {

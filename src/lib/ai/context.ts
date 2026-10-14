@@ -1,6 +1,6 @@
 import {
   bankPack, breakeven, formatBankValue, goalseekTable, mlabel, money, num, pct, quadrantOf, bsCalc, plCalc, realProfit, REQUEST_LABEL, twelveMonths,
-  expensesAnalysis, isExpenseClass, NOT_SUPPLIERS, salesAnalysis, salesMonths,
+  customersOf, expensesAnalysis, isExpenseClass, NOT_SUPPLIERS, salesAnalysis, salesMonths,
   type Analysis, type Assumptions, type CompanySettings, type ExpenseAccount, type ExpensesData, type LoanAccount, type MonthData, type PeriodSel, type SalesData,
 } from "@/lib/engine";
 
@@ -127,10 +127,11 @@ export function linesContext(months: MonthData[], accounts: ExpenseAccount[], sa
     out.sales_detail = { net_sales: m(s.total), invoices: s.invoices, active_customers: s.customers.active, top_customers: top(s.byCustomer), top_categories: top(s.byCategory), top_customer_share_pct: s.customers.topShare === null ? null : +s.customers.topShare.toFixed(1), findings: s.findings.map((f) => `${f.title}. ${f.text}`) };
   }
   if (accounts.some((a) => isExpenseClass(a.cls))) {
-    const e = expensesAnalysis(accounts, expenses, sel, fyStart, { revenue });
+    const e = expensesAnalysis(accounts, expenses, sel, fyStart, { revenue, customers: customersOf(sales) });
     out.expenses_detail = {
       total_costs: m(e.total), costs_pct_of_sales: e.ofSales === null ? null : +e.ofSales.toFixed(1), largest_accounts: top(e.byAccount), largest_change: e.bridge.slice(0, 3).map((b) => `${b.name}: ${m(b.delta)}`),
       ...(e.lines.has ? { top_suppliers: top(e.bySupplier.filter((r) => !NOT_SUPPLIERS.has(r.key))), top5_supplier_share_pct: e.concentration.top5Share === null ? null : +e.concentration.top5Share.toFixed(1) } : {}),
+      ...(e.alsoCustomers.length ? { partners_also_customers: e.alsoCustomers.slice(0, 5).map((r) => `${r.name}: ${m(r.amount)}`) } : {}),
       to_check: [...e.doubles.slice(0, 3).map((f) => `possible double payment: ${f.s} ${m(f.a)} (${f.doc} / ${f.doc2})`), ...e.large.slice(0, 3).map((f) => `large entry: ${f.t} ${m(f.a)}`)],
       findings: e.findings.map((f) => `${f.title}. ${f.text}`),
     };

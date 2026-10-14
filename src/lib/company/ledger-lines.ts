@@ -1,5 +1,5 @@
 import "server-only";
-import type { ClassKey } from "@/lib/engine";
+import { isCostLine, type ClassKey } from "@/lib/engine";
 import { untied, type LineKind } from "./ledger-tie";
 import type { Json } from "@/lib/supabase/database.types";
 import type { createClient } from "@/lib/supabase/server";
@@ -58,9 +58,10 @@ export async function ledgerTotals(supabase: Supa, companyId: string): Promise<R
   const out: Record<LineKind, Record<string, number>> = { sales: {}, expenses: {} };
   for (const kind of ["sales", "expenses"] as const) {
     for (let from = 0; from < 2_000_000; from += 1000) {
-      const { data: rows, error: e } = await supabase.from(TABLES[kind].lines).select("period, amount").eq("company_id", companyId).eq("source", "ledger").range(from, from + 999);
+      const { data: rows, error: e } = await supabase.from(TABLES[kind].lines).select(kind === "expenses" ? "period, amount, cls" : "period, amount").eq("company_id", companyId).eq("source", "ledger").range(from, from + 999);
       if (e) { if (missing(e)) break; throw new Error(e.message); }
-      for (const r of rows ?? []) out[kind][r.period] = (out[kind][r.period] ?? 0) + Number(r.amount);
+      // Goods bought for stock are expense lines too, but not costs: they never count against the P&L.
+      for (const r of (rows ?? []) as unknown as { period: string; amount: number; cls?: string | null }[]) if (kind === "sales" || isCostLine(r.cls ?? null)) out[kind][r.period] = (out[kind][r.period] ?? 0) + Number(r.amount);
       if (!rows || rows.length < 1000) break;
     }
   }

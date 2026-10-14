@@ -2,7 +2,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Receipt, Upload } from "lucide-react";
-import { accountsFromLines, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
+import { accountsFromLines, customersOf, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
+import { useSales } from "@/lib/company/sales-context";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -20,6 +21,7 @@ export const costVs = (growth: number | null, label: string) => (label ? <><Delt
 export function useExpensesAnalysis() {
   const c = useCompany();
   const data = useExpenses();
+  const sales = useSales();
   const { sel, cmp } = usePeriod();
   return useMemo(() => {
     const fromPL = c.accounts.some((a) => isExpenseClass(a.cls));
@@ -28,8 +30,8 @@ export function useExpensesAnalysis() {
     const end = fromPL ? sel.end : sel.end && lineMonths.includes(sel.end) ? sel.end : lineMonths[lineMonths.length - 1];
     if (!end) return null;
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue });
-  }, [data, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth]);
+    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: customersOf(sales) });
+  }, [data, sales, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth]);
 }
 
 /** The period picker, which reads the financial months; with an expenses file only, the latest month is shown instead. */
@@ -83,6 +85,7 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
             {kind === "accounts" && <th className="text-left">Months</th>}
             {kind === "suppliers" && <th>Bills</th>}
             {kind === "suppliers" && <th>Average bill</th>}
+            {kind === "suppliers" && rows.some((r) => r.stock) && <th title="Goods bought for stock: they reach costs as cost of sales when sold">For stock</th>}
           </tr>
         </thead>
         <tbody>
@@ -102,6 +105,7 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
               {kind === "accounts" && <td className="text-left">{r.spark && r.spark.length > 1 ? <Sparkline values={r.spark} w={90} h={22} color="#7a7a72" /> : <span className="text-mute">{r.months ?? 0}</span>}</td>}
               {kind === "suppliers" && <td className="num">{r.docs || "–"}</td>}
               {kind === "suppliers" && <td className="num">{r.avg === null || r.avg === undefined ? "–" : money(r.avg, cur)}</td>}
+              {kind === "suppliers" && rows.some((x) => x.stock) && <td className="num text-mute">{r.stock ? money(r.stock, cur) : "–"}</td>}
             </tr>
           ))}
         </tbody>

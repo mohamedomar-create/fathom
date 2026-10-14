@@ -97,7 +97,7 @@ export function CheckThese({ s, cur }: { s: ExpensesView; cur: string }) {
         ))}
         {s.large.slice(0, 5).map((f, i) => (
           <li key={`l${i}`} className="border-l-[3px] border-amber bg-band px-3 py-2" data-testid="flag-large">
-            <b className="font-semibold">Large entry.</b> {f.t}: {money(f.a, cur)} on {when(f)}{f.s && !/^(No supplier|Journal entries)$/.test(f.s) ? ` from ${f.s}` : ""}. A usual month is {money(f.m ?? 0, cur)}.
+            <b className="font-semibold">Large entry.</b> {f.t}: {money(f.a, cur)} on {when(f)}{f.s && !NOT_SUPPLIERS.has(f.s) ? ` from ${f.s}` : ""}. A usual month is {money(f.m ?? 0, cur)}.
           </li>
         ))}
       </ul>

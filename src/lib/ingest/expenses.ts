@@ -4,7 +4,9 @@ import { str, type Grid, type LedgerEntry } from "./extract";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { checkExpenseTemplate, templateMarkOf } from "./template";
 import { classify } from "./classify";
-import { mostlyBills, seriesOf, VENDOR_HDR } from "./sales";
+import { mostlyBills, VENDOR_HDR } from "./sales";
+import { COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, EXPENSE_JOURNAL, NO_SUPPLIER } from "@/lib/engine/expenses";
+import { docKind, isBillDoc, seriesOf } from "@/lib/engine/series";
 
 /**
  * Expense lines for the Expenses sector, from two places:
@@ -29,25 +31,49 @@ export interface ExpenseLine {
   src?: { sheet: string; row: number };
 }
 
-export const NO_SUPPLIER = "No supplier";
-export const EXPENSE_JOURNAL = "Journal entries";
-export const DEPRECIATION_SUPPLIER = "Depreciation (no payment)";
+export { COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, EXPENSE_JOURNAL, NO_SUPPLIER } from "@/lib/engine/expenses";
 /** P&L classes that are costs (dividends are a distribution, not an expense). */
 export const EXPENSE_CLASSES = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments"]);
 const DEPRECIATION = new Set<ClassKey>(["cos_depreciation", "exp_depreciation"]);
+const COST_OF_SALES = new Set<ClassKey>(["cos_variable", "cos_fixed"]);
+/** Balance-sheet accounts that goods bought for stock pass through: a vendor bill on them is a purchase from that supplier. */
+const STOCK_ACCOUNT = /stock interim|interim (received|delivered)|goods received|grni|inventory|stock|مخزون|بضاعة/i;
+const isStockAccount = (cls: ClassKey, name: string) => cls === "inventory" || cls === "wip" || ((cls === "other_cl" || cls === "other_ca") && STOCK_ACCOUNT.test(name));
+
+/**
+ * Who a cost line was paid to. Only a vendor bill or refund, or a purchase or expense-journal entry, names a supplier:
+ * cost of sales from a stock move or a customer invoice carries the customer as partner, and is grouped as cost of goods.
+ */
+export function supplierOf(e: Pick<LedgerEntry, "ref" | "label" | "partner">, cls: ClassKey): string {
+  if (DEPRECIATION.has(cls)) return DEPRECIATION_SUPPLIER;
+  const kind = docKind(e.ref);
+  if (kind === "purchase") return e.partner || NO_SUPPLIER;
+  if (kind === "stock" || (kind === "customer" && COST_OF_SALES.has(cls))) return COGS_SUPPLIER;
+  if (kind === "customer") return CUSTOMER_DOCS;
+  const journal = !e.label || e.label === e.ref || e.label === `Entry ${e.ref}` || /^MISC\b/i.test(seriesOf(e.ref));
+  return journal ? EXPENSE_JOURNAL : NO_SUPPLIER;
+}
 const round2 = (v: number) => Math.round(v * 100) / 100;
 
-/** Cost-account move lines of a General Ledger as expense lines. Lines must be mapped (the class decides what is a cost). */
+/**
+ * The move lines of a General Ledger as expense lines. Lines must be mapped (the class decides what is a cost):
+ *  - every line on a P&L cost account (its supplier from supplierOf);
+ *  - vendor bills and refunds on the stock accounts goods are bought through (inventory, stock interim): purchases from that
+ *    supplier, kept with their balance-sheet class so they show under suppliers but never in costs (they reach the P&L as
+ *    cost of sales when the goods are sold).
+ */
 export function expensesFromLedger(lines: { code: string; name: string; cls: ClassKey | null; excluded: boolean; system?: boolean; entries?: LedgerEntry[] }[]): ExpenseLine[] {
   const out: ExpenseLine[] = [];
   for (const l of lines) {
-    if (l.excluded || l.system || !l.cls || !EXPENSE_CLASSES.has(l.cls) || !l.entries) continue;
+    if (l.excluded || l.system || !l.cls || !l.entries) continue;
+    const cost = EXPENSE_CLASSES.has(l.cls), stock = !cost && isStockAccount(l.cls, l.name);
+    if (!cost && !stock) continue;
     const account = [l.code, l.name].filter(Boolean).join(" ");
     for (const e of l.entries) {
       if (!e.amount) continue;
+      if (stock && !(isBillDoc(e.ref) && e.partner)) continue;
       const series = seriesOf(e.ref);
-      const journal = !e.label || e.label === e.ref || e.label === `Entry ${e.ref}` || /^MISC\b/i.test(series);
-      const supplier = DEPRECIATION.has(l.cls) ? DEPRECIATION_SUPPLIER : e.partner || (journal ? EXPENSE_JOURNAL : NO_SUPPLIER);
+      const supplier = cost ? supplierOf(e, l.cls) : e.partner;
       out.push({ day: e.day, period: e.period, doc: e.ref, series, supplier, account, cls: l.cls, category: l.name || account, label: (e.label || "").split(/\r?\n/)[0].trim().slice(0, 200), amount: round2(e.amount) });
     }
   }
