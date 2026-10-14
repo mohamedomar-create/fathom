@@ -3,7 +3,7 @@ import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
 import { BarList } from "@/components/charts/bar-list";
-import { DataNotes, ExpensesPicker, ExpenseTable, NoExpenses, NoLines, Tile, useExpensesAnalysis } from "./common";
+import { DataNotes, ExpensesPicker, ExpenseTable, LenderTable, NoExpenses, NoLines, Tile, useExpensesAnalysis } from "./common";
 import { CheckThese } from "./expenses-overview";
 
 export function ExpensesSuppliers() {
@@ -25,6 +25,11 @@ export function ExpensesSuppliers() {
       <h2 className="mb-3 text-xl font-light">Who you pay</h2>
       <ExpenseTable rows={s.bySupplier} cur={cur} nameLabel="Supplier" compareLabel={s.compareLabel} kind="suppliers" max={40} testId="supplier-table" />
       {s.stockBought > 0 && <p className="mt-2 text-[13px] text-mute" data-testid="stock-note">Includes {money(s.stockBought, cur)} of goods bought for stock. They reach your costs as cost of goods sold when sold, so they are not in the cost totals.</p>}
+      {s.byLender.length > 0 && <>
+        <h3 className="mb-2 mt-8 text-lg font-normal">Banks and lenders</h3>
+        <p className="mb-2 text-[13px] text-mute">Interest and bank charges, by the bank that lends to you or keeps your account. Banks are not suppliers, so they are not in the list above. Costs only paid through a bank (salaries, rent) stay with what they are for.</p>
+        <LenderTable s={s} cur={cur} />
+      </>}
       {s.alsoCustomers.length > 0 && <>
         <h3 className="mb-2 mt-8 text-lg font-normal">Also your customers: check these</h3>
         <p className="mb-2 text-[13px] text-mute">These partners buy from you too. Their cost lines may be cost of goods sold to them rather than purchases.</p>

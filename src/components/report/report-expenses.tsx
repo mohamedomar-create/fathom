@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { accountsFromLines, customersOf, EMPTY_EXPENSES, EMPTY_SALES, expenseMonths, expensesAnalysis, isExpenseClass, money, mshort, NOT_SUPPLIERS, pct, type ExpenseRow } from "@/lib/engine";
+import { accountsFromLines, customersOf, EMPTY_EXPENSES, EMPTY_SALES, expenseMonths, expensesAnalysis, isExpenseClass, money, mshort, notSupplier, pct, type ExpenseRow } from "@/lib/engine";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import type { ReportInput } from "@/lib/report/types";
@@ -49,8 +49,13 @@ export function ReportExpenses({ input, head }: { input: ReportInput; head: (tit
       </div>
       <div className="mb-3 grid grid-cols-2 gap-6">
         <Rows title="Largest accounts" rows={s.byAccount} cur={cur} />
-        {s.lines.has ? <Rows title="Largest suppliers" rows={s.bySupplier.filter((r) => r.amount > 0 && !NOT_SUPPLIERS.has(r.key))} cur={cur} /> : <Rows title="Costs by type" rows={s.byGroup} cur={cur} />}
+        {s.lines.has ? <Rows title="Largest suppliers" rows={s.bySupplier.filter((r) => r.amount > 0 && !notSupplier(r.key))} cur={cur} /> : <Rows title="Costs by type" rows={s.byGroup} cur={cur} />}
       </div>
+      {s.byLender.length > 0 && (
+        <p className="mb-3 text-[12px]" data-testid="report-lenders">
+          <b className="font-semibold">Banks: </b>{money(s.finance.interest, cur)} interest and {money(s.finance.fees, cur)} bank charges — {s.byLender.slice(0, 4).map((r) => `${r.name} ${money(r.amount, cur, true)}`).join(" · ")}
+        </p>
+      )}
       <LineChart labels={last12.map((t) => mshort(t.period))} cur={cur} height={190}
         series={[{ name: "Last 12 months", values: last12.map((t) => t.total), color: C.s[1], fill: true }, { name: "The 12 months before", values: prev12.map((t) => t.total), color: C.mute, dashed: true, dots: false }]} />
       <div className="rcomment mt-2">

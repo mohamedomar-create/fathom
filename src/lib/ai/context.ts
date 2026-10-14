@@ -1,6 +1,6 @@
 import {
   bankPack, breakeven, formatBankValue, goalseekTable, mlabel, money, num, pct, quadrantOf, bsCalc, plCalc, realProfit, REQUEST_LABEL, twelveMonths,
-  customersOf, expensesAnalysis, isExpenseClass, NOT_SUPPLIERS, salesAnalysis, salesMonths,
+  customersOf, expensesAnalysis, isExpenseClass, notSupplier, salesAnalysis, salesMonths,
   type Analysis, type Assumptions, type CompanySettings, type ExpenseAccount, type ExpensesData, type LoanAccount, type MonthData, type PeriodSel, type SalesData,
 } from "@/lib/engine";
 
@@ -130,7 +130,8 @@ export function linesContext(months: MonthData[], accounts: ExpenseAccount[], sa
     const e = expensesAnalysis(accounts, expenses, sel, fyStart, { revenue, customers: customersOf(sales) });
     out.expenses_detail = {
       total_costs: m(e.total), costs_pct_of_sales: e.ofSales === null ? null : +e.ofSales.toFixed(1), largest_accounts: top(e.byAccount), largest_change: e.bridge.slice(0, 3).map((b) => `${b.name}: ${m(b.delta)}`),
-      ...(e.lines.has ? { top_suppliers: top(e.bySupplier.filter((r) => !NOT_SUPPLIERS.has(r.key))), top5_supplier_share_pct: e.concentration.top5Share === null ? null : +e.concentration.top5Share.toFixed(1) } : {}),
+      ...(e.lines.has ? { top_suppliers: top(e.bySupplier.filter((r) => !notSupplier(r.key))), top5_supplier_share_pct: e.concentration.top5Share === null ? null : +e.concentration.top5Share.toFixed(1) } : {}),
+      ...(e.byLender.length ? { banks_interest_and_charges: { interest: m(e.finance.interest), bank_charges: m(e.finance.fees), by_bank: e.byLender.slice(0, 5).map((r) => `${r.name}: ${m(r.amount)} (interest ${m(r.interest)}, charges ${m(r.fees)})`) } } : {}),
       ...(e.alsoCustomers.length ? { partners_also_customers: e.alsoCustomers.slice(0, 5).map((r) => `${r.name}: ${m(r.amount)}`) } : {}),
       to_check: [...e.doubles.slice(0, 3).map((f) => `possible double payment: ${f.s} ${m(f.a)} (${f.doc} / ${f.doc2})`), ...e.large.slice(0, 3).map((f) => `large entry: ${f.t} ${m(f.a)}`)],
       findings: e.findings.map((f) => `${f.title}. ${f.text}`),

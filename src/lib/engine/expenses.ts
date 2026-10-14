@@ -27,6 +27,17 @@ export const COGS_SUPPLIER = "Cost of goods sold (stock)";
 export const CUSTOMER_DOCS = "Customer invoices (no supplier)";
 /** Names that are not a supplier one pays (left out of supplier concentration and of double-payment checks). */
 export const NOT_SUPPLIERS = new Set(["", NO_SUPPLIER, EXPENSE_JOURNAL, DEPRECIATION_SUPPLIER, COGS_SUPPLIER, CUSTOMER_DOCS]);
+/**
+ * Interest and bank charges are owed to a bank that lends to the company or keeps its accounts, never to a supplier: their
+ * lines carry the bank ("Bank: CIB"), and the Expenses pages list banks apart from suppliers.
+ */
+export const LENDER_TAG = "Bank: ";
+export const UNNAMED_LENDER = `${LENDER_TAG}(not named)`;
+export const isLender = (s: string) => s.startsWith(LENDER_TAG);
+/** "Bank: CIB" → "CIB"; a line whose entry names no bank → "Bank not named". */
+export const lenderName = (s: string) => (s === UNNAMED_LENDER ? "Bank not named" : s.slice(LENDER_TAG.length));
+/** Not a supplier the company buys from: the names above, and banks. */
+export const notSupplier = (s: string) => NOT_SUPPLIERS.has(s) || isLender(s);
 const DEPRECIATION = new Set<string>(["cos_depreciation", "exp_depreciation"]);
 
 type Line = { day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: ClassKey | null; category: string; amount: number };
@@ -50,7 +61,7 @@ export function expenseFlags(lines: (Line & { source?: "ledger" | "file" })[]): 
     return !!t && isCostLine(l.cls) && t.n >= 4 && l.amount > 2 * t.med && l.amount >= 0.02 * (monthTotal.get(l.period) ?? 0) && !DEPRECIATION.has(l.cls ?? "");
   }).map((l) => ({ k: "large" as const, d: l.day, p: l.period, doc: l.doc, s: l.supplier, t: l.account, a: l.amount, m: Math.round(typical.get(l.account)!.med * 100) / 100 })).sort(order).slice(0, 100);
   // Double: same supplier and amount on two bills within 7 days, an amount seen only those two times within 30 days.
-  const bills = lines.filter((l) => l.day && l.amount > 0 && !NOT_SUPPLIERS.has(l.supplier) && !DEPRECIATION.has(l.cls ?? "") && (l.source === "file" || isBillDoc(l.doc)));
+  const bills = lines.filter((l) => l.day && l.amount > 0 && !notSupplier(l.supplier) && !DEPRECIATION.has(l.cls ?? "") && (l.source === "file" || isBillDoc(l.doc)));
   const days = (a: string, b: string) => Math.abs(Date.parse(b) - Date.parse(a)) / 86400000;
   const doubles: ExpenseFlag[] = [];
   for (let x = 0; x < bills.length; x++) for (let y = x + 1; y < bills.length; y++) {
@@ -126,6 +137,8 @@ export interface ExpenseRow {
   stock?: number;
 }
 export interface ExpenseFinding { kind: "risk" | "watch" | "win"; title: string; text: string }
+/** A bank the company pays interest or charges to, in the window (and the comparison when there is one). */
+export interface LenderRow { key: string; name: string; interest: number; fees: number; amount: number; share: number; compare: number | null; growth: number | null; ofSales: number | null }
 
 export interface ExpensesAnalysis {
   window: Window;
@@ -146,8 +159,12 @@ export interface ExpensesAnalysis {
   bridge: { name: string; delta: number }[];
   /** Lines (suppliers): whether any are loaded for the window, their total and the share of costs they cover. */
   lines: { has: boolean; total: number; coverage: number | null; months: string[] };
-  /** Who was paid: costs plus goods bought for stock. */
+  /** Who was paid: costs plus goods bought for stock (banks are listed apart, in byLender). */
   bySupplier: ExpenseRow[];
+  /** Banks: interest and bank charges per bank, largest first. */
+  byLender: LenderRow[];
+  /** Interest and bank charges paid to banks in the window. */
+  finance: { interest: number; fees: number; total: number; compare: number | null };
   /** Partners that are also customers in the sales data: shown for a check, not as suppliers. */
   alsoCustomers: ExpenseRow[];
   /** Goods bought for stock from the suppliers above in the period (not in the cost totals). */
@@ -249,8 +266,25 @@ export function expensesAnalysis(
   for (const r of allSuppliers) r.stock = stockBy.get(r.key) ?? 0;
   // A partner who also buys from the company is checked, not ranked as a supplier: it may be a customer on a cost line.
   const customers = opts.customers ?? new Set<string>();
-  const alsoCustomers = allSuppliers.filter((r) => customers.has(r.key) && !NOT_SUPPLIERS.has(r.key) && r.amount);
-  const bySupplier = allSuppliers.filter((r) => !alsoCustomers.includes(r));
+  const alsoCustomers = allSuppliers.filter((r) => customers.has(r.key) && !notSupplier(r.key) && r.amount);
+  const bySupplier = allSuppliers.filter((r) => !alsoCustomers.includes(r) && !isLender(r.key));
+  // Banks: interest and charges per bank (lines tagged when read), with the comparison when the lines cover it.
+  const lm = new Map<string, LenderRow & { seen: boolean }>();
+  for (const r of costSup) {
+    if (!isLender(r.s)) continue;
+    const inCur = cur.has(r.p), inCmp = lcmp?.has(r.p) ?? false;
+    if (!inCur && !inCmp) continue;
+    const x = lm.get(r.s) ?? { key: r.s, name: lenderName(r.s), interest: 0, fees: 0, amount: 0, share: 0, compare: lcmp ? 0 : null, growth: null, ofSales: null, seen: false };
+    if (inCur) { x.amount += r.a; x.seen = true; if (r.c === "interest_expenses") x.interest += r.a; else x.fees += r.a; }
+    if (inCmp && x.compare !== null) x.compare += r.a;
+    lm.set(r.s, x);
+  }
+  const lenderTotal = sum([...lm.values()], (x) => x.amount);
+  const byLender: LenderRow[] = [...lm.values()].filter((x) => x.seen || x.compare).map(({ seen, ...x }) => {
+    void seen;
+    return { ...x, share: pctOf(x.amount, lenderTotal), growth: growthOf(x.amount, x.compare), ofSales: revenue ? (x.amount / revenue) * 100 : null };
+  }).sort((a, b) => b.amount - a.amount);
+  const finance = { interest: sum(byLender, (x) => x.interest), fees: sum(byLender, (x) => x.fees), total: lenderTotal, compare: lcmp ? sum(byLender, (x) => x.compare ?? 0) : null };
   const docs = new Map<string, number>();
   for (const r of d.suppliers) if (cur.has(r.p)) docs.set(r.s, (docs.get(r.s) ?? 0) + r.d);
   // "New" needs history: lines for at least three months before the window, so a first payment really is a first.
@@ -261,9 +295,9 @@ export function expensesAnalysis(
   for (const r of bySupplier) {
     r.docs = docs.get(r.key) ?? 0;
     r.avg = r.docs ? r.amount / r.docs : null;
-    r.isNew = history && !NOT_SUPPLIERS.has(r.key) && r.amount > 0 && !paidBefore.has(r.key);
+    r.isNew = history && !notSupplier(r.key) && r.amount > 0 && !paidBefore.has(r.key);
   }
-  const named = bySupplier.filter((r) => !NOT_SUPPLIERS.has(r.key) && r.amount > 0);
+  const named = bySupplier.filter((r) => !notSupplier(r.key) && r.amount > 0);
   const namedTotal = sum(named, (r) => r.amount);
   const bySource = rank(costSup, cur, lcmp, (r) => sourceName(r.j), (r) => sourceName(r.j), revenue);
   const byCategory = rank(d.accounts.filter((r) => isCostLine(r.c)), cur, lcmp, (r) => r.g || "No category", (r) => r.g || "No category", revenue);
@@ -300,6 +334,10 @@ export function expensesAnalysis(
   else if (named.length >= 8 && namedTotal > 0 && top5 / namedTotal > 0.6) findings.push({ kind: "watch", title: `Five suppliers take ${Math.round((top5 / namedTotal) * 100)}% of spend`, text: "Spend sits with a small group of suppliers: worth checking prices against others once a year." });
   if (doubles.length) findings.push({ kind: "risk", title: `${doubles.length} possible double payment${doubles.length > 1 ? "s" : ""}`, text: `Same supplier and amount within a week. ${doubles.slice(0, 2).map((f) => `${f.s}: ${f.doc || "no number"} and ${f.doc2 || "no number"}`).join("; ")}. Check them in Odoo.` });
   if (large.length) findings.push({ kind: "watch", title: `${large.length} unusually large entr${large.length > 1 ? "ies" : "y"}`, text: `Each is bigger than twice the account's usual month. ${large.slice(0, 2).map((f) => `${f.t}: ${fmtSigned(f.a)}`).join("; ")}.` });
+  if (finance.total > 0 && revenue && (finance.total / revenue) * 100 >= 3) {
+    const big = byLender[0];
+    findings.push({ kind: (finance.total / revenue) * 100 >= 6 ? "risk" : "watch", title: `Banks take ${((finance.total / revenue) * 100).toFixed(1)}% of sales`, text: `${fmtAmt(finance.interest)} of interest and ${fmtAmt(finance.fees)} of bank charges${big && big.share >= 50 ? `; most of it to ${big.name}` : ""}. Worth comparing rates and fees with other banks.` });
+  }
   if (alsoCustomers.length) findings.push({ kind: "watch", title: `${alsoCustomers.length} partner${alsoCustomers.length > 1 ? "s are" : " is"} also ${alsoCustomers.length > 1 ? "customers" : "a customer"}`, text: `${alsoCustomers.slice(0, 3).map((r) => r.name).join(", ")}. Their cost lines are listed apart from suppliers: check they are real purchases, not cost of goods sold to them.` });
   if (unreconciled.length) findings.push({ kind: "watch", title: `Lines differ from P&L costs in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, text: `${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. A purchases file only holds bills: salaries, rent paid by bank and depreciation are not in it.` });
 
@@ -311,13 +349,14 @@ export function expensesAnalysis(
   return {
     window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, revenue, ofSales, ofSalesCompare, split, byGroup, byAccount, bridge,
     lines: { has: lineCur.length > 0, total: linesTotal, coverage: lineCur.length && total ? (linesTotal / total) * 100 : null, months: lineCur },
-    bySupplier, alsoCustomers, stockBought: sum(bySupplier, (r) => r.stock ?? 0), bySource, byCategory,
+    bySupplier, byLender, finance, alsoCustomers, stockBought: sum(bySupplier, (r) => r.stock ?? 0), bySource, byCategory,
     concentration: { suppliers: named.length, topName: top?.name ?? null, topShare: top && namedTotal ? (top.amount / namedTotal) * 100 : null, top5Share: namedTotal ? (top5 / namedTotal) * 100 : null, newCount: history ? bySupplier.filter((r) => r.isNew).length : null },
     trend, unreconciled, large, doubles, findings, notes,
   };
 }
 
-const fmtSigned = (v: number) => `${v >= 0 ? "+" : "−"}${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+const fmtAmt = (v: number) => Math.round(Math.abs(v)).toLocaleString("en-US");
+const fmtSigned = (v: number) => `${v >= 0 ? "+" : "−"}${fmtAmt(v)}`;
 
 /** Without a P&L (only an expenses file loaded), the lines' accounts stand in for the P&L's. */
 export function accountsFromLines(d: ExpensesData): ExpenseAccount[] {
