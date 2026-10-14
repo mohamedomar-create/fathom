@@ -50,7 +50,7 @@ const status = (c: number, a: number | null): ItemStatus => (c >= 100 && (a === 
 const item = (i: Omit<ReadinessItem, "status">): ReadinessItem => ({ ...i, status: status(i.completion, i.accuracy) });
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
-const GL_FIX: ReadinessFix = { what: "Upload the General Ledger from the start of the financial year to the latest month", how: "Odoo: Accounting → Reporting → General Ledger → choose the dates → Export XLSX. Or fill in iReport's monthly financials template.", template: "financials", href: "settings/source-data" };
+const GL_FIX: ReadinessFix = { what: "Upload your General Ledger for this year", how: "Odoo: Accounting → Reporting → General Ledger → Export. Or use our template.", template: "financials", href: "settings/source-data" };
 
 function summarise(items: ReadinessItem[]): { completion: number; accuracy: number | null } {
   const completion = Math.round(items.reduce((s, i) => s + i.completion, 0) / Math.max(1, items.length));
@@ -77,7 +77,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "pl", axis: "P&L months", title: "Monthly P&L for the last 12 months",
       completion: pct(n / 12), accuracy: pct(1 - last12.filter((m) => blockedIn(m.period, "PL")).length / Math.max(1, last12.length)),
       detail: annual ? "Loaded as annual figures (audited statements): monthly analysis, trends and the forecast need monthly figures." : `${last12.length} of the last 12 months have a P&L (${mlabel(last12[0].period)} to ${mlabel(last12[last12.length - 1].period)}).`,
-      fix: n < 12 || annual ? { ...GL_FIX, what: annual ? "Upload monthly figures (General Ledger) for at least the last 12 months" : `Upload the ${12 - n} earlier month${12 - n === 1 ? "" : "s"} (General Ledger)` } : undefined,
+      fix: n < 12 || annual ? { ...GL_FIX, what: annual ? "Upload month-by-month figures (General Ledger), 12 months" : `Upload ${12 - n} earlier month${12 - n === 1 ? "" : "s"}` } : undefined,
     }));
   }
   const withBS = last12.filter(hasBS);
@@ -86,8 +86,8 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "bs", axis: "Balance sheets", title: "A balance sheet at every month end",
     completion: pl.length ? pct(withBS.length / last12.length) : 0, accuracy: withBS.length ? pct(balanced.length / withBS.length) : null,
     detail: !pl.length ? "No months loaded." : `${withBS.length} of ${last12.length} months have a balance sheet; ${balanced.length} of them balance.`,
-    fix: withBS.length < last12.length ? { what: "Upload the balance sheet for each month (the General Ledger gives it)", how: GL_FIX.how, template: "financials", href: "settings/source-data" }
-      : balanced.length < withBS.length ? { what: "Fix the months whose balance sheet does not balance", how: "Data health lists them with the amount; usually an account is not mapped or this year's profit is missing from retained earnings.", href: "settings/data-health" } : undefined,
+    fix: withBS.length < last12.length ? { what: "Upload a balance sheet for each month", how: GL_FIX.how, template: "financials", href: "settings/source-data" }
+      : balanced.length < withBS.length ? { what: "Fix the months that don't balance", how: "Data health shows which months, and by how much.", href: "settings/data-health" } : undefined,
   }));
   const first = pl[0]?.period;
   const open = first ? by.get(addMonths(first, -1)) : undefined;
@@ -97,7 +97,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: openOk ? 100 : 0, accuracy: openOk ? (openBal ? 100 : 0) : null,
     detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `Not loaded: ${mlabel(first)} has no cash flow without it.`,
-    fix: openOk ? undefined : { what: `Upload a General Ledger that starts in ${first ? mlabel(first) : "the first month"} with its Initial Balance rows, or the balance sheet for ${first ? mlabel(addMonths(first, -1)) : "the month before"}`, how: "In Odoo's General Ledger keep 'Initial Balance' ticked. In the template, the first balance sheet column is the opening balance.", template: "financials", href: "settings/source-data" },
+    fix: openOk ? undefined : { what: `Add opening balances: General Ledger from ${first ? mlabel(first) : "the first month"} with "Initial balance"`, how: "In Odoo, tick Initial balance. In our template, fill the first column.", template: "financials", href: "settings/source-data" },
   }));
   if (pl.length) {
     const span = monthIndex(pl[pl.length - 1].period) - monthIndex(pl[0].period) + 1;
@@ -106,7 +106,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "gaps", axis: "No gaps", title: "Every month between the first and the latest",
       completion: pct(1 - gaps / Math.max(1, span)), accuracy: null,
       detail: gaps ? `${gaps} month${gaps === 1 ? " is" : "s are"} missing inside the range loaded.` : "No missing months.",
-      fix: gaps ? { ...GL_FIX, what: "Upload the missing months (Data health shows which)", href: "settings/data-health" } : undefined,
+      fix: gaps ? { ...GL_FIX, what: "Upload the missing months", href: "settings/data-health" } : undefined,
     }));
     const today = x.today ?? isoToday();
     const behind = monthIndex(today.slice(0, 7)) - monthIndex(pl[pl.length - 1].period);
@@ -122,7 +122,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "cash", axis: "Cash reconciles", title: "Cash flow explains the change in cash every month",
       completion: pct(cf.rows.length / Math.max(1, last12.length)), accuracy: cf.rows.length ? pct(clean / cf.rows.length) : null,
       detail: cf.rows.length ? `${clean} of ${cf.rows.length} months reconcile to the cent.` : "Needs a balance sheet for each month and the month before.",
-      fix: cf.rows.length && clean < cf.rows.length ? { what: "Fix the months where the statements do not explain the change in cash", how: "Usually an unbalanced balance sheet or an unmapped account: Data health shows the month and amount.", href: "settings/data-health" } : undefined,
+      fix: cf.rows.length && clean < cf.rows.length ? { what: "Fix the months where cash doesn't add up", how: "Data health shows the month and the amount.", href: "settings/data-health" } : undefined,
     }));
   }
   return { key: "financials", label: "Financials", ...summarise(items), items };
@@ -130,7 +130,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
 
 export function salesReadiness(x: ReadinessInput): SectorReadiness {
   const s = x.sales;
-  const SALES_FIX: ReadinessFix = { what: "Upload sales lines: the General Ledger gives them, or a sales export", how: "Odoo: Invoicing → Reporting → Invoice Analysis (list view, group by nothing) → Export, with Invoice Date, Number, Partner, Product, Product Category, Salesperson, Quantity, Untaxed Total. Or fill in iReport's sales template.", template: "sales", href: "settings/source-data" };
+  const SALES_FIX: ReadinessFix = { what: "Upload your sales", how: "Odoo: Invoicing → Reporting → Invoice Analysis → list view → Export. Or use our template.", template: "sales", href: "settings/source-data" };
   const months = s ? [...new Set(s.customers.map((r) => r.p))].sort() : [];
   const items: ReadinessItem[] = [];
   if (!s || !months.length) {
@@ -149,21 +149,21 @@ export function salesReadiness(x: ReadinessInput): SectorReadiness {
   const tied = both.filter((m) => { const rev = plCalc(m.pl).revenue; return Math.abs((byMonth.get(m.period) ?? 0) - rev) <= Math.max(1, Math.abs(rev) * 0.01); });
   items.push(item({ id: "reconciled", axis: "Ties to P&L", title: "Monthly sales equal P&L revenue (within 1%)", completion: both.length ? 100 : 0, accuracy: both.length ? pct(tied.length / both.length) : null,
     detail: both.length ? `${tied.length} of ${both.length} months tie to revenue.` : "Load the P&L for the same months to check.",
-    fix: both.length && tied.length < both.length ? { what: "Make the sales file cover the same invoices as the P&L", how: "Export posted invoices and credit notes for the whole month, amounts before VAT. Revenue booked by journal entry (not invoices) also explains a difference.", template: "sales", href: "sales" } : undefined }));
+    fix: both.length && tied.length < both.length ? { what: "Make sales match the P&L", how: "Export all invoices and credit notes for the month, before VAT.", template: "sales", href: "sales" } : undefined }));
   const total = s.customers.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
   const named = s.customers.filter((r) => r.c && r.c !== "No customer").reduce((t, r) => t + Math.abs(r.a), 0);
   items.push(item({ id: "customers", axis: "Customers", title: "Every sale has a customer", completion: pct(named / total), accuracy: null, detail: `${pct(named / total)}% of sales name the customer.`,
-    fix: named < total ? { what: "Give each invoice line a customer", how: "Revenue posted by journal entry has no customer; post sales through invoices, or fill the Customer column of the sales template.", template: "sales" } : undefined }));
+    fix: named < total ? { what: "Give each sale a customer", how: "Fill the Customer column.", template: "sales" } : undefined }));
   const ptotal = s.products.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
   const cat = s.products.filter((r) => r.g && r.g !== "No category").reduce((t, r) => t + Math.abs(r.a), 0);
   items.push(item({ id: "categories", axis: "Categories", title: "Products have a category", completion: pct(cat / ptotal), accuracy: null, detail: `${pct(cat / ptotal)}% of sales have a product category.`,
-    fix: cat < ptotal ? { what: "Add the product category", how: "Upload Odoo's Invoice Analysis with Product Category, or fill the Product category column of the sales template.", template: "sales" } : undefined }));
+    fix: cat < ptotal ? { what: "Add the product category", how: "Fill the Product category column.", template: "sales" } : undefined }));
   const qty = s.products.filter((r) => r.q !== null).reduce((t, r) => t + Math.abs(r.a), 0);
   items.push(item({ id: "qty", axis: "Quantities", title: "Quantities sold", completion: pct(qty / ptotal), accuracy: null, detail: qty ? `${pct(qty / ptotal)}% of sales have quantities.` : "No quantities: price and volume effects cannot be shown.",
-    fix: qty < ptotal ? { what: "Add quantities", how: "The General Ledger has none: upload the Invoice Analysis export or the sales template with Quantity.", template: "sales" } : undefined }));
+    fix: qty < ptotal ? { what: "Add quantities", how: "Upload the Invoice Analysis, or fill the Quantity column.", template: "sales" } : undefined }));
   const costed = s.products.reduce((t, r) => t + Math.abs(r.ka ?? 0), 0);
   items.push(item({ id: "cost", axis: "Cost & margin", title: "Cost of each sale (for margins)", completion: pct(costed / ptotal), accuracy: null, detail: costed ? `${pct(costed / ptotal)}% of sales have their cost.` : "No cost per sale: product margins cannot be shown.",
-    fix: costed < ptotal ? { what: "Add the cost of goods sold per line", how: "Odoo's Invoice Analysis has Margin (or Cost); or fill the Cost column of the sales template.", template: "sales" } : undefined }));
+    fix: costed < ptotal ? { what: "Add the cost of each sale", how: "Fill the Cost column (or export Margin from Odoo).", template: "sales" } : undefined }));
   return { key: "sales", label: "Sales", ...summarise(items), items };
 }
 
@@ -175,20 +175,20 @@ export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const hist = annualYears >= 3 ? 1 : Math.max(pl.length / 24, annualYears / 3);
   items.push(item({ id: "history", axis: "History", title: "Two years of months, or three audited years", completion: pct(hist), accuracy: null,
     detail: `${pl.length} months${annualYears ? ` (${annualYears} annual)` : ""} loaded. Banks look at 2–3 years.`,
-    fix: hist < 1 ? { what: "Load earlier years: the General Ledger by year, or the audited statements", how: "Upload each year's General Ledger, or the audited financial statements (PDF is read too).", template: "financials", href: "settings/source-data" } : undefined }));
+    fix: hist < 1 ? { what: "Add earlier years", how: "Upload each year's General Ledger, or audited statements (PDF works).", template: "financials", href: "settings/source-data" } : undefined }));
   const last = [...x.months].filter(hasBS).sort((p, q) => p.period.localeCompare(q.period)).pop();
   const debt = last ? bsCalc(last.bs).debt : 0;
   const hasNum = (v: unknown) => typeof v === "number" && Number.isFinite(v);
   items.push(item({ id: "repay", axis: "Repayments", title: "Loan principal due in the next 12 months", completion: debt <= 0 || hasNum(a.principal12m) ? 100 : 0, accuracy: null,
     detail: debt <= 0 ? "No borrowing on the latest balance sheet." : hasNum(a.principal12m) ? "Entered." : "Not entered: debt service is estimated.",
-    fix: debt > 0 && !hasNum(a.principal12m) ? { what: "Enter the loan principal due over the next 12 months", how: "From the bank's repayment schedules, on the Banking page.", href: "banking" } : undefined }));
+    fix: debt > 0 && !hasNum(a.principal12m) ? { what: "Enter loan payments due in the next 12 months", how: "On the Banking page.", href: "banking" } : undefined }));
   items.push(item({ id: "rate", axis: "Borrowing rate", title: "Your borrowing rate", completion: hasNum(a.rate) ? 100 : 0, accuracy: null, detail: hasNum(a.rate) ? `${a.rate}% a year.` : "Not entered.",
-    fix: hasNum(a.rate) ? undefined : { what: "Enter the borrowing rate", how: "The rate on your facilities (CBE lending rate plus the bank's margin), on the Banking page.", href: "banking" } }));
+    fix: hasNum(a.rate) ? undefined : { what: "Enter your loan rate", how: "On the Banking page.", href: "banking" } }));
   items.push(item({ id: "request", axis: "Request", title: "The loan you want to ask for", completion: hasNum(a.requestAmount) ? 100 : 0, accuracy: null, detail: hasNum(a.requestAmount) ? "Entered." : "Not entered.",
-    fix: hasNum(a.requestAmount) ? undefined : { what: "Enter the amount, type and purpose of the facility", how: "On the Banking page.", href: "banking" } }));
+    fix: hasNum(a.requestAmount) ? undefined : { what: "Enter the loan you want", how: "On the Banking page.", href: "banking" } }));
   items.push(item({ id: "economy", axis: "Inflation & FX", title: "Inflation and exchange rates", completion: hasNum(a.inflation) ? (hasNum(a.fxStart) && hasNum(a.fxEnd) ? 100 : 60) : 0, accuracy: null,
     detail: hasNum(a.inflation) ? "Entered." : "Not entered: real growth cannot be judged.",
-    fix: hasNum(a.inflation) && hasNum(a.fxStart) && hasNum(a.fxEnd) ? undefined : { what: "Enter inflation and the EGP/USD rates", how: "CAPMAS urban inflation and CBE rates, on the Real Profit page.", href: "analysis/real-profit" } }));
+    fix: hasNum(a.inflation) && hasNum(a.fxStart) && hasNum(a.fxEnd) ? undefined : { what: "Enter inflation and the dollar rate", how: "On the Real Profit page.", href: "analysis/real-profit" } }));
   const fin = financialsReadiness(x);
   const bal = fin.items.find((i) => i.id === "bs");
   if (bal) items.push({ ...bal, axis: "Balance sheets" });
@@ -202,13 +202,13 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
   const last = pl[pl.length - 1];
   const items: ReadinessItem[] = [
     item({ id: "run", axis: "History", title: "12 or more consecutive months (24 for seasonality)", completion: pct(run / 12), accuracy: null, detail: `${run} consecutive months up to the latest.`,
-      fix: run < 12 ? { ...GL_FIX, what: "Upload earlier months so there are 12 in a row" } : undefined }),
+      fix: run < 12 ? { ...GL_FIX, what: "Upload earlier months: 12 in a row" } : undefined }),
     item({ id: "start", axis: "Starting point", title: "The latest month has a balance sheet", completion: last && hasBS(last) ? 100 : 0, accuracy: null,
       detail: last ? (hasBS(last) ? `Starts from ${mlabel(last.period)}.` : `${mlabel(last.period)} has no balance sheet.`) : "No months loaded.",
-      fix: last && hasBS(last) ? undefined : { ...GL_FIX, what: "Upload the balance sheet for the latest month (the General Ledger gives it)" } }),
+      fix: last && hasBS(last) ? undefined : { ...GL_FIX, what: "Upload the balance sheet for the latest month" } }),
     item({ id: "drivers", axis: "Drivers", title: "Forecast drivers reviewed and saved", completion: x.forecast && Object.keys(x.forecast).length ? 100 : 0, accuracy: null,
       detail: x.forecast && Object.keys(x.forecast).length ? "Saved for this company." : "Using the measured defaults; review growth, margin, days and loans.",
-      fix: x.forecast && Object.keys(x.forecast).length ? undefined : { what: "Review the drivers and save them", how: "On the Forecast page: growth, margin, customer/stock/supplier days, loans.", href: "analysis/forecast" } }),
+      fix: x.forecast && Object.keys(x.forecast).length ? undefined : { what: "Check the forecast settings and save", how: "On the Forecast page.", href: "analysis/forecast" } }),
   ];
   return { key: "forecast", label: "Forecast", ...summarise(items), items };
 }

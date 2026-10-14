@@ -25,11 +25,11 @@ export function SalesPreview({ read, currency, overrides, onChange }: { read: Sa
   const total = read.lines.reduce((s, l) => s + l.amount, 0);
   const customers = new Set(read.lines.map((l) => l.customer)).size, products = new Set(read.lines.map((l) => l.product)).size;
   return (
-    <div className="space-y-5" data-testid="sales-preview">
+    <div className="space-y-5" data-testid="sales-columns">
       <div className="flex items-center gap-2 text-lg"><ShoppingBag className="h-5 w-5 text-brand-d" />Sales file</div>
       <div className="grid gap-4 sm:grid-cols-4">
         <Box label="Months" value={String(ps.length)} sub={ps.length ? `${mlabel(ps[0])} – ${mlabel(ps[ps.length - 1])}` : ""} />
-        <Box label="Net sales" value={money(total, currency)} sub="compare with the total in Odoo" testId="sales-total" />
+        <Box label="Net sales" value={money(total, currency)} sub="compare with the total in Odoo" testId="sales-total-detail" />
         <Box label="Lines" value={read.lines.length.toLocaleString("en-US")} sub={`${customers} customers · ${products} products`} />
         <Box label="Sheets" value={String(read.layouts.length)} sub={read.layouts.map((l) => (l.kind === "pivot" ? "pivot" : "list")).join(", ")} />
       </div>

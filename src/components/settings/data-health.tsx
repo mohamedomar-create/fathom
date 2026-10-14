@@ -191,7 +191,7 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
               <td className="!text-left">{fmtDate(r.at)}</td>
               <td className="max-w-72 truncate !text-left">
                 {r.action === "restore" ? <span>Restored earlier data{r.file ? ` (${r.file})` : ""}</span> : <span><span className="capitalize">{r.kind === "odoo" ? "Odoo sync" : r.kind}</span>{r.file ? ` · ${r.file}` : ""}</span>}
-                {r.mode && r.action === "import" && <span className="ml-1.5 rounded bg-band px-1.5 text-[11px] text-mute">{r.mode === "merge" ? "merged" : "replaced all"}</span>}
+                {r.mode && r.action === "import" && <span className="ml-1.5 rounded bg-band px-1.5 text-[11px] text-mute">{r.mode === "merge" ? "replaced its months" : r.mode === "add" ? "added new months" : "replaced all"}</span>}
                 {r.accepted > 0 && <span className="ml-1.5 rounded bg-[#efe3f5] px-1.5 text-[11px]">{r.accepted} accepted</span>}
                 {!!r.fixes?.length && (
                   <details className="mt-0.5 whitespace-normal text-[12px] text-mute" data-testid="history-fixes">

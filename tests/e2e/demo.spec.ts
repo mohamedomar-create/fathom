@@ -46,18 +46,33 @@ test("goalseek lever changes move the NOW marker", async ({ page }) => {
   await expect(marker).not.toHaveText(before);
 });
 
-test("Odoo export importer maps and balances a real file", async ({ page }) => {
+/** The upload, step by step: what → get file → upload. */
+async function toUpload(page: import("@playwright/test").Page, kind: "accounts" | "sales" = "accounts") {
   await page.goto("/demo/settings/source-data");
+  await expect(page.getByTestId("wiz-steps")).toHaveAttribute("data-at", "what");
+  await page.getByTestId(`pick-${kind}`).click();
+  await expect(page.getByTestId("get-odoo")).toContainText(kind === "sales" ? "Invoice Analysis" : "General Ledger");
+  await page.getByTestId("wiz-next").click();
+  await expect(page.getByTestId("dropzone")).toBeVisible();
+}
+
+test("Odoo export importer maps and balances a real file", async ({ page }) => {
+  await toUpload(page);
   await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-pl-bs.xlsx"));
-  await expect(page.getByTestId("review")).toContainText("36 / 36");
-  await expect(page.getByTestId("review")).toContainText("Balances");
-  await expect(page.getByTestId("review")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("wiz-steps")).toHaveAttribute("data-at", "check");
+  await expect(page.getByTestId("balanced")).toContainText("Yes");
+  await expect(page.getByTestId("problems")).toContainText("0");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
+  await page.getByTestId("reading-tab-pl").click();
+  await expect(page.getByTestId("sorted-pl")).toContainText("EGP 1,066,138");
   await expect(page.getByTestId("file-reading")).toContainText("Profit and Loss: 28 lines");
+  // The demo saves nothing: the last step asks for an account.
+  await expect(page.getByTestId("commit-import")).toHaveText(/Create a free account to save/);
 });
 
 test("an Odoo ledger, trial balance and P&L uploaded together: the ledger is imported, the others prove it", async ({ page }) => {
   const f = (n: string) => path.join(__dirname, `../fixtures/files/egypt-odoo-${n}.xlsx`);
-  await page.goto("/demo/settings/source-data");
+  await toUpload(page);
   await page.getByTestId("file-input").setInputFiles([f("general-ledger"), f("trial-balance"), f("profit-and-loss")]);
   const reading = page.getByTestId("file-reading");
   await expect(reading).toContainText("Odoo General Ledger");
@@ -72,27 +87,28 @@ test("an Odoo ledger, trial balance and P&L uploaded together: the ledger is imp
 
 /** The two boxes: the file as uploaded beside iReport's sorted reading, linked both ways. */
 test("each line of iReport's reading points to its rows in the file, and each row says what it became", async ({ page }) => {
-  await page.goto("/demo/settings/source-data");
+  await toUpload(page);
   await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-pl-bs.xlsx"));
   await expect(page.getByTestId("two-box")).toBeVisible();
-  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
   const phone = (page.viewportSize()?.width ?? 1440) < 1024;
   await page.getByTestId("reading-tab-pl").click();
   await expect(page.getByTestId("total-net")).toBeVisible();
-  await page.getByTestId("sorted-pl").getByTestId("sorted-row").first().click({ position: { x: 24, y: 10 } });
+  await page.getByTestId("sorted-pl").getByTestId("sorted-row").first().dispatchEvent("click");
   // On a phone the file tab opens at the line's rows.
   await expect(page.locator('[data-testid^="raw-row-"][data-focus="true"]').first()).toBeVisible();
   // A row on the left: what it became.
-  await page.locator('[data-testid^="raw-row-"][data-role="header"]').first().click();
+  await page.locator('[data-testid^="raw-row-"][data-role="header"]').first().dispatchEvent("click");
   if (phone) await page.getByTestId("tab-reading").click();
-  await expect(page.getByTestId("picked-note")).toContainText("column headings");
+  await expect(page.getByTestId("picked-note")).toContainText("headings");
 });
 
-test("a figure written as text is an error to fix in the box; fixing it clears the error", async ({ page }) => {
-  await page.goto("/demo/settings/source-data");
-  const csv = "Account,Jan 2026,Feb 2026,Mar 2026\nSales,1000,1200,1100\nCost of sales,600,seven hundred,650\nRent,100,100,100\n";
+test("problems are fixed one at a time in the box; Next stays off until they are all fixed", async ({ page }) => {
+  await toUpload(page);
+  const csv = "Account,Jan 2026,Feb 2026,Mar 2026\nSales,1000,1200,1100\nCost of sales,600,seven hundred,650\nRent,100,n/a,100\n";
   await page.getByTestId("file-input").setInputFiles({ name: "messy-pl.csv", mimeType: "text/csv", buffer: Buffer.from(csv) });
-  await expect(page.getByTestId("error-count")).toHaveText("1 error to fix");
+  await expect(page.getByTestId("error-count")).toHaveText("2 problems to fix");
+  await expect(page.getByTestId("problem-counter")).toHaveText("Problem 1 of 2");
   const phone = (page.viewportSize()?.width ?? 1440) < 1024;
   if (phone) await page.getByTestId("tab-file").click();
   await expect(page.getByTestId("raw-error-2-2")).toHaveText("seven hundred");
@@ -101,31 +117,44 @@ test("a figure written as text is an error to fix in the box; fixing it clears t
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     await page.getByTestId("tab-reading").click();
   }
-  await expect(page.getByTestId("issue-list")).toContainText('row 3, column C: "seven hundred" is not a number');
+  await expect(page.getByTestId("issue-text")).toHaveText("Row 3, column C: must be a number.");
   await page.getByTestId("fix-input").fill("700");
   await page.getByTestId("fix-apply").click();
-  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
+  await expect(page.getByTestId("problem-counter")).toHaveText("Problem 1 of 1");
+  await expect(page.getByTestId("issue-text")).toHaveText("Row 4, column C: must be a number.");
+  await page.getByTestId("fix-skip").click();
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
   await page.getByTestId("reading-tab-pl").click();
   await expect(page.getByTestId("sorted-pl")).toContainText("EGP 700");
 });
 
 test("the sorted reading downloads as iReport's template and reads back to the same figures", async ({ page }) => {
-  await page.goto("/demo/settings/source-data");
+  await toUpload(page);
   await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-pl-bs.xlsx"));
-  await expect(page.getByTestId("review")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("download-sorted").click()]);
   expect(dl.suggestedFilename()).toBe("ireport-financials-filled.xlsx");
   const file = await dl.path();
-  await page.getByRole("button", { name: "Choose other files" }).click();
+  await page.getByRole("button", { name: "Choose another file" }).click();
   await page.getByTestId("file-input").setInputFiles(file);
   await expect(page.getByTestId("file-reading")).toContainText("iReport template");
-  await expect(page.getByTestId("review")).toContainText("EGP 1,066,138");
-  await expect(page.getByTestId("review")).toContainText("Balances");
-  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
+  await expect(page.getByTestId("balanced")).toContainText("Yes");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
+  await page.getByTestId("reading-tab-pl").click();
+  await expect(page.getByTestId("sorted-pl")).toContainText("EGP 1,066,138");
+});
+
+test("a sales file picked as accounts offers to switch", async ({ page }) => {
+  await toUpload(page, "accounts");
+  await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-invoice-analysis.xlsx"));
+  await expect(page.getByTestId("upload-notice")).toContainText("This looks like a sales file.");
+  await page.getByTestId("switch-kind").click();
+  await expect(page.getByTestId("upload-notice")).toHaveCount(0);
+  await expect(page.getByTestId("sales-total")).toBeVisible();
 });
 
 test("a PDF in the demo says reading it needs an account", async ({ page }) => {
-  await page.goto("/demo/settings/source-data");
+  await toUpload(page);
   await page.getByTestId("file-input").setInputFiles({ name: "statements.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-1.7\n") });
   await expect(page.getByText(/Reading PDFs and scanned pages needs a free account/)).toBeVisible();
 });

@@ -12,19 +12,22 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const { tab = "upload", step } = await searchParams;
   const { supabase } = await getUser();
   const { role } = await loadCompanyBundle(id);
-  const [{ data: c }, { data: imports }, { data: odoo }] = await Promise.all([
+  const [{ data: c }, { data: imports }, { data: odoo }, { data: batches }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
     supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, version, status, last_error, last_sync_at").eq("company_id", id).maybeSingle(),
+    supabase.from("sales_batches").select("periods").eq("company_id", id).eq("source", "file"),
   ]);
+  // Months that already have sales from a file: a new sales file asks before replacing them.
+  const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const lastUpload = imports?.find((i) => i.kind === "upload");
   const savedMapping = ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};
-  const tabs = [{ k: "upload", l: "Upload Odoo export" }, { k: "odoo", l: "Connect Odoo (live)" }];
+  const tabs = [{ k: "upload", l: "Upload a file" }, { k: "odoo", l: "Connect Odoo (live)" }];
   return (
     <div>
       <div className="label">2 · Source Data</div>
-      <h1 className="mb-1 text-3xl font-light">Financials</h1>
-      <p className="mb-5 text-mute">Bring in monthly P&amp;L and balance sheet data from Odoo. Uploads can add or replace single months; the P&amp;L and balance sheet can come from separate files. See <Link href={`/company/${id}/settings/data-health`} className="text-brand-d underline">Data health</Link> for loaded months, checks and undo.</p>
+      <h1 className="mb-1 text-3xl font-light">Add your data</h1>
+      <p className="mb-5 text-mute">Step by step. Nothing is saved until you press Save. <Link href={`/company/${id}/settings/data-health`} className="text-brand-d underline">Undo an upload</Link></p>
       <div className="mb-6 flex gap-1 border-b border-line">
         {tabs.map((t) => (
           <Link key={t.k} href={`?tab=${t.k}`} scroll={false} className={cn("-mb-px border-b-2 px-4 py-2 text-sm", tab === t.k ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.l}</Link>
@@ -33,7 +36,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
-      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" ? step : undefined} />}
+      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" ? step : undefined} salesLoaded={salesLoaded} />}
       {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
       </>}
     </div>

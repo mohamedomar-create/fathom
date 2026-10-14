@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronRight, Download } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { mlabel, money, type ClassKey } from "@/lib/engine";
 import { CLASS_LABEL, CLASS_OPTIONS } from "@/lib/ingest/classes";
 import { cleanNum } from "@/lib/ingest/parse";
-import { cellRef } from "@/lib/ingest/trace";
 import { salesMonths, type SortedFinancials, type SortedRow, type UploadIssue } from "@/lib/ingest/sorted";
+import { plainIssue } from "@/lib/ingest/plain";
 import type { SalesLine } from "@/lib/ingest/sales";
 import { isPL } from "@/lib/company/build";
 import { cn } from "@/lib/cn";
@@ -39,7 +39,7 @@ export interface SortedViewProps {
 export function SortedView(p: SortedViewProps) {
   const errors = p.issues.filter((i) => i.severity === "error"), checks = p.issues.filter((i) => i.severity === "check");
   const tabs: { k: Tab; label: string; n?: number }[] = [
-    ...(errors.length || checks.length ? [{ k: "issues" as Tab, label: errors.length ? "Errors to fix" : "Checks", n: errors.length || checks.length }] : []),
+    ...(errors.length || checks.length ? [{ k: "issues" as Tab, label: errors.length ? "Problems" : "To check", n: errors.length || checks.length }] : []),
     ...(p.fin && p.fin.plPeriods.length ? [{ k: "pl" as Tab, label: "P&L" }] : []),
     ...(p.fin && p.fin.bsPeriods.length ? [{ k: "bs" as Tab, label: "Balance sheet" }] : []),
     ...(p.sales?.length ? [{ k: "sales" as Tab, label: "Sales", n: p.sales.length }] : []),
@@ -56,23 +56,14 @@ export function SortedView(p: SortedViewProps) {
     const t: Tab | null = inPl ? "pl" : inBs ? "bs" : k && p.fin?.leftOut.some((o) => o.key === k) ? "out" : p.picked.row !== undefined && p.sales?.some((l) => l.src?.sheet === p.picked!.sheet && l.src?.row === p.picked!.row) ? "sales" : null;
     if (t && t !== tab) setTab(t);
   }
-  const [cursor, setCursor] = useState(0);
-  const next = () => {
-    if (!errors.length) return;
-    const e = errors[cursor % errors.length];
-    setCursor(cursor + 1); setTab("issues");
-    if (e.row !== undefined) p.onFocus({ sheet: e.sheet, rows: [e.row] }, { stay: true });
-  };
   return (
     <>
-      <div className={cn("flex flex-wrap items-center gap-2 px-3 py-2 text-sm", errors.length ? "bg-red-bg text-red" : "bg-green-bg text-green-d")} data-testid="reading-status" data-errors={errors.length}>
-        {errors.length ? <AlertTriangle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
-        <b data-testid="error-count">{errors.length ? `${errors.length} error${errors.length > 1 ? "s" : ""} to fix` : "0 errors: ready to import"}</b>
-        {!errors.length && checks.length > 0 && <span className="text-[12.5px] text-ink/70">· {checks.length} thing{checks.length > 1 ? "s" : ""} to check</span>}
-        {errors.length > 0 && <button onClick={next} className="ml-auto inline-flex items-center gap-1 rounded border border-red/40 bg-white px-2 py-0.5 text-xs" data-testid="next-error">Next error<ChevronRight className="h-3 w-3" /></button>}
+      <div className={cn("flex flex-wrap items-center gap-2 px-3 py-2.5 text-[15px]", errors.length ? "bg-red-bg text-red" : "bg-green-bg text-green-d")} data-testid="reading-status" data-errors={errors.length}>
+        {errors.length ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
+        <b data-testid="error-count">{errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""} to fix` : "All good"}</b>
         {!errors.length && p.onDownload && (
-          <button onClick={p.onDownload} disabled={p.downloading} className="ml-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted">
-            <Download className="h-3 w-3" />{p.downloading ? "Preparing…" : "Download as iReport template"}
+          <button onClick={p.onDownload} disabled={p.downloading} className="ml-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted" title="The sorted data as iReport's template: upload it next time">
+            <Download className="h-3 w-3" />{p.downloading ? "Preparing…" : "Download clean copy"}
           </button>
         )}
       </div>
@@ -97,9 +88,10 @@ export function SortedView(p: SortedViewProps) {
 
 function ClassSelect({ value, onChange, label, compact }: { value: ClassKey | "" | null; onChange: (c: ClassKey | "") => void; label: string; compact?: boolean }) {
   return (
-    <select value={value ?? ""} onChange={(e) => onChange(e.target.value as ClassKey | "")} aria-label={label} onClick={(e) => e.stopPropagation()}
+    <select value={value === null ? "__pick" : value} onChange={(e) => { if (e.target.value !== "__pick") onChange(e.target.value as ClassKey | ""); }} aria-label={label} onClick={(e) => e.stopPropagation()}
       className={cn("max-w-48 rounded border bg-white px-1 py-0.5 text-left", compact ? "text-[11.5px]" : "text-[12.5px]", !value ? "border-red/60" : "border-line")}>
-      <option value="">— Leave out —</option>
+      {value === null && <option value="__pick" disabled>Pick a type…</option>}
+      <option value="">— Skip —</option>
       <optgroup label="Profit & Loss">{CLASS_OPTIONS.filter(isPL).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
       <optgroup label="Balance Sheet">{CLASS_OPTIONS.filter((c) => !isPL(c)).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
     </select>
@@ -112,17 +104,38 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, origin, f
     for (const g of [...(fin?.pl ?? []), ...(fin?.bs ?? [])]) for (const r of g.rows) m.set(r.key, r.cls);
     return m;
   }, [fin]);
+  const [at, setAt] = useState(0);
+  const [all, setAll] = useState(false);
+  const i = Math.min(at, Math.max(0, errors.length - 1));
+  const row = (x: UploadIssue, main = false) => <IssueRow key={x.id} i={x} main={main} origin={origin?.(x.sheet)} onFocus={onFocus} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} cls={x.key ? clsOf.get(x.key) ?? null : null} />;
   return (
-    <ul className="divide-y divide-line text-[13px]" data-testid="issue-list">
-      {errors.map((i) => <IssueRow key={i.id} i={i} origin={origin?.(i.sheet)} onFocus={onFocus} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} cls={i.key ? clsOf.get(i.key) ?? null : null} />)}
-      {checks.length > 0 && <li className="bg-band px-3 py-1.5 text-xs font-medium text-mute">To check (these do not stop the import)</li>}
-      {checks.map((i) => <IssueRow key={i.id} i={i} origin={origin?.(i.sheet)} onFocus={onFocus} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} cls={i.key ? clsOf.get(i.key) ?? null : null} />)}
-      {!errors.length && !checks.length && <li className="px-3 py-6 text-center text-mute">Nothing to fix.</li>}
-    </ul>
+    <div className="text-[14px]" data-testid="issue-list">
+      {errors.length > 0 && (
+        <div className="border-b border-line">
+          <div className="flex items-center gap-2 bg-band/70 px-3 py-1.5 text-[13px]">
+            <b data-testid="problem-counter">Problem {i + 1} of {errors.length}</b>
+            <span className="ml-auto flex gap-1">
+              <button disabled={i === 0} onClick={() => setAt(i - 1)} className="rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" aria-label="Previous problem"><ChevronLeft className="h-3.5 w-3.5" /></button>
+              <button disabled={i >= errors.length - 1} onClick={() => { setAt(i + 1); const n = errors[i + 1]; if (n?.row !== undefined) onFocus({ sheet: n.sheet, rows: [n.row] }, { stay: true }); }} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" data-testid="next-problem">Next problem<ChevronRight className="h-3.5 w-3.5" /></button>
+            </span>
+          </div>
+          <ul>{row(errors[i], true)}</ul>
+          {errors.length > 1 && <button onClick={() => setAll(!all)} className="px-3 pb-2 text-xs text-brand-d underline" data-testid="see-all">{all ? "Hide the list" : `See all ${errors.length} problems`}</button>}
+          {all && <ul className="divide-y divide-line border-t border-line">{errors.map((x) => row(x))}</ul>}
+        </div>
+      )}
+      {checks.length > 0 && (
+        <details open={!errors.length} className="px-3 py-2" data-testid="checks">
+          <summary className="cursor-pointer text-[13px] text-mute">Things to check ({checks.length}). These don&apos;t stop you.</summary>
+          <ul className="-mx-3 mt-1 divide-y divide-line">{checks.map((x) => row(x))}</ul>
+        </details>
+      )}
+      {!errors.length && !checks.length && <p className="px-3 py-6 text-center text-mute">Nothing to fix.</p>}
+    </div>
   );
 }
 
-function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls }: { i: UploadIssue; origin?: { r: number; c: number }; cls: ClassKey | null } & Pick<SortedViewProps, "onFocus" | "onClass" | "onCell" | "onSkipRow">) {
+function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls, main }: { i: UploadIssue; origin?: { r: number; c: number }; cls: ClassKey | null; main?: boolean } & Pick<SortedViewProps, "onFocus" | "onClass" | "onCell" | "onSkipRow">) {
   const [v, setV] = useState(i.text ?? "");
   const [bad, setBad] = useState<string | null>(null);
   const isDate = /not a date|no invoice date|no month/.test(i.message);
@@ -139,7 +152,7 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls }: { i: 
       <div className="flex items-start gap-2">
         {i.severity === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />}
         <div className="min-w-0 flex-1">
-          <div>{i.sheet && <span className="mr-1 font-medium">{i.sheet.split(" › ").pop()}{i.row !== undefined && !i.message.startsWith("row") ? `, ${cellRef(i.row, i.col, origin)}` : ""}:</span>}{i.message}</div>
+          <div title={i.message} data-testid={main ? "issue-text" : "issue-line"} className={cn(main && "text-[15px] font-medium")}>{plainIssue(i, origin)}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             {i.row !== undefined && <button onClick={() => onFocus({ sheet: i.sheet, rows: [i.row!] })} className="text-xs text-brand-d underline" data-testid="show-in-file">Show in my file</button>}
             {i.fix === "cell" && i.classCell && (
@@ -148,13 +161,13 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls }: { i: 
             {i.fix === "cell" && !i.classCell && (
               <form onSubmit={(e) => { e.preventDefault(); apply(); }} className="flex items-center gap-1.5">
                 <input value={v} onChange={(e) => { setV(e.target.value); setBad(null); }} aria-label="Correct value" data-testid="fix-input"
-                  placeholder={isDate ? "15/01/2026" : "5000"} className="w-32 rounded border border-line px-1.5 py-0.5 text-[12.5px]" />
-                <button type="submit" className="rounded bg-brand-d px-2 py-0.5 text-xs text-white" data-testid="fix-apply">Use this</button>
+                  placeholder={isDate ? "15/01/2026" : "5000"} className="w-36 rounded border border-line px-2 py-1 text-[14px]" />
+                <button type="submit" className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="fix-apply">Fix</button>
               </form>
             )}
-            {i.fix === "cell" && <button onClick={() => onSkipRow(i.sheet, i.row!)} className="text-xs text-mute underline" data-testid="fix-skip">Leave this row out</button>}
+            {i.fix === "cell" && <button onClick={() => onSkipRow(i.sheet, i.row!)} className="text-xs text-mute underline" data-testid="fix-skip">Skip this row</button>}
             {i.fix === "class" && i.key && <ClassSelect value={cls} label={`Class for ${i.message.slice(0, 40)}`} compact onChange={(c) => onClass(i.key!, c)} />}
-            {i.fix === "settings" && i.severity === "error" && <span className="text-xs text-mute">Fix it under &quot;How the file was read&quot; (leave a sheet or column out), or upload a corrected file.</span>}
+            {i.fix === "settings" && i.severity === "error" && <span className="text-xs text-mute">Open &quot;More options&quot; below, or upload a fixed file.</span>}
           </div>
           {bad && <div className="mt-1 text-xs text-red">{bad}</div>}
         </div>

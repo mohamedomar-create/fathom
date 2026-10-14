@@ -426,6 +426,10 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   const whole = (note: string) => { layout.trace = []; for (const i of rowNo) layout.trace[i] = { role: "skipped", note }; layout.cellErrors = []; };
   if (ov.skip) { layout.kind = "skipped"; whole("sheet left out by you"); return []; }
   if (!rows.length) return [];
+  // iReport's templates come with "Read me" and "Classes" sheets: help text, not figures.
+  if (/^(read me|readme|classes)$/i.test(g.name.split(" › ").pop() ?? "") && !rows.some((r) => r.some((v) => typeof v === "number"))) {
+    layout.kind = "skipped"; layout.source = "Help sheet (no figures)"; whole("help text, no figures"); return [];
+  }
   // Odoo adds a "Filters" sheet (Company, Journals, Options): report settings, not figures.
   if (/^filters?$/i.test(g.name.split(" › ").pop() ?? "") && rows.length <= 40 && !rows.some((r) => r.some((v) => typeof v === "number"))) {
     layout.kind = "skipped"; layout.source = "Report filters (no figures)"; whole("report settings, no figures"); return [];

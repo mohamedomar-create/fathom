@@ -33,7 +33,12 @@ export interface IncomingAccount {
   ref?: SourceRef;
 }
 
-export type ImportMode = "merge" | "replace";
+/**
+ * merge: the months in the file replace the same months already loaded; other months stay.
+ * add: only months not loaded yet are added; months already loaded are kept as they are.
+ * replace: everything loaded is removed and only the file is kept.
+ */
+export type ImportMode = "merge" | "add" | "replace";
 export type Statement = "PL" | "BS";
 /** Months the file covers, per statement. A covered month replaces the stored month even where the file has zeros. */
 export type Slices = Record<Statement, string[]>;
@@ -41,11 +46,16 @@ export type SliceState = "new" | "overwrite" | "keep" | "remove";
 export interface TimelineCell { period: string; PL?: SliceState; BS?: SliceState }
 export interface MonthDiff { period: string; metric: "revenue" | "net_income" | "cash" | "ta"; before: number; after: number }
 
+/** A month (of one statement) that is both in the file and already loaded, and whether the figures are the same. */
+export interface Overlap { period: string; statement: Statement; same: boolean }
+
 export interface ImportPlan {
   accounts: VersionAccount[];
   timeline: TimelineCell[];
   diffs: MonthDiff[];
   checks: Check[];
+  /** Months in the file that are already loaded (whatever the mode): the duplicates the person decides about. */
+  overlap: Overlap[];
 }
 
 export const statementOf = (cls: ClassKey): Statement => (isPL(cls) ? "PL" : "BS");
@@ -58,13 +68,23 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], opts: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null }): ImportPlan {
+export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null }): ImportPlan {
+  // "add" reads the file exactly as a merge does, then leaves out the months already loaded.
+  const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
   const seeded = seedOpening(current, incomingIn, opts);
-  const { incoming, rangeChecks: rc } = deriveRanges(current, seeded.incoming, opts);
-  const rangeChecks = [...rc, ...seeded.checks];
+  const derived = deriveRanges(current, seeded.incoming, opts);
+  const rangeChecks = [...derived.rangeChecks, ...seeded.checks];
   const inc: Record<Statement, Set<string>> = { PL: new Set(opts.slices.PL), BS: new Set(opts.slices.BS) };
   // Every month the file has a figure for is covered, whatever the caller declared.
-  for (const n of incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
+  for (const n of derived.incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
+  const loaded = coverageOf(current);
+  const isLoaded = (st: Statement, p: string) => (st === "PL" ? loaded.pl : loaded.bs).has(p);
+  const overlap = overlaps(current, derived.incoming, inc, isLoaded);
+  let incoming = derived.incoming;
+  if (optsIn.mode === "add") {
+    for (const st of ["PL", "BS"] as const) for (const p of [...inc[st]]) if (isLoaded(st, p)) inc[st].delete(p);
+    incoming = incoming.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => inc[statementOf(a.cls)].has(p))) }));
+  }
   const covered = (cls: ClassKey, p: string) => inc[statementOf(cls)].has(p);
   const out = new Map<string, VersionAccount>();
 
@@ -138,7 +158,24 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
   const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
-  return { accounts, timeline, diffs, checks };
+  return { accounts, timeline, diffs, checks, overlap };
+}
+
+/** Months in the file that are already loaded, each marked the same (every account equal to the cent) or different. */
+function overlaps(current: VersionAccount[], incoming: IncomingAccount[], inc: Record<Statement, Set<string>>, isLoaded: (st: Statement, p: string) => boolean): Overlap[] {
+  const out: Overlap[] = [];
+  for (const st of ["PL", "BS"] as const) for (const p of [...inc[st]].sort()) {
+    if (!isLoaded(st, p)) continue;
+    const sum = (as: { code: string; name: string; cls: ClassKey; amounts: Record<string, number> }[]) => {
+      const m = new Map<string, number>();
+      for (const a of as) if (statementOf(a.cls) === st && a.amounts[p]) m.set(accountIdentity(a), (m.get(accountIdentity(a)) ?? 0) + a.amounts[p]);
+      return m;
+    };
+    const a = sum(current), b = sum(incoming);
+    const same = a.size === b.size && [...a].every(([k, v]) => Math.abs((b.get(k) ?? NaN) - v) < 0.01);
+    out.push({ period: p, statement: st, same });
+  }
+  return out;
 }
 
 /**
