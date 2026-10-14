@@ -1,6 +1,9 @@
 import { addMonths, mlabel } from "./format";
 import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
 import type { Comparison } from "./types";
+import { monthLabel } from "@/lib/i18n";
+
+const WORD_AR: Record<string, string> = { "the same period last year": "نفس الفترة من العام الماضي", "last month": "الشهر السابق", "the prior quarter": "الربع السابق", "the prior year": "السنة السابقة" };
 
 /**
  * Sales analysis from invoice lines added up by customer and by product per month (the shape the database returns).
@@ -135,8 +138,11 @@ function rank<R extends { p: string; a: number; k: number | null; ka: number | n
 
 export function salesAnalysis(
   d: SalesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number>; categoryOf?: (c: string) => string } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; categoryOf?: (c: string) => string; lang?: "en" | "ar" } = {},
 ): SalesAnalysis {
+  const ar = opts.lang === "ar";
+  const L = (en: string, a: string) => (ar ? a : en);
+  const ml = (p: string) => (ar ? monthLabel(p, "ar") : mlabel(p));
   const window = windowFor(sel, fyStart);
   const shift = opts.comparison === "ly" ? 12 : sel.type === "month" ? 1 : sel.type === "quarter" ? 3 : 12;
   const cmpW = shiftWindow(window, shift);
@@ -233,20 +239,21 @@ export function salesAnalysis(
   const findings: SalesFinding[] = [];
   const g = growthOf(total, compare);
   const word = opts.comparison === "ly" ? "the same period last year" : sel.type === "month" ? "last month" : sel.type === "quarter" ? "the prior quarter" : "the prior year";
-  if (g !== null && Math.abs(g) >= 5) findings.push({ kind: g > 0 ? "win" : "risk", title: `Sales ${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(1)}% on ${word}`, text: pvm ? `Price ${fmtSigned(pvm.price)}, volume ${fmtSigned(pvm.volume)}, mix ${fmtSigned(pvm.mix)}, new or dropped products ${fmtSigned(pvm.newLost)}.` : "Look at the categories and customers below to see what drove it." });
+  const wordA = WORD_AR[word] ?? word;
+  if (g !== null && Math.abs(g) >= 5) findings.push({ kind: g > 0 ? "win" : "risk", title: L(`Sales ${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(1)}% on ${word}`, `المبيعات ${g > 0 ? "ارتفعت" : "انخفضت"} ${Math.abs(g).toFixed(1)}% عن ${wordA}`), text: pvm ? L(`Price ${fmtSigned(pvm.price)}, volume ${fmtSigned(pvm.volume)}, mix ${fmtSigned(pvm.mix)}, new or dropped products ${fmtSigned(pvm.newLost)}.`, `السعر ${fmtSigned(pvm.price)}، الكمية ${fmtSigned(pvm.volume)}، التشكيلة ${fmtSigned(pvm.mix)}، منتجات جديدة أو متوقفة ${fmtSigned(pvm.newLost)}.`) : L("Look at the categories and customers below to see what drove it.", "راجع الفئات والعملاء أدناه لمعرفة السبب.") });
   const top = namedRows[0];
-  if (top && total > 0 && top.amount / total > 0.2) findings.push({ kind: "risk", title: `One customer is ${Math.round((top.amount / total) * 100)}% of sales`, text: `${top.name}. Losing or delaying this customer would hit revenue and cash hard: banks also look at this.` });
-  else if (namedRows.length >= 10 && total > 0 && top10 / total > 0.6) findings.push({ kind: "watch", title: `Ten customers make ${Math.round((top10 / total) * 100)}% of sales`, text: "Sales depend on a small group of customers." });
+  if (top && total > 0 && top.amount / total > 0.2) findings.push({ kind: "risk", title: L(`One customer is ${Math.round((top.amount / total) * 100)}% of sales`, `عميل واحد يمثل ${Math.round((top.amount / total) * 100)}% من المبيعات`), text: L(`${top.name}. Losing or delaying this customer would hit revenue and cash hard: banks also look at this.`, `${top.name}. فقدان هذا العميل أو تأخره سيؤثر بشدة على الإيرادات والنقدية: والبنوك تنظر إلى ذلك أيضًا.`) });
+  else if (namedRows.length >= 10 && total > 0 && top10 / total > 0.6) findings.push({ kind: "watch", title: L(`Ten customers make ${Math.round((top10 / total) * 100)}% of sales`, `عشرة عملاء يمثلون ${Math.round((top10 / total) * 100)}% من المبيعات`), text: L("Sales depend on a small group of customers.", "المبيعات تعتمد على مجموعة صغيرة من العملاء.") });
   const movers = byCategory.filter((r) => r.growth !== null && r.compare !== null && Math.abs(r.amount - r.compare) >= Math.abs(total) * 0.05).sort((a, b) => Math.abs(b.amount - b.compare!) - Math.abs(a.amount - a.compare!));
-  if (movers[0]) findings.push({ kind: movers[0].amount > movers[0].compare! ? "win" : "watch", title: `${movers[0].name} ${movers[0].amount > movers[0].compare! ? "grew" : "fell"} ${Math.abs(movers[0].growth!).toFixed(0)}%`, text: `${fmtSigned(movers[0].amount - movers[0].compare!)} against ${word}: the largest change of any category.` });
-  if (lostSet && lostSet.length) findings.push({ kind: "watch", title: `${lostSet.length} customer${lostSet.length > 1 ? "s have" : " has"} not bought for three months`, text: `They bought in the year before. ${lostSet.slice(0, 3).join(", ")}${lostSet.length > 3 ? "…" : ""}` });
-  if (unreconciled.length) findings.push({ kind: "risk", title: `Sales differ from P&L revenue in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, text: `${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. Revenue posted without an invoice (journal entries) or a sales file covering other dates.` });
+  if (movers[0]) findings.push({ kind: movers[0].amount > movers[0].compare! ? "win" : "watch", title: L(`${movers[0].name} ${movers[0].amount > movers[0].compare! ? "grew" : "fell"} ${Math.abs(movers[0].growth!).toFixed(0)}%`, `${movers[0].name} ${movers[0].amount > movers[0].compare! ? "نمت" : "انخفضت"} ${Math.abs(movers[0].growth!).toFixed(0)}%`), text: L(`${fmtSigned(movers[0].amount - movers[0].compare!)} against ${word}: the largest change of any category.`, `${fmtSigned(movers[0].amount - movers[0].compare!)} مقارنة بـ${wordA}: أكبر تغير بين الفئات.`) });
+  if (lostSet && lostSet.length) findings.push({ kind: "watch", title: L(`${lostSet.length} customer${lostSet.length > 1 ? "s have" : " has"} not bought for three months`, `عملاء لم يشتروا منذ ثلاثة أشهر: ${lostSet.length}`), text: L(`They bought in the year before. ${lostSet.slice(0, 3).join(", ")}${lostSet.length > 3 ? "…" : ""}`, `اشتروا في السنة السابقة. ${lostSet.slice(0, 3).join("، ")}${lostSet.length > 3 ? "…" : ""}`) });
+  if (unreconciled.length) findings.push({ kind: "risk", title: L(`Sales differ from P&L revenue in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, `المبيعات تختلف عن إيرادات قائمة الدخل في عدد من الأشهر: ${unreconciled.length}`), text: L(`${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. Revenue posted without an invoice (journal entries) or a sales file covering other dates.`, `${unreconciled.slice(0, 3).map((u) => `${ml(u.period)}: ${fmtSigned(u.diff)}`).join("؛ ")}. إيرادات مسجلة دون فاتورة (قيود يومية) أو ملف مبيعات يغطي تواريخ أخرى.`) });
 
   const notes: string[] = [];
-  if (!cmpOk) notes.push(`No sales loaded for ${cmpW.periods.length === 1 ? mlabel(cmpW.periods[0]) : `${mlabel(cmpW.periods[0])} – ${mlabel(cmpW.periods[cmpW.periods.length - 1])}`}, so there is no comparison.`);
-  if (newSet === null) notes.push("New customers need at least three months of sales before the period.");
-  if (!pvm && cmp) notes.push("Price, volume and mix need quantities: upload a sales export with a quantity column.");
-  if (margin === null && costCoverage < 95) notes.push("Margins need product cost: upload Odoo's Sales or Invoice Analysis with the Margin or Cost column.");
+  if (!cmpOk) notes.push(L(`No sales loaded for ${cmpW.periods.length === 1 ? mlabel(cmpW.periods[0]) : `${mlabel(cmpW.periods[0])} – ${mlabel(cmpW.periods[cmpW.periods.length - 1])}`}, so there is no comparison.`, `لا توجد مبيعات محمّلة لـ ${cmpW.periods.length === 1 ? ml(cmpW.periods[0]) : `${ml(cmpW.periods[0])} – ${ml(cmpW.periods[cmpW.periods.length - 1])}`}، لذلك لا توجد مقارنة.`));
+  if (newSet === null) notes.push(L("New customers need at least three months of sales before the period.", "معرفة العملاء الجدد تحتاج ثلاثة أشهر على الأقل من المبيعات قبل الفترة."));
+  if (!pvm && cmp) notes.push(L("Price, volume and mix need quantities: upload a sales export with a quantity column.", "تحليل السعر والكمية والتشكيلة يحتاج الكميات: ارفع ملف مبيعات به عمود للكمية."));
+  if (margin === null && costCoverage < 95) notes.push(L("Margins need product cost: upload Odoo's Sales or Invoice Analysis with the Margin or Cost column.", "الهوامش تحتاج تكلفة المنتج: ارفع تحليل المبيعات أو الفواتير من Odoo مع عمود الهامش أو التكلفة."));
 
   return {
     window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, invoices, avgInvoice: invoices ? total / invoices : null, lines,

@@ -82,6 +82,8 @@ export const ana = area(
     drawerFoot: "Costs enter profit lines with a minus sign. To change where an account goes, use Settings → Chart of Accounts.",
     // Charts
     atRevenue: (v: string) => `At revenue of ${v}`,
+    more: (n: number) => `${n} more`,
+    ofTotal2: (s: string) => `${s} of the total`,
   },
   {
     analystNotes: "ملاحظات المحلل",
@@ -152,5 +154,7 @@ export const ana = area(
     demoData: "بيانات تجريبية", row: (n: number) => `صف ${n}`, monthsN: (n: number) => `${n} أشهر`, noAccounts: "لا توجد حسابات بمبلغ لهذا الرقم.",
     drawerFoot: "التكاليف تدخل بنود الربح بإشارة سالبة. لتغيير مكان حساب، استخدم الإعدادات ← دليل الحسابات.",
     atRevenue: (v: string) => `عند إيرادات ${v}`,
+    more: (n: number) => `${n} أخرى`,
+    ofTotal2: (s: string) => `${s} من الإجمالي`,
   },
 );

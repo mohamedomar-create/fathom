@@ -408,3 +408,20 @@ test("Arabic: the Financials pages, KPIs and analyst notes read in Arabic", asyn
   await expect(page.getByTestId("waterfall")).toContainText("التدفق النقدي التشغيلي");
   expect(errors).toEqual([]);
 });
+
+test("Arabic: the Sales and Expenses pages and their notes read in Arabic", async ({ page, context, baseURL }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await context.addCookies([{ name: "lang", value: "ar", url: baseURL! }]);
+  await page.goto("/demo/sales");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("نظرة عامة على المبيعات");
+  await expect(page.getByTestId("sales-headline")).toContainText("أصدرت");
+  await page.goto("/demo/sales/customers");
+  await expect(page.getByTestId("customer-table")).toContainText("العميل");
+  await page.goto("/demo/expenses");
+  await expect(page.getByTestId("expenses-headline")).toContainText("أنفقت");
+  await expect(page.getByTestId("flag-double")).toContainText("مدفوعة مرتين؟");
+  await page.goto("/demo/expenses/suppliers");
+  await expect(page.getByTestId("lender-table")).toContainText("المصاريف البنكية");
+  expect(errors).toEqual([]);
+});

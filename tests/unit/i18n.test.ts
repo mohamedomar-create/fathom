@@ -7,7 +7,7 @@ import { SECTORS } from "@/components/shell/nav";
 /** Every string in a dictionary, with its path, calling the phrase functions with sample values. */
 function strings(o: unknown, path = ""): [string, string][] {
   if (typeof o === "string") return [[path, o]];
-  if (typeof o === "function") return [[path, String((o as (...a: unknown[]) => unknown)(3, "X"))]];
+  if (typeof o === "function") return [[path, String((o as (...a: unknown[]) => unknown)(3, "X", 3, 3, 3, 3, 3, 3))]];
   if (Array.isArray(o)) return o.flatMap((v, i) => strings(v, `${path}[${i}]`));
   if (o && typeof o === "object") return Object.entries(o).flatMap(([k, v]) => strings(v, path ? `${path}.${k}` : k));
   return [];
@@ -96,5 +96,35 @@ describe("analysis in Arabic", async () => {
     const amounts = (fs: typeof en) => fs.flatMap((f) => `${f.title} ${f.text}`.match(/EGP [\d,]+/g) ?? []).sort();
     expect(amounts(ar)).toEqual(amounts(en));
     expect(en.find((f) => f.title.startsWith("Revenue"))).toBeDefined();
+  });
+});
+
+describe("sales and expenses in Arabic", async () => {
+  const sample = (await import("../../reference/sample.json")).default;
+  const { salesAnalysis, expensesAnalysis } = await import("@/lib/engine");
+  const { demoSales } = await import("@/lib/company/demo-sales");
+  const { demoExpenses } = await import("@/lib/company/demo-expenses");
+  const { spreadAccounts } = await import("@/lib/company/demo");
+  const months = sample.months as import("@/lib/engine").MonthData[];
+  const sel = { type: "month" as const, end: "2026-09" };
+  const arabic = (s: string) => /[؀-ۿ]/.test(s);
+
+  it("writes the sales notes in Arabic, the same ones as in English", () => {
+    const en = salesAnalysis(demoSales(), sel, 1), ar = salesAnalysis(demoSales(), sel, 1, { lang: "ar" });
+    expect(ar.findings.map((f) => f.kind)).toEqual(en.findings.map((f) => f.kind));
+    expect(ar.findings.length).toBeGreaterThan(0);
+    for (const f of ar.findings) expect(arabic(f.title), f.title).toBe(true);
+    for (const n of ar.notes) expect(arabic(n), n).toBe(true);
+    expect(ar.total).toBe(en.total);
+  });
+
+  it("writes the expenses notes in Arabic, the same ones as in English", () => {
+    const accts = spreadAccounts(months) as import("@/lib/engine").ExpenseAccount[];
+    const en = expensesAnalysis(accts, demoExpenses(), sel, 1), ar = expensesAnalysis(accts, demoExpenses(), sel, 1, { lang: "ar" });
+    expect(ar.findings.map((f) => f.kind)).toEqual(en.findings.map((f) => f.kind));
+    expect(ar.findings.length).toBeGreaterThan(0);
+    for (const f of ar.findings) expect(arabic(f.title), f.title).toBe(true);
+    expect(ar.total).toBe(en.total);
+    expect(ar.bridge.map((b) => b.delta)).toEqual(en.bridge.map((b) => b.delta));
   });
 });

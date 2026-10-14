@@ -58,6 +58,12 @@ export const LINES_AR: Record<string, string> = {
   // KPI categories and importance
   Profitability: "الربحية", Activity: "النشاط", Efficiency: "الكفاءة", "Asset Usage": "استخدام الأصول", Coverage: "التغطية", Gearing: "الرافعة المالية", Growth: "النمو",
   Critical: "حرج", High: "مرتفع", Medium: "متوسط", Low: "منخفض",
+  // Fixed names in Sales and Expenses
+  "No customer": "بدون عميل", Other: "أخرى", "No category": "بدون فئة", "No supplier": "بدون مورد", "Journal entries": "قيود يومية",
+  "Depreciation (no payment)": "إهلاك (بدون دفع)", "Cost of goods sold (stock)": "تكلفة البضاعة المباعة (مخزون)", "Customer invoices (no supplier)": "فواتير عملاء (بدون مورد)",
+  "Bank not named": "بنك غير محدد", "Vendor bills": "فواتير الموردين", "Supplier refunds": "مرتجعات الموردين", "Expense reports": "تقارير المصروفات", "Stock moves": "حركات المخزون",
+  Depreciation: "الإهلاك", Payroll: "الرواتب", "Bank payments": "مدفوعات بنكية", "Cost of sales": "تكلفة المبيعات", "Running costs (fixed)": "تكاليف التشغيل (ثابتة)",
+  "Selling costs (variable)": "تكاليف البيع (متغيرة)", "Interest and tax": "الفوائد والضرائب", "Other costs": "تكاليف أخرى",
 };
 
 /** The Arabic for an engine or page name, or the name itself (English, or a name the company typed such as an account). */
