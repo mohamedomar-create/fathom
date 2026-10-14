@@ -28,7 +28,7 @@ export function Timeline({ cells, checks }: { cells: TimelineCell[]; checks: Pre
           <tbody>
             {(["PL", "BS"] as const).map((st) => (
               <tr key={st}>
-                <td className="pr-2 text-[12px] font-medium">{st === "PL" ? "Profit & Loss" : "Balance sheet"}</td>
+                <td className="pe-2 text-[12px] font-medium">{st === "PL" ? "Profit & Loss" : "Balance sheet"}</td>
                 {cells.map((c) => {
                   const s = c[st];
                   const f = flag(c.period, st);
@@ -36,7 +36,7 @@ export function Timeline({ cells, checks }: { cells: TimelineCell[]; checks: Pre
                     <td key={c.period} title={`${mlabel(c.period)} · ${s ? STATE[s].label : "No data"}${f ? ` · ${f === "block" ? "check failed" : "warning"}` : ""}`}
                       className={cn("relative h-7 rounded-sm text-center", s ? STATE[s].cls : "border border-dashed border-line bg-white", s === "remove" && "line-through")}
                       data-state={s ?? "none"}>
-                      {f && <span className={cn("absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-white", f === "block" ? "bg-red" : "bg-[#9a6b00]")} />}
+                      {f && <span className={cn("absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full ring-2 ring-white", f === "block" ? "bg-red" : "bg-[#9a6b00]")} />}
                     </td>
                   );
                 })}
@@ -91,8 +91,8 @@ export function CheckList({ checks, empty = "All checks passed." }: { checks: Pr
             {blocking ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : c.severity === "info" ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-mute" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />}
             <div>
               <b className="font-semibold">{periods.length ? `${periodsLabel(periods, mlabel)}: ` : ""}{c.title}</b>
-              {c.accepted && <span className="ml-2 rounded bg-white px-1.5 text-[11px] text-mute">accepted earlier</span>}
-              {c.existing && <span className="ml-2 rounded bg-white px-1.5 text-[11px] text-mute">already in your data</span>}
+              {c.accepted && <span className="ms-2 rounded bg-white px-1.5 text-[11px] text-mute">accepted earlier</span>}
+              {c.existing && <span className="ms-2 rounded bg-white px-1.5 text-[11px] text-mute">already in your data</span>}
               <div className="text-mute">{many && c.id === "bs_balance" && c.diff !== undefined
                 ? `Out by ${Math.round(Math.abs(c.diff)).toLocaleString("en-GB")} in each of these months. The same gap every month means one balance brought forward is missing: usually an account that is not mapped or is excluded (check the mapping), or an opening entry left out of the export.`
                 : c.detail}</div>

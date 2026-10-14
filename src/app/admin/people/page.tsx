@@ -1,4 +1,5 @@
 import { getUser } from "@/lib/supabase/server";
+import { getDict } from "@/lib/i18n/server";
 import { PeopleManager } from "./people-manager";
 
 export default async function PeoplePage() {
@@ -11,10 +12,11 @@ export default async function PeoplePage() {
   ]);
   const { data: profiles } = await supabase.from("profiles").select("id, email, full_name").in("id", (members ?? []).map((x) => x.user_id));
   const people = (members ?? []).map((x) => ({ ...x, email: profiles?.find((p) => p.id === x.user_id)?.email ?? "", name: profiles?.find((p) => p.id === x.user_id)?.full_name ?? null }));
+  const d = (await getDict()).account;
   return (
     <div>
-      <h1 className="mb-1 text-3xl font-light">User management</h1>
-      <p className="mb-6 text-mute">Invite colleagues. They join this organisation automatically when they sign up with the invited email address.</p>
+      <h1 className="mb-1 text-3xl font-light">{d.people}</h1>
+      <p className="mb-6 text-mute">{d.peopleHelp}</p>
       <PeopleManager orgId={orgId} me={user!.id} people={people} invites={invites ?? []} />
     </div>
   );

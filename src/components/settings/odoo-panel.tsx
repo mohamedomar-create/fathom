@@ -107,7 +107,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
       </div>
       <aside className="rounded-lg bg-band p-4 text-[13px]">
         <div className="label mb-2">How to connect</div>
-        <ol className="list-decimal space-y-2 pl-4">
+        <ol className="list-decimal space-y-2 ps-4">
           <li>In Odoo, open your user: <b>Settings → Users → (you) → Account Security → New API Key</b>. Copy the key.</li>
           <li>The database name is shown on the Odoo login page or under <b>Settings → Developer tools → About</b>.</li>
           <li>Use a user with accounting read access. Only posted entries are read; nothing is written to Odoo.</li>

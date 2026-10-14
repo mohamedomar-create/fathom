@@ -55,7 +55,7 @@ export function BankPage() {
         <span className="flex items-center gap-1.5"><BandChip band="strong" /> {res.counts.strong}</span>
         <span className="flex items-center gap-1.5"><BandChip band="watch" /> {res.counts.watch}</span>
         <span className="flex items-center gap-1.5"><BandChip band="weak" /> {res.counts.weak}</span>
-        <Link href={`${c.basePath}/settings/source-data`} className="ml-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />Upload audited statements</Link>
+        <Link href={`${c.basePath}/settings/source-data`} className="ms-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />Upload audited statements</Link>
       </div>
 
       <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -111,10 +111,10 @@ export function BankPage() {
               {res.ratios.filter((x) => x.group === g.key).map((x) => (
                 <details key={x.key} className="group" data-testid={`ratio-${x.key}`}>
                   <summary className="grid cursor-pointer list-none grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-1 py-2.5 hover:bg-band sm:grid-cols-[1fr_140px_190px_70px_16px]">
-                    <span>{x.name}{x.estimate && <span className="ml-1 text-xs text-[#9a6b00]">(estimate)</span>}</span>
-                    <span className="num text-right font-medium">{formatBankValue(x, cur)}</span>
-                    <span className="hidden text-right text-xs text-mute sm:block">{x.guide}</span>
-                    <span className="text-right sm:text-left"><BandChip band={x.band} /></span>
+                    <span>{x.name}{x.estimate && <span className="ms-1 text-xs text-[#9a6b00]">(estimate)</span>}</span>
+                    <span className="num text-end font-medium">{formatBankValue(x, cur)}</span>
+                    <span className="hidden text-end text-xs text-mute sm:block">{x.guide}</span>
+                    <span className="text-end sm:text-start"><BandChip band={x.band} /></span>
                     <ChevronDown className="hidden h-4 w-4 text-mute transition group-open:rotate-180 sm:block" />
                   </summary>
                   <div className="space-y-1.5 bg-band px-3 py-3 text-[13px]">
@@ -135,7 +135,7 @@ export function BankPage() {
       {res.flags.length ? (
         <div className="mt-3 space-y-3" data-testid="bank-flags">
           {res.flags.map((f) => (
-            <div key={f.key} className={cn("rounded-md border-l-[3px] bg-band px-4 py-3 text-[13px]", f.severity === "high" ? "border-red" : "border-amber")}>
+            <div key={f.key} className={cn("rounded-md border-s-[3px] bg-band px-4 py-3 text-[13px]", f.severity === "high" ? "border-red" : "border-amber")}>
               <div className="flex items-center gap-2 font-medium"><AlertTriangle className={cn("h-4 w-4", f.severity === "high" ? "text-red" : "text-amber")} />{f.title}</div>
               <p className="mt-1 text-mute">{f.detail}</p>
               <p className="mt-1">{f.advice}</p>

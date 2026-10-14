@@ -2,11 +2,14 @@
 import { ArrowDownUp, Check, Columns3, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { mlabel, money, num, type MonthData, type Unit } from "@/lib/engine";
+import { money, num, type MonthData, type Unit } from "@/lib/engine";
 import { monthCalcs, type MonthCalc } from "@/components/analysis/metrics";
 import { Sparkline } from "@/components/charts/spark";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/cn";
+import { useDict, useLang } from "@/lib/i18n/context";
+import { monthLabel } from "@/lib/i18n";
+import { term } from "@/lib/i18n/areas/fin";
 
 export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string }
 interface Metric { key: string; label: string; group: string; unit: Unit; get: (m: MonthCalc) => number | null; good?: "up" | "down" }
@@ -58,6 +61,10 @@ const METRICS: Metric[] = [
 ];
 
 export function InsightsTable({ companies }: { companies: DashCompany[] }) {
+  const dd = useDict();
+  const t = dd.home;
+  const lang = useLang();
+  const label = (m: Metric) => term(dd.fin, m.key);
   const [sel, setSel] = useState<string[]>(["revenue", "gpm", "net_income", "cash", "ar_days", "current"]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
@@ -77,20 +84,20 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 rounded border border-line px-2.5 py-1.5 text-sm"><Search className="h-4 w-4 text-mute" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search companies" className="outline-none" /></label>
+        <label className="flex items-center gap-2 rounded border border-line px-2.5 py-1.5 text-sm"><Search className="h-4 w-4 text-mute" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.search} className="outline-none" /></label>
         <Popover>
-          <PopoverTrigger className="flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-sm hover:bg-band" data-testid="metric-picker"><Columns3 className="h-4 w-4" />Metrics ({sel.length}/6)</PopoverTrigger>
+          <PopoverTrigger className="flex items-center gap-1.5 rounded border border-line px-3 py-1.5 text-sm hover:bg-band" data-testid="metric-picker"><Columns3 className="h-4 w-4" />{t.metrics(sel.length)}</PopoverTrigger>
           <PopoverContent className="max-h-96 w-72 overflow-auto">
-            <div className="px-2 pb-1 text-xs text-mute">Select up to 6 metrics</div>
+            <div className="px-2 pb-1 text-xs text-mute">{t.upTo6}</div>
             {groups.map((g) => (
               <div key={g}>
-                <div className="label px-2 pt-2">{g}</div>
+                <div className="label px-2 pt-2">{dd.fin.groups[g] ?? g}</div>
                 {METRICS.filter((m) => m.group === g).map((m) => {
                   const on = sel.includes(m.key);
                   return (
                     <button key={m.key} disabled={!on && sel.length >= 6} onClick={() => setSel(on ? sel.filter((x) => x !== m.key) : [...sel, m.key])}
-                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-sm hover:bg-band disabled:opacity-40">
-                      <Check className={cn("h-4 w-4 text-brand-d", !on && "invisible")} />{m.label}
+                      className="flex w-full items-center gap-2 rounded px-2 py-1 text-start text-sm hover:bg-band disabled:opacity-40">
+                      <Check className={cn("h-4 w-4 text-brand-d", !on && "invisible")} />{label(m)}
                     </button>
                   );
                 })}
@@ -98,20 +105,20 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
             ))}
           </PopoverContent>
         </Popover>
-        <span className="ml-auto text-sm text-mute">{companies.length} {companies.length === 1 ? "company" : "companies"}</span>
+        <span className="ms-auto text-sm text-mute">{t.companies(companies.length)}</span>
       </div>
       <div className="-mx-4 overflow-x-auto px-4">
         <table className="w-full min-w-[900px] border-collapse text-[13px]" data-testid="insights-table">
           <thead>
             <tr className="border-b border-ink">
-              <th className="sticky left-0 bg-white px-2 py-2 text-left"><SortBtn label="Company" active={sort.key === "name"} dir={sort.dir} onClick={() => setSort({ key: "name", dir: sort.key === "name" ? (-sort.dir as 1 | -1) : 1 })} /></th>
+              <th className="sticky start-0 bg-white px-2 py-2 text-start"><SortBtn label={t.company} active={sort.key === "name"} dir={sort.dir} onClick={() => setSort({ key: "name", dir: sort.key === "name" ? (-sort.dir as 1 | -1) : 1 })} /></th>
               {metrics.map((m) => {
                 const vals = shown.map((r) => val(r, m)).filter((v): v is number => v !== null);
                 const avg = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
                 return (
-                  <th key={m.key} colSpan={3} className="border-l border-line px-2 py-2 text-left align-bottom">
-                    <SortBtn label={m.label} active={sort.key === m.key} dir={sort.dir} onClick={() => setSort({ key: m.key, dir: sort.key === m.key ? (-sort.dir as 1 | -1) : -1 })} />
-                    <div className="text-[11px] font-normal text-mute">Avg {fmt(avg, m, companies[0]?.currency ?? "")}</div>
+                  <th key={m.key} colSpan={3} className="border-s border-line px-2 py-2 text-start align-bottom">
+                    <SortBtn label={label(m)} active={sort.key === m.key} dir={sort.dir} onClick={() => setSort({ key: m.key, dir: sort.key === m.key ? (-sort.dir as 1 | -1) : -1 })} />
+                    <div className="text-[11px] font-normal text-mute">{t.avg} {fmt(avg, m, companies[0]?.currency ?? "")}</div>
                   </th>
                 );
               })}
@@ -120,9 +127,9 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
           <tbody>
             {shown.map((r) => (
               <tr key={r.c.id} className="border-b border-line hover:bg-[#fafaf8]">
-                <td className="sticky left-0 bg-white px-2 py-2">
+                <td className="sticky start-0 bg-white px-2 py-2">
                   <Link href={`/company/${r.c.id}/summary`} className="font-medium hover:underline">{r.c.name}</Link>
-                  <div className="text-[11px] text-mute">{r.last ? mlabel(r.last.period) : "No data"}</div>
+                  <div className="text-[11px] text-mute">{r.last ? monthLabel(r.last.period, lang) : t.noDataShort}</div>
                 </td>
                 {metrics.map((m) => {
                   const v = val(r, m);
@@ -130,7 +137,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
                   const g = v !== null && p ? ((v - p) / Math.abs(p)) * 100 : null;
                   const good = g === null ? null : (m.good === "down" ? g <= 0 : g >= 0);
                   return [
-                    <td key={m.key + "v"} className="num border-l border-line px-2 py-2 text-right">{fmt(v, m, r.c.currency)}</td>,
+                    <td key={m.key + "v"} className="num border-s border-line px-2 py-2 text-end">{fmt(v, m, r.c.currency)}</td>,
                     <td key={m.key + "g"} className="px-1 py-2">{g !== null && <span className={cn("rounded px-1.5 py-0.5 text-[11px]", good ? "bg-green-bg text-green-d" : "bg-red-bg text-red")}>{g > 0 ? "▲" : "▼"} {Math.abs(g).toFixed(1)}%</span>}</td>,
                     <td key={m.key + "s"} className="px-1 py-2"><Sparkline values={r.calcs.slice(-12).map((x) => m.get(x))} w={70} h={22} color={good === false ? "#D9343A" : "#2E9E6A"} /></td>,
                   ];
@@ -140,7 +147,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-6 text-center text-sm text-mute">You&apos;ve reached the bottom! Would you like to <Link href="/companies" className="text-brand-d underline">add more companies</Link>?</p>
+      <p className="mt-6 text-center text-sm text-mute">{t.bottom[0]}<Link href="/companies" className="text-brand-d underline">{t.bottom[1]}</Link>{t.bottom[2]}</p>
     </div>
   );
 }

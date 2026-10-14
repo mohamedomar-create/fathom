@@ -16,7 +16,7 @@ export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string
   const X = (v: number) => ((v - lo) / (hi - lo || 1)) * 100;
   const ticks = niceTicks(lo, hi, 4).filter((t) => t >= lo && t <= hi);
   return (
-    <div className="text-[12.5px]" data-testid="waterfall">
+    <div dir="ltr" className="text-[12.5px]" data-testid="waterfall">
       <div className="grid grid-cols-[minmax(120px,40%)_1fr] items-end gap-3 pb-1 sm:grid-cols-[minmax(240px,44%)_1fr]">
         <div />
         <div className="relative h-5">

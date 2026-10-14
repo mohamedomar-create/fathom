@@ -1,12 +1,18 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/shell/legal-page";
 import { APP_NAME } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
+import { getLang } from "@/lib/i18n/server";
+import { PrivacyAr } from "./privacy-ar";
 
-export const metadata: Metadata = { title: "Privacy policy", description: `How ${APP_NAME} collects, uses and protects your data.` };
+export async function generateMetadata() {
+  return (await getLang()) === "ar"
+    ? { title: "سياسة الخصوصية", description: `كيف تجمع ${APP_NAME} بياناتك وتستخدمها وتحميها.` }
+    : { title: "Privacy policy", description: `How ${APP_NAME} collects, uses and protects your data.` };
+}
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  if ((await getLang()) === "ar") return <LegalPage title="سياسة الخصوصية"><PrivacyAr /></LegalPage>;
   const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
   return (
     <LegalPage title="Privacy policy">

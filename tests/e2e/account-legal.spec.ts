@@ -39,3 +39,19 @@ test("sign-up asks for a strong password before contacting the server", async ({
   await page.getByRole("button", { name: "Create account" }).last().click(); // the first one is the mode tab
   await expect(page.getByRole("status")).toContainText("letters and numbers");
 });
+
+test("Arabic: the landing page, sign-in and the privacy policy read in Arabic", async ({ page, context, baseURL }) => {
+  await context.addCookies([{ name: "lang", value: "ar", url: baseURL! }]);
+  await page.goto("/");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("أرقام Odoo");
+  await expect(page.getByTestId("cta-demo")).toContainText("استكشف الشركة التجريبية");
+  await page.goto("/login?mode=signup");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("أنشئ حسابك المجاني");
+  await expect(page.getByTestId("signup-legal")).toContainText("الشروط");
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { level: 1, name: "سياسة الخصوصية" })).toBeVisible();
+  await expect(page.getByText("النسخة الإنجليزية هي المعتمدة")).toBeVisible();
+  await page.goto("/no-such-page");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("تعذّر العثور على هذه الصفحة");
+});

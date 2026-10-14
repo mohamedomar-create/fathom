@@ -26,16 +26,16 @@ export function WorkbookTieout({ tie, currency }: { tie: WorkbookTie; currency: 
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]">
-          <thead className="text-left text-mute">
-            <tr><th className="px-4 py-1.5 font-normal">Your figure</th><th className="px-2 py-1.5 font-normal">Where</th><th className="px-2 py-1.5 text-right font-normal">You wrote</th><th className="px-2 py-1.5 text-right font-normal">iReport read</th><th className="px-4 py-1.5 font-normal">Result</th></tr>
+          <thead className="text-start text-mute">
+            <tr><th className="px-4 py-1.5 font-normal">Your figure</th><th className="px-2 py-1.5 font-normal">Where</th><th className="px-2 py-1.5 text-end font-normal">You wrote</th><th className="px-2 py-1.5 text-end font-normal">iReport read</th><th className="px-4 py-1.5 font-normal">Result</th></tr>
           </thead>
           <tbody>
             {[...tie.rows].sort((a, b) => ORDER[a.status] - ORDER[b.status]).map((r) => (
               <tr key={`${r.sheet}:${r.row}:${r.col}`} className="border-t border-line align-top" data-testid="tieout-row">
                 <td className="px-4 py-1.5">{r.label}</td>
                 <td className="px-2 py-1.5 text-mute">{r.sheet.split(" › ").pop()}, {cellRef(r.row, r.col)}</td>
-                <td className="num whitespace-nowrap px-2 py-1.5 text-right">{money(r.file, currency)}</td>
-                <td className="num whitespace-nowrap px-2 py-1.5 text-right">{money(r.read, currency)}</td>
+                <td className="num whitespace-nowrap px-2 py-1.5 text-end">{money(r.file, currency)}</td>
+                <td className="num whitespace-nowrap px-2 py-1.5 text-end">{money(r.read, currency)}</td>
                 <td className="px-4 py-1.5">
                   {r.status === "ok" && <span className="flex items-center gap-1 text-green-d"><CheckCircle2 className="h-3.5 w-3.5" />Matches</span>}
                   {r.status === "explained" && <span className="flex items-start gap-1 text-green-d"><Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />Explained: {r.why}</span>}

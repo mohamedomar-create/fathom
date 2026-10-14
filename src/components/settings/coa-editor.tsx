@@ -57,12 +57,12 @@ export function CoaEditor() {
             const now = changes[a.id] ?? a.cls;
             return (
               <div key={a.id} className={cn("grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line py-2 text-[13px] sm:grid-cols-[1fr_110px_120px_220px]", changes[a.id] && "bg-amber/10")}>
-                <div><span className="mr-2 text-xs text-mute">{a.code}</span>{a.name}</div>
+                <div><span className="me-2 text-xs text-mute">{a.code}</span>{a.name}</div>
                 <div className="hidden sm:block">{BEHAVIOUR[now] && (
                   <button disabled={c.readOnly || !PAIRS[now]} onClick={() => setChanges((x) => ({ ...x, [a.id]: PAIRS[now]! }))} title={PAIRS[now] ? "Click to switch fixed / variable" : undefined}
                     className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider", BEHAVIOUR[now] === "VARIABLE" ? "bg-[#fdebd9] text-[#b4621a]" : BEHAVIOUR[now] === "FIXED" ? "bg-[#e3eefb] text-[#2a6cc0]" : "bg-band text-mute")}>{BEHAVIOUR[now]}</button>
                 )}</div>
-                <div className="num hidden text-right text-mute sm:block">{money(isPL(now) ? fyTotal(a.amounts) : a.amounts[last ?? ""] ?? 0, c.settings.currency, true)}</div>
+                <div className="num hidden text-end text-mute sm:block">{money(isPL(now) ? fyTotal(a.amounts) : a.amounts[last ?? ""] ?? 0, c.settings.currency, true)}</div>
                 <select disabled={c.readOnly} value={now} onChange={(e) => setChanges((x) => ({ ...x, [a.id]: e.target.value as ClassKey }))} aria-label={`Reclassify ${a.name}`}
                   className="max-w-56 rounded border border-line px-1.5 py-1 text-xs">
                   {CLASS_OPTIONS.map((k) => <option key={k} value={k}>{CLASS_LABEL[k]}</option>)}
@@ -74,7 +74,7 @@ export function CoaEditor() {
       ))}
       <p className="text-xs text-mute">Amounts: P&amp;L = last 12 months; balance sheet = latest month. Fixed/variable drives the breakeven and goalseek tools — ask “if sales doubled, would this cost roughly double?”</p>
       <div className="sticky bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
-        {msg && <span className="mr-auto text-sm text-green-d">{msg}</span>}
+        {msg && <span className="me-auto text-sm text-green-d">{msg}</span>}
         {c.readOnly ? <span className="text-sm text-mute">Read-only.</span> : (
           <>
             <span className="text-sm text-mute">{Object.keys(changes).length} change(s)</span>

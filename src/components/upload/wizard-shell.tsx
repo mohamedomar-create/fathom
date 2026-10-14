@@ -43,11 +43,11 @@ export function WizardNav({ back, onBack, next, onNext, disabled, busy, nextTest
   const cls = "inline-flex items-center gap-2 rounded-md bg-brand-d px-6 py-3 text-[15px] font-medium text-white shadow-sm disabled:opacity-40";
   return (
     <div className="sticky bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center gap-3 border-t border-line bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0" data-testid="wiz-nav">
-      {onBack && <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-3 py-2.5 text-[15px] text-mute hover:bg-band" data-testid="wiz-back"><ArrowLeft className="h-4 w-4" />{back ?? "Back"}</button>}
-      {hint && <span className="ml-auto text-[13px] text-mute">{hint}</span>}
+      {onBack && <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-3 py-2.5 text-[15px] text-mute hover:bg-band" data-testid="wiz-back"><ArrowLeft className="flip-rtl h-4 w-4" />{back ?? "Back"}</button>}
+      {hint && <span className="ms-auto text-[13px] text-mute">{hint}</span>}
       {next && (href
-        ? <a href={href} className={cn(cls, !hint && "ml-auto")} data-testid={nextTestId}>{next}<ArrowRight className="h-4 w-4" /></a>
-        : <button onClick={onNext} disabled={disabled || busy} className={cn(cls, !hint && "ml-auto")} data-testid={nextTestId}>{busy ? "Working…" : next}{!busy && <ArrowRight className="h-4 w-4" />}</button>)}
+        ? <a href={href} className={cn(cls, !hint && "ms-auto")} data-testid={nextTestId}>{next}<ArrowRight className="flip-rtl h-4 w-4" /></a>
+        : <button onClick={onNext} disabled={disabled || busy} className={cn(cls, !hint && "ms-auto")} data-testid={nextTestId}>{busy ? "Working…" : next}{!busy && <ArrowRight className="flip-rtl h-4 w-4" />}</button>)}
     </div>
   );
 }
@@ -56,7 +56,7 @@ export function WizardNav({ back, onBack, next, onNext, disabled, busy, nextTest
 export function ChoiceCard({ icon, title, sub, onClick, selected, testId }: { icon: React.ReactNode; title: string; sub: string; onClick: () => void; selected?: boolean; testId?: string }) {
   return (
     <button onClick={onClick} data-testid={testId} aria-pressed={selected}
-      className={cn("flex w-full items-start gap-4 rounded-xl border-2 p-5 text-left transition hover:border-brand hover:bg-brand-bg/30", selected ? "border-brand-d bg-brand-bg/40" : "border-line")}>
+      className={cn("flex w-full items-start gap-4 rounded-xl border-2 p-5 text-start transition hover:border-brand hover:bg-brand-bg/30", selected ? "border-brand-d bg-brand-bg/40" : "border-line")}>
       <span className="text-3xl leading-none">{icon}</span>
       <span><span className="block text-lg font-medium">{title}</span><span className="text-[14px] text-mute">{sub}</span></span>
     </button>

@@ -17,7 +17,7 @@ export function BarList({ items, cur, max = 10, testId, onSelect }: { items: Bar
   const top = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
   const anyNeg = rows.some((r) => r.value < 0);
   return (
-    <div className="space-y-1.5" data-testid={testId} role="list">
+    <div dir="ltr" className="space-y-1.5" data-testid={testId} role="list">
       {rows.map((r) => {
         const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100);
         const click = onSelect && r.key !== "__other";

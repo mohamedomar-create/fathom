@@ -68,9 +68,9 @@ function PriceVolumeMix({ s, cur }: { s: NonNullable<ReturnType<typeof useSalesA
       <table className="tbl" data-testid="pvm-table">
         <tbody>
           {rows.map(([k, v, why]) => (
-            <tr key={k} className="row"><td className="text-left"><div>{k}</div><div className="text-[11.5px] text-mute">{why}</div></td><td className={cn("num", v < 0 ? "text-red" : "text-green-d")}>{v >= 0 ? "+" : ""}{money(v, cur)}</td></tr>
+            <tr key={k} className="row"><td className="text-start"><div>{k}</div><div className="text-[11.5px] text-mute">{why}</div></td><td className={cn("num", v < 0 ? "text-red" : "text-green-d")}>{v >= 0 ? "+" : ""}{money(v, cur)}</td></tr>
           ))}
-          <tr className="tot"><td className="text-left">Total change</td><td className="num">{p.total >= 0 ? "+" : ""}{money(p.total, cur)}</td></tr>
+          <tr className="tot"><td className="text-start">Total change</td><td className="num">{p.total >= 0 ? "+" : ""}{money(p.total, cur)}</td></tr>
         </tbody>
       </table>
       <p className="mt-2 text-xs text-mute">Quantities are known for {pct(p.coverage, 0)} of this period&apos;s sales.</p>

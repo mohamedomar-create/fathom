@@ -86,8 +86,24 @@ test("a new user signs up, imports Odoo data and works with their own numbers", 
   await page.goto(`/company/${id}/summary`);
   await expect(page).toHaveURL(/\/login\?next=/);
   await signIn(page, email, "wrong-password-1");
-  await expect(page.getByRole("status")).toContainText(/invalid/i);
+  await expect(page.getByRole("status")).toContainText("The email or password is not right.");
   await signIn(page, email, PASSWORD);
   await expect(page).toHaveURL(/\/companies/);
   await expect(page.getByText("Nile Medical")).toBeVisible();
+});
+
+test("Arabic: a signed-in user's companies, account and menu read in Arabic", async ({ page }) => {
+  const email = newEmail("arabic");
+  await signUp(page, { name: "Salma Ar", org: "Delta Advisory", email });
+  await page.goto("/companies");
+  await page.getByTestId("user-menu").click();
+  await page.getByTestId("lang-switch").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("عدد الشركات: 0");
+  await expect(page.getByTestId("add-company")).toContainText("إضافة شركة");
+  await page.goto("/account");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("حسابك");
+  await expect(page.getByTestId("delete-account")).toHaveText("حذف حسابي");
+  await page.goto("/dashboard");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("لوحة المؤشرات");
 });

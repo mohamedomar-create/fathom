@@ -23,14 +23,14 @@ export function LineUploads({ rows, companyId, readOnly }: { rows: LineUpload[];
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl text-[13px]" data-testid="line-uploads">
-        <thead><tr><th className="text-left">File</th><th className="text-left">Feeds</th><th className="text-left">Months</th><th className="text-left">When</th>{!readOnly && <th />}</tr></thead>
+        <thead><tr><th className="text-start">File</th><th className="text-start">Feeds</th><th className="text-start">Months</th><th className="text-start">When</th>{!readOnly && <th />}</tr></thead>
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className="row" data-testid="line-upload">
-              <td className="max-w-[260px] truncate text-left" title={r.file ?? ""}>{r.file ?? "Upload"}</td>
-              <td className="text-left">{r.kind === "sales" ? "Sales" : "Expenses"}</td>
-              <td className="text-left">{span([...r.periods].sort())}</td>
-              <td className="text-left text-mute">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
+              <td className="max-w-[260px] truncate text-start" title={r.file ?? ""}>{r.file ?? "Upload"}</td>
+              <td className="text-start">{r.kind === "sales" ? "Sales" : "Expenses"}</td>
+              <td className="text-start">{span([...r.periods].sort())}</td>
+              <td className="text-start text-mute">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
               {!readOnly && <td><button onClick={() => remove(r)} disabled={busy} className="text-[12px] text-red underline" data-testid="remove-line-upload">Remove</button></td>}
             </tr>
           ))}

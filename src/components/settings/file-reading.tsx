@@ -41,7 +41,7 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
                 {l.role === "check" && <span className="flex items-center gap-1 rounded bg-green-bg px-1.5 py-0.5 text-xs text-green-d" data-testid="check-only"><ShieldCheck className="h-3.5 w-3.5" />Used to check the other file, not imported</span>}
                 {l.kind !== "skipped" && (
                   <>
-                    <label className="ml-auto flex items-center gap-1.5">Units
+                    <label className="ms-auto flex items-center gap-1.5">Units
                       <select value={l.scale} onChange={(e) => set(l.sheet, { scale: Number(e.target.value) })} className="rounded border border-line bg-white px-1 py-0.5" data-testid="units">
                         <option value={1}>as shown</option><option value={1000}>thousands</option><option value={1000000}>millions</option>
                       </select>

@@ -74,10 +74,10 @@ function Reconciliation({ s, cur, checked }: { s: NonNullable<ReturnType<typeof 
   return (
     <div className="mb-8 rounded bg-red-bg px-4 py-2.5 text-[13px] text-red" data-testid="sales-unreconciled">
       <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />Sales differ from revenue in the P&amp;L in {s.unreconciled.length} month{s.unreconciled.length > 1 ? "s" : ""}</div>
-      <ul className="ml-6 mt-1 list-disc text-ink">
+      <ul className="ms-6 mt-1 list-disc text-ink">
         {s.unreconciled.slice(0, 6).map((u) => <li key={u.period}>{mlabel(u.period)}: sales {money(u.sales, cur)}, revenue {money(u.revenue, cur)}, difference {money(u.diff, cur)}</li>)}
       </ul>
-      <p className="ml-6 mt-1 text-ink">Usually revenue posted by journal entry rather than invoice, or a sales file covering different dates or excluding refunds. Analyses here use the sales lines; the Financials sector uses the P&amp;L.</p>
+      <p className="ms-6 mt-1 text-ink">Usually revenue posted by journal entry rather than invoice, or a sales file covering different dates or excluding refunds. Analyses here use the sales lines; the Financials sector uses the P&amp;L.</p>
     </div>
   );
 }

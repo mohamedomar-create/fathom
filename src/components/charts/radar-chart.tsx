@@ -22,7 +22,7 @@ export function RadarChart({ axes, size = 260, testId, compact = false }: { axes
   const poly = (vals: number[]) => vals.map((v, i) => pt(i, v).map((x) => x.toFixed(1)).join(",")).join(" ");
   const comp = axes.map((a) => a.completion), acc = axes.map((a) => a.accuracy ?? a.completion);
   return (
-    <div className="relative inline-block" data-testid={testId}>
+    <div dir="ltr" className="relative inline-block" data-testid={testId}>
       <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="max-w-full" role="img" aria-label={`Data completion and accuracy: ${axes.map((a) => `${a.label} ${a.completion}% complete${a.accuracy !== null ? `, ${a.accuracy}% accurate` : ""}`).join("; ")}`}>
         {[25, 50, 75, 100].map((r) => <polygon key={r} points={poly(axes.map(() => r))} fill="none" stroke="#e6e6e1" strokeWidth={1} />)}
         {axes.map((_, i) => { const [x, y] = pt(i, 100); return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e6e6e1" />; })}

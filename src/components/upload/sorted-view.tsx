@@ -66,7 +66,7 @@ export function SortedView(p: SortedViewProps) {
         {errors.length ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
         <b data-testid="error-count">{errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""} to fix` : "All good"}</b>
         {!errors.length && p.onDownload && (
-          <button onClick={p.onDownload} disabled={p.downloading} className="ml-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted" title="The sorted data as iReport's template: upload it next time">
+          <button onClick={p.onDownload} disabled={p.downloading} className="ms-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted" title="The sorted data as iReport's template: upload it next time">
             <Download className="h-3 w-3" />{p.downloading ? "Preparing…" : "Download clean copy"}
           </button>
         )}
@@ -76,7 +76,7 @@ export function SortedView(p: SortedViewProps) {
         {tabs.map((t) => (
           <button key={t.k} role="tab" aria-selected={shown === t.k} onClick={() => setTab(t.k)} data-testid={`reading-tab-${t.k}`}
             className={cn("shrink-0 rounded-t border border-b-0 px-2.5 py-1 text-xs", shown === t.k ? "border-line bg-white font-medium" : "border-transparent text-mute")}>
-            {t.label}{t.n !== undefined && <span className={cn("ml-1.5 rounded-full px-1.5 text-[10px]", t.k === "issues" && errors.length ? "bg-red text-white" : "bg-band")}>{t.n.toLocaleString("en-US")}</span>}
+            {t.label}{t.n !== undefined && <span className={cn("ms-1.5 rounded-full px-1.5 text-[10px]", t.k === "issues" && errors.length ? "bg-red text-white" : "bg-band")}>{t.n.toLocaleString("en-US")}</span>}
           </button>
         ))}
       </div>
@@ -94,7 +94,7 @@ export function SortedView(p: SortedViewProps) {
 function ClassSelect({ value, onChange, label, compact }: { value: ClassKey | "" | null; onChange: (c: ClassKey | "") => void; label: string; compact?: boolean }) {
   return (
     <select value={value === null ? "__pick" : value} onChange={(e) => { if (e.target.value !== "__pick") onChange(e.target.value as ClassKey | ""); }} aria-label={label} onClick={(e) => e.stopPropagation()}
-      className={cn("max-w-48 rounded border bg-white px-1 py-0.5 text-left", compact ? "text-[11.5px]" : "text-[12.5px]", !value ? "border-red/60" : "border-line")}>
+      className={cn("max-w-48 rounded border bg-white px-1 py-0.5 text-start", compact ? "text-[11.5px]" : "text-[12.5px]", !value ? "border-red/60" : "border-line")}>
       {value === null && <option value="__pick" disabled>Pick a type…</option>}
       <option value="">— Skip —</option>
       <optgroup label="Profit & Loss">{CLASS_OPTIONS.filter(isPL).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
@@ -119,9 +119,9 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, origin, f
         <div className="border-b border-line">
           <div className="flex items-center gap-2 bg-band/70 px-3 py-1.5 text-[13px]">
             <b data-testid="problem-counter">Problem {i + 1} of {errors.length}</b>
-            <span className="ml-auto flex gap-1">
-              <button disabled={i === 0} onClick={() => setAt(i - 1)} className="rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" aria-label="Previous problem"><ChevronLeft className="h-3.5 w-3.5" /></button>
-              <button disabled={i >= errors.length - 1} onClick={() => { setAt(i + 1); const n = errors[i + 1]; if (n?.row !== undefined) onFocus({ sheet: n.sheet, rows: [n.row] }, { stay: true }); }} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" data-testid="next-problem">Next problem<ChevronRight className="h-3.5 w-3.5" /></button>
+            <span className="ms-auto flex gap-1">
+              <button disabled={i === 0} onClick={() => setAt(i - 1)} className="rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" aria-label="Previous problem"><ChevronLeft className="flip-rtl h-3.5 w-3.5" /></button>
+              <button disabled={i >= errors.length - 1} onClick={() => { setAt(i + 1); const n = errors[i + 1]; if (n?.row !== undefined) onFocus({ sheet: n.sheet, rows: [n.row] }, { stay: true }); }} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" data-testid="next-problem">Next problem<ChevronRight className="flip-rtl h-3.5 w-3.5" /></button>
             </span>
           </div>
           <ul>{row(errors[i], true)}</ul>
@@ -193,8 +193,8 @@ function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: Sorte
     <table className="w-max min-w-full border-collapse text-[12.5px]" data-testid={`sorted-${pl ? "pl" : "bs"}`}>
       <thead className="sticky top-0 z-10 bg-white">
         <tr className="border-b border-line text-[11.5px] text-mute">
-          <th className="sticky left-0 z-10 bg-white px-2 py-1.5 text-left font-medium">Account and class</th>
-          {ps.map((p) => <th key={p} className="px-2 py-1.5 text-right font-medium">{p === opening ? `Opening (end ${mlabel(p)})` : mlabel(p)}</th>)}
+          <th className="sticky start-0 z-10 bg-white px-2 py-1.5 text-start font-medium">Account and class</th>
+          {ps.map((p) => <th key={p} className="px-2 py-1.5 text-end font-medium">{p === opening ? `Opening (end ${mlabel(p)})` : mlabel(p)}</th>)}
         </tr>
       </thead>
       <tbody>
@@ -202,13 +202,13 @@ function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: Sorte
           const g = groups.find((x) => x.cls === cls);
           return [
             g && (
-              <tr key={`g-${cls}`} className="bg-band/70"><td className="sticky left-0 bg-band px-2 py-1 font-medium" colSpan={1}>{g.label}</td>{ps.map((p) => <td key={p} className="px-2 py-1 text-right font-medium tabular-nums">{amt(g.total[p])}</td>)}</tr>
+              <tr key={`g-${cls}`} className="bg-band/70"><td className="sticky start-0 bg-band px-2 py-1 font-medium" colSpan={1}>{g.label}</td>{ps.map((p) => <td key={p} className="px-2 py-1 text-end font-medium tabular-nums">{amt(g.total[p])}</td>)}</tr>
             ),
             ...(g?.rows ?? []).map((r) => <AccountRow key={r.key} r={r} ps={ps} amt={amt} on={picked === r.key} rowRef={picked === r.key ? pickedRef : undefined} onFocus={onFocus} onClass={onClass} />),
             ...totals.filter((t) => t.after === cls).map((t) => (
               <tr key={`t-${t.label}`} className={cn("border-y border-line", t.strong && "font-semibold")} data-testid={`total-${t.label.split(" ")[0].toLowerCase()}`}>
-                <td className="sticky left-0 bg-white px-2 py-1">{t.label}</td>
-                {ps.map((p) => <td key={p} className={cn("px-2 py-1 text-right tabular-nums", t.zero && Math.abs(t.values[p] ?? 0) >= 1 && "bg-red-bg text-red")}>{t.zero ? (Math.abs(t.values[p] ?? 0) < 1 ? "0" : money(t.values[p], currency)) : amt(t.values[p])}</td>)}
+                <td className="sticky start-0 bg-white px-2 py-1">{t.label}</td>
+                {ps.map((p) => <td key={p} className={cn("px-2 py-1 text-end tabular-nums", t.zero && Math.abs(t.values[p] ?? 0) >= 1 && "bg-red-bg text-red")}>{t.zero ? (Math.abs(t.values[p] ?? 0) < 1 ? "0" : money(t.values[p], currency)) : amt(t.values[p])}</td>)}
               </tr>
             )),
           ];
@@ -222,14 +222,14 @@ function AccountRow({ r, ps, amt, on, rowRef, onFocus, onClass }: { r: SortedRow
   return (
     <tr ref={rowRef} onClick={() => onFocus(r.src.rows.length ? { sheet: r.src.sheet, rows: r.src.rows.slice(0, 2000) } : null)} data-testid={`sorted-row`} data-key={r.key} data-status={r.status}
       className={cn("cursor-pointer border-b border-line/60 hover:bg-amber/10", r.status === "error" && "bg-red-bg/60", on && "!bg-amber/25")}>
-      <td className="sticky left-0 bg-inherit px-2 py-1">
+      <td className="sticky start-0 bg-inherit px-2 py-1">
         <div className="flex items-center gap-2 bg-inherit">
           <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", r.status === "error" ? "bg-red" : r.status === "check" ? "bg-amber" : "bg-green")} title={r.status === "check" ? `Check the class: ${r.why}` : r.why} />
-          <span className="max-w-56 truncate" title={r.name}>{r.code && <span className="mr-1 text-[11px] text-mute">{r.code}</span>}{r.name}</span>
+          <span className="max-w-56 truncate" title={r.name}>{r.code && <span className="me-1 text-[11px] text-mute">{r.code}</span>}{r.name}</span>
           {!r.system && <ClassSelect value={r.cls} label={`Class for ${r.name}`} compact onChange={(c) => onClass(r.key, c)} />}
         </div>
       </td>
-      {ps.map((p) => <td key={p} className="px-2 py-1 text-right tabular-nums">{amt(r.values[p])}</td>)}
+      {ps.map((p) => <td key={p} className="px-2 py-1 text-end tabular-nums">{amt(r.values[p])}</td>)}
     </tr>
   );
 }
@@ -265,27 +265,27 @@ function SalesTable({ lines, currency, picked, onFocus }: { lines: SalesLine[]; 
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line bg-band/60 px-3 py-1.5 text-[11.5px]" data-testid="sales-months">
         {months.map((m) => <span key={m.period}><b>{mlabel(m.period)}</b> {money(m.amount, currency, true)}</span>)}
-        <span className="ml-auto font-medium" data-testid="sorted-sales-total">Total {money(total, currency)}</span>
+        <span className="ms-auto font-medium" data-testid="sorted-sales-total">Total {money(total, currency)}</span>
       </div>
       <div ref={ref} className="relative flex-1 overflow-auto" data-testid="sorted-sales">
         <div style={{ height: lines.length * SROW + 30, minWidth: 900 }} className="relative text-[12px]">
           <div className={cn(cols, "sticky top-0 z-10 h-[30px] items-center border-b border-line bg-white text-[11px] font-medium text-mute")}>
-            {["Date", "Invoice", "Customer", "Product", "Category", "Salesperson", "Qty", "Amount", "Cost"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i >= 6 && "text-right")}>{h}</div>)}
+            {["Date", "Invoice", "Customer", "Product", "Category", "Salesperson", "Qty", "Amount", "Cost"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i >= 6 && "text-end")}>{h}</div>)}
           </div>
           {lines.slice(start, end).map((l, k) => {
             const i = start + k;
             return (
               <div key={i} onClick={() => l.src && onFocus({ sheet: l.src.sheet, rows: [l.src.row] })} style={{ top: 30 + i * SROW, height: SROW }} data-testid="sales-row"
-                className={cn(cols, "absolute left-0 right-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
+                className={cn(cols, "absolute start-0 end-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
                 <div className="truncate px-1.5">{l.day ?? mlabel(l.period)}</div>
                 <div className="truncate px-1.5">{l.doc}</div>
                 <div className="truncate px-1.5" title={l.customer}>{l.customer}</div>
                 <div className="truncate px-1.5" title={l.product}>{l.product}</div>
                 <div className="truncate px-1.5 text-mute">{l.category}</div>
                 <div className="truncate px-1.5 text-mute">{l.salesperson}</div>
-                <div className="px-1.5 text-right tabular-nums">{l.qty ?? "–"}</div>
-                <div className="px-1.5 text-right tabular-nums">{money(l.amount, currency)}</div>
-                <div className="px-1.5 text-right tabular-nums text-mute">{l.cost === null ? "–" : money(l.cost, currency)}</div>
+                <div className="px-1.5 text-end tabular-nums">{l.qty ?? "–"}</div>
+                <div className="px-1.5 text-end tabular-nums">{money(l.amount, currency)}</div>
+                <div className="px-1.5 text-end tabular-nums text-mute">{l.cost === null ? "–" : money(l.cost, currency)}</div>
               </div>
             );
           })}
@@ -306,25 +306,25 @@ function ExpensesTable({ lines, currency, picked, onFocus }: { lines: ExpenseLin
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line bg-band/60 px-3 py-1.5 text-[11.5px]" data-testid="expense-months">
         {months.map((m) => <span key={m.period}><b>{mlabel(m.period)}</b> {money(m.amount, currency, true)}</span>)}
-        <span className="ml-auto font-medium" data-testid="sorted-expenses-total">Total {money(total, currency)}</span>
+        <span className="ms-auto font-medium" data-testid="sorted-expenses-total">Total {money(total, currency)}</span>
       </div>
       <div ref={ref} className="relative flex-1 overflow-auto" data-testid="sorted-expenses">
         <div style={{ height: lines.length * SROW + 30, minWidth: 860 }} className="relative text-[12px]">
           <div className={cn(cols, "sticky top-0 z-10 h-[30px] items-center border-b border-line bg-white text-[11px] font-medium text-mute")}>
-            {["Date", "Bill", "Supplier", "Expense type", "Type in iReport", "Description", "Amount"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i === 6 && "text-right")}>{h}</div>)}
+            {["Date", "Bill", "Supplier", "Expense type", "Type in iReport", "Description", "Amount"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i === 6 && "text-end")}>{h}</div>)}
           </div>
           {lines.slice(start, end).map((l, k) => {
             const i = start + k;
             return (
               <div key={i} onClick={() => l.src && onFocus({ sheet: l.src.sheet, rows: [l.src.row] })} style={{ top: 30 + i * SROW, height: SROW }} data-testid="expense-line"
-                className={cn(cols, "absolute left-0 right-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
+                className={cn(cols, "absolute start-0 end-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
                 <div className="truncate px-1.5">{l.day ?? mlabel(l.period)}</div>
                 <div className="truncate px-1.5">{l.doc}</div>
                 <div className="truncate px-1.5" title={l.supplier}>{l.supplier}</div>
                 <div className="truncate px-1.5" title={l.category}>{l.category}</div>
                 <div className="truncate px-1.5 text-mute">{l.cls ? CLASS_LABEL[l.cls] : "–"}</div>
                 <div className="truncate px-1.5 text-mute" title={l.label}>{l.label}</div>
-                <div className="px-1.5 text-right tabular-nums">{money(l.amount, currency)}</div>
+                <div className="px-1.5 text-end tabular-nums">{money(l.amount, currency)}</div>
               </div>
             );
           })}

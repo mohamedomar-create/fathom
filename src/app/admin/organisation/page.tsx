@@ -1,4 +1,5 @@
 import { getUser } from "@/lib/supabase/server";
+import { getDict } from "@/lib/i18n/server";
 import { DeleteOrg } from "./delete-org";
 import { OrgForm } from "./org-form";
 
@@ -10,10 +11,11 @@ export default async function OrgPage() {
     supabase.from("companies").select("id", { count: "exact", head: true }).eq("org_id", m!.org_id),
     supabase.from("memberships").select("user_id", { count: "exact", head: true }).eq("org_id", m!.org_id),
   ]);
+  const d = (await getDict()).account;
   return (
     <div>
-      <h1 className="mb-1 text-3xl font-light">Organisation profile</h1>
-      <p className="mb-6 text-mute">Your firm&apos;s name, branding and the disclaimer printed on every report.</p>
+      <h1 className="mb-1 text-3xl font-light">{d.orgProfile}</h1>
+      <p className="mb-6 text-mute">{d.orgProfileHelp}</p>
       <OrgForm org={o!} />
       <DeleteOrg orgId={o!.id} name={o!.name} companies={companies ?? 0} members={members ?? 0} />
     </div>

@@ -33,7 +33,7 @@ export function ColumnChart({ labels, series, unit = "cur", cur = "$", height = 
   const x0 = (i: number) => pl + slot * i + (slot - groupW) / 2;
   const step = Math.max(1, Math.ceil(n / Math.max(3, Math.floor(w / 70))));
   return (
-    <div ref={box} className="relative" data-testid={testId}>
+    <div dir="ltr" ref={box} className="relative" data-testid={testId}>
       <div className="mb-1 flex flex-wrap gap-4 text-xs">
         {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />{s.name}</span>)}
       </div>

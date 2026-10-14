@@ -2,11 +2,13 @@
 import * as D from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useDict } from "@/lib/i18n/context";
 
 export const Dialog = D.Root;
 export const DialogTrigger = D.Trigger;
 export const DialogClose = D.Close;
 export function DialogContent({ className, children, title, ...props }: D.DialogContentProps & { title: string }) {
+  const d = useDict();
   return (
     <D.Portal>
       <D.Overlay className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[1px]" />
@@ -17,7 +19,7 @@ export function DialogContent({ className, children, title, ...props }: D.Dialog
         <D.Title className="sr-only">{title}</D.Title>
         <D.Description className="sr-only">{title}</D.Description>
         {children}
-        <D.Close className="absolute right-3 top-3 rounded p-1.5 text-mute hover:bg-band" aria-label="Close"><X className="h-5 w-5" /></D.Close>
+        <D.Close className="absolute end-3 top-3 rounded p-1.5 text-mute hover:bg-band" aria-label={d.dialog.close}><X className="h-5 w-5" /></D.Close>
       </D.Content>
     </D.Portal>
   );

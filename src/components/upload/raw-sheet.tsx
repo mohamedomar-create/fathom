@@ -85,7 +85,7 @@ function Grid({ s, focus, onRow }: { s: RawSheetData; focus: number[] | null; on
   const o = s.origin ?? { r: 0, c: 0 };
   const total = 44 + colW.reduce((a, b) => a + b, 0);
   return (
-    <div ref={ref} className="relative min-h-[320px] flex-1 overflow-auto lg:h-[64vh] lg:flex-none" data-testid="raw-grid" data-sheet={s.name}>
+    <div ref={ref} dir="ltr" className="relative min-h-[320px] flex-1 overflow-auto lg:h-[64vh] lg:flex-none" data-testid="raw-grid" data-sheet={s.name}>
       <div style={{ width: total, height: count * ROW_H + 44 }} className="relative text-[12px]">
         <div className="sticky top-0 z-10 bg-white" style={{ width: total }}>
           <div className="flex border-b border-line bg-band text-[10.5px] text-mute">

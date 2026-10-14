@@ -76,13 +76,13 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
       <table className="tbl min-w-[680px]" data-testid={testId}>
         <thead>
           <tr>
-            <th className="text-left">{nameLabel}</th>
-            {group && <th className="text-left">{group}</th>}
+            <th className="text-start">{nameLabel}</th>
+            {group && <th className="text-start">{group}</th>}
             <th>Spent</th><th>Share</th>
             {ofSales && <th title="As a % of sales in the period">% of sales</th>}
             {compareLabel && <th>{compareLabel}</th>}
             {compareLabel && <th>Change</th>}
-            {kind === "accounts" && <th className="text-left">Months</th>}
+            {kind === "accounts" && <th className="text-start">Months</th>}
             {kind === "suppliers" && <th>Bills</th>}
             {kind === "suppliers" && <th>Average bill</th>}
             {kind === "suppliers" && rows.some((r) => r.stock) && <th title="Goods bought for stock: they reach costs as cost of sales when sold">For stock</th>}
@@ -91,18 +91,18 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
         <tbody>
           {shown.map((r) => (
             <tr key={r.key} className="row" data-testid="expense-row">
-              <td className="max-w-[300px] truncate text-left" title={r.name}>
+              <td className="max-w-[300px] truncate text-start" title={r.name}>
                 {r.name}
-                {r.isNew && <span className="ml-2 rounded bg-brand-bg px-1.5 text-[10.5px] font-semibold text-brand-d">new</span>}
-                {kind === "accounts" && r.recurring === false && r.amount > 0 && <span className="ml-2 rounded bg-band px-1.5 text-[10.5px] text-mute" title="Not in most months of the period">one-off</span>}
+                {r.isNew && <span className="ms-2 rounded bg-brand-bg px-1.5 text-[10.5px] font-semibold text-brand-d">new</span>}
+                {kind === "accounts" && r.recurring === false && r.amount > 0 && <span className="ms-2 rounded bg-band px-1.5 text-[10.5px] text-mute" title="Not in most months of the period">one-off</span>}
               </td>
-              {group && <td className="max-w-[180px] truncate text-left text-mute" title={r.group}>{r.group}</td>}
+              {group && <td className="max-w-[180px] truncate text-start text-mute" title={r.group}>{r.group}</td>}
               <td className={cn("num", r.amount < 0 && "text-green-d")}>{money(r.amount, cur)}</td>
               <td className="num">{pct(r.share, 1)}</td>
               {ofSales && <td className="num text-mute">{r.ofSales === null ? "–" : pct(r.ofSales, 1)}</td>}
               {compareLabel && <td className="num text-mute">{r.compare === null ? "–" : money(r.compare, cur)}</td>}
               {compareLabel && <td><Delta value={r.growth} good={r.growth === null ? undefined : r.growth <= 0} /></td>}
-              {kind === "accounts" && <td className="text-left">{r.spark && r.spark.length > 1 ? <Sparkline values={r.spark} w={90} h={22} color="#7a7a72" /> : <span className="text-mute">{r.months ?? 0}</span>}</td>}
+              {kind === "accounts" && <td className="text-start">{r.spark && r.spark.length > 1 ? <Sparkline values={r.spark} w={90} h={22} color="#7a7a72" /> : <span className="text-mute">{r.months ?? 0}</span>}</td>}
               {kind === "suppliers" && <td className="num">{r.docs || "–"}</td>}
               {kind === "suppliers" && <td className="num">{r.avg === null || r.avg === undefined ? "–" : money(r.avg, cur)}</td>}
               {kind === "suppliers" && rows.some((x) => x.stock) && <td className="num text-mute">{r.stock ? money(r.stock, cur) : "–"}</td>}
@@ -128,7 +128,7 @@ export function CostBridge({ s, cur }: { s: ExpensesView; cur: string }) {
   const lo = Math.max(0, min - (hi - min) * 0.25);
   const X = (v: number) => ((Math.max(v, lo) - lo) / (hi - lo || 1)) * 100;
   return (
-    <div className="text-[12.5px]" data-testid="cost-bridge">
+    <div dir="ltr" className="text-[12.5px]" data-testid="cost-bridge">
       {steps.map((x, i) => {
         const a = X(Math.min(x.from, x.to)), b = X(Math.max(x.from, x.to));
         const delta = x.to - x.from;

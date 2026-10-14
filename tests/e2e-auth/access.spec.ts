@@ -82,5 +82,5 @@ test("a user deletes their account and can no longer sign in", async ({ page }) 
   await expect(page).toHaveURL(/\?account=deleted/);
   await expect(page.getByTestId("account-deleted")).toBeVisible();
   await signIn(page, email, PASSWORD);
-  await expect(page.getByRole("status")).toContainText(/invalid/i);
+  await expect(page.getByRole("status")).toContainText("The email or password is not right.");
 });

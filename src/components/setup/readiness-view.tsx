@@ -120,17 +120,17 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
   const next = r.items.find((i) => i.status === "missing") ?? r.items.find((i) => i.status === "partial");
   return (
     <div className="mb-6 rounded-lg border border-line bg-band/60" data-testid={`readiness-card-${sector}`}>
-      <button onClick={toggle} className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm" aria-expanded={open}>
+      <button onClick={toggle} className="flex w-full items-center gap-3 px-4 py-2.5 text-start text-sm" aria-expanded={open}>
         <span className="font-medium">Data readiness</span>
         <span className="num text-mute">{r.completion}% complete{r.accuracy !== null ? ` · ${r.accuracy}% accurate` : ""}</span>
-        <ChevronDown className={cn("ml-auto h-4 w-4 transition", open && "rotate-180")} />
+        <ChevronDown className={cn("ms-auto h-4 w-4 transition", open && "rotate-180")} />
       </button>
       {open && (
         <div className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-3">
           <RadarChart axes={r.items.map((i) => ({ label: i.axis, completion: i.completion, accuracy: i.accuracy }))} size={150} compact testId={`radar-card-${sector}`} />
           {next && (
             <div className="min-w-0 flex-1">
-              <div className="text-sm"><span className="label mr-2">Next</span><b>{next.title}</b></div>
+              <div className="text-sm"><span className="label me-2">Next</span><b>{next.title}</b></div>
               <div className="text-[12.5px] text-mute">{next.detail}</div>
               <FixLine item={next} basePath={c.basePath} />
             </div>
