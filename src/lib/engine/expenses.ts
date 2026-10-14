@@ -2,6 +2,9 @@ import { addMonths, mlabel } from "./format";
 import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
 import type { ClassKey, Comparison } from "./types";
 import { isBillDoc } from "./series";
+import { monthLabel } from "@/lib/i18n";
+
+const WORD_AR: Record<string, string> = { "the same period last year": "نفس الفترة من العام الماضي", "last month": "الشهر السابق", "the prior quarter": "الربع السابق", "the prior year": "السنة السابقة" };
 
 /**
  * Expenses analysis: what the company spends, on what and with whom, how it changes and how it compares with sales.
@@ -208,8 +211,11 @@ function rank<R extends { p: string; a: number }>(rows: R[], cur: Set<string>, c
 
 export function expensesAnalysis(
   accounts: ExpenseAccount[], d: ExpensesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string> } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string>; lang?: "en" | "ar" } = {},
 ): ExpensesAnalysis {
+  const ar = opts.lang === "ar";
+  const L = (en: string, a: string) => (ar ? a : en);
+  const ml = (p: string) => (ar ? monthLabel(p, "ar") : mlabel(p));
   const window = windowFor(sel, fyStart);
   const shift = opts.comparison === "ly" ? 12 : sel.type === "month" ? 1 : sel.type === "quarter" ? 3 : 12;
   const cmpW = shiftWindow(window, shift);
@@ -248,7 +254,7 @@ export function expensesAnalysis(
     const moves = byAccount.map((r) => ({ name: r.name, delta: round2(r.amount - (r.compare ?? 0)) })).filter((m) => m.delta).sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
     const top = moves.slice(0, 6);
     const rest = round2(total - compare - sum(top, (m) => m.delta));
-    bridge = [...top, ...(Math.abs(rest) >= 0.01 ? [{ name: `${moves.length - top.length} other accounts`, delta: rest }] : [])];
+    bridge = [...top, ...(Math.abs(rest) >= 0.01 ? [{ name: L(`${moves.length - top.length} other accounts`, `حسابات أخرى: ${moves.length - top.length}`), delta: rest }] : [])];
   }
 
   // ---- lines (suppliers, sources, categories)
@@ -322,29 +328,30 @@ export function expensesAnalysis(
   const g = growthOf(total, compare);
   const ofSales = revenue ? (total / revenue) * 100 : null, ofSalesCompare = revenueCmp && compare !== null ? (compare / revenueCmp) * 100 : null;
   const word = opts.comparison === "ly" ? "the same period last year" : sel.type === "month" ? "last month" : sel.type === "quarter" ? "the prior quarter" : "the prior year";
-  const lead = bridge.filter((b) => !/other accounts$/.test(b.name))[0];
-  if (g !== null && Math.abs(g) >= 5) findings.push({ kind: g > 0 ? "watch" : "win", title: `Costs ${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(1)}% on ${word}`, text: lead ? `The biggest change: ${lead.name} (${fmtSigned(lead.delta)}).` : "See the accounts below for what moved." });
-  if (ofSales !== null && ofSalesCompare !== null && ofSales - ofSalesCompare >= 2) findings.push({ kind: "risk", title: `Costs grew faster than sales`, text: `Costs take ${ofSales.toFixed(1)}% of sales, up from ${ofSalesCompare.toFixed(1)}%. Each 1 point is about ${fmtSigned(revenue! / 100)} of profit.` });
-  else if (ofSales !== null && ofSalesCompare !== null && ofSalesCompare - ofSales >= 2) findings.push({ kind: "win", title: `Costs take a smaller part of sales`, text: `${ofSales.toFixed(1)}% of sales, down from ${ofSalesCompare.toFixed(1)}%.` });
+  const wordA = WORD_AR[word] ?? word;
+  const lead = bridge.filter((b) => !/other accounts$|^حسابات أخرى/.test(b.name))[0];
+  if (g !== null && Math.abs(g) >= 5) findings.push({ kind: g > 0 ? "watch" : "win", title: L(`Costs ${g > 0 ? "up" : "down"} ${Math.abs(g).toFixed(1)}% on ${word}`, `التكاليف ${g > 0 ? "ارتفعت" : "انخفضت"} ${Math.abs(g).toFixed(1)}% عن ${wordA}`), text: lead ? L(`The biggest change: ${lead.name} (${fmtSigned(lead.delta)}).`, `أكبر تغير: ${lead.name} (${fmtSigned(lead.delta)}).`) : L("See the accounts below for what moved.", "راجع الحسابات أدناه لمعرفة ما تغير.") });
+  if (ofSales !== null && ofSalesCompare !== null && ofSales - ofSalesCompare >= 2) findings.push({ kind: "risk", title: L(`Costs grew faster than sales`, "التكاليف نمت أسرع من المبيعات"), text: L(`Costs take ${ofSales.toFixed(1)}% of sales, up from ${ofSalesCompare.toFixed(1)}%. Each 1 point is about ${fmtSigned(revenue! / 100)} of profit.`, `التكاليف تستهلك ${ofSales.toFixed(1)}% من المبيعات، بعد أن كانت ${ofSalesCompare.toFixed(1)}%. كل نقطة تساوي نحو ${fmtSigned(revenue! / 100)} من الربح.`) });
+  else if (ofSales !== null && ofSalesCompare !== null && ofSalesCompare - ofSales >= 2) findings.push({ kind: "win", title: L(`Costs take a smaller part of sales`, "التكاليف تستهلك جزءًا أصغر من المبيعات"), text: L(`${ofSales.toFixed(1)}% of sales, down from ${ofSalesCompare.toFixed(1)}%.`, `${ofSales.toFixed(1)}% من المبيعات، بعد أن كانت ${ofSalesCompare.toFixed(1)}%.`) });
   const mover = byAccount.filter((r) => r.compare !== null && r.growth !== null && Math.abs(r.amount - r.compare) >= Math.max(Math.abs(total) * 0.03, 1)).sort((a, b) => Math.abs(b.amount - b.compare!) - Math.abs(a.amount - a.compare!))[0];
-  if (mover && mover.name !== lead?.name) findings.push({ kind: mover.amount > mover.compare! ? "watch" : "win", title: `${mover.name} ${mover.amount > mover.compare! ? "rose" : "fell"} ${Math.abs(mover.growth!).toFixed(0)}%`, text: `${fmtSigned(mover.amount - mover.compare!)} against ${word}.` });
+  if (mover && mover.name !== lead?.name) findings.push({ kind: mover.amount > mover.compare! ? "watch" : "win", title: L(`${mover.name} ${mover.amount > mover.compare! ? "rose" : "fell"} ${Math.abs(mover.growth!).toFixed(0)}%`, `${mover.name} ${mover.amount > mover.compare! ? "ارتفع" : "انخفض"} ${Math.abs(mover.growth!).toFixed(0)}%`), text: L(`${fmtSigned(mover.amount - mover.compare!)} against ${word}.`, `${fmtSigned(mover.amount - mover.compare!)} مقارنة بـ${wordA}.`) });
   const top = named[0];
   const top5 = sum(named.slice(0, 5), (r) => r.amount);
-  if (top && namedTotal > 0 && top.amount / namedTotal > 0.25) findings.push({ kind: "watch", title: `One supplier takes ${Math.round((top.amount / namedTotal) * 100)}% of spend`, text: `${top.name}. A price rise or a delay there would hit costs and stock. Is there a second supplier?` });
-  else if (named.length >= 8 && namedTotal > 0 && top5 / namedTotal > 0.6) findings.push({ kind: "watch", title: `Five suppliers take ${Math.round((top5 / namedTotal) * 100)}% of spend`, text: "Spend sits with a small group of suppliers: worth checking prices against others once a year." });
-  if (doubles.length) findings.push({ kind: "risk", title: `${doubles.length} possible double payment${doubles.length > 1 ? "s" : ""}`, text: `Same supplier and amount within a week. ${doubles.slice(0, 2).map((f) => `${f.s}: ${f.doc || "no number"} and ${f.doc2 || "no number"}`).join("; ")}. Check them in Odoo.` });
-  if (large.length) findings.push({ kind: "watch", title: `${large.length} unusually large entr${large.length > 1 ? "ies" : "y"}`, text: `Each is bigger than twice the account's usual month. ${large.slice(0, 2).map((f) => `${f.t}: ${fmtSigned(f.a)}`).join("; ")}.` });
+  if (top && namedTotal > 0 && top.amount / namedTotal > 0.25) findings.push({ kind: "watch", title: L(`One supplier takes ${Math.round((top.amount / namedTotal) * 100)}% of spend`, `مورد واحد يستحوذ على ${Math.round((top.amount / namedTotal) * 100)}% من الإنفاق`), text: L(`${top.name}. A price rise or a delay there would hit costs and stock. Is there a second supplier?`, `${top.name}. أي زيادة في السعر أو تأخير هناك سيؤثر على التكاليف والمخزون. هل يوجد مورد بديل؟`) });
+  else if (named.length >= 8 && namedTotal > 0 && top5 / namedTotal > 0.6) findings.push({ kind: "watch", title: L(`Five suppliers take ${Math.round((top5 / namedTotal) * 100)}% of spend`, `خمسة موردين يستحوذون على ${Math.round((top5 / namedTotal) * 100)}% من الإنفاق`), text: L("Spend sits with a small group of suppliers: worth checking prices against others once a year.", "الإنفاق مركّز لدى مجموعة صغيرة من الموردين: يستحسن مقارنة الأسعار بغيرهم مرة في السنة.") });
+  if (doubles.length) findings.push({ kind: "risk", title: L(`${doubles.length} possible double payment${doubles.length > 1 ? "s" : ""}`, `دفعات قد تكون مكررة: ${doubles.length}`), text: L(`Same supplier and amount within a week. ${doubles.slice(0, 2).map((f) => `${f.s}: ${f.doc || "no number"} and ${f.doc2 || "no number"}`).join("; ")}. Check them in Odoo.`, `نفس المورد ونفس المبلغ خلال أسبوع. ${doubles.slice(0, 2).map((f) => `${f.s}: ${f.doc || "بلا رقم"} و${f.doc2 || "بلا رقم"}`).join("؛ ")}. راجعها في Odoo.`) });
+  if (large.length) findings.push({ kind: "watch", title: L(`${large.length} unusually large entr${large.length > 1 ? "ies" : "y"}`, `قيود كبيرة على غير المعتاد: ${large.length}`), text: L(`Each is bigger than twice the account's usual month. ${large.slice(0, 2).map((f) => `${f.t}: ${fmtSigned(f.a)}`).join("; ")}.`, `كل منها أكبر من ضعف الشهر المعتاد للحساب. ${large.slice(0, 2).map((f) => `${f.t}: ${fmtSigned(f.a)}`).join("؛ ")}.`) });
   if (finance.total > 0 && revenue && (finance.total / revenue) * 100 >= 3) {
     const big = byLender[0];
-    findings.push({ kind: (finance.total / revenue) * 100 >= 6 ? "risk" : "watch", title: `Banks take ${((finance.total / revenue) * 100).toFixed(1)}% of sales`, text: `${fmtAmt(finance.interest)} of interest and ${fmtAmt(finance.fees)} of bank charges${big && big.share >= 50 ? `; most of it to ${big.name}` : ""}. Worth comparing rates and fees with other banks.` });
+    findings.push({ kind: (finance.total / revenue) * 100 >= 6 ? "risk" : "watch", title: L(`Banks take ${((finance.total / revenue) * 100).toFixed(1)}% of sales`, `البنوك تستهلك ${((finance.total / revenue) * 100).toFixed(1)}% من المبيعات`), text: L(`${fmtAmt(finance.interest)} of interest and ${fmtAmt(finance.fees)} of bank charges${big && big.share >= 50 ? `; most of it to ${big.name}` : ""}. Worth comparing rates and fees with other banks.`, `${fmtAmt(finance.interest)} فوائد و${fmtAmt(finance.fees)} مصاريف بنكية${big && big.share >= 50 ? `؛ معظمها لـ ${big.name === "Bank not named" ? "بنك غير محدد" : big.name}` : ""}. يستحسن مقارنة الأسعار والرسوم مع بنوك أخرى.`) });
   }
-  if (alsoCustomers.length) findings.push({ kind: "watch", title: `${alsoCustomers.length} partner${alsoCustomers.length > 1 ? "s are" : " is"} also ${alsoCustomers.length > 1 ? "customers" : "a customer"}`, text: `${alsoCustomers.slice(0, 3).map((r) => r.name).join(", ")}. Their cost lines are listed apart from suppliers: check they are real purchases, not cost of goods sold to them.` });
-  if (unreconciled.length) findings.push({ kind: "watch", title: `Lines differ from P&L costs in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, text: `${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. A purchases file only holds bills: salaries, rent paid by bank and depreciation are not in it.` });
+  if (alsoCustomers.length) findings.push({ kind: "watch", title: L(`${alsoCustomers.length} partner${alsoCustomers.length > 1 ? "s are" : " is"} also ${alsoCustomers.length > 1 ? "customers" : "a customer"}`, `شركاء هم عملاء أيضًا: ${alsoCustomers.length}`), text: L(`${alsoCustomers.slice(0, 3).map((r) => r.name).join(", ")}. Their cost lines are listed apart from suppliers: check they are real purchases, not cost of goods sold to them.`, `${alsoCustomers.slice(0, 3).map((r) => r.name).join("، ")}. بنود تكاليفهم معروضة بعيدًا عن الموردين: تأكد أنها مشتريات حقيقية وليست تكلفة بضاعة مباعة لهم.`) });
+  if (unreconciled.length) findings.push({ kind: "watch", title: L(`Lines differ from P&L costs in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, `البنود تختلف عن تكاليف قائمة الدخل في عدد من الأشهر: ${unreconciled.length}`), text: L(`${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. A purchases file only holds bills: salaries, rent paid by bank and depreciation are not in it.`, `${unreconciled.slice(0, 3).map((u) => `${ml(u.period)}: ${fmtSigned(u.diff)}`).join("؛ ")}. ملف المشتريات يحتوي الفواتير فقط: الرواتب والإيجار المدفوع بالبنك والإهلاك ليست فيه.`) });
 
   const notes: string[] = [];
-  if (!cmpOk) notes.push(`No P&L loaded for ${cmpW.periods.length === 1 ? mlabel(cmpW.periods[0]) : `${mlabel(cmpW.periods[0])} – ${mlabel(cmpW.periods[cmpW.periods.length - 1])}`}, so there is no comparison.`);
-  if (!lineCur.length) notes.push("Suppliers need expense lines: upload your General Ledger, or your vendor bills.");
-  else if (lineCur.length < months.length) notes.push(`Expense lines cover ${lineCur.length} of the ${months.length} months.`);
+  if (!cmpOk) notes.push(L(`No P&L loaded for ${cmpW.periods.length === 1 ? mlabel(cmpW.periods[0]) : `${mlabel(cmpW.periods[0])} – ${mlabel(cmpW.periods[cmpW.periods.length - 1])}`}, so there is no comparison.`, `لا توجد قائمة دخل محمّلة لـ ${cmpW.periods.length === 1 ? ml(cmpW.periods[0]) : `${ml(cmpW.periods[0])} – ${ml(cmpW.periods[cmpW.periods.length - 1])}`}، لذلك لا توجد مقارنة.`));
+  if (!lineCur.length) notes.push(L("Suppliers need expense lines: upload your General Ledger, or your vendor bills.", "معرفة الموردين تحتاج بنود المصروفات: ارفع دفتر الأستاذ العام أو فواتير الموردين."));
+  else if (lineCur.length < months.length) notes.push(L(`Expense lines cover ${lineCur.length} of the ${months.length} months.`, `بنود المصروفات تغطي ${lineCur.length} من ${months.length} أشهر.`));
 
   return {
     window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, revenue, ofSales, ofSalesCompare, split, byGroup, byAccount, bridge,

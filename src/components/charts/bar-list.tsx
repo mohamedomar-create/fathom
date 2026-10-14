@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/lib/i18n/use-t";
 import { useState } from "react";
 import { money, pct } from "@/lib/engine";
 import { C } from "./util";
@@ -11,9 +12,10 @@ export interface BarItem { key: string; label: string; value: number; share?: nu
  */
 export function BarList({ items, cur, max = 10, testId, onSelect }: { items: BarItem[]; cur: string; max?: number; testId?: string; onSelect?: (key: string) => void }) {
   const [hover, setHover] = useState<string | null>(null);
+  const T = useT();
   const shown = items.slice(0, max);
   const rest = items.slice(max);
-  const rows = rest.length ? [...shown, { key: "__other", label: `${rest.length} more`, value: rest.reduce((s, x) => s + x.value, 0), share: rest.reduce((s, x) => s + (x.share ?? 0), 0) }] : shown;
+  const rows = rest.length ? [...shown, { key: "__other", label: T.d.ana.more(rest.length), value: rest.reduce((s, x) => s + x.value, 0), share: rest.reduce((s, x) => s + (x.share ?? 0), 0) }] : shown;
   const top = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
   const anyNeg = rows.some((r) => r.value < 0);
   return (
@@ -24,7 +26,7 @@ export function BarList({ items, cur, max = 10, testId, onSelect }: { items: Bar
         return (
           <div key={r.key} role="listitem" className={`grid grid-cols-[minmax(0,38%)_1fr] items-center gap-3 rounded px-1 py-0.5 text-[13px] ${hover === r.key ? "bg-band" : ""} ${click ? "cursor-pointer" : ""}`}
             onMouseEnter={() => setHover(r.key)} onMouseLeave={() => setHover(null)} onClick={click ? () => onSelect!(r.key) : undefined}
-            title={`${r.label}: ${money(r.value, cur)}${r.share !== undefined ? ` · ${pct(r.share, 1)} of the total` : ""}`}>
+            title={`${r.label}: ${money(r.value, cur)}${r.share !== undefined ? ` · ${T.d.ana.ofTotal2(pct(r.share, 1))}` : ""}`}>
             <div className="truncate" title={r.label}>{r.label}{r.sub && <span className="ml-1 text-mute">{r.sub}</span>}</div>
             <div className="relative flex h-5 items-center">
               {anyNeg && <span className="absolute left-1/2 top-0 h-full w-px bg-line" aria-hidden="true" />}
