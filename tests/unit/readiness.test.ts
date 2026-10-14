@@ -3,7 +3,8 @@ import { buildMonths } from "@/lib/company/build";
 import { runChecks } from "@/lib/company/checks";
 import { demoCompany } from "@/lib/company/demo";
 import { demoSales } from "@/lib/company/demo-sales";
-import { bankingReadiness, financialsReadiness, forecastReadiness, readiness, salesReadiness } from "@/lib/company/readiness";
+import { bankingReadiness, expensesReadiness, financialsReadiness, forecastReadiness, readiness, salesReadiness } from "@/lib/company/readiness";
+import { demoExpenses } from "@/lib/company/demo-expenses";
 import type { AccountLine } from "@/lib/company/types";
 
 function company(months: string[], o: { bsOnly?: string[]; skipBS?: string[] } = {}) {
@@ -80,6 +81,17 @@ describe("data readiness", () => {
     const f = forecastReadiness(company(ps("2026-01", 12)));
     expect(f.items.find((i) => i.id === "run")!.completion).toBe(100);
     expect(f.items.find((i) => i.id === "drivers")!.status).toBe("missing");
-    expect(readiness(company(ps("2026-01", 3))).map((r) => r.key)).toEqual(["financials", "sales", "banking", "forecast"]);
+    expect(readiness(company(ps("2026-01", 3))).map((r) => r.key)).toEqual(["financials", "sales", "expenses", "banking", "forecast"]);
+  });
+
+  it("expenses: the demo's lines tie to its P&L costs; with no lines, the next step is the General Ledger", () => {
+    const d = demoCompany();
+    const r = expensesReadiness({ months: d.months, checks: [], fyStart: 1, expenses: demoExpenses(), today: "2026-10-12" });
+    expect(r.items.find((i) => i.id === "reconciled")).toMatchObject({ completion: 100, accuracy: 100 });
+    expect(r.items.find((i) => i.id === "loaded")!.completion).toBe(100);
+    expect(r.items.find((i) => i.id === "types")!.completion).toBe(100);
+    const none = expensesReadiness({ months: d.months, checks: [], fyStart: 1, expenses: null });
+    expect(none.items).toHaveLength(1);
+    expect(none.items[0].fix?.what).toBe("Upload your General Ledger");
   });
 });

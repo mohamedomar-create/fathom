@@ -17,6 +17,7 @@ export interface CompanyExport {
   commentary: { period_key: string; section: string; source: string; updated_at: string; body: string }[];
   reports: { title: string; period_type: string; period_end: string; status: string; shared: boolean; expires_at: string | null; published_at: string | null; created_at: string }[];
   odoo: { url: string; db: string; login: string; odoo_company_name: string | null; months_history: number; status: string; last_sync_at: string | null } | null;
+  expenses?: { day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number; source: string }[];
   sales?: { day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null; source: string }[];
 }
 
@@ -56,6 +57,10 @@ export function companySheets(d: CompanyExport): Sheet[] {
     { name: "Commentary", rows: [["Period", "Section", "Written by", "Updated", "Text"], ...d.commentary.map((m) => [m.period_key, m.section, m.source === "ai" ? "AI" : "User", m.updated_at, m.body])] },
     { name: "Reports", rows: [["Title", "Period type", "Period end", "Status", "Shared link", "Link expires", "Published", "Created"], ...d.reports.map((r) => [r.title, r.period_type, r.period_end, r.status, r.shared ? "yes" : "no", day(r.expires_at), day(r.published_at), day(r.created_at)])] },
   ];
+  if (d.expenses?.length) {
+    sheets.push({ name: "Expense lines", rows: [["Date", "Month", "Bill", "Series", "Supplier", "Account", "Class", "Category", "Description", "Amount", "Source"],
+      ...d.expenses.map((l) => [l.day, l.period, l.doc, l.series, l.supplier, l.account, l.cls, l.category, l.label, Number(l.amount), l.source === "file" ? "Expenses file" : "General Ledger"])] });
+  }
   if (d.sales?.length) {
     sheets.push({ name: "Sales lines", rows: [["Date", "Month", "Invoice", "Series", "Customer", "Product", "Category", "Salesperson", "Quantity", "Amount", "Cost", "Source"],
       ...d.sales.map((l) => [l.day, l.period, l.doc, l.series, l.customer, l.product, l.category, l.salesperson, l.qty === null ? null : Number(l.qty), Number(l.amount), l.cost === null ? null : Number(l.cost), l.source === "file" ? "Sales file" : "General Ledger"])] });

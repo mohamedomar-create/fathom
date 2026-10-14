@@ -47,11 +47,11 @@ test("goalseek lever changes move the NOW marker", async ({ page }) => {
 });
 
 /** The upload, step by step: what → get file → upload. */
-async function toUpload(page: import("@playwright/test").Page, kind: "accounts" | "sales" = "accounts") {
+async function toUpload(page: import("@playwright/test").Page, kind: "accounts" | "sales" | "expenses" = "accounts") {
   await page.goto("/demo/settings/source-data");
   await expect(page.getByTestId("wiz-steps")).toHaveAttribute("data-at", "what");
   await page.getByTestId(`pick-${kind}`).click();
-  await expect(page.getByTestId("get-odoo")).toContainText(kind === "sales" ? "Invoice Analysis" : "General Ledger");
+  await expect(page.getByTestId("get-odoo")).toContainText(kind === "sales" ? "Invoice Analysis" : kind === "expenses" ? "Vendor Bills" : "General Ledger");
   await page.getByTestId("wiz-next").click();
   await expect(page.getByTestId("dropzone")).toBeVisible();
 }
@@ -304,6 +304,39 @@ test("demo sales reconcile to the P&L and break down by category, product and cu
   await expect(page.getByTestId("customer-table")).toBeVisible();
   await page.goto("/demo/sales/trend");
   await expect(page.getByTestId("reconciliation-table")).toContainText("EGP 1,066,138");
+});
+
+test("demo expenses tie to the P&L, by account and supplier, with the entries to check", async ({ page }) => {
+  await page.goto("/demo/expenses");
+  await expect(page.getByTestId("expenses-headline")).toContainText("spent");
+  await expect(page.getByTestId("tile-costs")).toBeVisible();
+  await expect(page.getByTestId("expenses-reconciled")).toBeVisible();
+  await expect(page.getByTestId("cost-bridge")).toBeVisible();
+  await expect(page.getByTestId("flag-double")).toContainText("Paid twice?");
+  await expect(page.getByTestId("flag-large")).toContainText("Professional Fees");
+  await page.goto("/demo/expenses/accounts");
+  await expect(page.getByTestId("account-table")).toContainText("Salaries & Wages");
+  await page.goto("/demo/expenses/suppliers");
+  await expect(page.getByTestId("supplier-table")).toContainText("Medline Supply");
+  await expect(page.getByTestId("source-bars")).toContainText("Vendor bills");
+  await page.goto("/demo/expenses/trend");
+  await expect(page.getByTestId("expenses-month-table")).toBeVisible();
+});
+
+test("vendor bills are read as expenses; dropped under My accounts, it offers to switch", async ({ page }) => {
+  await toUpload(page, "expenses");
+  await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-vendor-bills.xlsx"));
+  await expect(page.getByTestId("expenses-only")).toBeVisible();
+  await expect(page.getByTestId("expenses-total")).toContainText("126,000");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
+  await page.getByTestId("reading-tab-expenses").click();
+  await expect(page.getByTestId("sorted-expenses-total")).toContainText("126,000");
+  await expect(page.getByTestId("commit-import")).toHaveText(/Create a free account to save/);
+  await toUpload(page, "accounts");
+  await page.getByTestId("file-input").setInputFiles(path.join(__dirname, "../fixtures/files/odoo-vendor-bills.xlsx"));
+  await expect(page.getByTestId("upload-notice")).toContainText("This looks like an expenses file.");
+  await page.getByTestId("switch-kind").click();
+  await expect(page.getByTestId("upload-notice")).toHaveCount(0);
 });
 
 test("cash flow shows each month and the change in cash", async ({ page }) => {

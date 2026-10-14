@@ -1,11 +1,11 @@
 import {
-  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Users, Package, Waves,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree,
   type LucideIcon,
 } from "lucide-react";
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Starts a second group (a line above it in the rail). */ group?: boolean }
 
-export type SectorKey = "financials" | "sales" | "banking";
+export type SectorKey = "financials" | "sales" | "expenses" | "banking";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -34,6 +34,14 @@ export const SECTORS: Sector[] = [
     ],
   },
   {
+    key: "expenses", label: "Expenses", items: [
+      { href: "expenses", label: "Overview", title: "Expenses Overview", icon: Receipt },
+      { href: "expenses/accounts", label: "Accounts", title: "Expenses by Account", icon: ListTree },
+      { href: "expenses/suppliers", label: "Suppliers", title: "Suppliers", icon: Truck },
+      { href: "expenses/trend", label: "Trend", title: "Expenses Trend", icon: TrendingUp },
+    ],
+  },
+  {
     key: "banking", label: "Banking", items: [
       { href: "banking", label: "Bank Readiness", title: "Bank Readiness", icon: Landmark },
     ],
@@ -43,6 +51,7 @@ export const SECTORS: Sector[] = [
 /** The sector a page belongs to, from its path relative to the company (e.g. "sales/products"). */
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
-  const key: SectorKey = r === "sales" || r.startsWith("sales/") ? "sales" : r === "banking" || r.startsWith("banking/") ? "banking" : "financials";
+  const first = r.split("/")[0];
+  const key: SectorKey = first === "sales" || first === "expenses" || first === "banking" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }

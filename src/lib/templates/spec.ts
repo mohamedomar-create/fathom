@@ -5,14 +5,15 @@ import { CLASS_LABEL } from "@/lib/ingest/classes";
  * iReport's own input templates: one layout per kind of data, read exactly (no guessing). Each sheet carries a marker
  * in its first cell so the importer recognises it, and every account row says which iReport class it belongs to.
  */
-export type TemplateKind = "financials" | "sales";
-export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales"];
+export type TemplateKind = "financials" | "sales" | "expenses";
+export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales", "expenses"];
 
 export const MARK_PREFIX = "iReport template";
 export const MARK = {
   pl: `${MARK_PREFIX} · P&L by month · v1`,
   bs: `${MARK_PREFIX} · Balance sheet by month · v1`,
   sales: `${MARK_PREFIX} · Sales lines · v1`,
+  expenses: `${MARK_PREFIX} · Expense lines · v1`,
 } as const;
 export type SheetMark = keyof typeof MARK;
 
@@ -84,6 +85,16 @@ export const SALES_COLS: SalesCol[] = [
   { key: "qty", head: "Quantity", required: false, help: "Units sold; negative for returns." },
   { key: "amount", head: "Net sales amount (excl. VAT)", required: true, help: "The line's amount before VAT; negative for credit notes and returns." },
   { key: "cost", head: "Cost of goods sold", required: false, help: "What the goods sold cost, for the margin." },
+];
+
+export interface ExpenseCol { key: "date" | "doc" | "supplier" | "type" | "description" | "amount"; head: string; required: boolean; help: string }
+export const EXPENSE_COLS: ExpenseCol[] = [
+  { key: "date", head: "Bill date", required: true, help: "The bill or payment date, e.g. 15/01/2026 (day first) or a date cell." },
+  { key: "doc", head: "Bill number", required: false, help: "The bill or receipt number, e.g. BILL/2026/0001." },
+  { key: "supplier", head: "Supplier", required: false, help: "Who was paid, written the same way every time. Leave empty for salaries." },
+  { key: "type", head: "Expense type", required: true, help: "What it was for: rent, salaries, fuel, raw materials… or your account name." },
+  { key: "description", head: "Description", required: false, help: "A few words about the line (optional)." },
+  { key: "amount", head: "Amount (excl. VAT)", required: true, help: "The amount before VAT; negative for refunds and supplier credit notes." },
 ];
 
 /** The months of the financial year starting in `fyStart` of `year`, and the month before it (the opening balance). */

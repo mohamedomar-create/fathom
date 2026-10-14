@@ -16,3 +16,4 @@ export * from "./real-profit";
 export * from "./bank-outlook";
 export * from "./forecast";
 export * from "./sales";
+export * from "./expenses";

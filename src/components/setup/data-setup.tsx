@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { CheckCircle2, CircleDashed, AlertTriangle } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
-import { mlabel, type SalesData } from "@/lib/engine";
+import { mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
 import type { ItemStatus, SectorReadiness } from "@/lib/company/readiness";
 import { SectorPanel, TemplateButton, useReadiness } from "./readiness-view";
 import { cn } from "@/lib/cn";
@@ -18,9 +18,9 @@ const sectorStatus = (r: SectorReadiness | undefined): ItemStatus => (!r ? "miss
  * The guided way in: each step says what to provide, why, and how (an Odoo export or iReport's template),
  * with its status from the data already loaded. Below, every sector's readiness radar.
  */
-export function DataSetup({ sales }: { sales: SalesData | null }) {
+export function DataSetup({ sales, expenses = null }: { sales: SalesData | null; expenses?: ExpensesData | null }) {
   const c = useCompany();
-  const all = useReadiness(sales);
+  const all = useReadiness(sales, expenses);
   const by = (k: SectorReadiness["key"]) => all.find((r) => r.key === k);
   const fin = by("financials");
   const upload = (step: string) => `${c.basePath}/settings/source-data?step=${step}`;
@@ -49,17 +49,23 @@ export function DataSetup({ sales }: { sales: SalesData | null }) {
       actions: <><Link href={upload("sales")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-sales">Upload</Link><TemplateButton kind="sales" compact /></>,
     },
     {
-      n: 5, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
+      n: 5, title: "Your expenses", status: sectorStatus(by("expenses")), testId: "step-expenses",
+      why: "Who you pay, and for what. It's in your General Ledger.",
+      how: <>Uploaded your General Ledger? Then it&apos;s done. For more detail, add your vendor bills (Accounting → Reporting → Invoice Analysis → Vendor Bills → Export), or fill our template.</>,
+      actions: <><Link href={upload("expenses")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-expenses">Upload</Link><TemplateButton kind="expenses" compact /></>,
+    },
+    {
+      n: 6, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
       why: "Your loans, your rate, and what you want to borrow.",
       actions: <Link href={`${c.basePath}/banking`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 6, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
+      n: 7, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
       why: "Check the numbers we guessed, then press Save.",
       actions: <Link href={`${c.basePath}/analysis/forecast`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 7, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
+      n: 8, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
       why: "Pick 3 to 5 goals, like sales or profit.",
       actions: <Link href={`${c.basePath}/settings/targets`} className="text-sm text-brand-d underline">Set</Link>,
     },

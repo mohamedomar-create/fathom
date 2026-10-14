@@ -4,6 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { selectableEnds, stripMemoStamp, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useSales } from "@/lib/company/sales-context";
+import { useExpenses } from "@/lib/company/expenses-context";
 import { downloadReportPdf } from "@/lib/report/export";
 import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportOrg, type ReportSection } from "@/lib/report/types";
@@ -16,6 +17,7 @@ export interface ReportRecord { id: string; title: string; period_type: PeriodTy
 export function ReportBuilder({ report, org, demo = false }: { report: ReportRecord; org: ReportOrg; demo?: boolean }) {
   const c = useCompany();
   const sales = useSales();
+  const expenses = useExpenses();
   const [title, setTitle] = useState(report.title);
   const [type, setType] = useState<PeriodType>(report.period_type);
   const [end, setEnd] = useState(report.period_end);
@@ -43,9 +45,9 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
 
   const input = useMemo(() => ({
     title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
-    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {}, sales,
+    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {}, sales, expenses,
     preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
-  }), [title, c, type, validEnd, sections, comments, org, sales]);
+  }), [title, c, type, validEnd, sections, comments, org, sales, expenses]);
 
   const move = (i: number, d: -1 | 1) => setSections((s) => { const n = [...s]; const j = i + d; if (j < 0 || j >= n.length) return s; [n[i], n[j]] = [n[j], n[i]]; return n; });
   const run = (key: string, f: () => Promise<void>) => { setBusy(key); setMsg(null); start(async () => { try { await f(); } catch (e) { setMsg({ ok: false, text: (e as Error).message }); } finally { setBusy(null); } }); };

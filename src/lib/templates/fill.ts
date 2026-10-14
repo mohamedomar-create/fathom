@@ -1,7 +1,8 @@
 import type { ClassKey } from "@/lib/engine";
 import type { SortedFinancials } from "@/lib/ingest/sorted";
 import type { SalesLine } from "@/lib/ingest/sales";
-import { MARK, SALES_COLS } from "./spec";
+import type { ExpenseLine } from "@/lib/ingest/expenses";
+import { EXPENSE_COLS, MARK, SALES_COLS } from "./spec";
 
 /** One account of a filled financials template: its class and its figures by month (natural signs, as iReport stores them). */
 export interface FillRow { code: string; name: string; cls: ClassKey; values: Record<string, number> }
@@ -28,4 +29,12 @@ export function salesCsv(lines: SalesLine[], currency: string): string {
   const out = [[MARK.sales], ["Sales: one row per invoice line"], [`Amounts in ${currency}, before VAT. * = required.`], head];
   for (const l of lines) out.push([l.day ? dmy(l.day) : `01/${l.period.slice(5)}/${l.period.slice(0, 4)}`, l.doc, l.customer, l.product, l.category, l.salesperson, l.qty === null ? "" : String(l.qty), String(l.amount), l.cost === null ? "" : String(l.cost)]);
   return "﻿" + out.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
+}
+
+/** Expense lines as iReport's expenses template, saved as CSV: marker in A1, the headings on row 4. */
+export function expensesCsv(lines: ExpenseLine[], currency: string): string {
+  const head = EXPENSE_COLS.map((c) => `${c.head}${c.required ? " *" : ""}`);
+  const out = [[MARK.expenses], ["Expenses: one row per bill or payment"], [`Amounts in ${currency}, before VAT. * = required.`], head];
+  for (const l of lines) out.push([l.day ? dmy(l.day) : `01/${l.period.slice(5)}/${l.period.slice(0, 4)}`, l.doc, l.supplier === "No supplier" ? "" : l.supplier, l.category || l.account, l.label, String(l.amount)]);
+  return "\uFEFF" + out.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
