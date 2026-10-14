@@ -3,6 +3,7 @@ import { auth } from "./areas/auth";
 import { account } from "./areas/account";
 import { home } from "./areas/home";
 import { fin } from "./areas/fin";
+import { ana } from "./areas/ana";
 
 /** The app's words in Arabic (Egyptian business usage, Modern Standard wording). */
 export const ar: Dict = {
@@ -88,4 +89,5 @@ export const ar: Dict = {
   account: account.ar,
   home: home.ar,
   fin: fin.ar,
+  ana: ana.ar,
 };

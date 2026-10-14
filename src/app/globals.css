@@ -45,6 +45,11 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 :lang(ar) [class*="tracking-"] { letter-spacing: 0 !important; }
 /* Arrows and chevrons that point along the reading direction turn round in Arabic. */
 [dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+/* A figure takes its direction from itself: "-EGP 31,540" reads left to right with its minus in front, "17 يوم" right to left.
+   Number columns sit on the left. */
+[dir="rtl"] .num:not(td):not(th) { unicode-bidi: plaintext; text-align: right; }
+[dir="rtl"] td.num, [dir="rtl"] .tbl td:not(:first-child):not(.text-start):not(.\!text-start) { unicode-bidi: plaintext; text-align: left; }
+[dir="rtl"] .tbl th:not(:first-child):not(.text-start):not(.\!text-start) { text-align: left; }
 
 /* Statement tables */
 .tbl { width: 100%; border-collapse: collapse; }

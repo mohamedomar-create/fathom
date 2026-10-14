@@ -387,3 +387,24 @@ test("Arabic: the page turns right to left, the frame speaks Arabic, and English
   await expect(page.getByTestId("tab-sales")).toHaveText("Sales");
   expect(errors).toEqual([]);
 });
+
+test("Arabic: the Financials pages, KPIs and analyst notes read in Arabic", async ({ page, context, baseURL }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await context.addCookies([{ name: "lang", value: "ar", url: baseURL! }]);
+  await page.goto("/demo/summary");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("الملخص التنفيذي");
+  await expect(page.getByTestId("headline")).toContainText("EGP 1,066,138");
+  await expect(page.getByTestId("findings-win")).toContainText("الإيرادات أعلى من المستهدف");
+  await page.goto("/demo/analysis/kpis");
+  await expect(page.getByTestId("kpi-gpm")).toContainText("هامش مجمل الربح");
+  await expect(page.getByTestId("kpi-ar_days")).toContainText("يوم");
+  await page.getByTestId("kpi-gpm").click();
+  await expect(page.getByRole("dialog")).toContainText("مقابل كل 100 EGP");
+  await page.keyboard.press("Escape");
+  await page.goto("/demo/analysis/financials");
+  await expect(page.getByTestId("pl-table")).toContainText("مجمل الربح");
+  await page.goto("/demo/analysis/cashflow");
+  await expect(page.getByTestId("waterfall")).toContainText("التدفق النقدي التشغيلي");
+  expect(errors).toEqual([]);
+});

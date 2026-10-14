@@ -2,10 +2,12 @@
 import { money, type ClassKey } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { useT } from "@/lib/i18n/use-t";
 
 /** "Top ten … accounts" drill-down for the selected period window. */
 export function TopAccounts({ title, classes, periods, total }: { title: string; classes: ClassKey[]; periods: string[]; total: number }) {
   const c = useCompany();
+  const t = useT().d.ana;
   const rows = c.accounts
     .filter((x) => classes.includes(x.cls))
     .map((x) => ({ ...x, v: periods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0) }))
@@ -20,7 +22,7 @@ export function TopAccounts({ title, classes, periods, total }: { title: string;
       <DialogContent title={title} className="w-[min(640px,calc(100vw-24px))] p-6">
         <h2 className="mb-4 text-xl font-normal">{title}</h2>
         <table className="tbl">
-          <thead><tr><th>Account</th><th>Amount</th><th>% of total</th></tr></thead>
+          <thead><tr><th>{t.account}</th><th>{t.amount}</th><th>{t.ofTotal}</th></tr></thead>
           <tbody>
             {rows.map((r) => (
               <tr key={r.id}>

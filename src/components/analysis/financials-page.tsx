@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { bsCalc, cashFlowStatement, hasBS, type MonthData, money, mlabel, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
+import { bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -10,6 +10,7 @@ import { MiniPie } from "@/components/charts/spark";
 import { cn } from "@/lib/cn";
 import { MissingData, Notes } from "./common";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
+import { useT } from "@/lib/i18n/use-t";
 
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly";
@@ -52,14 +53,16 @@ export function FinancialsPage() {
   const [layout, setLayout] = useState<"summary" | "detailed">("summary");
   const [cmp, setCmp] = useState<Cmp>("prior");
   const [src, setSrc] = useState<SourceLine | null>(null);
+  const T = useT();
+  const t = T.d.ana;
   if (!a) return null;
   const trace = (key: string, label: string, statement: "PL" | "BS", v: number) => (
-    <button type="button" onClick={() => setSrc({ key, label, statement, periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title="Show the accounts and source file behind this figure" data-testid={`trace-${key}`}>{m(v)}</button>
+    <button type="button" onClick={() => setSrc({ key, label, statement, periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title={t.traceTitle} data-testid={`trace-${key}`}>{m(v)}</button>
   );
   const cur = c.settings.currency;
   const m = (v: number) => money(v, cur);
   const comp = cmp === "prior" ? a.view.prior : a.view.ly;
-  const compLabel = comp?.label ?? (cmp === "prior" ? "Prior" : "Last year");
+  const compLabel = comp ? T.pl(comp.label) : cmp === "prior" ? t.prior : t.lastYear;
   const { P, B, B0 } = a.view;
   const periods = a.view.window.periods;
   const compPeriods = (() => {
@@ -85,21 +88,21 @@ export function FinancialsPage() {
   const compP = comp?.P ?? (fyCompMonths.length ? plCalc(sumPL(fyCompMonths.map((x) => x.pl))) : null);
   return (
     <>
-      <PageHeader title="Financials" right={<PeriodPicker />}>
+      <PageHeader title={T.d.nav["analysis/financials"][1]} right={<PeriodPicker />}>
         <div className="sent">
-          View <SentenceSelect testId="fin-view" value={view} onChange={setView} options={[{ value: "pl", label: "Profit & Loss" }, { value: "bs", label: "Balance Sheet" }, { value: "cf", label: "Cash Flow Statement" }]} />
-          {" "}showing <SentenceSelect value={layout} onChange={setLayout} options={[{ value: "summary", label: "Summary" }, { value: "detailed", label: "Detailed", disabled: !hasDetail, hint: hasDetail ? "Account-level lines" : "Needs account-level data" }]} />
-          {" "}financials, compared with <SentenceSelect value={cmp} onChange={setCmp} options={[{ value: "prior", label: a.view.sel.type === "month" ? "Last month" : "Prior period" }, { value: "ly", label: a.view.sel.type === "month" ? "Same month LY" : "Same period LY" }]} />
+          {t.view} <SentenceSelect testId="fin-view" value={view} onChange={setView} options={[{ value: "pl", label: t.pl }, { value: "bs", label: t.bs }, { value: "cf", label: t.cf }]} />
+          {" "}{t.showingWord} <SentenceSelect value={layout} onChange={setLayout} options={[{ value: "summary", label: t.summary }, { value: "detailed", label: t.detailed, disabled: !hasDetail, hint: hasDetail ? t.accountLines : t.needsAccounts }]} />
+          {" "}{t.financialsCompared} <SentenceSelect value={cmp} onChange={setCmp} options={[{ value: "prior", label: a.view.sel.type === "month" ? t.cmpLastMonth : t.cmpPrior }, { value: "ly", label: a.view.sel.type === "month" ? t.cmpSameMonthLY : t.cmpSamePeriodLY }]} />
         </div>
       </PageHeader>
       {view === "pl" && (
         <div className="-mx-4 overflow-x-auto px-4">
           <table className="tbl min-w-[720px]" data-testid="pl-table">
-            <thead><tr><th>Profit &amp; Loss</th><th>{a.view.window.short}</th><th>{compLabel}</th><th>Variance %</th><th>Common Size</th><th>YTD</th></tr></thead>
+            <thead><tr><th>{t.pl}</th><th>{T.pl(a.view.window.short)}</th><th>{compLabel}</th><th>{t.variancePct}</th><th>{t.commonSize}</th><th>{t.ytd}</th></tr></thead>
             <tbody>
               {PL_ROWS.filter((r) => !r.ifAdjusted || P.adjustments || compP?.adjustments).map((r) => [
                 <tr key={r.k} className={cn("row", r.tot && "tot")}>
-                  <td>{r.l}</td><td>{trace(r.k, r.l, "PL", P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
+                  <td>{T.tl(r.l)}</td><td>{trace(r.k, T.tl(r.l), "PL", P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
                   <td>{P.revenue ? <><MiniPie p={((P[r.k] as number) / P.revenue) * 100} /> {pct(((P[r.k] as number) / P.revenue) * 100, 0)}</> : "–"}</td>
                   <td>{m(ytd[r.k] as number)}</td>
                 </tr>,
@@ -116,13 +119,13 @@ export function FinancialsPage() {
         <div className="-mx-4 overflow-x-auto px-4">
           <div className="mb-2 flex items-center justify-between">
             <span />
-            {Math.abs(B.imbalance) > 0.5 && <span className="text-sm text-red" data-testid="oob">Out of balance by {m(B.imbalance)}</span>}
+            {Math.abs(B.imbalance) > 0.5 && <span className="text-sm text-red" data-testid="oob">{t.outOfBalance(m(B.imbalance))}</span>}
           </div>
           <table className="tbl min-w-[720px]" data-testid="bs-table">
-            <thead><tr><th>Balance Sheet</th><th>{mlabel(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? mlabel(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>Variance {cur}</th><th>Variance %</th><th>Common Size</th></tr></thead>
+            <thead><tr><th>{t.bs}</th><th>{T.ml(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? T.ml(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>{t.varianceCur(cur)}</th><th>{t.variancePct}</th><th>{t.commonSize}</th></tr></thead>
             <tbody>
               {BS_ROWS.map((r) => {
-                if (r.typ === 2) return <tr key={r.l} className="cat"><td colSpan={6}>{r.l}</td></tr>;
+                if (r.typ === 2) return <tr key={r.l} className="cat"><td colSpan={6}>{T.tl(r.l)}</td></tr>;
                 const k = r.k!;
                 const cb = comp?.B ?? null;
                 const v = B[k] as number, v0 = cb ? (cb[k] as number) : undefined;
@@ -131,7 +134,7 @@ export function FinancialsPage() {
                 const classes = r.typ === 0 ? [k as ClassKey] : undefined;
                 return [
                   <tr key={r.l} className={cn("row", r.typ === 1 && "tot")}>
-                    <td>{r.l}</td><td>{trace(k, r.l, "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
+                    <td>{T.tl(r.l)}</td><td>{trace(k, T.tl(r.l), "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
                     <td className={dv === null ? "text-mute" : ""}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0, "neutral")}
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
@@ -146,7 +149,7 @@ export function FinancialsPage() {
         </div>
       )}
       <SourceDrawer line={src} onClose={() => setSrc(null)} />
-      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={a.view.window.short} />)}
+      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])! } : null} compLabel={compLabel} cur={cur} label={T.pl(a.view.window.short)} />)}
     </>
   );
 }
@@ -164,14 +167,15 @@ function CashFlowTable({ P, B, B0, comp, compLabel, cur, label }: { P: PLCalc; B
   const gap = Math.abs(cashFlowStatement(P, B, B0).unreconciled) > 0 || (comp ? Math.abs(cashFlowStatement(comp.P, comp.B, comp.B0).unreconciled) > 0 : false);
   const s = cashFlowStatement(P, B, B0, { showUnreconciled: gap });
   const s2 = comp ? cashFlowStatement(comp.P, comp.B, comp.B0, { showUnreconciled: gap }) : null;
+  const T = useT();
   return (
     <div className="-mx-4 overflow-x-auto px-4">
       <table className="tbl min-w-[560px]" data-testid="cf-table">
-        <thead><tr><th>Cash Flow Statement</th><th>{label}</th><th>{compLabel}</th></tr></thead>
+        <thead><tr><th>{T.d.ana.cf}</th><th>{label}</th><th>{compLabel}</th></tr></thead>
         <tbody>
           {s.lines.map((l, i) => l.heading
-            ? <tr key={l.label} className="cat"><td colSpan={3}>{l.label}</td></tr>
-            : <tr key={l.label + i} className={cn("row", l.total && "tot")}><td>{l.label}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
+            ? <tr key={l.label} className="cat"><td colSpan={3}>{T.tl(l.label)}</td></tr>
+            : <tr key={l.label + i} className={cn("row", l.total && "tot")}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
         </tbody>
       </table>
     </div>

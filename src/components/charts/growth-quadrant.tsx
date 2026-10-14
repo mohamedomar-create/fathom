@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/lib/i18n/use-t";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { money, quadrantOf, type Quadrant } from "@/lib/engine";
@@ -12,6 +13,8 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
   const st = useStaticCharts();
   const w = 760, h = 470, pl = 84, pr = 20, pt = 20, pb = 52;
   const [hover, setHover] = useState<number | null>(null);
+  const T = useT();
+  const qn = (q: Quadrant) => (T.lang === "ar" ? T.d.ana.quadrants[q][0] : q);
   const xs = points.map((p) => p.x), ys = points.map((p) => p.y);
   const { x: x0, y: y0 } = points[0];
   const xr = Math.max(...xs) - Math.min(...xs) || Math.abs(x0) || 1;
@@ -34,7 +37,7 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
         <line x1={X(x0)} x2={X(x0)} y1={pt} y2={h - pb} stroke="#CCC" />
         <line y1={Y(y0)} y2={Y(y0)} x1={pl} x2={w - pr} stroke="#CCC" />
         {q.map(([t, x, y, anchor]) => (
-          <text key={t} x={x} y={y} textAnchor={anchor} fontSize={12} letterSpacing=".08em" fill={t === now ? (t === "STRESS" || t === "DECLINE" ? "#D9343A" : "#237A51") : "#a5a5a0"} fontWeight={t === now ? 600 : 400}>{t}</text>
+          <text key={t} x={x} y={y} textAnchor={anchor} fontSize={12} letterSpacing=".08em" fill={t === now ? (t === "STRESS" || t === "DECLINE" ? "#D9343A" : "#237A51") : "#a5a5a0"} fontWeight={t === now ? 600 : 400}>{qn(t)}</text>
         ))}
         <motion.path initial={st ? false : { pathLength: 0 }} animate={{ pathLength: 1 }} transition={{ duration: 1.4, ease: "easeInOut" }} d={d} fill="none" stroke="#999" strokeWidth={10} opacity={0.2} strokeLinejoin="round" strokeLinecap="round" />
         {points.map((p, i) => (
@@ -65,13 +68,14 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
 
 export function QuadrantMiniMap({ active }: { active: Quadrant }) {
   const cells: Quadrant[] = ["EFFICIENCY GAINS", "QUALITY GROWTH", "DECLINE", "STRESS"];
+  const T = useT();
   return (
     <div className="grid w-40 grid-cols-2 gap-1 text-[9px] tracking-wider">
       {cells.map((c) => {
         const on = c === active;
         const bad = c === "STRESS" || c === "DECLINE";
         return (
-          <div key={c} className={`flex h-14 items-center justify-center rounded px-1 text-center ${on ? (bad ? "bg-red text-white" : "bg-green text-white") : "bg-band text-mute"}`}>{c}</div>
+          <div key={c} className={`flex h-14 items-center justify-center rounded px-1 text-center ${on ? (bad ? "bg-red text-white" : "bg-green text-white") : "bg-band text-mute"}`}>{T.lang === "ar" ? T.d.ana.quadrants[c][0] : c}</div>
         );
       })}
     </div>

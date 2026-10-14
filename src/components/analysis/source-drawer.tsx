@@ -1,18 +1,21 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { lineParts, mlabel, money } from "@/lib/engine";
+import { lineParts, money } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { loadProvenance, type Provenance } from "@/app/company/[id]/settings/actions";
 import { CLASS_LABEL } from "@/lib/ingest/pipeline";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { useT } from "@/lib/i18n/use-t";
 
 export interface SourceLine { key: string; label: string; statement: "PL" | "BS"; periods: string[] }
 
-const fmtDate = (s: string) => new Date(s).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+const fmtDate = (s: string, lang: string) => new Date(s).toLocaleDateString(lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { day: "numeric", month: "short", year: "numeric" });
 
 /** Every account behind a figure, with the file, sheet and row it was imported from. */
 export function SourceDrawer({ line, onClose }: { line: SourceLine | null; onClose: () => void }) {
   const c = useCompany();
+  const T = useT();
+  const t = T.d.ana;
   const cur = c.settings.currency;
   // Provenance is kept with the figure it was loaded for, so a stale answer is never shown for another figure.
   const [loaded, setLoaded] = useState<{ for: SourceLine; data: Record<string, Record<string, Provenance>> } | null>(null);
@@ -39,7 +42,7 @@ export function SourceDrawer({ line, onClose }: { line: SourceLine | null; onClo
   }, [line, live, rows, c.id]);
 
   const source = (id: string, months: string[]) => {
-    if (!live) return <span className="text-mute">Demo data</span>;
+    if (!live) return <span className="text-mute">{t.demoData}</span>;
     if (!prov) return <span className="text-mute">…</span>;
     const seen = new Map<string, Provenance & { months: string[] }>();
     for (const p of months) {
@@ -53,9 +56,9 @@ export function SourceDrawer({ line, onClose }: { line: SourceLine | null; onClo
     return [...seen.values()].map((x) => (
       <div key={`${x.file}${x.at}${x.row}`} className="text-[12px]">
         <span className="font-medium text-ink">{x.file}</span>
-        {x.sheet ? <span className="text-mute"> · {x.sheet}{x.row ? ` row ${x.row}` : ""}</span> : null}
-        {x.at ? <span className="text-mute"> · {fmtDate(x.at)}</span> : null}
-        {seen.size > 1 || months.length > 1 ? <span className="text-mute"> · {x.months.length === 1 ? mlabel(x.months[0]) : `${x.months.length} months`}</span> : null}
+        {x.sheet ? <span className="text-mute"> · {x.sheet}{x.row ? ` ${t.row(x.row)}` : ""}</span> : null}
+        {x.at ? <span className="text-mute"> · {fmtDate(x.at, T.lang)}</span> : null}
+        {seen.size > 1 || months.length > 1 ? <span className="text-mute"> · {x.months.length === 1 ? T.ml(x.months[0]) : t.monthsN(x.months.length)}</span> : null}
       </div>
     ));
   };
@@ -63,31 +66,31 @@ export function SourceDrawer({ line, onClose }: { line: SourceLine | null; onClo
   return (
     <Dialog open={!!line} onOpenChange={(o) => { if (!o) onClose(); }}>
       {line && (
-        <DialogContent title={`Where ${line.label} comes from`} className="w-[min(860px,calc(100vw-24px))] p-6" data-testid="source-drawer">
-          <div className="label">Where the figure comes from</div>
+        <DialogContent title={t.whereFrom(line.label)} className="w-[min(860px,calc(100vw-24px))] p-6" data-testid="source-drawer">
+          <div className="label">{t.whereFigure}</div>
           <h2 className="mb-1 text-2xl font-light">{line.label}</h2>
           <p className="mb-4 text-sm text-mute">
-            {line.statement === "BS" ? `Closing balance, ${mlabel(line.periods[line.periods.length - 1])}` : line.periods.length === 1 ? mlabel(line.periods[0]) : `${mlabel(line.periods[0])} – ${mlabel(line.periods[line.periods.length - 1])}`}
-            {" · "}{rows.length} account{rows.length === 1 ? "" : "s"} · total <b className="text-ink">{money(total, cur)}</b>
+            {line.statement === "BS" ? t.closing(T.ml(line.periods[line.periods.length - 1])) : line.periods.length === 1 ? T.ml(line.periods[0]) : `${T.ml(line.periods[0])} – ${T.ml(line.periods[line.periods.length - 1])}`}
+            {" · "}{t.accounts(rows.length)} · {t.total} <b className="text-ink">{money(total, cur)}</b>
           </p>
           <div className="overflow-x-auto">
             <table className="tbl text-[13px]">
-              <thead><tr><th className="!text-left">Account</th><th className="!text-left">Class</th><th>Amount</th><th className="!text-left">Imported from</th></tr></thead>
+              <thead><tr><th className="!text-start">{t.account}</th><th className="!text-start">{t.cls}</th><th>{t.amount}</th><th className="!text-start">{t.importedFrom}</th></tr></thead>
               <tbody>
                 {rows.map((r) => (
                   <tr key={r.a.id + r.cls} className="row align-top">
-                    <td className="!text-left"><div className="text-xs text-mute">{r.a.code}</div>{r.a.name}</td>
-                    <td className="!text-left text-mute">{CLASS_LABEL[r.cls]}{r.sign < 0 ? " (−)" : ""}</td>
+                    <td className="!text-start"><div className="text-xs text-mute">{r.a.code}</div>{r.a.name}</td>
+                    <td className="!text-start text-mute">{CLASS_LABEL[r.cls]}{r.sign < 0 ? " (−)" : ""}</td>
                     <td>{money(r.value, cur)}</td>
-                    <td className="max-w-80 whitespace-normal !text-left">{source(r.a.id, r.months)}</td>
+                    <td className="max-w-80 whitespace-normal !text-start">{source(r.a.id, r.months)}</td>
                   </tr>
                 ))}
-                {!rows.length && <tr><td colSpan={4} className="py-6 text-center text-mute">No accounts carry an amount for this figure.</td></tr>}
-                {rows.length > 0 && <tr className="tot"><td className="!text-left">Total</td><td /><td>{money(total, cur)}</td><td /></tr>}
+                {!rows.length && <tr><td colSpan={4} className="py-6 text-center text-mute">{t.noAccounts}</td></tr>}
+                {rows.length > 0 && <tr className="tot"><td className="!text-start">{t.totalCap}</td><td /><td>{money(total, cur)}</td><td /></tr>}
               </tbody>
             </table>
           </div>
-          <p className="mt-3 text-xs text-mute">Costs enter profit lines with a minus sign. To change where an account goes, use Settings → Chart of Accounts.</p>
+          <p className="mt-3 text-xs text-mute">{t.drawerFoot}</p>
         </DialogContent>
       )}
     </Dialog>

@@ -3,6 +3,8 @@ import { useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { analyze, hasPL, indexMonths, isAnnualColumn, type Comparison, type PeriodSel, type PeriodType } from "@/lib/engine";
 import { useCompany } from "./context";
+import { useLang } from "@/lib/i18n/context";
+import { kpiName } from "@/lib/i18n/kpis";
 
 /** Period selection lives in the URL (?type=month&end=2026-09&cmp=target) so views are shareable. */
 export function usePeriod() {
@@ -34,9 +36,10 @@ export function usePeriod() {
 export function useAnalysis() {
   const company = useCompany();
   const { sel, cmp } = usePeriod();
+  const lang = useLang();
   return useMemo(
-    () => (sel.end ? analyze(company.months, sel, company.settings, { comparison: cmp, alerts: company.alerts, asOf: company.asOf }) : null),
-    [company.months, company.settings, company.alerts, company.asOf, sel.type, sel.end, cmp], // eslint-disable-line react-hooks/exhaustive-deps
+    () => (sel.end ? analyze(company.months, sel, company.settings, { comparison: cmp, alerts: company.alerts, asOf: company.asOf, lang, kpiName: (d) => kpiName(d, lang) }) : null),
+    [company.months, company.settings, company.alerts, company.asOf, sel.type, sel.end, cmp, lang], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
 
