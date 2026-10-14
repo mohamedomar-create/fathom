@@ -125,8 +125,10 @@ function Summary({ input, a, cur }: { input: ReportInput; a: Analysis; cur: stri
     ["EBIT", money(P.ebit, cur), <>{d(ch(P.ebit, prior?.P.ebit))} <span className="text-mute">vs {prior?.label ?? "prior"}</span></>, s12P.map((p) => p.ebit), P.ebit < 0],
     ["Cash on hand", money(B.cash, cur), B0 ? <>{d(ch(B.cash, B0.cash))} <span className="text-mute">vs opening</span></> : null, s12B.map((b) => b.cash), B.cash < 0],
   ];
+  // Without a balance sheet (a cash book, a P&L on its own) there is no cash figure to state.
+  const hasBS = input.months.some((m) => m.has?.bs ?? true);
   const headline = input.commentary.summary ||
-    `${input.companyName} ${P.ebit >= 0 ? "made" : "lost"} ${money(Math.abs(P.ebit), cur)} at EBIT on revenue of ${money(P.revenue, cur)} in ${a.view.window.label}; ${a.onTrack} of ${a.onTrack + a.offTrack} measurable KPIs are on target and cash stands at ${money(B.cash, cur)}.`;
+    `${input.companyName} ${P.ebit >= 0 ? "made" : "lost"} ${money(Math.abs(P.ebit), cur)} at EBIT on revenue of ${money(P.revenue, cur)} in ${a.view.window.label}; ${a.onTrack} of ${a.onTrack + a.offTrack} measurable KPIs are on target${hasBS ? ` and cash stands at ${money(B.cash, cur)}` : ""}.`;
   const finds = (kind: Finding["kind"]) => {
     const l = a.findings.filter((f) => f.kind === kind).slice(0, 4);
     return l.length ? l.map((f) => (
