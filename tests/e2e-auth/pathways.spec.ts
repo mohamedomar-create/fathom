@@ -96,6 +96,41 @@ test("an Odoo ledger with an unexplained opening adjustment imports cleanly and 
   await expect(page.locator('select[aria-label="Reclassify z Adjustment"]')).toHaveValue("other_equity");
 });
 
+/** Lines from a ledger follow the accounts: replacing everything with a P&L and balance sheet clears them, and Sales falls back to revenue by account. */
+test("replacing a ledger with a P&L and balance sheet clears its sales and expense lines; every sector still shows its part", async ({ page }) => {
+  test.setTimeout(180_000);
+  page.on("dialog", (d) => d.accept());
+  await signUp(page, { name: "Swap Owner", org: "Swap Advisory", email: newEmail("swap") });
+  const id = await createCompany(page, "Swap Co");
+  await importFiles(page, id, ["egypt-odoo-general-ledger.xlsx"]);
+  await page.goto(`/company/${id}/sales`);
+  await expect(page.getByTestId("sales-headline")).toBeVisible();
+  await expect(page.getByTestId("sales-from-accounts")).toHaveCount(0);
+  await page.goto(`/company/${id}/expenses/suppliers`);
+  await expect(page.getByTestId("supplier-table")).toBeVisible();
+
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("timeline-step")).toBeVisible();
+  await page.getByTestId("mode-replace").click();
+  await expect(page.getByTestId("commit-import")).toHaveText(/Replace all and save/);
+  await page.getByTestId("commit-import").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+
+  // No invoice or bill lines now: Sales shows revenue by account, Expenses shows costs by account and asks for the ledger.
+  await page.goto(`/company/${id}/sales`);
+  await expect(page.getByTestId("sales-from-accounts")).toBeVisible();
+  await expect(page.getByTestId("sales-headline")).toContainText("from the revenue in the P&L");
+  await page.goto(`/company/${id}/expenses`);
+  await expect(page.getByTestId("expenses-headline")).toBeVisible();
+  await expect(page.getByTestId("no-expense-lines")).toBeVisible();
+  await page.goto(`/company/${id}/settings/data-setup`);
+  await expect(page.getByTestId("map-accounts-sales")).toHaveAttribute("data-on", "1");
+  await expect(page.getByTestId("map-row-ledger")).toHaveCount(0);
+});
+
 /** A sales export on its own: read, previewed with its columns, saved to the Sales sector without touching the financial figures. */
 test("an Odoo Invoice Analysis export becomes sales by customer and product", async ({ page }) => {
   test.setTimeout(120_000);
@@ -156,6 +191,15 @@ test("an Odoo vendor bills export becomes expenses by supplier", async ({ page }
   await page.goto(`/company/${id}/expenses/suppliers`);
   await expect(page.getByTestId("supplier-table")).toContainText("Philips Healthcare Egypt");
   await expect(page.getByTestId("tile-supplier-count")).toContainText("3");
+
+  // The upload is listed in Data health and can be taken out again.
+  page.on("dialog", (d) => d.accept());
+  await page.goto(`/company/${id}/settings/data-health`);
+  await expect(page.getByTestId("line-upload")).toHaveCount(1);
+  await page.getByTestId("remove-line-upload").click();
+  await expect(page.getByTestId("line-upload")).toHaveCount(0, { timeout: 15_000 });
+  await page.goto(`/company/${id}/expenses`);
+  await expect(page.getByTestId("no-expenses")).toBeVisible();
 });
 
 /** A scanned PDF of audited statements: pages read (by a stand-in for the reader), totals checked, a misread figure corrected, then imported. */

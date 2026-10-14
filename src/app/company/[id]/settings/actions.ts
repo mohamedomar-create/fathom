@@ -7,6 +7,7 @@ import { ALL_CLASSES } from "@/lib/company/build";
 import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
+import { keepLedgerInStep } from "@/lib/company/ledger-lines";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
@@ -166,6 +167,9 @@ export async function restoreVersion(companyId: string, version: number): Promis
   if (!user) return { ok: false, error: "Please sign in again." };
   const { error } = await supabase.rpc("restore_company_version", { p_company: companyId, p_version: version });
   if (error) return { ok: false, error: error.code === "42501" ? "Only editors can restore data." : dbError(error, "restoreVersion") };
+  // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the restored P&L lose them.
+  try { await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, version)); }
+  catch (e) { console.error("restoreVersion: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }

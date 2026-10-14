@@ -29,6 +29,7 @@ import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
 import { expensePeriods, expensesFromLedger, readExpenseGrid, type ExpenseOverride } from "@/lib/ingest/expenses";
 import { saveExpenses } from "@/lib/company/save-expenses";
+import { clearLedgerLines } from "@/app/company/[id]/settings/ledger-actions";
 import { EXPENSE_FIELD_LABEL, ExpensesPreview, readExpenses } from "./expenses-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
@@ -281,6 +282,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         // "Add only new months" keeps the sales of months already loaded as well.
         const filename = files.map((f) => f.name).join(" + ");
         const addedPL = new Set(preview?.timeline.filter((t) => t.PL === "new").map((t) => t.period) ?? []);
+        // Lines taken from an earlier ledger never outlive the months they came from: the months this import replaces
+        // (all of them for "replace all") lose theirs first, even when this file (a Trial Balance, a P&L) has no lines.
+        const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
+        if (mode !== "add") {
+          const cleared = await clearLedgerLines(companyId, mode === "replace" ? "all" : touchedPL);
+          if (!cleared.ok) { setErr(`The figures were saved, but older ledger lines could not be cleared: ${cleared.error}`); return; }
+        }
         const loadedSales = new Set(salesLoaded);
         const ledger = salesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
         const fileSales = (salesRead?.lines ?? []).filter((l) => mode !== "add" || !loadedSales.has(l.period));

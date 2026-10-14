@@ -3,7 +3,7 @@ import { BS_KEYS, PL_KEYS } from "@/lib/engine";
 import { buildMonths } from "@/lib/company/build";
 import { OdooClient } from "@/lib/odoo/client";
 import { assertPublicOdooUrl, isPrivateAddress, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
-import { probe, syncOdoo } from "@/lib/odoo/sync";
+import { MAX_SYNC_LINES, probe, syncLedgerLines, syncOdoo } from "@/lib/odoo/sync";
 import { fakeOdoo } from "../fixtures/fake-odoo";
 import { months } from "../fixtures/odoo";
 
@@ -37,6 +37,25 @@ describe("Odoo connector", () => {
     const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
     expect(res.diagnostics.method).toBe("search_read");
     check(res);
+  });
+
+  it("the same posted lines fill Sales and Expenses, tying to revenue and costs every month", async () => {
+    const f = fakeOdoo(17);
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const opts = { companyId: 1, includeBranches: false, months: 25, end: "2026-09" };
+    const res = await syncOdoo(c, opts);
+    const ls = await syncLedgerLines(c, opts, res);
+    expect(ls.note).toBeNull();
+    expect(ls.sales[0]).toMatchObject({ customer: "Northside Hospital", series: "INV" });
+    expect(ls.expenses[0]).toMatchObject({ supplier: "Medline Supply", series: "BILL" });
+    const months = buildMonths(res.accounts.map((a, i) => ({ id: String(i), code: a.code, name: a.name, cls: a.cls, amounts: a.amounts })));
+    const COST = ["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments"] as const;
+    for (const m of months.filter((x) => res.periods.includes(x.period) && Object.keys(x.pl).length)) {
+      const sum = (ls2: { period: string; amount: number }[]) => ls2.filter((l) => l.period === m.period).reduce((s2, l) => s2 + l.amount, 0);
+      expect(Math.round(sum(ls.sales)), `${m.period} sales`).toBe(Math.round(m.pl.revenue ?? 0));
+      expect(Math.round(sum(ls.expenses)), `${m.period} costs`).toBe(Math.round(COST.reduce((s2, k) => s2 + ((m.pl as Record<string, number>)[k] ?? 0), 0)));
+    }
+    expect(MAX_SYNC_LINES).toBeGreaterThan(10_000);
   });
 
   it("opening balances carry history from before the window", async () => {

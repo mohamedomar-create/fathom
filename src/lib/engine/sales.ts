@@ -260,3 +260,15 @@ export function salesAnalysis(
 }
 
 const fmtSigned = (v: number) => `${v >= 0 ? "+" : "−"}${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+
+export const SALES_ACCOUNTS = "Revenue accounts (P&L)";
+/**
+ * Without invoice lines (a Trial Balance, a P&L, the Odoo balances): the P&L's revenue accounts stand in for products, so
+ * the Sales pages still show sales, growth and the trend, tying to revenue exactly. Customers need invoice lines.
+ */
+export function salesFromAccounts(accounts: { code: string; name: string; cls: string; amounts: Record<string, number> }[]): SalesData {
+  const lines = accounts.filter((a) => a.cls === "revenue").flatMap((a) => Object.entries(a.amounts).filter(([, v]) => v).map(([period, amount]) => ({
+    period, doc: "", series: "", customer: NO_CUSTOMER, product: [a.code, a.name].filter(Boolean).join(" "), category: SALES_ACCOUNTS, salesperson: "", qty: null, amount, cost: null,
+  })));
+  return summariseSales(lines, "ledger");
+}

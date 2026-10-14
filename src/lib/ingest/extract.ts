@@ -1,4 +1,4 @@
-import { cleanNum, detectDateOrder, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell, type DateOrder } from "./parse";
+import { arRx, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell, type DateOrder } from "./parse";
 import { extractOdoo } from "./odoo";
 import { readFinancialTemplate, templateMarkOf } from "./template";
 import type { ClassKey } from "@/lib/engine";
@@ -307,6 +307,20 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
   return out;
 }
 
+/** Columns that describe each move line of a ledger or journal list: kept with the line so sales and expenses can use them. */
+const REF_HDR = arRx(/^(ref|reference|move|entry|journal entry|entry number|number|document|voucher|رقم القيد|القيد|المرجع|رقم المستند|المستند)$/i);
+const ENTRY_LABEL_HDR = arRx(/^(label|description|communication|narration|memo|details|البيان|الوصف|التفاصيل)$/i);
+const ENTRY_PARTNER_HDR = arRx(/^(partner|customer|vendor|supplier|party|الشريك|العميل|المورد|الطرف)$/i);
+function entryCols(cells: string[]) {
+  const at = (rx: RegExp) => cells.findIndex((x) => rx.test(normAr(x)));
+  return { ref: at(REF_HDR), label: at(ENTRY_LABEL_HDR), partner: at(ENTRY_PARTNER_HDR) };
+}
+/** One dated move line as a ledger entry (debit − credit), with its reference, label and partner when the file has them. */
+function entryOf(row: Cell[], c: ReturnType<typeof entryCols>, per: string, dateCell: Cell, order: DateOrder, amount: number, refFallback = ""): LedgerEntry {
+  const t = (i: number) => (i >= 0 ? str(row[i]).replace(/\s+/g, " ") : "");
+  return { day: parseDay(dateCell, order) ?? `${per}-01`, period: per, ref: t(c.ref) || refFallback, label: t(c.label), partner: t(c.partner), amount };
+}
+
 export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder, tr?: Tr): RawLine[] | null {
   const hint = stmtFromText(g.name);
   for (let r = 0; r < Math.min(rows.length, 15); r++) {
@@ -324,6 +338,7 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
     const typ = pick(/^(type|class|category|statement|نوع|تصنيف)$/);
     const movement = (deb !== undefined && cre !== undefined) || cells.some((x) => /journal|move|entry|قيد/.test(x));
     const order = dateOrderOf(rows.slice(r + 1).map((row) => row[dat]), layout, forced);
+    const ec = entryCols(rows[r].map((x) => str(x).toLowerCase()));
     const agg = new Map<string, RawLine>();
     mark(tr, r, { role: "header" });
     for (let rr = r + 1; rr < rows.length; rr++) {
@@ -345,7 +360,11 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
         agg.set(k, line);
       }
       mark(tr, rr, (tr?.errs.length ?? 0) > errs ? { role: "error", ref: line.key, note: "the amount cannot be read" } : { role: "entry", ref: line.key });
-      if (v !== null) line.values[per] = (line.values[per] ?? 0) + v;
+      if (v !== null) {
+        line.values[per] = (line.values[per] ?? 0) + v;
+        // A journal list with dates on each line keeps them, so revenue and cost lines become sales and expenses.
+        if (movement && v) (line.entries ??= []).push(entryOf(rows[rr], ec, per, rows[rr][dat], order, v));
+      }
     }
     return [...agg.values()];
   }
@@ -370,6 +389,7 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
     if (!first || parsePeriod(first[dat], order) || !str(first[lc])) return null;
     const accounts = new Map<string, RawLine>();
     let cur: RawLine | null = null;
+    const ec = entryCols(cells);
     mark(tr, r, { role: "header" });
     for (let rr = r + 1; rr < rows.length; rr++) {
       let lab = str(rows[rr][lc]);
@@ -381,8 +401,12 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
       const cell = (c: number) => { const v = num(rows[rr][c]); if (per && badAmount(rows[rr][c], v)) bad(tr, rr, c, rows[rr][c]); return v; };
       const amt = (cell(deb) ?? 0) - (cell(cre) ?? 0);
       if (per) {
-        if (cur) { cur.values[per] = (cur.values[per] ?? 0) + amt; mark(tr, rr, (tr?.errs.length ?? 0) > errs ? { role: "error", ref: cur.key, note: "the amount cannot be read" } : { role: "entry", ref: cur.key }); }
-        else mark(tr, rr, { role: "unused", note: "a dated line before any account heading" });
+        if (cur) {
+          cur.values[per] = (cur.values[per] ?? 0) + amt;
+          // The line's reference sits in its own column, or else in the account column of the dated line.
+          if (amt) (cur.entries ??= []).push(entryOf(rows[rr], ec, per, rows[rr][dat], order, amt, lc !== dat ? str(rows[rr][lc]) : ""));
+          mark(tr, rr, (tr?.errs.length ?? 0) > errs ? { role: "error", ref: cur.key, note: "the amount cannot be read" } : { role: "entry", ref: cur.key });
+        } else mark(tr, rr, { role: "unused", note: "a dated line before any account heading" });
         continue;
       }
       if (!lab) continue;

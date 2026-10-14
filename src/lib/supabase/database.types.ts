@@ -76,6 +76,7 @@ export type Database = {
       add_expense_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       expense_summary: { Args: { p_company: string }; Returns: Json };
       get_published_expenses: { Args: { p_token: string }; Returns: Json };
+      ledger_line_totals: { Args: { p_company: string }; Returns: Json };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

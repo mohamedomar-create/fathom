@@ -8,7 +8,8 @@ import { OdooClient } from "@/lib/odoo/client";
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
-import { probe, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
+import { probe, syncLedgerLines, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
+import { clearLedger, saveLedgerLines } from "@/lib/company/ledger-lines";
 import { getUser } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -83,7 +84,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
   } catch (e) { return fail(e); }
 }
 
-export async function syncOdooNow(companyId: string): Promise<Result<{ months: number; accounts: number; method: string; tb: number; unmapped: string[]; version: string }>> {
+export async function syncOdooNow(companyId: string): Promise<Result<{ months: number; accounts: number; method: string; tb: number; unmapped: string[]; version: string; detail: string | null }>> {
   const { supabase, user } = await getUser();
   try {
     if (!user) throw new Error("Please sign in again.");
@@ -99,10 +100,20 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
       // Live sync is authoritative and replaces everything; its checks are recorded and shown, never blocking.
       report: { kind: "odoo", mode: "replace", periods: res.periods, slices: { PL: res.periods, BS: res.periods }, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics, checks: runChecks({ accounts: res.accounts }).filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,
     }, res.notes);
-    await supabase.from("odoo_connections").update({ status: "ok", last_error: null, last_sync_at: new Date().toISOString(), version: res.diagnostics.version }).eq("company_id", companyId);
+    // The same posted lines feed Sales and Expenses: a sync replaces everything, so earlier ledger lines go first.
+    let detail: string | null = null;
+    try {
+      const ls = await syncLedgerLines(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history }, res);
+      await clearLedger(supabase, companyId, "all");
+      const name = `${conn.odoo_company_name ?? "Odoo"} (sync)`;
+      await saveLedgerLines(supabase, companyId, user.id, "sales", ls.sales, name);
+      await saveLedgerLines(supabase, companyId, user.id, "expenses", ls.expenses, name);
+      detail = ls.note;
+    } catch (e) { detail = `Sales and expense detail could not be synced (${safeError(e, "syncOdoo:lines")}). The figures were synced.`; }
+    await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version }).eq("company_id", companyId);
     await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
     revalidatePath(`/company/${companyId}`, "layout");
-    return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, version: res.diagnostics.version } };
+    return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, version: res.diagnostics.version, detail } };
   } catch (e) {
     await supabase.from("odoo_connections").update({ status: "error", last_error: safeError(e, "syncOdoo").slice(0, 500) }).eq("company_id", companyId);
     return fail(e);
