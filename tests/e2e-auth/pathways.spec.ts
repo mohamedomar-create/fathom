@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
 import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp, startUpload } from "./helpers";
-import { bookOf, cashBookCells, priceListCells, summaryCells } from "../fixtures/messy";
+import { bookOf, cashBookCells, priceListCells, quarterCells, summaryCells, yearSummaryCells } from "../fixtures/messy";
 
 requireLocalStack();
 
@@ -376,7 +376,7 @@ test("a messy cash book workbook: sheets named, the owner's totals checked, mone
   await expect(page.getByTestId("roles-confirmed")).toBeVisible();
   await page.getByTestId("books-next").click();
   await page.getByTestId("save-books").click();
-  await expect(page.getByTestId("done-step")).toContainText("8 expense lines and 5 sales lines saved", { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toContainText("8 expense lines and 5 sales lines, and a P&L for 3 months, saved", { timeout: 30_000 });
   await page.goto(`/company/${id}/expenses?type=year&end=2026-02`);
   await expect(page.getByTestId("tile-costs")).toContainText("43,150", { timeout: 30_000 });
   await page.goto(`/company/${id}/sales?type=year&end=2026-02`);
@@ -394,4 +394,35 @@ test("a workbook with only a price list and a summary says why nothing can be sa
   await expect(page.getByTestId("nothing-to-save")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("sheet-roles")).toContainText("Price list");
   await expect(page.getByTestId("sheet-roles")).toContainText("1 cell shows a spreadsheet error");
+});
+
+/**
+ * A workbook of many tabs (two quarters and the owner's yearly summary): read by the owner's own rules, every summary
+ * figure checked, and saved to Sales, Expenses and a cash-basis P&L that fills Financials.
+ */
+test("a many-tab workbook matches the owner's own summary and fills every sector", async ({ page }) => {
+  test.setTimeout(150_000);
+  await signUp(page, { name: "Tabs Owner", org: "Tabs Advisory", email: newEmail("tabs") });
+  const id = await createCompany(page, "Tabs Co");
+  await startUpload(page, id, "expenses");
+  const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  await page.getByTestId("file-input").setInputFiles({ name: "planning-2026.xlsx", mimeType: xlsx, buffer: Buffer.from(bookOf({ "Q1 2026": quarterCells(1), "Q2 2026": quarterCells(2), Summary: yearSummaryCells() })) });
+  await expect(page.getByTestId("books-only")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("rule-vat")).toContainText("as your formula =K14-L14");
+  await expect(page.getByTestId("tieout-summary")).toContainText("7 of your figures match");
+  await expect(page.getByTestId("books-in")).toContainText("50,360");
+  await expect(page.getByTestId("books-out")).toContainText("81,900");
+  await expect(page.getByTestId("cash-pl-on")).toBeChecked();
+  await expect(page.getByTestId("cash-pl-preview")).toContainText("profit -EGP 31,540");
+  await page.getByTestId("roles-confirm").click();
+  await page.getByTestId("books-next").click();
+  await expect(page.getByTestId("books-save-pl")).toContainText("6 months");
+  await page.getByTestId("save-books").click();
+  await expect(page.getByTestId("done-step")).toContainText("a P&L for 6 months", { timeout: 30_000 });
+  await page.goto(`/company/${id}/summary?type=year&end=2026-06`);
+  await expect(page.getByTestId("headline")).toContainText("50,360", { timeout: 30_000 });
+  await page.goto(`/company/${id}/expenses?type=year&end=2026-06`);
+  await expect(page.getByTestId("tile-costs")).toContainText("81,900");
+  await page.goto(`/company/${id}/sales?type=year&end=2026-06`);
+  await expect(page.getByTestId("tile-sales")).toContainText("50,360");
 });

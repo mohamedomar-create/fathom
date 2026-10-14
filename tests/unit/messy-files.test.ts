@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readWorkbooks } from "@/lib/ingest/read";
-import { readCashBook } from "@/lib/ingest/cashbook";
+import { cashAccounts, ownerNetFormula, readCashBook } from "@/lib/ingest/cashbook";
+import { tieMessages, workbookTie } from "@/lib/ingest/workbook";
 import { readBankStatement } from "@/lib/ingest/bank";
 import { guessRoles, needsConfirm } from "@/lib/ingest/roles";
 import { sumTerms } from "@/lib/ingest/formula";
 import { monthHeading } from "@/lib/ingest/parse";
-import { bankCells, bookOf, cashBookCells, journalCells, priceListCells, summaryCells } from "../fixtures/messy";
+import { bankCells, bookOf, cashBookCells, journalCells, priceListCells, quarterCells, summaryCells, yearSummaryCells } from "../fixtures/messy";
 
 const read = async (sheets: Parameters<typeof bookOf>[0]) => readWorkbooks([{ name: "messy.xlsx", data: bookOf(sheets) }]);
 const sum = (ls: { amount: number }[]) => Math.round(ls.reduce((a, l) => a + l.amount, 0) * 100) / 100;
@@ -132,5 +133,52 @@ describe("what each sheet is", () => {
     expect(needsConfirm(gs, {})).toBe(true);
     // A plain statement upload needs no extra step.
     expect(needsConfirm(gs.filter((g) => g.sheet === "Journal" || g.sheet === "Notes"), {})).toBe(false);
+  });
+});
+
+describe("a workbook of many tabs", () => {
+  const readAll = async (sheets: Parameters<typeof bookOf>[0]) => {
+    const grids = await read(sheets);
+    const roles = guessRoles(grids);
+    const cash = grids.filter((g) => roles.find((r) => r.sheet === g.name)?.role === "cashbook");
+    const ownerNet = cash.some((g) => !!ownerNetFormula(g));
+    const books = cash.map((g) => readCashBook(g, { ownerNet })!);
+    const sales = books.flatMap((b) => b.sales), expenses = books.flatMap((b) => b.expenses);
+    const tie = workbookTie({ grids, layouts: books.map((b) => b.layout), sales, expenses, summarySheets: new Set(roles.filter((r) => ["cashbook", "summary", "notes"].includes(r.role)).map((r) => r.sheet)) });
+    return { roles, books, sales, expenses, tie };
+  };
+
+  it("follows the owner's own rules (net of VAT by their formula, months by their headings) and matches their summary tab", async () => {
+    const { roles, sales, expenses, tie, books } = await readAll({ "Q1 2026": quarterCells(1), "Q2 2026": quarterCells(2), Summary: yearSummaryCells() });
+    expect(roles.map((r) => r.role)).toEqual(["cashbook", "cashbook", "summary"]);
+    expect(books.every((b) => b.layout.errors.length === 0 && b.layout.controls.every((c) => c.ok))).toBe(true);
+    expect(books[0].layout.blocks.find((b) => b.dir === "in")!.vatMode).toBe("owner-net");
+    // Sales = EGP − VAT, as the owner's K15 = K14 − L14.
+    expect(by(sales, (l) => l.period)).toEqual({ "2026-01": 12500, "2026-02": 11180, "2026-03": 1500, "2026-04": 12500, "2026-05": 11180, "2026-06": 1500 });
+    // The payment dated 30 December sits under JANUARY: it counts in January, as the owner grouped it.
+    expect(by(expenses, (l) => l.period)).toEqual({ "2026-01": 17450, "2026-02": 11000, "2026-03": 12500, "2026-04": 17450, "2026-05": 11000, "2026-06": 12500 });
+    expect(expenses.find((l) => l.label === "Wood and finishing" && l.period === "2026-01")!.day).toBeNull();
+    // Every figure of the owner's summary tab matches (the Q3 target has no Q3 entries to compare with, so it is not checked).
+    expect(tie.rows.map((r) => [r.label, r.status])).toEqual([
+      ["Q1 sales", "ok"], ["Q1 expenses", "ok"], ["Q2 sales", "ok"], ["Q2 expenses", "ok"], ["Total sales 2026", "ok"], ["Total expenses 2026", "ok"], ["Profit 2026", "ok"],
+    ]);
+    expect(tieMessages(tie).filter((m) => m.severity === "error")).toEqual([]);
+    // The P&L built from the same lines: revenue and each cost column by month.
+    const accts = cashAccounts(sales, expenses, { Salaries: "exp_fixed" });
+    const total = (a: (typeof accts)[number]) => Object.values(a.amounts).reduce((x, y) => x + y, 0);
+    expect(Object.fromEntries(accts.map((a) => [a.name, [a.cls, total(a)]]))).toEqual({
+      "Sales (cash book)": ["revenue", 50360], "Fixed Cost": ["exp_fixed", 30000], "Production Cost": ["cos_variable", 39000], "Variable cost": ["exp_variable", 900], Salaries: ["exp_fixed", 12000],
+    });
+    expect(accts[0].amounts).toEqual({ "2026-01": 12500, "2026-02": 11180, "2026-03": 1500, "2026-04": 12500, "2026-05": 11180, "2026-06": 1500 });
+  });
+
+  it("a summary figure that differs inside the owner's table blocks saving; a copied tab is caught", async () => {
+    const { tie } = await readAll({ "Q1 2026": quarterCells(1), "Q2 2026": quarterCells(2), Summary: yearSummaryCells(25000) });
+    const errors = tieMessages(tie).filter((m) => m.severity === "error").map((m) => m.message);
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatch(/^Summary, row 4, column B: your "Q2 sales" says 25,000; the entries iReport read for Q2 2026 come to 25,180 \(\+180\)/);
+    const copy = await readAll({ "Q1 2026": quarterCells(1), "Q1 2026 (2)": quarterCells(1) });
+    expect(copy.tie.duplicates).toEqual([expect.objectContaining({ a: "Q1 2026", b: "Q1 2026 (2)", share: 1 })]);
+    expect(tieMessages(copy.tie).find((m) => m.severity === "error")!.message).toMatch(/One looks like a copy of the other/);
   });
 });

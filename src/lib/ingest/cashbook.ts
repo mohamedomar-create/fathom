@@ -32,7 +32,7 @@ export interface CashBlock {
   product: number | null;
   channel: number | null;
   /** How amounts relate to the VAT column: before VAT (as written), VAT included (taken out), or not consistent. */
-  vatMode?: "excluded" | "included" | "mixed";
+  vatMode?: "excluded" | "included" | "mixed" | "owner-net";
 }
 export interface CashControl {
   row: number; col: number;
@@ -57,8 +57,39 @@ export interface CashLayout {
   checks: CashCheck[];
   /** Money in counted as sales (on unless the person turns it off). */
   salesOn: boolean;
+  /**
+   * Entries the owner's totals count more than once: how much each one makes the owner's figure differ from iReport's,
+   * by month and side (a VAT cell counted twice makes the owner's net sales lower; an amount counted twice, higher).
+   */
+  twice: { row: number; col: number; period: string; side: "sales" | "expenses"; vat: boolean; effect: number }[];
 }
-export interface CashOverride extends Fixes { salesOff?: boolean }
+export interface CashOverride extends Fixes {
+  salesOff?: boolean;
+  /** VAT beside sales amounts: take it out ("net"), keep the amounts as written, or follow the file ("auto": the owner's own net formula, else the share). */
+  vat?: "auto" | "net" | "asWritten";
+  /** The owner's net formula was found on another sheet of the same workbook (it applies to every cash book in it). */
+  ownerNet?: boolean;
+  /** Which month an entry counts in when a month heading is above it: the heading (the owner's grouping), or its date. */
+  months?: "heading" | "date";
+}
+
+/** The owner's own "net = amounts − VAT" formula on this sheet ("=L72-M72"): their definition of sales. */
+export function ownerNetFormula(g: Grid): string | null {
+  const shape = cashBookShape(g.rows, g.formulas, g.origin);
+  if (!shape) return null;
+  for (const b of shape.blocks) { const f = ownerNetIn(g, b); if (f) return f; }
+  return null;
+}
+function ownerNetIn(g: Grid, b: CashBlock): string | null {
+  if (b.vat === null) return null;
+  for (const [k, f] of Object.entries(g.formulas ?? {})) {
+    const t = sumTerms(f, g.origin ?? { r: 0, c: 0 });
+    if (!t) continue;
+    const r = Number(k.split(":")[0]);
+    if (t.some((x) => x.sign === -1 && x.c0 === b.vat && x.c1 === b.vat && (x.r0 !== r || x.r1 !== r)) && t.some((x) => x.sign === 1 && b.amounts.some((a) => a.col === x.c0 && a.col === x.c1))) return `=${f}`;
+  }
+  return null;
+}
 
 const DATE_HDR = arRx(/^(date|day|payment date|paid on|value date|transaction date|invoice date|التاريخ|تاريخ|تاريخ الدفع|اليوم)$/i);
 const VAT_HDR = arRx(/^(vat|tax|v\.a\.t\.?|vat amount|tax amount|ضريبة|الضريبة|ضريبة القيمة المضافة|ق\.م)$/i);
@@ -204,7 +235,9 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   const sheetYear = Number(sheet.match(/\b(20\d{2})\b/)?.[1] ?? 0) || null;
   const outsideHeading: number[] = [];
   const typed: CashControl[] = [];
+  const twice: CashLayout["twice"] = [];
   const summaryNoted = new Set<number>();
+  const byHeading = (ov.months ?? "heading") === "heading";
 
   for (const b of blocks) {
     const order: DateOrder = b.date !== null ? detectDateOrder(rows.slice(headerRow + 1).map((r) => r?.[b.date!])).order ?? "dmy" : "dmy";
@@ -283,13 +316,12 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
         }
         return y ? `${y}-${pad(sec.month)}` : null;
       };
+      // The owner's grouping decides (their month headings), unless they chose the dates; with no heading, the date.
       let period: string | null;
-      if (sec.sales && sec.month !== null) period = headingPeriod();
-      else if (day) {
-        period = day.slice(0, 7);
-        const hp = headingPeriod();
-        if (hp && hp !== period) outsideHeading.push(r);
-      } else period = headingPeriod();
+      const hp = headingPeriod();
+      if (hp && (byHeading || sec.sales)) { period = hp; if (day && !day.startsWith(hp)) outsideHeading.push(r); }
+      else if (day) { period = day.slice(0, 7); if (hp && hp !== period) outsideHeading.push(r); }
+      else period = hp;
       if (!period) {
         const c = b.date ?? b.label;
         errors.push({ row: r, col: c, text: shown(row[c]), message: str(row[c]) ? `"${shown(row[c])}" is not a date` : "no date on this entry, and no month heading above it" });
@@ -326,7 +358,13 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
     }
 
     // VAT beside the amounts: the share settles whether the amounts are before VAT (kept) or include it (taken out).
-    if (vatPairs.length) {
+    const ownerNet = b.dir === "in" && ov.vat !== "asWritten" ? (ownerNetIn(g, b) ?? (ov.ownerNet ? "on another sheet of this workbook" : null)) : null;
+    if (vatPairs.length && (ov.vat === "net" || ownerNet)) {
+      // The owner's own definition: sales are the amounts less the VAT beside them.
+      b.vatMode = "owner-net";
+      for (const x of blockLines) if (x.vat !== null) x.line.amount = round2(x.written - x.vat);
+      checks.push({ message: `${sheet}: sales are read as the amount less the VAT in column ${colLetter(b.vat! + origin.c)}, ${ownerNet ? `as your own formula ${ownerNet.startsWith("=") ? ownerNet : `(${ownerNet})`} works them out` : "as you chose"}.` });
+    } else if (vatPairs.length && ov.vat !== "asWritten") {
       const ratios = vatPairs.filter((p) => p.amount > 0 && p.vat > 0).map((p) => p.vat / p.amount).sort((x, y) => x - y);
       const rates = [0.14, 0.05, 0.1, 0.15];
       const excl = (x: number) => rates.some((t) => Math.abs(x - t) < 0.006);
@@ -356,7 +394,7 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
 
   // ---- the person's totals, checked: formulas whose cells are entries iReport read (or other totals).
   const controls = checkFormulas();
-  if (outsideHeading.length) checks.push({ row: outsideHeading[0], message: `${outsideHeading.length} entr${outsideHeading.length === 1 ? "y is" : "ies are"} dated outside the month heading above ${outsideHeading.length === 1 ? "it" : "them"} (first: ${cellRef(outsideHeading[0], undefined, origin)}). iReport uses the date.` });
+  if (outsideHeading.length) checks.push({ row: outsideHeading[0], message: `${outsideHeading.length} entr${outsideHeading.length === 1 ? "y is" : "ies are"} dated outside the month heading above ${outsideHeading.length === 1 ? "it" : "them"} (first: ${cellRef(outsideHeading[0], undefined, origin)}). ${byHeading ? "Counted in the heading's month, as you grouped them." : "Counted in the month of the date, as you chose."}` });
 
   if (!sales.length && !expenses.length && !errors.length) return null;
 
@@ -374,7 +412,7 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   const salesOn = !ov.salesOff;
   const sum = (ls: { amount: number }[]) => round2(ls.reduce((a, l) => a + l.amount, 0));
   const layout: CashLayout = {
-    sheet, kind: "cashbook", headerRow, blocks, controls, trace, errors: cellErrors, checks, salesOn,
+    sheet, kind: "cashbook", headerRow, blocks, controls, trace, errors: cellErrors, checks, salesOn, twice,
     out: { lines: expenses.length, total: sum(expenses) }, in: { lines: sales.length, total: sum(sales) },
   };
   return { sales: salesOn ? sales : [], expenses, layout };
@@ -465,7 +503,13 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
       if (!hasTotals) continue;
       const cov = covered.get(k) ?? [];
       if (!cov.length) { const e = byCol.get(c) ?? { rows: [], sum: 0 }; e.rows.push(r); e.sum += v; byCol.set(c, e); }
-      else if (cov.length > 1) checks.push({ row: r, col: c, message: `${cellRef(r, c, origin)} (${fmt(v)}) is counted in ${cov.length} of your totals (${cov.join(", ")}): your sheet adds it twice. iReport counts it once.` });
+      else if (cov.length > 1) {
+        const b = blocks.find((x) => x.c0 <= c && c <= x.c1);
+        const line = (b?.dir === "out" ? expenses : sales).find((l) => l.src?.row === r);
+        // effect: iReport's figure minus the owner's (VAT counted twice lowers their net sales; an amount counted twice raises their total).
+        if (b && line && !(c === b.vat && b.dir === "out")) twice.push({ row: r, col: c, period: line.period, side: b.dir === "out" ? "expenses" : "sales", vat: c === b.vat, effect: (cov.length - 1) * v * (c === b.vat ? 1 : -1) });
+        checks.push({ row: r, col: c, message: `${cellRef(r, c, origin)} (${fmt(v)}) is counted in ${cov.length} of your totals (${cov.join(", ")}): your sheet adds it twice. iReport counts it once.` });
+      }
     }
     for (const [c, e] of byCol) {
       const rs = e.rows.sort((a, b) => a - b);
@@ -478,4 +522,38 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   }
   /** Rows between two entries hold nothing in this column (so the entries count as one run). */
   function rowsBetweenEmpty(a: number, b: number, c: number) { if (!Number.isFinite(b)) return false; for (let r = a + 1; r < b; r++) if (counted.has(key(r, c))) return false; return b - a < 40; }
+}
+
+/** The kinds of cost a P&L line from a cash book can be (P&L cost classes only). */
+export const CASH_COST_CLASSES: ClassKey[] = ["cos_variable", "cos_fixed", "exp_variable", "exp_fixed", "other_expenses", "interest_expenses", "tax_expenses"];
+
+/** Each money-out column of the cash books, with the class iReport suggests for it. */
+export function cashCostColumns(expenses: ExpenseLine[]): { name: string; cls: ClassKey; total: number }[] {
+  const by = new Map<string, { cls: ClassKey; total: number }>();
+  for (const l of expenses) {
+    const e = by.get(l.account) ?? { cls: l.cls && CASH_COST_CLASSES.includes(l.cls) ? l.cls : "exp_variable", total: 0 };
+    e.total = round2(e.total + l.amount);
+    by.set(l.account, e);
+  }
+  return [...by].map(([name, e]) => ({ name, ...e }));
+}
+
+/**
+ * A cash-basis P&L from cash books: money in as revenue, each money-out column as one cost account (classed as the
+ * person confirms). Built from the very lines saved to Sales and Expenses, so every sector shows the same figures.
+ * Amounts are in their natural sign (revenue and costs positive), as an accounts import sends them.
+ */
+export function cashAccounts(sales: SalesLine[], expenses: ExpenseLine[], map: Record<string, ClassKey> = {}) {
+  const out: { code: string; name: string; cls: ClassKey; amounts: Record<string, number>; confidence: number; mapped_by: "auto" | "user"; ref?: { sheet: string; row: number; label: string } }[] = [];
+  const add = (name: string, cls: ClassKey, ls: { period: string; amount: number; src?: { sheet: string; row: number } }[], user: boolean) => {
+    const amounts: Record<string, number> = {};
+    for (const l of ls) amounts[l.period] = round2((amounts[l.period] ?? 0) + l.amount);
+    for (const [p, v] of Object.entries(amounts)) if (!v) delete amounts[p];
+    if (!Object.keys(amounts).length) return;
+    const src = ls.find((l) => l.src)?.src;
+    out.push({ code: "", name: name.slice(0, 300), cls, amounts, confidence: 1, mapped_by: user ? "user" : "auto", ...(src ? { ref: { sheet: src.sheet.slice(0, 120), row: src.row, label: name.slice(0, 300) } } : {}) });
+  };
+  add("Sales (cash book)", "revenue", sales, false);
+  for (const c of cashCostColumns(expenses)) add(c.name, map[c.name] ?? c.cls, expenses.filter((l) => l.account === c.name), c.name in map);
+  return out;
 }

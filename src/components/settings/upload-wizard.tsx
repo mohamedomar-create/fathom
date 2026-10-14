@@ -35,7 +35,10 @@ import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
 import { TemplateButton } from "@/components/setup/readiness-view";
 import { guessRoles, IMPORTED, needsConfirm, type RoleGuess, type SheetRole } from "@/lib/ingest/roles";
-import { readCashBook, type CashLayout, type CashOverride } from "@/lib/ingest/cashbook";
+import { cashAccounts, cashCostColumns, ownerNetFormula, readCashBook, type CashLayout, type CashOverride } from "@/lib/ingest/cashbook";
+import { tieMessages, workbookTie } from "@/lib/ingest/workbook";
+import { WorkbookTieout } from "@/components/upload/workbook-tieout";
+import { CashPL } from "@/components/upload/cash-pl";
 import { readBankStatement, type BankLayout, type BankOverride } from "@/lib/ingest/bank";
 import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
 import { SheetRoles } from "@/components/upload/sheet-roles";
@@ -94,12 +97,26 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   // Cash books and bank statements give both: money out (expenses) and money in (sales).
   const [cashOv, setCashOv] = useState<Record<string, CashOverride>>({});
   const [bankOv, setBankOv] = useState<Record<string, BankOverride>>({});
-  const cashRead = useMemo(() => readBooks<CashOverride, CashLayout>(sheetsAs("cashbook"), cashOv, readCashBook), [sheetsAs, cashOv]);
+  // The owner's own rules for cash books: VAT (their "net = amount − VAT" formula anywhere in the workbook applies to
+  // every tab) and which month an entry counts in (their month headings, unless they choose the dates).
+  const [rules, setRules] = useState<{ vat: "auto" | "net" | "asWritten"; months: "heading" | "date" }>({ vat: "auto", months: "heading" });
+  const cashGrids = useMemo(() => sheetsAs("cashbook"), [sheetsAs]);
+  const ownerNet = useMemo(() => (cashGrids ?? []).map((g) => ownerNetFormula(g)).find(Boolean) ?? null, [cashGrids]);
+  const cashRead = useMemo(() => readBooks<CashOverride, CashLayout>(cashGrids, Object.fromEntries((cashGrids ?? []).map((g) => [g.name, { ...cashOv[g.name], ownerNet: !!ownerNet, vat: rules.vat, months: rules.months }])), readCashBook), [cashGrids, cashOv, ownerNet, rules]);
+  // Building Financials from the cash books: on unless the company already has accounts; each cost column's class.
+  const [plOn, setPlOn] = useState<boolean | null>(null);
+  const [plMap, setPlMap] = useState<Record<string, ClassKey>>({});
   const bankRead = useMemo(() => readBooks<BankOverride, BankLayout>(sheetsAs("bank"), bankOv, readBankStatement), [sheetsAs, bankOv]);
   const allSales = useMemo(() => [...(salesRead?.lines ?? []), ...cashRead.sales, ...bankRead.sales], [salesRead, cashRead, bankRead]);
   const allExp = useMemo(() => [...(expRead?.lines ?? []), ...cashRead.expenses, ...bankRead.expenses], [expRead, cashRead, bankRead]);
   const hasBooks = cashRead.layouts.length + bankRead.layouts.length > 0;
   const rolesNeed = !!allGrids && needsConfirm(guesses, roles);
+  // The workbook as a whole: the owner's own summary figures against what was read from every tab, and copied tabs.
+  const tie = useMemo(() => cashRead.layouts.length ? workbookTie({
+    grids: allGrids ?? [], layouts: cashRead.layouts, sales: allSales, expenses: allExp,
+    summarySheets: new Set(guesses.filter((g) => ["cashbook", "summary", "notes"].includes(roleOf(g.sheet))).map((g) => g.sheet)),
+    skipped: (sh, r) => !!(cashOv[sh]?.skipRows?.includes(r) || overrides[sh]?.skipRows?.includes(r)),
+  }) : null, [cashRead, allGrids, allSales, allExp, guesses, roleOf, cashOv, overrides]);
   const rolesBlock = rolesNeed && !rolesOk;
   // PDFs and scanned images are read page by page and checked by the person before joining the spreadsheets.
   const [pdfJob, setPdfJob] = useState<{ files: File[]; sheets: Grid[] } | null>(null);
@@ -115,7 +132,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const takeSheets = useCallback((fs: File[], gs: Grid[]) => {
     const gu = guessRoles(gs);
     setAllGrids(gs); setGuesses(gu); setRoles({}); setRolesOk(false);
-    setOverrides({}); setSalesOv({}); setExpOv({}); setCashOv({}); setBankOv({});
+    setOverrides({}); setSalesOv({}); setExpOv({}); setCashOv({}); setBankOv({}); setPlOn(null); setPlMap({});
     const acc = gs.filter((g) => gu.find((x) => x.sheet === g.name)?.role === "statement");
     setDiag(diagnostic(fs, gs, acc.length ? extractAll(acc).issues : { warnings: [], skippedCols: [] }));
     setFocus(null); setPicked(null); setScreen("check");
@@ -178,7 +195,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     ...bookIssues([...cashRead.layouts, ...bankRead.layouts]),
     ...[...cashRead.failed.map((n) => ({ n, what: "a cash book" })), ...bankRead.failed.map((n) => ({ n, what: "a bank statement" }))].map(({ n, what }) => ({ id: `role:${n}`, severity: "check" as const, sheet: n, message: `${n.split(" › ").pop()} could not be read as ${what}. Change what it is under "Your sheets".`, fix: "settings" as const })),
     ...sheetIssues(guesses, (sh) => IMPORTED.has(roleOf(sh))),
-  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf]);
+    ...(tie ? tieMessages(tie).map((m, i) => ({ id: `tie:${m.sheet}:${m.row ?? ""}:${m.col ?? ""}:${i}`, severity: m.severity, sheet: m.sheet, row: m.row, col: m.col, message: m.message, fix: (m.row !== undefined ? "cell" : "settings") as "cell" | "settings" })) : []),
+  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf, tie]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
@@ -526,6 +544,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   ) : null;
   const rolesHint = rolesBlock ? "Confirm what each sheet is (above) first." : undefined;
 
+  // A cash-basis P&L from the cash books (on unless the company already has accounts).
+  const fromCashBook = company.accounts.some((a) => a.name === "Sales (cash book)");
+  const plWanted = cashRead.layouts.length > 0 && !demo && (plOn ?? (company.accounts.length === 0 || fromCashBook));
+  const plMonths = plWanted ? [...new Set([...cashRead.sales, ...cashRead.expenses].map((l) => l.period))].sort() : [];
+
   // 4 · Check (money in and out: cash books, bank statements, or a sales list with a bills list)
   if (!res && (hasBooks || (salesRead && expRead))) {
     const months = [...new Set([...salesPeriods(allSales), ...expensePeriods(allExp)])].sort();
@@ -540,6 +563,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
             <Duplicates months={overlapB} same={false} newMonths={months.filter((p) => !salesLoaded.includes(p) && !expensesLoaded.includes(p))} chosen={expMode === null ? null : expMode === "add" ? "add" : "merge"}
               onAdd={() => { setExpMode("add"); setSalesMode("add"); }} onReplace={() => { setExpMode("replace"); setSalesMode("replace"); }} />
           ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          <ul className="mt-4 max-w-4xl space-y-1 text-[14px]" data-testid="books-save-summary">
+            {cashRead.layouts.map((l) => <li key={l.sheet}><b className="font-medium">{l.sheet.split(" › ").pop()}</b>: {l.out.lines} costs {money(l.out.total, currency)} · {l.in.lines} sales {money(l.in.total, currency)}</li>)}
+            {bankRead.layouts.filter((l) => l.outAsExpenses || l.inAsSales).map((l) => <li key={l.sheet}><b className="font-medium">{l.sheet.split(" › ").pop()}</b>: bank statement{l.outAsExpenses ? `, ${l.moneyOut.lines} payments` : ""}{l.inAsSales ? `, ${l.moneyIn.lines} receipts` : ""}</li>)}
+            {plWanted && <li data-testid="books-save-pl"><b className="font-medium">Financials</b>: a cash-basis P&amp;L for {plMonths.length} month{plMonths.length === 1 ? "" : "s"}</li>}
+          </ul>
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save"} nextTestId="save-books"
             disabled={saving || !toSave || (overlapB.length > 0 && expMode === null)}
@@ -555,11 +583,25 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
                 ],
                 fixes: fixes(),
               };
+              // Financials first: if the P&L cannot be built, nothing is saved (no half upload).
+              let plSaved = 0;
+              if (plWanted) {
+                const accounts = cashAccounts(cashRead.sales, cashRead.expenses, plMap);
+                const periods = [...new Set(accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
+                const pl = await commitImport({
+                  companyId, mode: expMode === "add" ? "add" : "merge", slices: { PL: periods, BS: [] }, accounts, extra: [], controls: [], ranges: {}, openingFrom: null, filename: name.slice(0, 300),
+                  report: { kind: "cashbook", periods, warnings: [], notes: ["Cash basis: the P&L is built from a cash book (money in and money out), not from accounts."], flips: [], mapping: Object.fromEntries(Object.entries(plMap)), fixes: report.fixes },
+                });
+                if (!pl.ok && !/Nothing new to add/.test(pl.error)) { setErr(`Nothing was saved: the P&L could not be built. ${pl.error}${pl.blocking?.length ? ` (${pl.blocking.slice(0, 3).map((c) => c.title).join("; ")})` : ""}`); return; }
+                if (pl.ok) plSaved = periods.length;
+              }
               const e = await saveExpenses(companyId, "file", expToSave, name, { ...report, mode: expMode ?? "new" });
               if (!e.ok) { setErr(e.error); return; }
               const sv = await saveSales(companyId, "file", salesToSave, name, { ...report, mode: salesMode ?? "new" });
               if (!sv.ok) { setErr(`The expenses were saved, but the sales could not be: ${sv.error}`); return; }
-              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines saved` }); setScreen("done"); router.refresh();
+              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines${plSaved ? `, and a P&L for ${plSaved} months,` : ""} saved` });
+              if (plSaved) setKind("accounts");
+              setScreen("done"); router.refresh();
             })} />
         </div>
       );
@@ -570,6 +612,28 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         <WizardTitle title="Check your money in and out" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : rolesBlock ? "Check what each sheet is, then confirm." : "All good. Look, then press Next."} />
         {fileLine}
         {rolesPanel}
+        {cashRead.layouts.length > 0 && (
+          <div className="mb-4 flex max-w-5xl flex-wrap gap-x-6 gap-y-2 text-[13px]" data-testid="book-rules">
+            {cashRead.layouts.some((l) => l.blocks.some((b) => b.dir === "in" && b.vat !== null)) && (
+              <label className="flex items-center gap-2">Sales with VAT beside them:
+                <select value={rules.vat} onChange={(e) => setRules((r) => ({ ...r, vat: e.target.value as typeof r.vat }))} className="rounded border border-line px-1.5 py-0.5" data-testid="rule-vat">
+                  <option value="auto">{ownerNet ? `Amount less VAT, as your formula ${ownerNet}` : "As the file shows"}</option>
+                  <option value="net">Amount less VAT</option>
+                  <option value="asWritten">The amount as written</option>
+                </select></label>
+            )}
+            <label className="flex items-center gap-2">Each entry counts in:
+              <select value={rules.months} onChange={(e) => setRules((r) => ({ ...r, months: e.target.value as typeof r.months }))} className="rounded border border-line px-1.5 py-0.5" data-testid="rule-months">
+                <option value="heading">The month heading above it</option>
+                <option value="date">The month of its date</option>
+              </select></label>
+          </div>
+        )}
+        {tie && <WorkbookTieout tie={tie} currency={currency} />}
+        {cashRead.layouts.length > 0 && !demo && (
+          <CashPL on={plWanted} onToggle={setPlOn} columns={cashCostColumns(cashRead.expenses)} map={plMap} onMap={(n, c) => setPlMap((m) => ({ ...m, [n]: c }))}
+            revenue={cashRead.sales.reduce((a, l) => a + l.amount, 0)} hasAccounts={company.accounts.length > 0 && !fromCashBook} currency={currency} />
+        )}
         <div className="mb-4 grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4" data-testid="books-preview">
           <Stat label="Months" value={String(months.length)} sub={months.length ? monthsText(months) : ""} />
           <Stat label="Money out (costs)" value={money(allExp.reduce((a, l) => a + l.amount, 0), currency)} testId="books-out" />

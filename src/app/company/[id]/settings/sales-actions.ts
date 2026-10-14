@@ -40,7 +40,7 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
     const { data, error } = await supabase.rpc("begin_sales_batch", {
       p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
     });
-    if (!error) return { ok: true, batch: data as string };
+    if (!error) { await dropEmpty(supabase, v.data.companyId, v.data.source, data as string); return { ok: true, batch: data as string }; }
     // A database without the function (its update not yet applied) does the same steps through the table rules,
     // which let only the company's editors delete and add its sales.
     if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "begin_sales_batch") };
@@ -48,6 +48,7 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
     if (del.error) return { ok: false, error: dbError(del.error, "sales_lines delete") };
     const ins = await supabase.from("sales_batches").insert({ company_id: v.data.companyId, source: v.data.source, periods, filename: v.data.filename?.slice(0, 300) ?? null, report: (v.data.report ?? {}) as Json, created_by: user.id }).select("id").single();
     if (ins.error) return { ok: false, error: dbError(ins.error, "sales_batches insert") };
+    await dropEmpty(supabase, v.data.companyId, v.data.source, ins.data.id);
     return { ok: true, batch: ins.data.id };
   } catch (e) {
     return { ok: false, error: safeError(e, "startSalesBatch") };
@@ -69,4 +70,16 @@ export async function addSalesLines(companyId: string, batch: string, lines: z.i
   } catch (e) {
     return { ok: false, error: safeError(e, "addSalesLines") };
   }
+}
+
+/**
+ * Uploads left with no lines (every month replaced by a later upload) are removed, so Data health lists only uploads
+ * that still count. Best effort: a failure here never stops the upload.
+ */
+async function dropEmpty(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, source: "ledger" | "file", keep: string) {
+  try {
+    const { data } = await supabase.from("sales_batches").select("id, lines:sales_lines(count)").eq("company_id", companyId).eq("source", source).neq("id", keep);
+    const empty = ((data ?? []) as unknown as { id: string; lines: { count: number }[] }[]).filter((b) => !(b.lines?.[0]?.count ?? 0)).map((b) => b.id);
+    if (empty.length) await supabase.from("sales_batches").delete().in("id", empty);
+  } catch { /* the upload itself is what matters */ }
 }

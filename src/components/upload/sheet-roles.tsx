@@ -29,7 +29,8 @@ export function SheetRoles({ guesses, roles, onRole, gives, need, confirmed, onC
         <span className="text-[13px] text-mute">What each sheet is. Change any that are wrong.</span>
       </div>
       <ul className="divide-y divide-line">
-        {guesses.map((g, i) => {
+        {[...guesses].sort((a, b) => Number(!IMPORTED.has(roles[a.sheet] ?? a.role)) - Number(!IMPORTED.has(roles[b.sheet] ?? b.role))).map((g) => {
+          const i = guesses.indexOf(g);
           const role = roles[g.sheet] ?? g.role;
           const name = g.sheet.split(" › ").pop() ?? g.sheet;
           const used = IMPORTED.has(role);
