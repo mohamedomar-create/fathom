@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { ShoppingBag } from "lucide-react";
-import { hasPL, money, pct, salesAnalysis, salesMonths, type SalesFinding, type SalesRow } from "@/lib/engine";
+import { hasPL, money, pct, salesAnalysis, salesFromAccounts, salesMonths, type SalesFinding, type SalesRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useSales } from "@/lib/company/sales-context";
@@ -10,18 +10,23 @@ import { Delta } from "@/components/ui/status";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { cn } from "@/lib/cn";
 
-/** The sales analysis for the period in the URL, with P&L revenue for the reconciliation. */
+/**
+ * The sales analysis for the period in the URL, with P&L revenue for the reconciliation. Without invoice lines, the P&L's
+ * revenue accounts stand in (fromAccounts): sales, growth and the trend still show; customers and products need lines.
+ */
 export function useSalesAnalysis() {
   const c = useCompany();
-  const data = useSales();
+  const lines = useSales();
   const { sel, cmp } = usePeriod();
   return useMemo(() => {
+    const fromAccounts = !salesMonths(lines).length;
+    const data = fromAccounts ? salesFromAccounts(c.accounts) : lines;
     const months = salesMonths(data);
     if (!months.length) return null;
     const end = sel.end && months.includes(sel.end) ? sel.end : sel.end && sel.end <= months[months.length - 1] && sel.end >= months[0] ? sel.end : months[months.length - 1];
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue });
-  }, [data, sel.type, sel.end, cmp, c.months, c.settings.fyStartMonth]);
+    return { ...salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue }), fromAccounts };
+  }, [lines, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth]);
 }
 
 /** The period picker, which reads the financial months; with sales only, the latest sales month is shown instead. */
@@ -43,6 +48,17 @@ export function NoSales() {
         <li><b className="font-semibold">Odoo Sales or Invoice Analysis</b> (Sales ▸ Reporting ▸ Sales, or Invoicing ▸ Reporting ▸ Invoice Analysis, list view ▸ Export): adds quantities, salespeople and margins. A pivot of products or customers by month also works.</li>
       </ul>
       {!c.readOnly && <Link href={`${c.basePath}/settings/source-data`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">Upload sales</Link>}
+    </div>
+  );
+}
+
+/** Sales read from the P&L's revenue accounts: what invoice lines would add, and where to get them. */
+export function FromAccountsNote({ page }: { page?: "customers" | "products" }) {
+  const c = useCompany();
+  return (
+    <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-brand/50 bg-brand-bg/10 px-4 py-3 text-[14px]" data-testid="sales-from-accounts">
+      <span>{page === "customers" ? "Customers need invoice lines." : page === "products" ? "Products need invoice lines. These are your revenue accounts." : "These sales come from your P&L. To see customers and products, upload your General Ledger or sales file."}</span>
+      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data?step=financials`} className="rounded bg-brand-d px-3 py-1.5 text-sm text-white">Upload</Link>}
     </div>
   );
 }

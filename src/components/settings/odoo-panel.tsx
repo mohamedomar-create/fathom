@@ -48,7 +48,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
       const r = await syncOdooNow(companyId);
       if (!r.ok) { setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
       const d = r.data;
-      setMsg({ tone: "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : [])] });
+      setMsg({ tone: "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), d.detail ?? "Sales and Expenses were filled from the same entries."] });
       router.refresh();
     });
   };

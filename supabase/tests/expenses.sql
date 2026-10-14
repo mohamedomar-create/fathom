@@ -5,6 +5,7 @@
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
   ('ea@x.test', '{"full_name":"Ann"}', now()), ('eb@x.test', '{"full_name":"Ben"}', now());
 grant select on all tables in schema public to authenticated;
+grant delete on public.expense_lines to authenticated;
 
 create function pg_temp.check(label text, got text, want text) returns void language plpgsql as $f$
 begin
@@ -55,15 +56,19 @@ select pg_temp.check('ledger kept in January', (select j -> 'sources' ->> '2026-
 create temp table b3 as select public.begin_expense_batch((select co from ids), 'ledger', array['2026-01'], 'gl2.xlsx') as id;
 select pg_temp.check('january replaced', (select count(*)::text from public.expense_lines where company_id = (select co from ids) and period = '2026-01'), '0');
 select pg_temp.check('february ledger kept', (select count(*)::text from public.expense_lines where company_id = (select co from ids) and period = '2026-02' and source = 'ledger'), '5');
+select pg_temp.check('ledger totals', (select public.ledger_line_totals((select co from ids)) -> 'expenses' ->> '2026-02'), '1740.00');
 reset role;
 
 -- Ben belongs to another organisation: he sees nothing and cannot add to Ann's batches.
 select pg_temp.login('eb@x.test');
 select pg_temp.check('outsider reads nothing', (select count(*)::text from public.expense_lines), '0');
 select pg_temp.check('outsider summary empty', (select jsonb_array_length(public.expense_summary((select co from ids)) -> 'accounts')::text), '0');
+delete from public.expense_lines where source = 'ledger';
+select pg_temp.check('outsider totals empty', (select public.ledger_line_totals((select co from ids)) ->> 'expenses'), '{}');
 do $$ begin perform public.add_expense_lines((select id from b2), '[]'::jsonb); raise exception 'FAIL outsider could add lines';
 exception when insufficient_privilege then raise notice 'ok  outsider cannot add lines'; end $$;
 reset role;
+select pg_temp.check('outsider could not clear ledger lines', (select count(*)::text from public.expense_lines where company_id = (select co from ids) and source = 'ledger'), '10');
 
 set role anon;
 do $$ begin perform public.expense_summary((select co from ids)); raise exception 'FAIL anon could read the summary';

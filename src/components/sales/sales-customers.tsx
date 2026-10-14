@@ -3,13 +3,14 @@ import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
 import { BarList } from "@/components/charts/bar-list";
-import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
+import { DataNotes, FromAccountsNote, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
 
 export function SalesCustomers() {
   const c = useCompany();
   const s = useSalesAnalysis();
   const cur = c.settings.currency;
   if (!s) return <><PageHeader title="Customers" /><NoSales /></>;
+  if (s.fromAccounts) return <><PageHeader title="Customers" right={<SalesPicker s={s} />} /><FromAccountsNote page="customers" /></>;
   const cu = s.customers;
   const cmpCol = s.compareLabel ? `vs ${s.compareLabel}` : "";
   return (

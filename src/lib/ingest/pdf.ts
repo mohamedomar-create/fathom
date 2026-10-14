@@ -63,7 +63,9 @@ const SCALE_NOTE = { units: "", thousands: "Amounts in thousands", millions: "Am
 export function tableGrid(group: PdfPage[]): Grid {
   const first = group[0].read!;
   const rows = group.flatMap((p) => p.read!.rows);
-  const hasCode = rows.some((r) => r.code.trim());
+  // A sales page (products or customers by month) is laid out for the sales reader: no account heading, codes kept in the name.
+  const sales = first.kind === "sales";
+  const hasCode = !sales && rows.some((r) => r.code.trim());
   const heads = first.columns.map((c) => columnHeading(c, first.kind, first.dateText));
   const pagesText = group.length > 1 ? `pages ${group[0].n}–${group[group.length - 1].n}` : `page ${group[0].n}`;
   const g: Cell[][] = [
@@ -72,8 +74,8 @@ export function tableGrid(group: PdfPage[]): Grid {
     ...(first.dateText ? [[first.dateText]] : []),
     ...(SCALE_NOTE[first.scale] ? [[SCALE_NOTE[first.scale]]] : []),
     [],
-    [...(hasCode ? ["Code"] : []), "Account", ...heads],
-    ...rows.map((r) => [...(hasCode ? [r.code.trim() || null] : []), r.label, ...(r.heading ? [] : first.columns.map((_, i) => r.values[i] ?? null))]),
+    [...(hasCode ? ["Code"] : []), sales ? "Product" : "Account", ...heads],
+    ...rows.map((r) => [...(hasCode ? [r.code.trim() || null] : []), sales && r.code.trim() ? `[${r.code.trim()}] ${r.label}` : r.label, ...(r.heading ? [] : first.columns.map((_, i) => r.values[i] ?? null))]),
   ];
   const file = group[0].file.replace(/\.[^.]+$/, "");
   return { name: `${file} › ${pagesText} · ${(first.title || KIND_TITLE[first.kind]).slice(0, 60)}`.slice(0, 120), rows: g };

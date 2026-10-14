@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
-import { DataNotes, Findings, NoSales, SalesTile, useSalesAnalysis, vs, SalesPicker } from "./common";
+import { DataNotes, Findings, FromAccountsNote, NoSales, SalesTile, useSalesAnalysis, vs, SalesPicker } from "./common";
 import { ReadinessCard } from "@/components/setup/readiness-view";
 
 export function SalesOverview() {
@@ -18,17 +18,20 @@ export function SalesOverview() {
   const last12 = s.trend.slice(-12);
   const prev12 = s.trend.slice(0, 12);
   const checked = s.trend.filter((t) => s.window.periods.includes(t.period) && t.sales !== null && t.revenue !== null).length;
-  const headline = `${c.name} invoiced ${money(s.total, cur)} in ${s.window.label}${s.growth !== null ? `, ${s.growth >= 0 ? "up" : "down"} ${Math.abs(s.growth).toFixed(1)}% on ${s.compareLabel}` : ""}, across ${s.invoices.toLocaleString("en-US")} invoice${s.invoices === 1 ? "" : "s"} to ${cu.active} customer${cu.active === 1 ? "" : "s"}${s.byCategory[0] ? `; ${s.byCategory[0].name} is the largest category at ${pct(s.byCategory[0].share, 0)} of sales` : ""}.`;
+  const headline = s.fromAccounts
+    ? `${c.name} sold ${money(s.total, cur)} in ${s.window.label}${s.growth !== null ? `, ${s.growth >= 0 ? "up" : "down"} ${Math.abs(s.growth).toFixed(1)}% on ${s.compareLabel}` : ""}, from the revenue in the P&L.`
+    : `${c.name} invoiced ${money(s.total, cur)} in ${s.window.label}${s.growth !== null ? `, ${s.growth >= 0 ? "up" : "down"} ${Math.abs(s.growth).toFixed(1)}% on ${s.compareLabel}` : ""}, across ${s.invoices.toLocaleString("en-US")} invoice${s.invoices === 1 ? "" : "s"} to ${cu.active} customer${cu.active === 1 ? "" : "s"}${s.byCategory[0] ? `; ${s.byCategory[0].name} is the largest category at ${pct(s.byCategory[0].share, 0)} of sales` : ""}.`;
   return (
     <>
       <PageHeader title="Sales Overview" right={<SalesPicker s={s} />} />
       <ReadinessCard sector="sales" />
+      {s.fromAccounts && <FromAccountsNote />}
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="sales-headline">{headline}</p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
         <SalesTile label="Net sales" value={money(s.total, cur)} sub={vs(s.growth, s.compareLabel)} neg={s.total < 0 || (s.growth ?? 0) < 0} testId="tile-sales" />
-        <SalesTile label="Invoices" value={s.invoices.toLocaleString("en-US")} sub={<span className="text-mute">{s.lines.toLocaleString("en-US")} lines</span>} />
+        <SalesTile label="Invoices" value={s.fromAccounts ? "–" : s.invoices.toLocaleString("en-US")} sub={<span className="text-mute">{s.fromAccounts ? "needs invoice lines" : `${s.lines.toLocaleString("en-US")} lines`}</span>} />
         <SalesTile label="Average invoice" value={s.avgInvoice === null ? "–" : money(s.avgInvoice, cur)} sub={<span className="text-mute">net of tax</span>} />
-        <SalesTile label="Active customers" value={cu.active.toLocaleString("en-US")} sub={<span className="text-mute">{cu.new === null ? "new customers need earlier months" : `${cu.new} new · ${cu.returning} returning`}</span>} />
+        <SalesTile label="Active customers" value={s.fromAccounts ? "–" : cu.active.toLocaleString("en-US")} sub={<span className="text-mute">{s.fromAccounts ? "needs invoice lines" : cu.new === null ? "new customers need earlier months" : `${cu.new} new · ${cu.returning} returning`}</span>} />
         <SalesTile label="Top 10 customers" value={cu.top10Share === null ? "–" : pct(cu.top10Share, 0)} sub={<span className="text-mute">{cu.topName ? `largest: ${pct(cu.topShare ?? 0, 0)}` : "of sales"}</span>} neg={(cu.topShare ?? 0) > 20} />
         <SalesTile label="Gross margin" value={s.margin === null ? "–" : pct(s.margin, 1)} sub={<span className="text-mute">{s.margin === null ? "needs product cost" : `cost known for ${pct(s.costCoverage, 0)}`}</span>} />
       </div>
@@ -38,8 +41,8 @@ export function SalesOverview() {
           <Findings title="Needs attention" kind="risk" findings={s.findings} />
           <Findings title="Watch" kind="watch" findings={s.findings} />
           <Findings title="Going well" kind="win" findings={s.findings} />
-          <h3 className="mb-2 mt-2 text-lg font-normal">Sales by category</h3>
-          <BarList items={s.byCategory.map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="category-bars" />
+          <h3 className="mb-2 mt-2 text-lg font-normal">{s.fromAccounts ? "Sales by revenue account" : "Sales by category"}</h3>
+          <BarList items={(s.fromAccounts ? s.byProduct : s.byCategory).map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="category-bars" />
         </div>
         <div>
           <h3 className="mb-1 text-lg font-normal">Monthly sales, against the year before</h3>
@@ -48,8 +51,10 @@ export function SalesOverview() {
               { name: "Last 12 months", values: last12.map((t) => t.sales), color: C.s[0], fill: true },
               { name: "The 12 months before", values: prev12.map((t) => t.sales), color: C.mute, dashed: true, dots: false },
             ]} />
-          <h3 className="mb-2 mt-8 text-lg font-normal">Largest customers</h3>
-          <BarList items={s.byCustomer.filter((r) => r.amount > 0).map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="customer-bars" />
+          {!s.fromAccounts && <>
+            <h3 className="mb-2 mt-8 text-lg font-normal">Largest customers</h3>
+            <BarList items={s.byCustomer.filter((r) => r.amount > 0).map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="customer-bars" />
+          </>}
         </div>
       </div>
       <DataNotes notes={s.notes} />

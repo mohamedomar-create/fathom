@@ -14,7 +14,7 @@ import { StaticCharts } from "@/components/charts/static";
 import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/lib/cn";
 import { runChecks, type CheckId } from "@/lib/company/checks";
-import { hasSales, ReportSales } from "./report-sales";
+import { canPrintSales, ReportSales } from "./report-sales";
 import { hasExpenses, ReportExpenses } from "./report-expenses";
 import { SECTION_COMMENT, type ReportInput, type SectionKey } from "@/lib/report/types";
 import { ReportBank, ReportBankOutlook, ReportRealProfit } from "./report-bank";
@@ -27,8 +27,8 @@ export function ReportDocument({ input }: { input: ReportInput }) {
   const a = useMemo(() => analyze(input.months, input.sel, input.settings, { alerts: input.alerts }), [input.months, input.sel, input.settings, input.alerts]);
   const cur = input.settings.currency;
   const brand = input.org.brandColour ?? "#0B6E70";
-  // The Sales page is left out when no sales are loaded, rather than printed empty.
-  const enabled = input.sections.filter((s) => s.enabled && (s.key !== "sales" || hasSales(input.sales)) && (s.key !== "expenses" || hasExpenses(input))).map((s) => s.key);
+  // The Sales and Expenses pages are left out when there is nothing to show, rather than printed empty.
+  const enabled = input.sections.filter((s) => s.enabled && (s.key !== "sales" || canPrintSales(input)) && (s.key !== "expenses" || hasExpenses(input))).map((s) => s.key);
   const comment = (k: SectionKey) => {
     const key = SECTION_COMMENT[k];
     const typed = key ? input.commentary[key] : undefined;

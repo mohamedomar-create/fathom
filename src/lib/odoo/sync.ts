@@ -2,6 +2,9 @@ import { addMonths, daysIn, type ClassKey } from "@/lib/engine";
 import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
 import { majorVersion, OdooClient, OdooError } from "./client";
+import type { LedgerEntry } from "@/lib/ingest/extract";
+import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
+import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
 
 export interface OdooCompany { id: number; name: string; currency: string | null }
 export interface OdooProbe { version: string; major: number; uid: number; companies: OdooCompany[] }
@@ -167,4 +170,44 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   ];
   if (unmapped.length) notes.push(`${unmapped.length} account(s) with balances had no recognised type and were left out: ${unmapped.slice(0, 5).join(", ")}${unmapped.length > 5 ? "…" : ""}.`);
   return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped } };
+}
+
+export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; lines: number; note: string | null }
+/** Most move lines a sync reads for sales and expenses (beyond it, the General Ledger upload gives the detail). */
+export const MAX_SYNC_LINES = 100_000;
+
+/**
+ * The move lines behind the revenue and cost accounts of a sync, as sales and expense lines (the same mapping as a General
+ * Ledger upload): date, entry, partner and label of every posted line in the months synced. Skipped, with a note, when there
+ * are more lines than a sync can read in time; the balances are synced either way.
+ */
+export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res: SyncResult, budgetMs = 30_000): Promise<SyncedLines> {
+  const started = Date.now();
+  const none = (note: string | null): SyncedLines => ({ sales: [], expenses: [], lines: 0, note });
+  const wanted = res.accounts.filter((a) => a.odoo_id !== null && (a.cls === "revenue" || EXPENSE_CLASSES.has(a.cls)));
+  if (!wanted.length || !res.periods.length) return none(null);
+  const cid = opts.companyId;
+  const ctx = { allowed_company_ids: [cid], active_test: false };
+  const first = res.periods[0], last = res.periods[res.periods.length - 1];
+  const domain = [["parent_state", "=", "posted"], opts.includeBranches ? ["company_id", "child_of", cid] : ["company_id", "=", cid],
+    ["date", ">=", `${first}-01`], ["date", "<=", `${last}-${String(daysIn(last)).padStart(2, "0")}`], ["account_id", "in", wanted.map((a) => a.odoo_id!)]];
+  const count = await client.executeKw<number>("account.move.line", "search_count", [domain], { context: ctx });
+  if (count > MAX_SYNC_LINES) return none(`Sales and expense detail were not synced: ${count.toLocaleString("en-US")} lines is more than a sync reads. Upload the General Ledger for customers and suppliers.`);
+  const entries = new Map<number, LedgerEntry[]>();
+  const pageSize = 5000;
+  for (let offset = 0; offset < count; offset += pageSize) {
+    if (Date.now() - started > budgetMs) return none("Sales and expense detail were not synced: Odoo took too long to send the lines. Upload the General Ledger for customers and suppliers.");
+    const page = await client.executeKw<{ account_id: [number, string] | false; date: string; move_id: [number, string] | false; partner_id: [number, string] | false; name: string | false; balance: number }[]>(
+      "account.move.line", "search_read", [domain], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit: pageSize, offset, order: "date, id", context: ctx },
+    );
+    for (const l of page) {
+      if (!l.account_id || !l.balance) continue;
+      const list = entries.get(l.account_id[0]) ?? [];
+      list.push({ day: l.date.slice(0, 10), period: l.date.slice(0, 7), ref: l.move_id ? l.move_id[1] : "", label: (l.name || "").trim(), partner: l.partner_id ? l.partner_id[1] : "", amount: l.balance });
+      entries.set(l.account_id[0], list);
+    }
+    if (page.length < pageSize) break;
+  }
+  const lines = wanted.map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id!) ?? [] }));
+  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), lines: count, note: null };
 }

@@ -351,6 +351,9 @@ test("data setup lists each step and each sector's readiness, with templates to 
   await expect(page.getByTestId("step-financials")).toBeVisible();
   await expect(page.getByTestId("radar-financials")).toBeVisible();
   await expect(page.getByTestId("readiness-sales")).toBeVisible();
+  // One upload feeds every sector it can: the accounts reach all five, the ledger's lines reach Expenses.
+  for (const s of ["financials", "sales", "expenses", "banking", "forecast"]) await expect(page.getByTestId(`map-accounts-${s}`)).toHaveAttribute("data-on", "1");
+  await expect(page.getByTestId("map-ledger-expenses")).toHaveAttribute("data-on", "1");
   const href = await page.getByTestId("template-financials").first().getAttribute("href");
   const res = await page.request.get(href!);
   expect(res.status()).toBe(200);

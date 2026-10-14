@@ -7,16 +7,29 @@ import { DataHealth, type HistoryRow, type MonthSource } from "@/components/sett
 import type { FixRecord } from "@/lib/ingest/trace";
 import type { AcceptedItem } from "../actions";
 import { ImportReadiness } from "@/components/setup/import-readiness";
+import { LineUploads, type LineUpload } from "@/components/settings/line-uploads";
 
 export default async function DataHealthPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ imported?: string }> }) {
   const { id } = await params;
   const { imported } = await searchParams;
   const { supabase } = await getUser();
   const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }] = await Promise.all([
+  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }] = await Promise.all([
     loadVersion(supabase, id, bundle.dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
+    supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
+    supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
   ]);
+  // Sales and expenses files uploaded on their own (lines from a General Ledger belong to its import above).
+  const lineUploads: LineUpload[] = [
+    ...(salesFiles ?? []).map((b) => ({ id: b.id, kind: "sales" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
+    ...(expenseFiles ?? []).map((b) => ({ id: b.id, kind: "expenses" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).flatMap((u, _i, all) => {
+    // A newer file replaced the older one's months (their lines are gone): show each upload with the months it still holds.
+    const newer = all.filter((x) => x.kind === u.kind && x.at > u.at).flatMap((x) => x.periods);
+    const left = u.periods.filter((p) => !newer.includes(p));
+    return left.length ? [{ ...u, periods: left }] : [];
+  });
   const rows = imports ?? [];
   const people = new Map<string, string>();
   const ids = [...new Set(rows.map((r) => r.created_by).filter(Boolean) as string[])];
@@ -68,6 +81,10 @@ export default async function DataHealthPage({ params, searchParams }: { params:
         coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}
         checks={checks} accepted={accepted} sources={sources} history={history}
       />
+      <section className="mt-10">
+        <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
+        <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />
+      </section>
     </div>
   );
 }

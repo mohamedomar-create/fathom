@@ -174,3 +174,42 @@ describe("the expenses template", () => {
     expect(r.layout.errors.map((e) => e.message)).toEqual(['row 6, column A: "next week" is not a date']);
   });
 });
+
+describe("ledgers from any system feed Sales and Expenses, tying to the P&L", () => {
+  it("generic General Ledgers and journal lists keep their dated lines", async () => {
+    const { corpus } = await import("../fixtures/egypt-corpus");
+    const { readWorkbook } = await import("@/lib/ingest/read");
+    const { ingest } = await import("@/lib/ingest/pipeline");
+    const { salesFromLedger } = await import("@/lib/ingest/sales");
+    const { EXPENSE_CLASSES } = await import("@/lib/ingest/expenses");
+    for (const name of ["ar-gl-generic.xlsx", "journal-dmy-eu.csv", "journal-ar-digits.xlsx", "journal-excel-dates.xlsx"]) {
+      const f = corpus().find((x) => x.name === name)!;
+      const grids = await readWorkbook(f.data.buffer.slice(f.data.byteOffset, f.data.byteOffset + f.data.byteLength) as ArrayBuffer, f.name);
+      const res = ingest(grids, { fyStart: 1, ytd: "auto", closeEarnings: "auto", plugEquity: false, mapping: {}, today: "2026-10-12", ...f.opts });
+      const sum = (ls: { period: string; amount: number }[], p: string) => ls.filter((l) => l.period === p).reduce((s, l) => s + l.amount, 0);
+      const sales = salesFromLedger(res.lines), exp = expensesFromLedger(res.lines);
+      expect(sales.length, name).toBeGreaterThan(0);
+      expect(exp.length, name).toBeGreaterThan(0);
+      for (const p of res.slices.PL) {
+        const rev = res.lines.filter((l) => l.cls === "revenue" && !l.excluded && !l.system).reduce((s, l) => s + (l.values[p] ?? 0), 0);
+        const cost = res.lines.filter((l) => l.cls && EXPENSE_CLASSES.has(l.cls) && !l.excluded && !l.system).reduce((s, l) => s + (l.values[p] ?? 0), 0);
+        expect(Math.round(sum(sales, p) - rev), `${name} sales ${p}`).toBe(0);
+        expect(Math.round(sum(exp, p) - cost), `${name} costs ${p}`).toBe(0);
+      }
+    }
+  });
+});
+
+describe("a PDF sales page becomes sales lines", () => {
+  it("products by month, read from the page, go to the sales reader", async () => {
+    const { tableGrid } = await import("@/lib/ingest/pdf");
+    const row = (code: string, label: string, values: (number | null)[], total = false) => ({ code, label, values, total, heading: false, unclear: false });
+    const g = tableGrid([{ file: "sales.pdf", n: 1, read: { kind: "sales", title: "Sales by product", company: "", currency: "EGP", scale: "units", dateText: "", columns: ["Jan 2026", "Feb 2026"], rows: [row("P1", "Oxygen Concentrator", [21000, 34000]), row("", "Full Face Mask", [2600, 5200]), row("", "Total", [23600, 39200], true)] } }]);
+    const r = readSalesGrid(g)!;
+    expect(r.layout.kind).toBe("pivot");
+    expect(r.lines.map((l) => [l.period, l.product, l.category, l.amount])).toEqual([
+      ["2026-01", "Oxygen Concentrator", "P1", 21000], ["2026-02", "Oxygen Concentrator", "P1", 34000],
+      ["2026-01", "Full Face Mask", "No category", 2600], ["2026-02", "Full Face Mask", "No category", 5200],
+    ]);
+  });
+});

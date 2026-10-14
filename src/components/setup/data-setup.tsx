@@ -5,6 +5,7 @@ import { useCompany } from "@/lib/company/context";
 import { mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
 import type { ItemStatus, SectorReadiness } from "@/lib/company/readiness";
 import { SectorPanel, TemplateButton, useReadiness } from "./readiness-view";
+import { DataMap } from "./data-map";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -95,6 +96,7 @@ export function DataSetup({ sales, expenses = null }: { sales: SalesData | null;
           </li>
         ))}
       </ol>
+      <DataMap months={c.months} sales={sales} expenses={expenses} />
       <h2 className="mb-1 text-xl font-light">How ready is your data?</h2>
       <p className="mb-4 text-sm text-mute">Teal: what you have. Orange: how much of it checks out.</p>
       <div className="space-y-5">{all.map((r) => <SectorPanel key={r.key} r={r} basePath={c.basePath} />)}</div>

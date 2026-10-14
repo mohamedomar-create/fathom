@@ -5,7 +5,7 @@ import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
 import { BarList } from "@/components/charts/bar-list";
 import { cn } from "@/lib/cn";
-import { DataNotes, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
+import { DataNotes, FromAccountsNote, NoSales, SalesTable, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
 
 export function SalesProducts() {
   const c = useCompany();
@@ -13,6 +13,7 @@ export function SalesProducts() {
   const [category, setCategory] = useState<string | null>(null);
   const cur = c.settings.currency;
   if (!s) return <><PageHeader title="Products and Categories" /><NoSales /></>;
+  if (s.fromAccounts) return <><PageHeader title="Products and Categories" right={<SalesPicker s={s} />} /><FromAccountsNote page="products" /><SalesTable rows={s.byProduct} cur={cur} nameLabel="Revenue account" compareLabel={s.compareLabel ? `vs ${s.compareLabel}` : ""} testId="product-table" /></>;
   const products = category ? s.byProduct.filter((r) => r.group === category) : s.byProduct;
   const cmpCol = s.compareLabel ? `vs ${s.compareLabel}` : "";
   return (

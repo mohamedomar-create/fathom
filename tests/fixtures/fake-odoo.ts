@@ -16,7 +16,7 @@ const V15: Record<string, string> = Object.fromEntries(Object.entries({
   expense_direct_cost: "data_account_type_direct_costs", expense: "data_account_type_expenses",
 }));
 
-interface Line { account: number; date: string; balance: number; company: number }
+interface Line { account: number; date: string; balance: number; company: number; move?: string; partner?: string }
 
 export function buildLedger() {
   const accs = accounts.filter((a) => a.cls !== "retained_earnings").map((a, i) => ({ id: 100 + i, code: a.code, name: a.name, cls: a.cls, type: TYPE[a.cls]! }));
@@ -31,7 +31,7 @@ export function buildLedger() {
       const nat = isPL(a.cls) ? a.amounts[p] ?? 0 : (a.amounts[p] ?? 0) - prev;
       const raw = toRaw(a.cls, nat);
       if (!raw) continue;
-      lines.push({ account: byCode.get(a.code)!.id, date: `${p}-15`, balance: raw, company: 1 });
+      lines.push({ account: byCode.get(a.code)!.id, date: `${p}-15`, balance: raw, company: 1, move: `${a.cls === "revenue" ? "INV" : isPL(a.cls) ? "BILL" : "MISC"}/${p.slice(0, 4)}/${String(pi + 1).padStart(4, "0")}`, partner: a.cls === "revenue" ? "Northside Hospital" : isPL(a.cls) ? "Medline Supply" : "" });
       check += raw;
     }
     lines.push({ account: byCode.get(pi === 0 ? "300000" : "301000")!.id, date: `${p}-15`, balance: -check, company: 1 });
@@ -47,6 +47,7 @@ function match(l: Line, dom: unknown[]): boolean {
     const [f, op, v] = d as Leaf;
     if (f === "parent_state") return true;
     if (f === "company_id") return op === "=" ? l.company === v : op === "child_of" ? l.company === v : false;
+    if (f === "account_id" && op === "in") return (v as number[]).includes(l.account);
     if (f === "date") return op === "<" ? l.date < (v as string) : op === ">=" ? l.date >= (v as string) : op === "<=" ? l.date <= (v as string) : false;
     throw new Error(`unexpected domain ${f}`);
   });
@@ -95,9 +96,11 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19) {
           }
           return r;
         });
+      } else if (model === "account.move.line" && m === "search_count") {
+        result = lines.filter((l) => match(l, a[0])).length;
       } else if (model === "account.move.line" && m === "search_read") {
         const sel = lines.filter((l) => match(l, a[0]));
-        result = sel.slice(kw.offset, kw.offset + kw.limit).map((l) => ({ account_id: [l.account, "x"], date: l.date, balance: l.balance }));
+        result = sel.slice(kw.offset, kw.offset + kw.limit).map((l) => ({ account_id: [l.account, "x"], date: l.date, balance: l.balance, move_id: l.move ? [1, l.move] : false, partner_id: l.partner ? [2, l.partner] : false, name: "line" }));
       } else throw new Error(`unexpected ${model}.${m}`);
     }
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));

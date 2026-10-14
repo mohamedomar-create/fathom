@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Receipt, Upload } from "lucide-react";
-import { expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseAccount, type ExpenseRow, type ExpensesData } from "@/lib/engine";
+import { accountsFromLines, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -15,17 +15,6 @@ export { DataNotes, Findings, SalesTile as Tile } from "@/components/sales/commo
 
 /** A change in costs: up reads red, down green. */
 export const costVs = (growth: number | null, label: string) => (label ? <><Delta value={growth} good={growth === null ? undefined : growth <= 0} /> <span className="text-mute">vs {label}</span></> : <span className="text-mute">no comparison loaded</span>);
-
-/** Without a P&L (only an expenses file loaded), the lines' accounts stand in for the P&L's. */
-function accountsFromLines(d: ExpensesData): ExpenseAccount[] {
-  const m = new Map<string, ExpenseAccount>();
-  for (const r of d.accounts) {
-    const a = m.get(r.t) ?? { id: r.t, code: "", name: r.t, cls: r.c && isExpenseClass(r.c) ? r.c : "exp_fixed", amounts: {} };
-    a.amounts[r.p] = (a.amounts[r.p] ?? 0) + r.a;
-    m.set(r.t, a);
-  }
-  return [...m.values()];
-}
 
 /** The expenses analysis for the period in the URL: accounts from the P&L, suppliers from the expense lines. */
 export function useExpensesAnalysis() {

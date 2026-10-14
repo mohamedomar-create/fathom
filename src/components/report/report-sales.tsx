@@ -1,12 +1,14 @@
 "use client";
 import { useMemo } from "react";
-import { mlabel, money, mshort, pct, salesAnalysis, salesMonths, type SalesData, type SalesRow } from "@/lib/engine";
+import { mlabel, money, mshort, pct, salesAnalysis, salesFromAccounts, salesMonths, type SalesData, type SalesRow } from "@/lib/engine";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import type { ReportInput } from "@/lib/report/types";
 
 /** True when the report has sales lines for the months it covers. */
 export const hasSales = (d?: SalesData) => Boolean(d && salesMonths(d).length);
+/** The Sales page can print: from invoice lines, or else from the P&L's revenue accounts. */
+export const canPrintSales = (input: Pick<ReportInput, "sales" | "accounts">) => hasSales(input.sales) || input.accounts.some((a) => a.cls === "revenue" && Object.values(a.amounts).some(Boolean));
 
 const Tile = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
   <div className="border-t-2 border-line pt-1.5"><div className="label">{label}</div><div className="num text-[19px]">{value}</div>{sub && <div className="text-[10.5px] text-mute">{sub}</div>}</div>
@@ -29,10 +31,12 @@ function Rows({ title, rows, cur }: { title: string; rows: SalesRow[]; cur: stri
 export function ReportSales({ input, head }: { input: ReportInput; head: (title: string) => React.ReactNode }) {
   const cur = input.settings.currency;
   const s = useMemo(() => {
-    if (!input.sales || !hasSales(input.sales)) return null;
+    const fromAccounts = !hasSales(input.sales);
+    const data = fromAccounts ? salesFromAccounts(input.accounts) : input.sales!;
+    if (!salesMonths(data).length) return null;
     const revenue = Object.fromEntries(input.months.filter((m) => Object.keys(m.pl).length).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return salesAnalysis(input.sales, input.sel, input.settings.fyStartMonth, { revenue });
-  }, [input.sales, input.months, input.sel, input.settings.fyStartMonth]);
+    return { ...salesAnalysis(data, input.sel, input.settings.fyStartMonth, { revenue }), fromAccounts };
+  }, [input.sales, input.accounts, input.months, input.sel, input.settings.fyStartMonth]);
   if (!s) return null;
   const last12 = s.trend.slice(-12), prev12 = s.trend.slice(0, 12);
   const checked = s.trend.filter((t) => s.window.periods.includes(t.period) && t.sales !== null && t.revenue !== null).length;
@@ -41,15 +45,15 @@ export function ReportSales({ input, head }: { input: ReportInput; head: (title:
       {head("Sales")}
       <div className="mb-4 grid grid-cols-6 gap-3">
         <Tile label="Net sales" value={money(s.total, cur, true)} sub={s.growth === null ? undefined : `${s.growth >= 0 ? "+" : ""}${s.growth.toFixed(1)}% vs ${s.compareLabel}`} />
-        <Tile label="Invoices" value={s.invoices.toLocaleString("en-US")} />
+        <Tile label="Invoices" value={s.fromAccounts ? "–" : s.invoices.toLocaleString("en-US")} />
         <Tile label="Average invoice" value={s.avgInvoice === null ? "–" : money(s.avgInvoice, cur, true)} />
-        <Tile label="Active customers" value={String(s.customers.active)} sub={s.customers.new === null ? undefined : `${s.customers.new} new`} />
+        <Tile label="Active customers" value={s.fromAccounts ? "–" : String(s.customers.active)} sub={s.customers.new === null ? undefined : `${s.customers.new} new`} />
         <Tile label="Top 10 customers" value={s.customers.top10Share === null ? "–" : pct(s.customers.top10Share, 0)} sub="of sales" />
         <Tile label="Gross margin" value={s.margin === null ? "–" : pct(s.margin, 1)} sub={s.margin === null ? "cost not loaded" : undefined} />
       </div>
       <div className="mb-3 grid grid-cols-2 gap-6">
-        <Rows title="Categories" rows={s.byCategory} cur={cur} />
-        <Rows title="Largest customers" rows={s.byCustomer.filter((r) => r.amount > 0)} cur={cur} />
+        <Rows title={s.fromAccounts ? "Revenue accounts" : "Categories"} rows={s.fromAccounts ? s.byProduct : s.byCategory} cur={cur} />
+        {s.fromAccounts ? <p className="text-[11px] text-mute">Customers and products need invoice lines (the General Ledger or a sales file).</p> : <Rows title="Largest customers" rows={s.byCustomer.filter((r) => r.amount > 0)} cur={cur} />}
       </div>
       <LineChart labels={last12.map((t) => mshort(t.period))} cur={cur} height={190}
         series={[{ name: "Last 12 months", values: last12.map((t) => t.sales), color: C.s[0], fill: true }, { name: "The 12 months before", values: prev12.map((t) => t.sales), color: C.mute, dashed: true, dots: false }]} />

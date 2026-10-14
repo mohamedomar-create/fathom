@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { expenseMonths, expensesAnalysis, isExpenseClass, money, mshort, NOT_SUPPLIERS, pct, type ExpenseRow } from "@/lib/engine";
+import { accountsFromLines, EMPTY_EXPENSES, expenseMonths, expensesAnalysis, isExpenseClass, money, mshort, NOT_SUPPLIERS, pct, type ExpenseRow } from "@/lib/engine";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import type { ReportInput } from "@/lib/report/types";
@@ -29,9 +29,12 @@ function Rows({ title, rows, cur }: { title: string; rows: ExpenseRow[]; cur: st
 export function ReportExpenses({ input, head }: { input: ReportInput; head: (title: string) => React.ReactNode }) {
   const cur = input.settings.currency;
   const s = useMemo(() => {
-    if (!input.accounts.some((a) => isExpenseClass(a.cls))) return null;
+    const lines = input.expenses ?? EMPTY_EXPENSES;
+    // With no P&L costs (an expenses file only), the lines' own accounts stand in.
+    const fromPL = input.accounts.some((a) => isExpenseClass(a.cls));
+    if (!fromPL && !expenseMonths(lines).length) return null;
     const revenue = Object.fromEntries(input.months.filter((m) => Object.keys(m.pl).length).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(input.accounts, input.expenses ?? { suppliers: [], accounts: [], sources: {}, flags: [] }, input.sel, input.settings.fyStartMonth, { revenue });
+    return expensesAnalysis(fromPL ? input.accounts : accountsFromLines(lines), lines, input.sel, input.settings.fyStartMonth, { revenue });
   }, [input.accounts, input.expenses, input.months, input.sel, input.settings.fyStartMonth]);
   if (!s) return null;
   const last12 = s.trend.slice(-12), prev12 = s.trend.slice(0, 12);

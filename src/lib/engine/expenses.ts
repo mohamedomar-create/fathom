@@ -290,3 +290,14 @@ export function expensesAnalysis(
 }
 
 const fmtSigned = (v: number) => `${v >= 0 ? "+" : "−"}${Math.round(Math.abs(v)).toLocaleString("en-US")}`;
+
+/** Without a P&L (only an expenses file loaded), the lines' accounts stand in for the P&L's. */
+export function accountsFromLines(d: ExpensesData): ExpenseAccount[] {
+  const m = new Map<string, ExpenseAccount>();
+  for (const r of d.accounts) {
+    const a = m.get(r.t) ?? { id: r.t, code: "", name: r.t, cls: r.c && isExpenseClass(r.c) ? r.c : "exp_fixed", amounts: {} };
+    a.amounts[r.p] = (a.amounts[r.p] ?? 0) + r.a;
+    m.set(r.t, a);
+  }
+  return [...m.values()];
+}
