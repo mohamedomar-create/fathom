@@ -36,7 +36,7 @@ export function periodLabel(label: string, lang: Lang): string {
   if (lang === "en") return label;
   const mi = (abbr: string) => MONTHS_EN.indexOf(abbr);
   return label
-    .replace(/\(to (\w{3})\)/g, (_, a: string) => `(حتى ${MONTHS_AR[mi(a)] ?? a})`)
+    .replace(/\(to (\d+ )?(\w{3})\)/g, (_, d: string | undefined, a: string) => `(حتى ${d ?? ""}${MONTHS_AR[mi(a)] ?? a})`)
     .replace(/\bQ([1-4]) FY(\d{4})/g, (_, q: string, y: string) => `${QUARTERS_AR[Number(q)]} من السنة المالية ${y}`)
     .replace(/\bQ([1-4]) /g, (_, q: string) => `${QUARTERS_AR[Number(q)]} `)
     .replace(/\bFY(\d{4})/g, "السنة المالية $1")

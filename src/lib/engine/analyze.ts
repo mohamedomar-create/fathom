@@ -51,7 +51,7 @@ const PRIOR_LABEL = { month: "last month", quarter: "the prior quarter", year: "
 
 export function analyze(
   months: MonthData[], sel: PeriodSel, settings: CompanySettings,
-  opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null } = {},
+  opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null; lang?: "en" | "ar"; kpiName?: (d: KpiDef) => string } = {},
 ): Analysis {
   const view = periodView(months, sel, settings.fyStartMonth);
   // The books stop inside the last month: days-based measures (debtor, stock and supplier days) count the days covered.
@@ -109,7 +109,7 @@ export function analyze(
   const findings = insights({
     P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
     cur: settings.currency, priorLabel: PRIOR_LABEL[sel.type], periodWord: sel.type,
-    critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => r.def.name),
+    critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => (opts.kpiName ? opts.kpiName(r.def) : r.def.name)), lang: opts.lang,
   });
   return { view, settings, W, CF, K, targets, kpiRows, onTrack, offTrack, findings, breakeven: breakeven(P) };
 }

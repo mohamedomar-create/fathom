@@ -54,3 +54,47 @@ describe("languages", () => {
     expect(periodLabel("Q3 2026 (to Aug)", "en")).toBe("Q3 2026 (to Aug)");
   });
 });
+
+describe("part-month labels", () => {
+  it("names the last day in Arabic", () => {
+    expect(periodLabel("Year 2026 (to 10 Oct)", "ar")).toBe("سنة 2026 (حتى 10 أكتوبر)");
+    expect(periodLabel("Oct 2026 (to 10 Oct)", "ar")).toBe("أكتوبر 2026 (حتى 10 أكتوبر)");
+  });
+});
+
+describe("analysis in Arabic", async () => {
+  const sample = (await import("../../reference/sample.json")).default;
+  const { analyze, KPI_DEFS, bsCalc, plCalc, cashWaterfall, cashFlowStatement, CAT_ORDER } = await import("@/lib/engine");
+  const { LINES_AR } = await import("@/lib/i18n/lines");
+  const { KPI_AR } = await import("@/lib/i18n/kpis");
+  const months = sample.months as import("@/lib/engine").MonthData[];
+  const settings = { currency: "EGP", fyStartMonth: 1, taxRate: 0.225, targets: sample.targets };
+
+  it("names every KPI and KPI group in Arabic", () => {
+    for (const d of KPI_DEFS) expect(KPI_AR[d.key], d.key).toBeDefined();
+    for (const c of CAT_ORDER) expect(LINES_AR[c], c).toBeDefined();
+  });
+
+  it("names every cash-flow line and its explanation in Arabic", () => {
+    const B0 = bsCalc(months[0].bs), B = bsCalc({ ...months[1].bs, cash: (months[1].bs.cash ?? 0) + 1 }), P = plCalc({ ...months[1].pl, adjustments: 5 });
+    const W = cashWaterfall(P, B, B0);
+    for (const r of W.rows) { expect(LINES_AR[r.label], r.label).toBeDefined(); if (r.info) expect(LINES_AR[r.info], r.info).toBeDefined(); }
+    for (const l of cashFlowStatement(P, B, B0, { showUnreconciled: true }).lines) expect(LINES_AR[l.label], l.label).toBeDefined();
+  });
+
+  it("writes the analyst notes in Arabic with the same figures, and leaves English as it was", () => {
+    const sel = { type: "month" as const, end: "2026-09" };
+    const en = analyze(months, sel, settings).findings;
+    const ar = analyze(months, sel, settings, { lang: "ar" }).findings;
+    expect(ar.length).toBe(en.length);
+    expect(ar.map((f) => [f.kind, f.section, f.sev])).toEqual(en.map((f) => [f.kind, f.section, f.sev]));
+    for (const f of ar) {
+      expect(/[؀-ۿ]/.test(f.title), f.title).toBe(true);
+      expect(/[A-Za-z]{4,}/.test(f.title.replace(/EGP/g, "")), `English left in: ${f.title}`).toBe(false);
+    }
+    // Every amount in the English notes appears in the Arabic ones.
+    const amounts = (fs: typeof en) => fs.flatMap((f) => `${f.title} ${f.text}`.match(/EGP [\d,]+/g) ?? []).sort();
+    expect(amounts(ar)).toEqual(amounts(en));
+    expect(en.find((f) => f.title.startsWith("Revenue"))).toBeDefined();
+  });
+});

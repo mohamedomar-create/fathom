@@ -1,5 +1,5 @@
 "use client";
-import { money, mshort, pct } from "@/lib/engine";
+import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis, usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -12,6 +12,7 @@ import type { Finding } from "@/lib/engine";
 import { useState } from "react";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
 import { ReadinessCard } from "@/components/setup/readiness-view";
+import { useT } from "@/lib/i18n/use-t";
 
 export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNode }) {
   const c = useCompany();
@@ -19,6 +20,8 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   const comments = useComments();
   const { sel } = usePeriod();
   const [src, setSrc] = useState<SourceLine | null>(null);
+  const T = useT();
+  const t = T.d.ana;
   if (!a) return null;
   const cur = c.settings.currency;
   const { P, B, B0, prior, series } = a.view;
@@ -27,29 +30,30 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   const sp = { P: series.P.slice(last12(12)), B: series.B.slice(last12(12)) };
   const gpm = a.K.gpm, tg = a.targets.gpm ?? 35;
   const ch = (x: number, y: number | null | undefined) => (y ? ((x - y) / Math.abs(y)) * 100 : null);
-  const prevLabel = prior?.label ?? "";
+  const prevLabel = T.pl(prior?.label ?? "");
+  const vsPrev = <span className="text-mute">{t.vs(prevLabel)}</span>;
   const hero = [
-    { l: "Revenue", trace: ["revenue", "PL"] as const, v: money(P.revenue, cur), d: <><Delta value={ch(P.revenue, prior?.P.revenue)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.revenue < 0, s: sp.P.map((p) => p.revenue) },
-    { l: "Gross margin", v: gpm === null ? "–" : pct(gpm, 1), d: <span className="text-mute">target {pct(tg, 0)}</span>, neg: gpm !== null && gpm < tg, s: sp.P.map((p) => (p.revenue ? (p.gross_profit / p.revenue) * 100 : null)) },
-    { l: "EBIT", trace: ["ebit", "PL"] as const, v: money(P.ebit, cur), d: <><Delta value={ch(P.ebit, prior?.P.ebit)} /> <span className="text-mute">vs {prevLabel}</span></>, neg: P.ebit < 0, s: sp.P.map((p) => p.ebit) },
-    { l: "Cash on hand", trace: ["cash", "BS"] as const, v: c.months.some((m) => m.has?.bs ?? true) ? money(B.cash, cur) : "–", d: !c.months.some((m) => m.has?.bs ?? true) ? <span className="text-mute">needs a balance sheet</span> : B0 ? <><Delta value={ch(B.cash, B0.cash)} /> <span className="text-mute">vs opening</span></> : <span className="text-mute">no opening balance</span>, neg: B.cash < 0, s: sp.B.map((b) => b.cash) },
-    { l: "Operating cash flow", v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">after tax, before interest{P.ebit > 0 ? ` · ${Math.round((a.W.ocf / P.ebit) * 100)}% of EBIT` : ""}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
-    { l: "Breakeven cushion", v: a.breakeven.ok ? pct(a.breakeven.mosPct, 0) : "–", d: a.breakeven.ok ? <span className="text-mute">breakeven {money(a.breakeven.bep, cur, true)}</span> : null, neg: a.breakeven.ok && a.breakeven.mosPct < 0, s: [] },
+    { l: t.revenue, trace: ["revenue", "PL"] as const, v: money(P.revenue, cur), d: <><Delta value={ch(P.revenue, prior?.P.revenue)} /> {vsPrev}</>, neg: P.revenue < 0, s: sp.P.map((p) => p.revenue) },
+    { l: t.grossMargin, v: gpm === null ? "–" : pct(gpm, 1), d: <span className="text-mute">{t.target(pct(tg, 0))}</span>, neg: gpm !== null && gpm < tg, s: sp.P.map((p) => (p.revenue ? (p.gross_profit / p.revenue) * 100 : null)) },
+    { l: t.ebit, trace: ["ebit", "PL"] as const, v: money(P.ebit, cur), d: <><Delta value={ch(P.ebit, prior?.P.ebit)} /> {vsPrev}</>, neg: P.ebit < 0, s: sp.P.map((p) => p.ebit) },
+    { l: t.cashOnHand, trace: ["cash", "BS"] as const, v: c.months.some((m) => m.has?.bs ?? true) ? money(B.cash, cur) : "–", d: !c.months.some((m) => m.has?.bs ?? true) ? <span className="text-mute">{t.needsBS}</span> : B0 ? <><Delta value={ch(B.cash, B0.cash)} /> <span className="text-mute">{t.vsOpening}</span></> : <span className="text-mute">{t.noOpening}</span>, neg: B.cash < 0, s: sp.B.map((b) => b.cash) },
+    { l: t.ocf, v: a.W ? money(a.W.ocf, cur) : "–", d: a.W ? <span className="text-mute">{t.ocfSub(P.ebit > 0 ? Math.round((a.W.ocf / P.ebit) * 100) : null)}</span> : null, neg: (a.W?.ocf ?? 0) < 0, s: [] },
+    { l: t.cushion, v: a.breakeven.ok ? pct(a.breakeven.mosPct, 0) : "–", d: a.breakeven.ok ? <span className="text-mute">{t.breakevenAt(money(a.breakeven.bep, cur, true))}</span> : null, neg: a.breakeven.ok && a.breakeven.mosPct < 0, s: [] },
   ];
   // Without a balance sheet (a cash book, a P&L on its own) there is no cash figure to state.
   const hasBS = c.months.some((m) => m.has?.bs ?? true);
   const headline = comments("summary") ||
-    `${c.name} ${P.ebit >= 0 ? "made" : "lost"} ${money(Math.abs(P.ebit), cur)} at EBIT on revenue of ${money(P.revenue, cur)} in ${a.view.window.label}; ${a.onTrack} of ${a.onTrack + a.offTrack} measurable KPIs are on target${hasBS ? ` and cash stands at ${money(B.cash, cur)}` : ""}.`;
-  const labels = series.periods.slice(-12).map(mshort);
+    t.headline(c.name, P.ebit >= 0, money(Math.abs(P.ebit), cur), money(P.revenue, cur), T.pl(a.view.window.label), a.onTrack, a.onTrack + a.offTrack, hasBS ? money(B.cash, cur) : null);
+  const labels = series.periods.slice(-12).map(T.ms);
   return (
     <>
-      <PageHeader title="Executive Summary" right={<PeriodPicker />} />
+      <PageHeader title={T.d.nav.summary[1]} right={<PeriodPicker />} />
       <ReadinessCard sector="financials" />
       <div className="fade-up mb-6 flex flex-wrap items-center gap-6 bg-band px-5 py-4">
         <div className={cn("text-[52px] font-light leading-none", score >= 60 ? "text-green-d" : "text-red")} data-testid="score">{Math.round(score)}%</div>
         <div>
-          <b className="font-semibold">KPIs on track</b>
-          <div className="text-mute">{a.onTrack} on track · {a.offTrack} off track · {a.kpiRows.length - a.onTrack - a.offTrack} not measurable</div>
+          <b className="font-semibold">{t.kpisOnTrack}</b>
+          <div className="text-mute">{t.trackLine(a.onTrack, a.offTrack, a.kpiRows.length - a.onTrack - a.offTrack)}</div>
         </div>
       </div>
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed whitespace-pre-line" data-testid="headline">{headline}</p>
@@ -60,7 +64,7 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
             <div className="label">{h.l}</div>
             <div className="num my-0.5 whitespace-nowrap text-[21px]">
               {"trace" in h && h.trace ? (
-                <button type="button" onClick={() => setSrc({ key: h.trace[0], label: h.l, statement: h.trace[1], periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title="Show the accounts and source file behind this figure" data-testid={`trace-${h.trace[0]}`}>{h.v}</button>
+                <button type="button" onClick={() => setSrc({ key: h.trace[0], label: h.l, statement: h.trace[1], periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title={t.traceTitle} data-testid={`trace-${h.trace[0]}`}>{h.v}</button>
               ) : h.v}
             </div>
             <div className="text-xs">{h.d}</div>
@@ -70,26 +74,27 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
       </div>
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
-          <FindingList title="Needs attention" kind="risk" findings={a.findings} />
-          <FindingList title="Watch" kind="watch" findings={a.findings} />
+          <FindingList title={t.risk} kind="risk" findings={a.findings} />
+          <FindingList title={t.watch} kind="watch" findings={a.findings} />
         </div>
         <div>
-          <FindingList title="Going well" kind="win" findings={a.findings} />
-          <h3 className="mb-1 mt-6 text-lg font-normal">Revenue &amp; EBIT, last 12 months</h3>
+          <FindingList title={t.win} kind="win" findings={a.findings} />
+          <h3 className="mb-1 mt-6 text-lg font-normal">{t.revEbit12}</h3>
           <LineChart labels={labels} cur={cur} height={240}
             series={[
-              { name: "Revenue", values: series.P.slice(-12).map((p) => p.revenue), color: "#2a78d6" },
-              { name: "EBIT", values: series.P.slice(-12).map((p) => p.ebit), color: "#eb6834" },
+              { name: t.revenue, values: series.P.slice(-12).map((p) => p.revenue), color: "#2a78d6" },
+              { name: t.ebit, values: series.P.slice(-12).map((p) => p.ebit), color: "#eb6834" },
             ]} />
         </div>
       </div>
       <SourceDrawer line={src} onClose={() => setSrc(null)} />
-      {sel.type !== "month" && !a.view.complete && <p className="mt-6 text-xs text-mute">Some months in this period are not loaded; totals cover the months available.</p>}
+      {sel.type !== "month" && !a.view.complete && <p className="mt-6 text-xs text-mute">{t.someMissing}</p>}
     </>
   );
 }
 
 function FindingList({ title, kind, findings }: { title: string; kind: Finding["kind"]; findings: Finding[] }) {
+  const t = useT().d.ana;
   const list = findings.filter((f) => f.kind === kind).slice(0, 4);
   return (
     <div className="mb-6" data-testid={`findings-${kind}`}>
@@ -99,7 +104,7 @@ function FindingList({ title, kind, findings }: { title: string; kind: Finding["
           <span className={cn("mt-1.5 h-2.5 w-2.5 rounded-full", kind === "risk" ? "bg-red" : kind === "watch" ? "bg-amber" : "bg-green")} />
           <div><b className="font-semibold">{f.title}</b><div className="text-[12.5px] text-mute">{f.text}</div></div>
         </div>
-      )) : <div className="py-2.5 text-mute">Nothing to flag.</div>}
+      )) : <div className="py-2.5 text-mute">{t.nothing}</div>}
     </div>
   );
 }

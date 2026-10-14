@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/lib/i18n/use-t";
 import { motion } from "motion/react";
 import { useRef, useState } from "react";
 import { money } from "@/lib/engine";
@@ -10,6 +11,7 @@ const G = "#2E9E6A", R = "#D9343A", K = "#333";
 
 export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: number; fixed: number; vcr: number; bep: number; cur: string }) {
   const st = useStaticCharts();
+  const T = useT();
   const w = 560, h = 440, pl = 70, pr = 14, pt = 12, pb = 34;
   const xmax = Math.max(revenue, bep) * 1.45;
   const ymax = Math.max(xmax, fixed + vcr * xmax) * 1.05;
@@ -68,7 +70,7 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
           const cost = fixed + vcr * hx, pr_ = hx - cost;
           return (
             <>
-              <div className="mb-1 font-semibold">At revenue of {money(hx, cur)}</div>
+              <div className="mb-1 font-semibold">{T.d.ana.atRevenue(money(hx, cur))}</div>
               <div className="flex justify-between gap-4"><span className="text-mute">Total costs</span><span className="num">{money(cost, cur)}</span></div>
               <div className="flex justify-between gap-4"><span className="text-mute">{pr_ >= 0 ? "Profit" : "Loss"}</span><span className={`num font-semibold ${pr_ >= 0 ? "text-green-d" : "text-red"}`}>{money(pr_, cur)}</span></div>
             </>

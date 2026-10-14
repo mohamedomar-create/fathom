@@ -65,9 +65,9 @@ export function OverwriteDiffs({ diffs, currency }: { diffs: MonthDiff[]; curren
       {!changed.length ? <p className="text-sm text-mute">The replaced months have the same revenue, net profit, cash and total assets as before.</p> : (
         <div className="max-h-56 overflow-auto">
           <table className="tbl text-[12.5px]">
-            <thead><tr><th className="!text-left">Month</th><th className="!text-left">Figure</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
+            <thead><tr><th className="!text-start">Month</th><th className="!text-start">Figure</th><th>Before</th><th>After</th><th>Change</th></tr></thead>
             <tbody>{changed.map((d) => (
-              <tr key={d.period + d.metric}><td className="!text-left">{mlabel(d.period)}</td><td className="!text-left">{METRIC[d.metric]}</td><td>{money(d.before, currency)}</td><td>{money(d.after, currency)}</td><td className={d.after - d.before < 0 ? "text-red" : "text-green-d"}>{money(d.after - d.before, currency)}</td></tr>
+              <tr key={d.period + d.metric}><td className="!text-start">{mlabel(d.period)}</td><td className="!text-start">{METRIC[d.metric]}</td><td>{money(d.before, currency)}</td><td>{money(d.after, currency)}</td><td className={d.after - d.before < 0 ? "text-red" : "text-green-d"}>{money(d.after - d.before, currency)}</td></tr>
             ))}</tbody>
           </table>
         </div>

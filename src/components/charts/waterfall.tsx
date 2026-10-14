@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/lib/i18n/use-t";
 import { Info } from "lucide-react";
 import { motion } from "motion/react";
 import { money, type WaterfallRow } from "@/lib/engine";
@@ -8,6 +9,7 @@ import { useStaticCharts } from "./static";
 
 /** Horizontal ADD/LESS waterfall. HTML rows + percentage geometry so it reflows on narrow screens. */
 export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string }) {
+  const T = useT();
   const st = useStaticCharts();
   const spans = waterfallSpans(rows);
   const all = spans.flat().concat(0);
@@ -34,8 +36,8 @@ export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string
           <div key={r.label} className={`group grid grid-cols-[minmax(120px,40%)_1fr] items-center gap-3 sm:grid-cols-[minmax(240px,44%)_1fr] ${total ? "border-t border-ink pt-1 font-semibold" : ""}`}>
             <div className="flex items-center gap-2 py-[5px]">
               <span className="hidden w-9 shrink-0 text-[10px] tracking-wider text-mute sm:inline">{total ? "" : r.sign}</span>
-              <span className={total ? "tracking-wide" : ""}>{r.label}</span>
-              {r.info && !st && <Tip label={r.info} side="top"><button aria-label={`About ${r.label}`} className="text-mute hover:text-ink"><Info className="h-3.5 w-3.5" /></button></Tip>}
+              <span className={total ? "tracking-wide" : ""}>{T.tl(r.label)}</span>
+              {r.info && !st && <Tip label={T.tl(r.info)} side="top"><button aria-label={T.tl(r.label)} className="text-mute hover:text-ink"><Info className="h-3.5 w-3.5" /></button></Tip>}
             </div>
             <div className="relative h-5">
               {ticks.map((t) => <span key={t} className="absolute inset-y-[-6px] w-px bg-[#efefeb]" style={{ left: `${X(t)}%` }} />)}

@@ -1,4 +1,5 @@
 "use client";
+import { useT } from "@/lib/i18n/use-t";
 import { motion } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { Unit } from "@/lib/engine";
@@ -15,6 +16,7 @@ export function LineChart({
   /** Set false when the page draws its own legend. */
   legend?: boolean;
 }) {
+  const T = useT();
   const st = useStaticCharts();
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(900);
@@ -67,7 +69,7 @@ export function LineChart({
         {target !== null && target !== undefined && (
           <g>
             <line x1={pl} x2={w - pr} y1={Y(target)} y2={Y(target)} stroke="#B98BCB" strokeDasharray="5 4" strokeWidth={1.5} />
-            <text x={w - pr} y={Y(target) - 5} textAnchor="end" className="ax" fill="#9a6bb0">Target {axisLabel(target, unit, cur)}</text>
+            <text x={w - pr} y={Y(target) - 5} textAnchor="end" className="ax" fill="#9a6bb0">{T.d.ana.targetWord} {axisLabel(target, unit, cur)}</text>
           </g>
         )}
         <g clipPath={`url(#${clip})`}>
@@ -115,7 +117,7 @@ export function LineChart({
                 <span className="num font-medium">{valueLabel(s.values[hover], unit, cur)}</span>
               </div>
             ))}
-            {target !== null && target !== undefined && <div className="mt-1 text-mute">Target {valueLabel(target, unit, cur)}</div>}
+            {target !== null && target !== undefined && <div className="mt-1 text-mute">{T.d.ana.targetWord} {valueLabel(target, unit, cur)}</div>}
           </>
         )}
       </ChartTip>
