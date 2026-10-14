@@ -5,15 +5,29 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { APP_TAGLINE } from "@/lib/brand";
 import { Logo } from "@/components/shell/logo";
+import { LangSwitch } from "@/components/shell/lang-switch";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/cn";
-import { MIN_PASSWORD, PASSWORD_HINT, passwordProblem } from "@/lib/password";
+import { MIN_PASSWORD, passwordHint, passwordProblem } from "@/lib/password";
+import { useDict, useLang } from "@/lib/i18n/context";
+import type { Dict } from "@/lib/i18n";
+
+/** Supabase's own sign-in messages, in the chosen language when we know them. */
+function authError(e: unknown, d: Dict["auth"]): string {
+  const m = e instanceof Error ? e.message : "";
+  if (/invalid login credentials/i.test(m)) return d.badLogin;
+  if (/email not confirmed/i.test(m)) return d.notConfirmed;
+  if (/rate limit|too many/i.test(m)) return d.tooMany;
+  return m || d.wrong;
+}
 
 type Mode = "signin" | "signup";
 
 export function LoginForm() {
   const sp = useSearchParams();
   const router = useRouter();
+  const lang = useLang();
+  const d = useDict().auth;
   const rawNext = sp.get("next");
   const next = safeNext(rawNext);
   const [mode, setMode] = useState<Mode>(sp.get("mode") === "signup" ? "signup" : "signin");
@@ -22,7 +36,7 @@ export function LoginForm() {
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(sp.get("error") ? { tone: "bad", text: "That link is invalid or has already been used. If you just confirmed your email, sign in with your password." } : null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(sp.get("error") ? { tone: "bad", text: d.badLink } : null);
 
   const supabase = createClient();
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` : undefined;
@@ -37,34 +51,34 @@ export function LoginForm() {
         router.replace(next);
         router.refresh();
       } else {
-        const problem = passwordProblem(password);
+        const problem = passwordProblem(password, lang);
         if (problem) { setMsg({ tone: "bad", text: problem }); return; }
         const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: redirectTo, data: { full_name: name, org_name: org } } });
         if (error) throw error;
         if (data.session) { router.replace(next); router.refresh(); }
-        else setMsg({ tone: "ok", text: "Check your inbox to confirm your email address, then sign in." });
+        else setMsg({ tone: "ok", text: d.checkInbox });
       }
     } catch (err) {
-      setMsg({ tone: "bad", text: err instanceof Error ? err.message : "Something went wrong" });
+      setMsg({ tone: "bad", text: authError(err, d) });
     } finally {
       setBusy(false);
     }
   }
 
   async function magic() {
-    if (!email) { setMsg({ tone: "bad", text: "Enter your email address first." }); return; }
+    if (!email) { setMsg({ tone: "bad", text: d.emailFirst }); return; }
     setBusy(true); setMsg(null);
     const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: redirectTo, shouldCreateUser: false } });
     setBusy(false);
-    setMsg(error ? { tone: "bad", text: error.message } : { tone: "ok", text: "We've emailed you a sign-in link." });
+    setMsg(error ? { tone: "bad", text: authError(error, d) } : { tone: "ok", text: d.linkSent });
   }
 
   async function reset() {
-    if (!email) { setMsg({ tone: "bad", text: "Enter your email address first." }); return; }
+    if (!email) { setMsg({ tone: "bad", text: d.emailFirst }); return; }
     setBusy(true); setMsg(null);
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset` });
     setBusy(false);
-    setMsg(error ? { tone: "bad", text: error.message } : { tone: "ok", text: "If that address has an account, we've emailed a link to set a new password." });
+    setMsg(error ? { tone: "bad", text: authError(error, d) } : { tone: "ok", text: d.resetSent });
   }
 
   return (
@@ -72,49 +86,50 @@ export function LoginForm() {
       <div className="hidden flex-col justify-between bg-bar p-12 text-white lg:flex">
         <Link href="/" className="text-lg"><Logo tone="dark" /></Link>
         <div>
-          <h2 className="max-w-md text-4xl font-light leading-tight">See what your Odoo numbers are really saying.</h2>
-          <p className="mt-4 max-w-md text-[#bbb]">{APP_TAGLINE}. KPIs against targets, breakeven, cash-flow waterfalls, growth and goalseek — in minutes, not spreadsheets.</p>
+          <h2 className="max-w-md text-4xl font-light leading-tight">{d.heroTitle}</h2>
+          <p className="mt-4 max-w-md text-[#bbb]">{d.heroText(APP_TAGLINE)}</p>
         </div>
-        <Link href="/demo/summary" className="text-sm text-brand hover:underline">Explore the demo company →</Link>
+        <Link href="/demo/summary" className="text-sm text-brand hover:underline">{d.exploreDemo}</Link>
       </div>
-      <div className="flex items-center justify-center p-6">
+      <div className="relative flex items-center justify-center p-6">
+        <LangSwitch className="absolute end-4 top-4 text-sm text-mute hover:bg-band" />
         <form onSubmit={submit} className="w-full max-w-sm" data-testid="login-form">
           <Link href="/" className="mb-8 block text-lg lg:hidden"><Logo /></Link>
-          <h1 className="mb-5 text-2xl font-light">{mode === "signin" ? "Sign in to your account" : "Create your free account"}</h1>
+          <h1 className="mb-5 text-2xl font-light">{mode === "signin" ? d.titleSignin : d.titleSignup}</h1>
           <div className="mb-6 flex gap-1 rounded-md bg-band p-1 text-sm">
             {(["signin", "signup"] as Mode[]).map((m) => (
               <button type="button" key={m} onClick={() => { setMode(m); setMsg(null); }}
                 className={cn("flex-1 rounded px-3 py-1.5", mode === m ? "bg-white font-semibold shadow-sm" : "text-mute")}>
-                {m === "signin" ? "Sign in" : "Create account"}
+                {m === "signin" ? d.signin : d.signup}
               </button>
             ))}
           </div>
           {mode === "signup" && (
             <>
-              <Field label="Your name" value={name} onChange={setName} autoComplete="name" />
-              <Field label="Firm or company name" value={org} onChange={setOrg} placeholder="e.g. Nile Advisory" />
+              <Field label={d.name} value={name} onChange={setName} autoComplete="name" />
+              <Field label={d.org} value={org} onChange={setOrg} placeholder={d.orgPlaceholder} />
             </>
           )}
-          <Field label="Email" type="email" value={email} onChange={setEmail} autoComplete="email" required />
-          <Field label="Password" type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? MIN_PASSWORD : undefined} />
-          {mode === "signup" && <p className="-mt-3 mb-4 text-xs text-mute">{PASSWORD_HINT}</p>}
+          <Field label={d.email} type="email" value={email} onChange={setEmail} autoComplete="email" required />
+          <Field label={d.password} type="password" value={password} onChange={setPassword} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={mode === "signup" ? MIN_PASSWORD : undefined} />
+          {mode === "signup" && <p className="-mt-3 mb-4 text-xs text-mute">{passwordHint(lang)}</p>}
           {msg && <p className={cn("mb-3 rounded px-3 py-2 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">{msg.text}</p>}
           <button disabled={busy} className="w-full rounded bg-brand-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">
-            {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
+            {busy ? d.wait : mode === "signin" ? d.signin : d.signup}
           </button>
           {mode === "signup" && (
             <p className="mt-3 text-center text-xs text-mute" data-testid="signup-legal">
-              By creating an account you agree to the <Link href="/terms" className="underline">Terms</Link> and <Link href="/privacy" className="underline">Privacy Policy</Link>.
+              {d.agree[0]}<Link href="/terms" className="underline">{d.agree[1]}</Link>{d.agree[2]}<Link href="/privacy" className="underline">{d.agree[3]}</Link>{d.agree[4]}
             </p>
           )}
           {mode === "signin" && (
             <div className="mt-3 flex justify-between gap-3 text-sm">
-              <button type="button" onClick={magic} disabled={busy} className="text-mute hover:text-ink">Email me a sign-in link</button>
-              <button type="button" onClick={reset} disabled={busy} className="text-mute hover:text-ink">Forgot password?</button>
+              <button type="button" onClick={magic} disabled={busy} className="text-mute hover:text-ink">{d.magic}</button>
+              <button type="button" onClick={reset} disabled={busy} className="text-mute hover:text-ink">{d.forgot}</button>
             </div>
           )}
           <p className="mt-8 text-center text-xs text-mute">
-            Just looking? <Link href="/demo/summary" className="text-brand-d underline">Open the demo company</Link>
+            {d.justLooking} <Link href="/demo/summary" className="text-brand-d underline">{d.openDemo}</Link>
           </p>
         </form>
       </div>

@@ -21,10 +21,10 @@ export function MoneyTile({ label, value, testId, sub }: { label: string; value:
 }
 
 export function Notes({ findings, comment, title = "Analyst notes" }: { findings: Finding[]; comment?: string; title?: string }) {
-  if (comment) return <div className="my-5 border-l-[3px] border-brand bg-band px-4 py-3 text-[13px] whitespace-pre-line">{comment}</div>;
+  if (comment) return <div className="my-5 border-s-[3px] border-brand bg-band px-4 py-3 text-[13px] whitespace-pre-line">{comment}</div>;
   if (!findings.length) return null;
   return (
-    <div className="my-5 border-l-[3px] border-brand bg-band px-4 py-3 text-[13px]">
+    <div className="my-5 border-s-[3px] border-brand bg-band px-4 py-3 text-[13px]">
       <div className="label mb-1">{title}</div>
       {findings.slice(0, 3).map((f) => (
         <div key={f.title} className="py-0.5"><b className="font-semibold">{f.title}.</b> {f.text}</div>
@@ -63,7 +63,7 @@ export function MissingData({ view, basePath, need }: { view: PeriodView; basePa
   return (
     <div className={`mb-5 rounded-md border px-4 py-3 text-sm ${blocking ? "border-amber/60 bg-amber/10" : "border-line bg-band"}`} data-testid="missing-data" role="status">
       <div className="mb-1 font-medium">{blocking ? "Data needed for this view" : "Part of this period is not loaded"}</div>
-      <ul className="list-disc space-y-0.5 pl-5">{items.map((t) => <li key={t}>{t}</li>)}</ul>
+      <ul className="list-disc space-y-0.5 ps-5">{items.map((t) => <li key={t}>{t}</li>)}</ul>
       <p className="mt-2 text-mute">
         Best fix: upload Odoo&apos;s <b>General Ledger</b> (Accounting → Reporting → General Ledger, Export XLSX) from the start of the financial year to the latest month. It gives every month&apos;s P&amp;L and balance sheet, and its opening balances fill the month before.
       </p>

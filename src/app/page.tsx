@@ -5,68 +5,64 @@ import { Logo } from "@/components/shell/logo";
 import { SiteFooter } from "@/components/shell/site-footer";
 import { AccountDeletedNotice } from "./account-deleted-notice";
 import { LandingPreview } from "./landing-preview";
+import { LangSwitch } from "@/components/shell/lang-switch";
+import { getDict } from "@/lib/i18n/server";
 
-const FEATURES = [
-  { icon: Gauge, title: "KPIs against targets", text: "25 standard KPIs scored on/off track, with alerts and a one-glance KPI Explorer." },
-  { icon: LineChart, title: "Breakeven & margin of safety", text: "See how far revenue can fall before losses, and what each cost really does to profit." },
-  { icon: Waves, title: "Where the cash went", text: "A cash-flow waterfall that reconciles to the bank: profit, working capital, capex, financing." },
-  { icon: Telescope, title: "Goalseek", text: "The single lever — price, volume, costs — that reaches your profit target with the smallest change." },
-  { icon: Sparkles, title: "Commentary that cites the numbers", text: "Rule-based analyst notes always on; Claude drafts board-ready commentary from your figures only." },
-  { icon: Landmark, title: "Ready for the bank", text: "Your accounts read the way a credit analyst reads them: repayment cover, leverage, red flags, borrowing room and the documents to bring." },
-  { icon: Scale, title: "Real profit, not just book profit", text: "What profit is worth after slow-paying customers, inflation and the pound's exchange rate, in pounds and in dollars." },
-  { icon: FileDown, title: "Branded reports in one click", text: "A4 PDF with your logo and disclaimer, or a private link for the client or board." },
-];
+const ICONS = [Gauge, LineChart, Waves, Telescope, Sparkles, Landmark, Scale, FileDown];
 
-export default function Home() {
+export default async function Home() {
+  const d = (await getDict()).home;
   return (
     <div className="min-h-screen bg-white">
       <Suspense><AccountDeletedNotice /></Suspense>
       <header className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-5">
         <span className="text-lg"><Logo size={28} /></span>
-        <nav className="ml-auto flex items-center gap-2 text-sm">
-          <Link href="/demo/summary" className="rounded px-3 py-2 hover:bg-band">Demo</Link>
-          <Link href="/login" className="rounded px-3 py-2 hover:bg-band">Sign in</Link>
-          <Link href="/login?mode=signup" className="rounded bg-brand-d px-4 py-2 font-medium text-white hover:brightness-110">Get started</Link>
+        <nav className="ms-auto flex items-center gap-2 text-sm">
+          <LangSwitch compact className="px-2 py-2 hover:bg-band" />
+          <Link href="/demo/summary" className="rounded px-3 py-2 hover:bg-band">{d.demo}</Link>
+          <Link href="/login" className="rounded px-3 py-2 hover:bg-band">{d.signin}</Link>
+          <Link href="/login?mode=signup" className="rounded bg-brand-d px-4 py-2 font-medium text-white hover:brightness-110">{d.getStarted}</Link>
         </nav>
       </header>
       <section className="mx-auto grid max-w-6xl items-center gap-10 px-6 pb-16 pt-8 lg:grid-cols-[1fr_1.1fr]">
         <div className="fade-up">
-          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-medium text-brand-d"><Database className="h-3.5 w-3.5" />Built for Odoo · English &amp; Arabic</div>
-          <h1 className="text-[44px] font-light leading-[1.08] tracking-tight sm:text-[56px]">Your Odoo numbers,<br /><span className="font-medium text-brand-d">explained.</span></h1>
-          <p className="mt-5 max-w-lg text-lg text-mute">Upload an export or connect Odoo, and get advisory-grade analysis in minutes: KPIs against targets, breakeven, cash flow, growth and goalseek — with a branded report your board will actually read.</p>
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-medium text-brand-d"><Database className="h-3.5 w-3.5" />{d.badge}</div>
+          <h1 className="text-[44px] font-light leading-[1.08] tracking-tight sm:text-[56px]">{d.heroA}<br /><span className="font-medium text-brand-d">{d.heroB}</span></h1>
+          <p className="mt-5 max-w-lg text-lg text-mute">{d.heroText}</p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/demo/summary" className="inline-flex items-center gap-2 rounded bg-brand-d px-5 py-3 font-medium text-white hover:brightness-110" data-testid="cta-demo">Explore the demo company <ArrowRight className="h-4 w-4" /></Link>
-            <Link href="/demo/settings/source-data" className="inline-flex items-center gap-2 rounded border border-line px-5 py-3 font-medium hover:bg-band">Try it with your own file</Link>
+            <Link href="/demo/summary" className="inline-flex items-center gap-2 rounded bg-brand-d px-5 py-3 font-medium text-white hover:brightness-110" data-testid="cta-demo">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4" /></Link>
+            <Link href="/demo/settings/source-data" className="inline-flex items-center gap-2 rounded border border-line px-5 py-3 font-medium hover:bg-band">{d.tryFile}</Link>
           </div>
-          <p className="mt-3 text-xs text-mute">The file test runs in your browser — nothing is uploaded.</p>
+          <p className="mt-3 text-xs text-mute">{d.tryNote}</p>
         </div>
         <LandingPreview />
       </section>
       <section className="bg-band">
         <div className="mx-auto max-w-6xl px-6 py-16">
-          <h2 className="mb-2 text-3xl font-light">Everything a monthly review needs</h2>
-          <p className="mb-10 max-w-2xl text-mute">One engine, checked line by line against a reference model: the balance sheet must balance and net cash flow must equal the change in cash less debt, every month.</p>
+          <h2 className="mb-2 text-3xl font-light">{d.everything}</h2>
+          <p className="mb-10 max-w-2xl text-mute">{d.everythingText}</p>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="rounded-lg bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
-                <f.icon className="mb-3 h-6 w-6 text-brand-d" strokeWidth={1.6} />
-                <div className="font-medium">{f.title}</div>
-                <p className="mt-1 text-sm text-mute">{f.text}</p>
-              </div>
-            ))}
+            {d.features.map(([title, text], i) => {
+              const Icon = ICONS[i];
+              return (
+                <div key={title} className="rounded-lg bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,.04)]">
+                  <Icon className="mb-3 h-6 w-6 text-brand-d" strokeWidth={1.6} />
+                  <div className="font-medium">{title}</div>
+                  <p className="mt-1 text-sm text-mute">{text}</p>
+                </div>
+              );
+            })}
           </div>
         </div>
       </section>
       <section className="mx-auto grid max-w-6xl gap-10 px-6 py-16 md:grid-cols-3">
-        <div><div className="label mb-2">1 · Bring in data</div><h3 className="mb-2 text-xl font-light">Upload or connect</h3><p className="text-sm text-mute">Trial Balance, P&amp;L / Balance Sheet or Journal Items exports — or a live, read-only Odoo API connection (v15–18+).</p></div>
-        <div><div className="label mb-2">2 · Check the mapping</div><h3 className="mb-2 text-xl font-light">Every account, classified</h3><p className="text-sm text-mute">Odoo account types and English/Arabic names map to 30 standard classes. Low-confidence lines are flagged for review.</p></div>
-        <div><div className="label mb-2">3 · Review &amp; report</div><h3 className="mb-2 text-xl font-light">Month, quarter or year</h3><p className="text-sm text-mute">Nine analysis views, a portfolio dashboard for many clients, and one-click PDF reports.</p></div>
+        {d.steps.map(([step, title, text]) => <div key={step}><div className="label mb-2">{step}</div><h3 className="mb-2 text-xl font-light">{title}</h3><p className="text-sm text-mute">{text}</p></div>)}
       </section>
       <section className="border-t border-line">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-6 px-6 py-10 text-sm text-mute">
           <ShieldCheck className="h-5 w-5 text-brand-d" />
-          <span>Row-level security on every table · Odoo API keys encrypted with AES-256 · read-only access to your ledger.</span>
-          <Link href="/login?mode=signup" className="ml-auto rounded bg-ink px-4 py-2 font-medium text-white">Create your account</Link>
+          <span>{d.security}</span>
+          <Link href="/login?mode=signup" className="ms-auto rounded bg-ink px-4 py-2 font-medium text-white">{d.createAccount}</Link>
         </div>
       </section>
       <SiteFooter />

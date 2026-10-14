@@ -104,7 +104,7 @@ export function FinancialsPage() {
                   <td>{m(ytd[r.k] as number)}</td>
                 </tr>,
                 ...accts(r.classes, false).map((x) => (
-                  <tr key={x.id} className="row text-[12.5px] text-mute"><td className="pl-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td>{varCell(x.cur, x.cmp, r.cost)}<td>{P.revenue ? pct((x.cur / P.revenue) * 100, 0) : "–"}</td><td /></tr>
+                  <tr key={x.id} className="row text-[12.5px] text-mute"><td className="ps-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td>{varCell(x.cur, x.cmp, r.cost)}<td>{P.revenue ? pct((x.cur / P.revenue) * 100, 0) : "–"}</td><td /></tr>
                 )),
               ])}
             </tbody>
@@ -136,7 +136,7 @@ export function FinancialsPage() {
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
                   ...accts(classes, true).map((x) => (
-                    <tr key={x.id} className="row text-[12.5px] text-mute"><td className="pl-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp, "neutral")}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
+                    <tr key={x.id} className="row text-[12.5px] text-mute"><td className="ps-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp, "neutral")}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
                   )),
                 ];
               })}

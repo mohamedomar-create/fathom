@@ -44,19 +44,19 @@ export function TrendPage() {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <span className="sent">Showing</span>
           {defs.map((d, i) => (
-            <span key={d.key} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white py-0.5 pl-2.5 pr-1 text-[13px]">
+            <span key={d.key} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-white py-0.5 ps-2.5 pe-1 text-[13px]">
               <i className="h-2 w-2 rounded-full" style={{ background: C.s[i % 5] }} />{d.label}
               {defs.length > 1 && <button aria-label={`Remove ${d.label}`} onClick={() => setKeys(keys.filter((k) => k !== d.key))} className="rounded-full p-0.5 hover:bg-band"><X className="h-3 w-3" /></button>}
             </span>
           ))}
           <MetricPicker catalogue={cat} onPick={add} />
-          <span className="sent ml-2">or</span>
+          <span className="sent ms-2">or</span>
           <SentenceSelect value={"__"} onChange={(v) => { const p = PREDEFINED.find((x) => x.label === v); if (p) { setKeys(p.keys); setNote(null); } }}
             options={[{ value: "__", label: "Select a predefined chart" }, ...PREDEFINED.map((p) => ({ value: p.label, label: p.label }))]} />
         </div>
       </PageHeader>
       <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
-        <span className="mr-1 text-mute">Show:</span>
+        <span className="me-1 text-mute">Show:</span>
         {[...years, "All"].map((y) => (
           <button key={y} onClick={() => setYear(y)} className={cn("rounded px-2.5 py-0.5", y === year ? "bg-brand-bg font-semibold text-brand-d" : "hover:bg-band")}>{y}</button>
         ))}
@@ -97,11 +97,11 @@ function MetricPicker({ catalogue, onPick }: { catalogue: MetricDef[]; onPick: (
             const open = q !== "" || openG === g;
             return (
               <div key={g}>
-                <button onClick={() => setOpenG(open && !q ? null : g)} className="flex w-full items-center gap-1 px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-wide text-mute">
-                  <ChevronRight className={cn("h-3.5 w-3.5 transition", open && "rotate-90")} />{g} <span className="font-normal">({items.length})</span>
+                <button onClick={() => setOpenG(open && !q ? null : g)} className="flex w-full items-center gap-1 px-2 py-1.5 text-start text-xs font-semibold uppercase tracking-wide text-mute">
+                  <ChevronRight className={cn("flip-rtl h-3.5 w-3.5 transition", open && "rotate-90")} />{g} <span className="font-normal">({items.length})</span>
                 </button>
                 {open && items.map((m) => (
-                  <button key={m.key} onClick={() => onPick(m)} className="block w-full rounded px-7 py-1 text-left text-sm hover:bg-band">{m.label}</button>
+                  <button key={m.key} onClick={() => onPick(m)} className="block w-full rounded px-7 py-1 text-start text-sm hover:bg-band">{m.label}</button>
                 ))}
               </div>
             );

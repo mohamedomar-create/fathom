@@ -43,7 +43,7 @@ export function NoSales() {
       <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
       <h2 className="text-2xl font-light">No sales loaded yet</h2>
       <p className="mt-2 text-mute">Either file works, and both together are best:</p>
-      <ul className="mx-auto mt-3 max-w-md space-y-2 text-left text-[13.5px]">
+      <ul className="mx-auto mt-3 max-w-md space-y-2 text-start text-[13.5px]">
         <li><b className="font-semibold">Odoo General Ledger</b> (Accounting ▸ Reporting ▸ General Ledger ▸ Export XLSX): its invoice lines become sales by customer, product and month automatically.</li>
         <li><b className="font-semibold">Odoo Sales or Invoice Analysis</b> (Sales ▸ Reporting ▸ Sales, or Invoicing ▸ Reporting ▸ Invoice Analysis, list view ▸ Export): adds quantities, salespeople and margins. A pivot of products or customers by month also works.</li>
       </ul>
@@ -82,7 +82,7 @@ export function Findings({ title, kind, findings }: { title: string; kind: Sales
     <div className="mb-6">
       <h3 className="mb-2 text-lg font-normal">{title}</h3>
       {list.map((f) => (
-        <div key={f.title} className={cn("mb-2 border-l-[3px] bg-band px-4 py-2.5 text-[13px]", kind === "risk" ? "border-red" : kind === "watch" ? "border-amber" : "border-green")}>
+        <div key={f.title} className={cn("mb-2 border-s-[3px] bg-band px-4 py-2.5 text-[13px]", kind === "risk" ? "border-red" : kind === "watch" ? "border-amber" : "border-green")}>
           <b className="font-semibold">{f.title}.</b> {f.text}
         </div>
       ))}
@@ -102,8 +102,8 @@ export function SalesTable({ rows, cur, nameLabel, compareLabel, max = 25, abc, 
       <table className="tbl min-w-[640px]" data-testid={testId}>
         <thead>
           <tr>
-            <th className="text-left">{nameLabel}</th>
-            {group && <th className="text-left">{group}</th>}
+            <th className="text-start">{nameLabel}</th>
+            {group && <th className="text-start">{group}</th>}
             {abc && <th title="A: the products making the first 80% of sales; B: the next 15%; C: the rest">Class</th>}
             <th>Sales</th><th>Share</th>
             {compareLabel && <th>{compareLabel}</th>}
@@ -116,8 +116,8 @@ export function SalesTable({ rows, cur, nameLabel, compareLabel, max = 25, abc, 
         <tbody>
           {shown.map((r) => (
             <tr key={r.key} className="row">
-              <td className="max-w-[280px] truncate text-left" title={r.name}>{r.name}</td>
-              {group && <td className="max-w-[180px] truncate text-left text-mute" title={r.group}>{r.group}</td>}
+              <td className="max-w-[280px] truncate text-start" title={r.name}>{r.name}</td>
+              {group && <td className="max-w-[180px] truncate text-start text-mute" title={r.group}>{r.group}</td>}
               {abc && <td>{r.abc && <span className={cn("rounded px-1.5 text-[11px] font-semibold", r.abc === "A" ? "bg-brand-bg text-brand-d" : r.abc === "B" ? "bg-band" : "text-mute")}>{r.abc}</span>}</td>}
               <td className={cn("num", r.amount < 0 && "text-red")}>{money(r.amount, cur)}</td>
               <td className="num">{pct(r.share, 1)}</td>

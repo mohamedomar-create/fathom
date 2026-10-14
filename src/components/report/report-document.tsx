@@ -171,10 +171,10 @@ function KpiTable({ a, cur }: { a: Analysis; cur: string }) {
           if (!rows.length) return null;
           return (
             <Fragment key={cat}>
-              <tr className="cat"><td colSpan={6}><span className="mr-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: CAT_COL[cat] }} />{cat}</td></tr>
+              <tr className="cat"><td colSpan={6}><span className="me-1.5 inline-block h-2.5 w-2.5 rounded-sm" style={{ background: CAT_COL[cat] }} />{cat}</td></tr>
               {rows.map((r) => (
                 <tr key={r.def.key}>
-                  <td>{r.alert && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-red align-middle" />}{r.def.name}{r.def.direction === "down" ? "*" : ""}</td>
+                  <td>{r.alert && <span className="me-1.5 inline-block h-1.5 w-1.5 rounded-full bg-red align-middle" />}{r.def.name}{r.def.direction === "down" ? "*" : ""}</td>
                   <td>{num(r.value, r.def.unit, cur)}</td><td className="text-mute">{num(r.compare, r.def.unit, cur)}</td>
                   <td className="text-center"><StatusIcon ok={r.ok} /></td>
                   <td>{r.trend ? <span className={r.ok ? "text-green-d" : "text-red"}>{r.trend.value > 0 ? "▲" : "▼"} {formatTrend(r.trend, cur)}</span> : "–"}</td>
@@ -237,7 +237,7 @@ function BSTable({ a, cur }: { a: Analysis; cur: string }) {
   const rows: [string, keyof BSCalc | null, 0 | 1 | 2][] = [["ASSETS", null, 2], ["Cash & Equivalents", "cash", 0], ["Accounts Receivable", "ar", 0], ["Inventory", "inventory", 0], ["Work In Progress", "wip", 0], ["Other Current Assets", "other_ca", 0], ["Total Current Assets", "tca", 1], ["Fixed Assets", "fixed_assets", 0], ["Intangible Assets", "intangibles", 0], ["Investments / Other NCA", "investments", 0], ["Total Assets", "ta", 1], ["LIABILITIES", null, 2], ["Short Term Debt", "std", 0], ["Accounts Payable", "ap", 0], ["Tax Liability", "tax_liab", 0], ["Other Current Liabilities", "other_cl", 0], ["Total Current Liabilities", "tcl", 1], ["Long Term Debt", "ltd", 0], ["Other Non-Current Liabilities", "other_ncl", 0], ["Total Liabilities", "tl", 1], ["EQUITY", null, 2], ["Retained Earnings", "retained_earnings", 0], ["Other Equity", "other_equity", 0], ["Total Equity", "te", 1], ["Total Liabilities & Equity", "tle", 1]];
   return (
     <>
-      {Math.abs(B.imbalance) > 0.5 && <p className="mb-2 text-right text-[12px] text-red">Out of balance by {money(B.imbalance, cur)}</p>}
+      {Math.abs(B.imbalance) > 0.5 && <p className="mb-2 text-end text-[12px] text-red">Out of balance by {money(B.imbalance, cur)}</p>}
       <table className="tbl text-[11.5px]">
         <thead><tr><th>Balance Sheet</th><th>{mlabel(a.view.window.end)}</th><th>{C ? prior!.label : "Prior"}</th><th>Variance</th><th>Common size</th></tr></thead>
         <tbody>{rows.map(([l, k, t]) => {
@@ -296,8 +296,8 @@ function Goalseek({ a }: { a: Analysis }) {
         return (
           <div key={x.key} className="grid grid-cols-[130px_1fr_80px] items-center gap-3 border-b border-line py-1.5 text-[12px]">
             <div>{x.name} <span className="text-[10px] text-mute">{x.band.split(" ")[0].toLowerCase()}</span></div>
-            <div className="relative h-2.5 bg-[#F4F4F1]"><div className="absolute -inset-y-1 left-1/2 w-px bg-[#bbb]" />{x.needed !== null && <div className="absolute inset-y-0 opacity-70" style={{ left: `${x.needed >= 0 ? 50 : 50 - w}%`, width: `${w}%`, background: LEVERS.find((l) => l.key === x.key)!.colour }} />}</div>
-            <div className="num text-right">{x.needed === null ? "–" : pct(x.needed)}</div>
+            <div dir="ltr" className="relative h-2.5 bg-[#F4F4F1]"><div className="absolute -inset-y-1 left-1/2 w-px bg-[#bbb]" />{x.needed !== null && <div className="absolute inset-y-0 opacity-70" style={{ left: `${x.needed >= 0 ? 50 : 50 - w}%`, width: `${w}%`, background: LEVERS.find((l) => l.key === x.key)!.colour }} />}</div>
+            <div className="num text-end">{x.needed === null ? "–" : pct(x.needed)}</div>
           </div>
         );
       })}
@@ -327,7 +327,7 @@ function Basis({ input, a, cur }: { input: ReportInput; a: Analysis; cur: string
   return (
     <div className="space-y-5 text-[12.5px]">
       <table className="tbl"><tbody>{checks.map(([n, ok, d]) => <tr key={n}><td>{n}</td><td className={ok ? "text-green-d" : "text-red"}>{ok ? "✓" : "✕"}</td><td className="text-mute">{d}</td></tr>)}</tbody></table>
-      <div><div className="label mb-1">Notes</div><ul className="list-disc space-y-1 pl-5">
+      <div><div className="label mb-1">Notes</div><ul className="list-disc space-y-1 ps-5">
         {(input.notes.length ? input.notes : ["No special adjustments were made to the source data."]).map((n) => <li key={n}>{n}</li>)}
         {accepted.map((x) => <li key={x.title + x.period}>Imported with a known issue ({x.period ? `${mlabel(x.period)}, ` : ""}{x.title.toLowerCase()}): {x.reason}</li>)}
         {defaults && <li>KPI targets are the standard defaults; set company-specific targets for sharper on/off-track scoring.</li>}

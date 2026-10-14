@@ -1,12 +1,18 @@
-import type { Metadata } from "next";
 import Link from "next/link";
 import { LegalPage } from "@/components/shell/legal-page";
 import { APP_NAME } from "@/lib/brand";
 import { LEGAL } from "@/lib/legal";
+import { getLang } from "@/lib/i18n/server";
+import { TermsAr } from "./terms-ar";
 
-export const metadata: Metadata = { title: "Terms of use", description: `The terms for using ${APP_NAME}.` };
+export async function generateMetadata() {
+  return (await getLang()) === "ar"
+    ? { title: "شروط الاستخدام", description: `شروط استخدام ${APP_NAME}.` }
+    : { title: "Terms of use", description: `The terms for using ${APP_NAME}.` };
+}
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  if ((await getLang()) === "ar") return <LegalPage title="شروط الاستخدام"><TermsAr /></LegalPage>;
   const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
   return (
     <LegalPage title="Terms of use">

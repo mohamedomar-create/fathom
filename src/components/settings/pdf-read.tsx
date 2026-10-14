@@ -137,7 +137,7 @@ export function PdfRead({ companyId, files, onDone, onCancel }: { companyId: str
           </div>
         ))}
         <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-          <button onClick={onCancel} className="mr-auto text-sm text-mute underline">Cancel</button>
+          <button onClick={onCancel} className="me-auto text-sm text-mute underline">Cancel</button>
           {n > MAX_PDF_PAGES && <span className="text-sm text-red">Choose up to {MAX_PDF_PAGES} pages ({n} chosen).</span>}
           <button disabled={!n || n > MAX_PDF_PAGES} onClick={() => setPhase("read")} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="pdf-start">Read {n} page{n === 1 ? "" : "s"}</button>
         </div>
@@ -175,7 +175,7 @@ export function PdfRead({ companyId, files, onDone, onCancel }: { companyId: str
       </div>
       {pages.map((p) => <PageReview key={key(p.file, p.n)} page={p} file={opened.find((o) => o.name === p.file)} flags={flags.filter((f) => f.file === p.file && f.page === p.n)} onEdit={edit} onRetry={() => retry(p)} />)}
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-        <button onClick={onCancel} className="mr-auto text-sm text-mute underline">Cancel</button>
+        <button onClick={onCancel} className="me-auto text-sm text-mute underline">Cancel</button>
         {!grids.length && <span className="text-sm text-red">No table of figures was found on these pages.</span>}
         <button disabled={!grids.length} onClick={() => onDone(grids, { pages: pages.length, corrected: edited.size, flagged: toCheck })} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="pdf-use">
           {toCheck ? "Continue with these figures" : "Use these figures"}
@@ -228,7 +228,7 @@ function PageReview({ page, file, flags, onEdit, onRetry }: { page: PdfPage; fil
             : r.kind === "other" || !r.rows.length ? <p className="text-sm text-mute">No table of figures on this page; it is left out.</p>
             : (
               <table key={page.v ?? 0} className="tbl text-[12px]">
-                <thead className="sticky top-0 bg-white"><tr><th>Line</th>{r.columns.map((c, i) => <th key={i} className="text-right">{c}</th>)}</tr></thead>
+                <thead className="sticky top-0 bg-white"><tr><th>Line</th>{r.columns.map((c, i) => <th key={i} className="text-end">{c}</th>)}</tr></thead>
                 <tbody>
                   {r.rows.map((row, i) => {
                     const fl = byRow.get(i) ?? [];
@@ -236,19 +236,19 @@ function PageReview({ page, file, flags, onEdit, onRetry }: { page: PdfPage; fil
                     return (
                       <tr key={i} className={cn(bad ? "bg-red-bg" : fl.length ? "bg-amber/15" : "", row.total && "font-medium")} data-testid={fl.length ? "pdf-flagged-row" : undefined} title={fl.map((f) => f.text).join("\n") || undefined}>
                         <td className={cn(row.heading && "label pt-3")}>
-                          {row.code && <span className="mr-1 text-mute">{row.code}</span>}{row.label}
+                          {row.code && <span className="me-1 text-mute">{row.code}</span>}{row.label}
                           {fl.map((f) => <div key={f.text} className={cn("text-[11px]", bad ? "text-red" : "text-[#9a6b00]")}>{f.text}</div>)}
                           {row.unclear && <button onClick={() => onEdit(page, i, (x) => ({ ...x, unclear: false }))} className="text-[11px] text-brand-d underline">Figures are right</button>}
                         </td>
                         {!row.heading && r.columns.map((_, c) => (
-                          <td key={c} className="text-right">
+                          <td key={c} className="text-end">
                             <input defaultValue={shown(row.values[c])} aria-label={`${row.label} ${r.columns[c]}`}
                               onBlur={(e) => {
                                 const t = e.target.value.trim(), v = t === "" ? null : cleanNum(t);
                                 if (t !== "" && v === null) { e.target.value = shown(row.values[c]); return; }
                                 if (v !== (row.values[c] ?? null)) onEdit(page, i, (x) => ({ ...x, unclear: false, values: r.columns.map((__, k) => (k === c ? v : x.values[k] ?? null)) }));
                               }}
-                              className="num w-28 rounded border border-transparent bg-transparent px-1 py-0.5 text-right hover:border-line focus:border-brand" />
+                              className="num w-28 rounded border border-transparent bg-transparent px-1 py-0.5 text-end hover:border-line focus:border-brand" />
                           </td>
                         ))}
                         {row.heading && <td colSpan={r.columns.length} />}

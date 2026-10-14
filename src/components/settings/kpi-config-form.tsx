@@ -61,7 +61,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
               const list = defs.filter((d) => d.category === cat);
               if (!list.length) return null;
               return [
-                <tr key={cat} className="cat"><td colSpan={6}><span className="mr-2 inline-block h-3 w-3 rounded-sm align-[-1px]" style={{ background: CAT_COL[cat] }} />{cat}</td></tr>,
+                <tr key={cat} className="cat"><td colSpan={6}><span className="me-2 inline-block h-3 w-3 rounded-sm align-[-1px]" style={{ background: CAT_COL[cat] }} />{cat}</td></tr>,
                 ...list.map((d) => {
                   const e = cfg[d.key];
                   return (
@@ -98,7 +98,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
       </div>
       <p className="mt-2 text-xs text-mute">* A result below target is favourable for this KPI.</p>
       <div className="sticky bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
-        {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
+        {msg && <span className={cn("me-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
         {c.readOnly ? <span className="text-sm text-mute">{c.basePath === "/demo" ? "The demo company is read-only." : "You have view-only access."}</span> : (
           <>
             <button onClick={() => setCfg(initial)} disabled={!dirty || pending} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">Discard</button>
@@ -114,7 +114,7 @@ export function Toggle({ on, onChange, disabled, label }: { on: boolean; onChang
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} disabled={disabled} onClick={() => onChange(!on)}
       className={cn("relative inline-flex h-5 w-9 shrink-0 rounded-full transition disabled:opacity-50", on ? "bg-brand-d" : "bg-[#d5d5d0]")}>
-      <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition", on ? "left-[18px]" : "left-0.5")} />
+      <span className={cn("absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition", on ? "start-[18px]" : "start-0.5")} />
     </button>
   );
 }
@@ -123,7 +123,7 @@ function NumIn({ value, onChange, unit, disabled, label }: { value: number | nul
   return (
     <span className="inline-flex items-center gap-1.5">
       <input type="number" step="any" aria-label={label} disabled={disabled} value={value ?? ""} onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-        className="w-32 rounded border border-line px-2 py-1 text-right outline-none focus:border-brand disabled:bg-band" />
+        className="w-32 rounded border border-line px-2 py-1 text-end outline-none focus:border-brand disabled:bg-band" />
       <span className="w-10 text-xs text-mute">{unit}</span>
     </span>
   );

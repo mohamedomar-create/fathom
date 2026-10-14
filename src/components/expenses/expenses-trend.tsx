@@ -28,14 +28,14 @@ export function ExpensesTrend() {
       <h2 className="mb-3 mt-10 text-xl font-light">Month by month</h2>
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[620px]" data-testid="expenses-month-table">
-          <thead><tr><th className="text-left">Month</th><th>P&amp;L costs</th><th>% of sales</th><th>Expense lines</th><th>Difference</th></tr></thead>
+          <thead><tr><th className="text-start">Month</th><th>P&amp;L costs</th><th>% of sales</th><th>Expense lines</th><th>Difference</th></tr></thead>
           <tbody>
             {[...rows].reverse().filter((t) => t.total !== null).map((t) => {
               const diff = t.lines === null ? null : t.lines - t.total!;
               const off = diff !== null && Math.abs(diff) > Math.max(1, Math.abs(t.total!) * 0.005);
               return (
                 <tr key={t.period} className="row">
-                  <td className="text-left">{mlabel(t.period)}</td>
+                  <td className="text-start">{mlabel(t.period)}</td>
                   <td className="num">{money(t.total, cur)}</td>
                   <td className="num">{t.ofSales === null ? "–" : pct(t.ofSales, 1)}</td>
                   <td className="num">{t.lines === null ? "–" : money(t.lines, cur)}</td>

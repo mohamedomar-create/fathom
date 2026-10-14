@@ -92,8 +92,8 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
               <tbody>
                 {years.map((y) => (["PL", "BS"] as const).map((st, i) => (
                   <tr key={y + st}>
-                    <td className="pr-2 text-[12px] font-semibold">{i === 0 ? y : ""}</td>
-                    <td className="pr-2 text-[11px] text-mute">{st === "PL" ? "P&L" : "BS"}</td>
+                    <td className="pe-2 text-[12px] font-semibold">{i === 0 ? y : ""}</td>
+                    <td className="pe-2 text-[11px] text-mute">{st === "PL" ? "P&L" : "BS"}</td>
                     {MONTHS.map((_, mi) => {
                       const p = `${y}-${String(mi + 1).padStart(2, "0")}`;
                       const s = status(p, st);
@@ -191,12 +191,12 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
               <td className="!text-left">{fmtDate(r.at)}</td>
               <td className="max-w-72 truncate !text-left">
                 {r.action === "restore" ? <span>Restored earlier data{r.file ? ` (${r.file})` : ""}</span> : <span><span className="capitalize">{r.kind === "odoo" ? "Odoo sync" : r.kind}</span>{r.file ? ` · ${r.file}` : ""}</span>}
-                {r.mode && r.action === "import" && <span className="ml-1.5 rounded bg-band px-1.5 text-[11px] text-mute">{r.mode === "merge" ? "replaced its months" : r.mode === "add" ? "added new months" : "replaced all"}</span>}
-                {r.accepted > 0 && <span className="ml-1.5 rounded bg-[#efe3f5] px-1.5 text-[11px]">{r.accepted} accepted</span>}
+                {r.mode && r.action === "import" && <span className="ms-1.5 rounded bg-band px-1.5 text-[11px] text-mute">{r.mode === "merge" ? "replaced its months" : r.mode === "add" ? "added new months" : "replaced all"}</span>}
+                {r.accepted > 0 && <span className="ms-1.5 rounded bg-[#efe3f5] px-1.5 text-[11px]">{r.accepted} accepted</span>}
                 {!!r.fixes?.length && (
                   <details className="mt-0.5 whitespace-normal text-[12px] text-mute" data-testid="history-fixes">
                     <summary className="cursor-pointer">{r.fixes.length} correction{r.fixes.length > 1 ? "s" : ""} made in the upload</summary>
-                    <ul className="mt-1 list-disc pl-4">{r.fixes.slice(0, 30).map((f, i) => <li key={i}>{fixText(f)}</li>)}</ul>
+                    <ul className="mt-1 list-disc ps-4">{r.fixes.slice(0, 30).map((f, i) => <li key={i}>{fixText(f)}</li>)}</ul>
                   </details>
                 )}
               </td>

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-sans), "Segoe UI", system-ui, sans-serif;
+  --font-sans: var(--font-sans), var(--font-ar), "Segoe UI", system-ui, sans-serif;
   --color-ink: #222222;
   --color-mute: #76766f;
   --color-line: #e6e6e1;
@@ -39,15 +39,23 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 .label { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--color-mute); }
 .num { font-variant-numeric: tabular-nums; }
 
+/* Arabic: letters join, so no letter spacing or capitals; a little more line height for the script. */
+:lang(ar) body { line-height: 1.6; }
+:lang(ar) .label, :lang(ar) .tbl th, :lang(ar) .tbl tr.cat td, :lang(ar) .axt { letter-spacing: 0; text-transform: none; }
+:lang(ar) [class*="tracking-"] { letter-spacing: 0 !important; }
+/* Arrows and chevrons that point along the reading direction turn round in Arabic. */
+[dir="rtl"] .flip-rtl { transform: scaleX(-1); }
+
 /* Statement tables */
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--color-mute); font-weight: 600; text-align: right; padding: 8px; border-bottom: 1px solid var(--color-ink); white-space: nowrap; }
-.tbl th:first-child, .tbl td:first-child { text-align: left; }
-.tbl td { padding: 7px 8px; border-bottom: 1px solid var(--color-line); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tbl th { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--color-mute); font-weight: 600; text-align: end; padding: 8px; border-bottom: 1px solid var(--color-ink); white-space: nowrap; }
+.tbl th:first-child, .tbl td:first-child { text-align: start; }
+.tbl td { padding: 7px 8px; border-bottom: 1px solid var(--color-line); text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tbl td:first-child { white-space: normal; }
 /* On a phone, wide tables scroll sideways: keep the row names readable and in view. */
 @media (max-width: 640px) {
-  .overflow-x-auto > .tbl td:first-child, .overflow-x-auto > .tbl th:first-child { position: sticky; left: 0; z-index: 1; background: #fff; min-width: 8.5rem; box-shadow: 1px 0 0 var(--color-line); }
+  .overflow-x-auto > .tbl td:first-child, .overflow-x-auto > .tbl th:first-child { position: sticky; inset-inline-start: 0; z-index: 1; background: #fff; min-width: 8.5rem; box-shadow: 1px 0 0 var(--color-line); }
+  [dir="rtl"] .overflow-x-auto > .tbl td:first-child, [dir="rtl"] .overflow-x-auto > .tbl th:first-child { box-shadow: -1px 0 0 var(--color-line); }
 }
 .tbl tr.tot td { font-weight: 700; border-top: 1px solid var(--color-ink); }
 .tbl tr.cat td { font-weight: 700; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--color-ink); padding-top: 18px; }
@@ -74,7 +82,7 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 .report .rcover .h-full { min-height: 1027px; }
 .report .rhead { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 2px solid; padding-bottom: 8px; margin-bottom: 18px; }
 .report .rhead h2 { font-size: 24px; font-weight: 400; margin: 0; }
-.report .rcomment { background: var(--color-band); border-left: 3px solid var(--brand, var(--color-brand)); padding: 10px 14px; margin: 16px 0 0; font-size: 12.5px; }
+.report .rcomment { background: var(--color-band); border-inline-start: 3px solid var(--brand, var(--color-brand)); padding: 10px 14px; margin: 16px 0 0; font-size: 12.5px; }
 .report .tbl th { padding: 6px; }
 .report .tbl td { padding: 5px 6px; }
 @media print {
@@ -91,6 +99,6 @@ body { background: #fff; color: var(--color-ink); font-family: var(--font-sans);
 .legal h2 { font-size: 20px; font-weight: 300; margin: 32px 0 8px; }
 .legal p, .legal li { line-height: 1.65; }
 .legal p { margin: 0 0 12px; }
-.legal ul { list-style: disc; padding-left: 20px; margin: 0 0 12px; }
+.legal ul { list-style: disc; padding-inline-start: 20px; margin: 0 0 12px; }
 .legal li { margin-bottom: 4px; }
 .legal a { text-decoration: underline; color: var(--color-brand-d); }

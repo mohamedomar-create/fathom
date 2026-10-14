@@ -28,7 +28,7 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
   const last = points[points.length - 1];
   const now = quadrantOf(last.x, last.y, x0, y0);
   return (
-    <div className="relative">
+    <div dir="ltr" className="relative">
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="Growth quadrant">
         <rect x={pl} y={pt} width={w - pl - pr} height={h - pt - pb} fill="#FAFAF9" stroke="#EEE" />
         <line x1={X(x0)} x2={X(x0)} y1={pt} y2={h - pb} stroke="#CCC" />

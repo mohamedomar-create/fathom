@@ -2,6 +2,7 @@
 import { useState, useTransition } from "react";
 import { Dialog, DialogContent, DialogTrigger } from "./dialog";
 import { cn } from "@/lib/cn";
+import { useDict } from "@/lib/i18n/context";
 
 /**
  * Confirmation for an action that cannot be undone. With `typeToConfirm`, the button stays disabled until that text is typed
@@ -17,6 +18,7 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
   onConfirm: (typed: string) => Promise<string | void | undefined>;
   testId?: string;
 }) {
+  const d = useDict().account;
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +28,7 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setTyped(""); setError(null); } }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent title={title} className="w-[min(520px,calc(100vw-24px))] p-6" data-testid={testId}>
-        <h2 className="mb-3 pr-8 text-xl font-light">{title}</h2>
+        <h2 className="mb-3 pe-8 text-xl font-light">{title}</h2>
         <div className="space-y-2 text-sm text-ink">{children}</div>
         <form className="mt-5" onSubmit={(e) => {
           e.preventDefault();
@@ -34,15 +36,15 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
           start(async () => { const r = await onConfirm(typed.trim()); if (r) setError(r); else setOpen(false); });
         }}>
           {typeToConfirm && (
-            <label className="mb-4 block"><span className="mb-1 block text-sm">{typeLabel ?? "Type"} <strong className="break-all">{typeToConfirm}</strong> to confirm</span>
+            <label className="mb-4 block"><span className="mb-1 block text-sm">{typeLabel ?? d.type} <strong className="break-all">{typeToConfirm}</strong> {d.toConfirm}</span>
               <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" spellCheck={false} data-testid="confirm-input"
                 className="w-full rounded border border-line px-3 py-2 outline-none focus:border-red" /></label>
           )}
           {error && <p className="mb-3 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" onClick={() => setOpen(false)} className="rounded border border-line px-4 py-2 text-sm hover:bg-band">Cancel</button>
+            <button type="button" onClick={() => setOpen(false)} className="rounded border border-line px-4 py-2 text-sm hover:bg-band">{d.cancel}</button>
             <button disabled={!ready || pending} data-testid="confirm-button"
-              className={cn("rounded bg-red px-4 py-2 text-sm font-medium text-white", (!ready || pending) && "opacity-50")}>{pending ? "Working…" : confirmLabel}</button>
+              className={cn("rounded bg-red px-4 py-2 text-sm font-medium text-white", (!ready || pending) && "opacity-50")}>{pending ? d.working : confirmLabel}</button>
           </div>
         </form>
       </DialogContent>

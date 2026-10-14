@@ -62,7 +62,7 @@ export function KpisPage() {
               if (!list.length) return null;
               return [
                 <tr key={cat} className="cat">
-                  <td><span className="mr-2 inline-block h-[18px] w-[18px] rounded-sm text-center text-[11px] leading-[18px] text-white" style={{ background: CAT_COL[cat] }}>{L}</span>{cat}</td>
+                  <td><span className="me-2 inline-block h-[18px] w-[18px] rounded-sm text-center text-[11px] leading-[18px] text-white" style={{ background: CAT_COL[cat] }}>{L}</span>{cat}</td>
                   <td>{cat === CAT_ORDER[0] ? a.view.window.short : ""}</td><td className="hidden sm:table-cell" /><td /><td className="text-[10px]">{cat === CAT_ORDER[0] ? `vs ${cmpLabel}` : ""}</td><td className="hidden md:table-cell" />
                 </tr>,
                 ...list.map((r) => <KpiTr key={r.def.key} r={r} cur={cur} onOpen={() => setOpen(r.def.key)} />),
@@ -85,8 +85,8 @@ function KpiTr({ r, cur, onOpen }: { r: KpiRow; cur: string; onOpen: () => void 
   return (
     <tr className="row cursor-pointer" onClick={onOpen} data-testid={`kpi-${r.def.key}`}>
       <td>
-        {r.alert && <span className="mr-2 inline-block h-[7px] w-[7px] rounded-full bg-red align-middle" title="Alert" />}
-        <button className="text-left hover:underline">{r.def.name}{r.def.direction === "down" ? "*" : ""}</button>
+        {r.alert && <span className="me-2 inline-block h-[7px] w-[7px] rounded-full bg-red align-middle" title="Alert" />}
+        <button className="text-start hover:underline">{r.def.name}{r.def.direction === "down" ? "*" : ""}</button>
       </td>
       <td>{num(r.value, r.def.unit, cur)}</td>
       <td className="hidden text-mute sm:table-cell">{r.compare === null ? "–" : num(r.compare, r.def.unit, cur)}</td>
@@ -124,7 +124,7 @@ function KpiModal({ row }: { row: KpiRow }) {
     <DialogContent title={row.def.name}>
       <div className="grid md:grid-cols-[1fr_280px]">
         <div className="p-6">
-          <div className="mb-3 flex items-center gap-3 pr-8"><StatusIcon ok={row.ok} size="lg" /><h2 className="text-2xl font-normal">{row.def.name}</h2></div>
+          <div className="mb-3 flex items-center gap-3 pe-8"><StatusIcon ok={row.ok} size="lg" /><h2 className="text-2xl font-normal">{row.def.name}</h2></div>
           <p className="mb-3 text-[13.5px] leading-relaxed">{explainKpi(row.def, row.value, tgt, cur)}</p>
           <p className="mb-4 rounded bg-band px-3 py-2 font-mono text-xs">{row.def.formula}</p>
           <LineChart labels={last12.map((h) => mshort(h.period))} unit={row.def.unit === "ratio" ? "num" : row.def.unit} cur={cur} target={monthTgt} marks={marks} height={260}

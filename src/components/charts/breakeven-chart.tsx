@@ -35,7 +35,7 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
     </g>
   );
   return (
-    <div className="relative">
+    <div dir="ltr" className="relative">
       <svg ref={ref} viewBox={`0 0 ${w} ${h}`} className="w-full touch-pan-y" onPointerMove={onMove} onPointerLeave={() => setHx(null)} role="img" aria-label="Breakeven chart">
         {niceTicks(0, ymax, 6).filter((t) => t <= ymax).map((t) => (
           <g key={t}><line x1={pl} x2={w - pr} y1={Y(t)} y2={Y(t)} className="grid-line" /><text x={pl - 6} y={Y(t) + 4} className="ax" textAnchor="end">{money(t, cur, true)}</text></g>

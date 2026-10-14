@@ -51,7 +51,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
       </section>
       {!readOnly && (
         <div className="flex items-center justify-end gap-3 border-t border-line pt-4">
-          {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
+          {msg && <span className={cn("me-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
           <button onClick={save} disabled={pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save profile"}</button>
         </div>
       )}

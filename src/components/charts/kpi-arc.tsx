@@ -21,7 +21,7 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
   });
   const pos = (i: number, r: number) => [cx + r * Math.cos(ang(i)), cy - r * Math.sin(ang(i))] as const;
   return (
-    <div className="relative">
+    <div dir="ltr" className="relative">
       <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="KPI Explorer arc">
         <path d={`M${cx - R - 34},${cy} A${R + 34},${R + 34} 0 0 1 ${cx + R + 34},${cy}`} fill="none" stroke="#F1F1EF" strokeWidth={44} />
         {groups.map((g) => {

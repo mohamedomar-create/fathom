@@ -16,7 +16,7 @@ export function SentenceSelect<T extends string>({
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className="sent-link" data-testid={testId} aria-label={label}>
         {cur?.label ?? value}
-        <ChevronDown className="ml-0.5 inline h-3.5 w-3.5 opacity-60" />
+        <ChevronDown className="ms-0.5 inline h-3.5 w-3.5 opacity-60" />
       </PopoverTrigger>
       <PopoverContent className="min-w-48">
         {options.map((o) => (
@@ -24,7 +24,7 @@ export function SentenceSelect<T extends string>({
             key={o.value}
             disabled={o.disabled}
             onClick={() => { onChange(o.value); setOpen(false); }}
-            className={cn("flex w-full items-start gap-2 rounded px-2.5 py-1.5 text-left text-sm hover:bg-band disabled:opacity-40", o.value === value && "bg-brand-bg/60")}
+            className={cn("flex w-full items-start gap-2 rounded px-2.5 py-1.5 text-start text-sm hover:bg-band disabled:opacity-40", o.value === value && "bg-brand-bg/60")}
           >
             <Check className={cn("mt-0.5 h-4 w-4 shrink-0 text-brand-d", o.value !== value && "invisible")} />
             <span>

@@ -153,7 +153,7 @@ export function ForecastPage() {
                 <input type="number" inputMode="decimal" step={x.step} value={(d[x.key] as number | null | undefined) ?? ""} data-testid={`fc-${x.key}`}
                   placeholder={placeholder(x.key, f.auto)}
                   onChange={(e) => { const v = e.target.value === "" ? null : Number(e.target.value); set(x.key, Number.isFinite(v) ? v : null); }}
-                  className="w-full rounded border border-line px-3 py-2 text-right outline-none placeholder:text-[#b5b5ae] focus:border-brand" />
+                  className="w-full rounded border border-line px-3 py-2 text-end outline-none placeholder:text-[#b5b5ae] focus:border-brand" />
                 <span className="w-14 shrink-0 text-xs text-mute">{x.unit === "amount" ? cur : x.unit}</span>
               </span>
               <span className="mt-1 block text-xs text-mute">{x.hint(f.auto, cur)}</span>
@@ -168,7 +168,7 @@ export function ForecastPage() {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
-          {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")} role="status">{msg.text}</span>}
+          {msg && <span className={cn("me-auto text-sm", msg.ok ? "text-green-d" : "text-red")} role="status">{msg.text}</span>}
           <button type="button" onClick={() => { setD({ horizon: d.horizon }); setMsg(null); }} className="rounded px-4 py-2 text-sm text-mute hover:bg-band" data-testid="fc-reset">Use history for all</button>
           {canSave ? (
             <button type="button" onClick={save} disabled={!dirty || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50" data-testid="save-forecast">{pending ? "Saving…" : "Save drivers"}</button>
@@ -186,7 +186,7 @@ export function ForecastPage() {
       </section>
 
       {f.notes.length > 0 && (
-        <ul className="mb-6 list-disc space-y-1 pl-5 text-[13px] text-mute" data-testid="fc-notes">{f.notes.map((n) => <li key={n}>{n}</li>)}</ul>
+        <ul className="mb-6 list-disc space-y-1 ps-5 text-[13px] text-mute" data-testid="fc-notes">{f.notes.map((n) => <li key={n}>{n}</li>)}</ul>
       )}
       <details className="mb-6 text-[13px]">
         <summary className="cursor-pointer font-medium">How this forecast is built</summary>

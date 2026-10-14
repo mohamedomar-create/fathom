@@ -12,6 +12,8 @@ export const LEGAL = {
   email: supportEmail().email,
   /** Last material change to the privacy policy or terms. */
   effective: "10 October 2026",
+  effectiveAr: "10 أكتوبر 2026",
   /** Where the database and backups are hosted (Supabase project region). */
   dataRegion: "the European Union (Ireland)",
+  dataRegionAr: "الاتحاد الأوروبي (أيرلندا)",
 } as const;

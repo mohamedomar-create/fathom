@@ -45,7 +45,7 @@ export function LineChart({
     setHover(Math.max(0, Math.min(n - 1, i)));
   };
   return (
-    <div ref={box} className="relative" data-testid={testId}>
+    <div dir="ltr" ref={box} className="relative" data-testid={testId}>
       {legend && series.length > 1 && (
         <div className="mb-1 flex flex-wrap gap-4 text-xs">
           {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</span>)}

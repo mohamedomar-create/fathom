@@ -360,3 +360,27 @@ test("data setup lists each step and each sector's readiness, with templates to 
   expect(res.headers()["content-type"]).toContain("spreadsheetml");
   expect(res.headers()["content-disposition"]).toContain("ireport-financials-template");
 });
+
+test("Arabic: the page turns right to left, the frame speaks Arabic, and English comes back", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/demo/summary");
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await page.getByTestId("lang-switch").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await expect(page.locator("html")).toHaveAttribute("lang", "ar-EG");
+  await expect(page.getByTestId("tab-sales")).toHaveText("المبيعات");
+  await expect(page.getByTestId("period-picker")).toContainText("سبتمبر 2026");
+  // The side menu sits on the right in Arabic.
+  if (await page.getByTestId("nav-summary").isVisible()) {
+    const rail = await page.getByTestId("nav-summary").boundingBox();
+    expect(rail!.x).toBeGreaterThan((page.viewportSize()?.width ?? 1280) / 2);
+  }
+  // The choice is kept on the next page.
+  await page.goto("/demo/expenses");
+  await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
+  await page.getByTestId("lang-switch").click();
+  await expect(page.locator("html")).toHaveAttribute("dir", "ltr");
+  await expect(page.getByTestId("tab-sales")).toHaveText("Sales");
+  expect(errors).toEqual([]);
+});

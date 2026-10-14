@@ -74,10 +74,10 @@ function Reconciliation({ s, cur }: { s: ExpensesView; cur: string }) {
   return (
     <div className="mb-8 rounded bg-amber/10 px-4 py-2.5 text-[13px]" data-testid="expenses-unreconciled">
       <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />The expense lines differ from P&amp;L costs in {s.unreconciled.length} month{s.unreconciled.length > 1 ? "s" : ""}</div>
-      <ul className="ml-6 mt-1 list-disc">
+      <ul className="ms-6 mt-1 list-disc">
         {s.unreconciled.slice(0, 6).map((u) => <li key={u.period}>{mlabel(u.period)}: lines {money(u.lines, cur)}, P&amp;L {money(u.costs, cur)}, difference {money(u.diff, cur)}</li>)}
       </ul>
-      <p className="ml-6 mt-1 text-mute">A vendor bills file holds bills only: salaries, rent paid by bank and depreciation are not in it. Totals on this page use the P&amp;L.</p>
+      <p className="ms-6 mt-1 text-mute">A vendor bills file holds bills only: salaries, rent paid by bank and depreciation are not in it. Totals on this page use the P&amp;L.</p>
     </div>
   );
 }
@@ -91,12 +91,12 @@ export function CheckThese({ s, cur }: { s: ExpensesView; cur: string }) {
       <h3 className="mb-2 text-lg font-normal">Check these</h3>
       <ul className="space-y-2 text-[13px]">
         {s.doubles.slice(0, 5).map((f, i) => (
-          <li key={`d${i}`} className="border-l-[3px] border-red bg-band px-3 py-2" data-testid="flag-double">
+          <li key={`d${i}`} className="border-s-[3px] border-red bg-band px-3 py-2" data-testid="flag-double">
             <b className="font-semibold">Paid twice?</b> {f.s}: {money(f.a, cur)} on {when(f)} ({f.doc || "no number"}) and {when(f, f.d2)} ({f.doc2 || "no number"}).
           </li>
         ))}
         {s.large.slice(0, 5).map((f, i) => (
-          <li key={`l${i}`} className="border-l-[3px] border-amber bg-band px-3 py-2" data-testid="flag-large">
+          <li key={`l${i}`} className="border-s-[3px] border-amber bg-band px-3 py-2" data-testid="flag-large">
             <b className="font-semibold">Large entry.</b> {f.t}: {money(f.a, cur)} on {when(f)}{f.s && !NOT_SUPPLIERS.has(f.s) ? ` from ${f.s}` : ""}. A usual month is {money(f.m ?? 0, cur)}.
           </li>
         ))}

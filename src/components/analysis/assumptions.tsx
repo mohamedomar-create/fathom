@@ -69,7 +69,7 @@ export function AssumptionsPanel({ fields, a, setA, saved, title = "Your assumpt
                 <span className="flex items-center gap-2">
                   <input type="number" inputMode="decimal" step={f.step} value={(a[k] as number | null | undefined) ?? ""} data-testid={`assume-${k}`}
                     onChange={(e) => { const v = e.target.value === "" ? null : Number(e.target.value); set(k, Number.isFinite(v) ? v : null); }}
-                    className={cn(input, "text-right")} />
+                    className={cn(input, "text-end")} />
                   <span className="w-24 shrink-0 text-xs text-mute">{f.unit === "amount" ? c.settings.currency : f.unit}</span>
                 </span>
               ) : f.kind === "select" ? (
@@ -86,7 +86,7 @@ export function AssumptionsPanel({ fields, a, setA, saved, title = "Your assumpt
         })}
       </div>
       <div className="mt-4 flex items-center justify-end gap-3">
-        {msg && <span className={cn("mr-auto text-sm", msg.ok ? "text-green-d" : "text-red")} role="status">{msg.text}</span>}
+        {msg && <span className={cn("me-auto text-sm", msg.ok ? "text-green-d" : "text-red")} role="status">{msg.text}</span>}
         {canSave ? <button onClick={save} disabled={!dirty || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50" data-testid="save-assumptions">{pending ? "Saving…" : "Save assumptions"}</button>
           : <span className="text-xs text-mute">{c.source === "demo" ? "Changes apply to this view only." : "You have view-only access; changes apply to this view only."}</span>}
       </div>

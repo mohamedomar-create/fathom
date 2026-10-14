@@ -26,13 +26,13 @@ export function SalesTrend() {
       <h2 className="mb-3 mt-10 text-xl font-light">Sales against P&amp;L revenue</h2>
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[560px]" data-testid="reconciliation-table">
-          <thead><tr><th className="text-left">Month</th><th>Sales lines</th><th>P&amp;L revenue</th><th>Difference</th></tr></thead>
+          <thead><tr><th className="text-start">Month</th><th>Sales lines</th><th>P&amp;L revenue</th><th>Difference</th></tr></thead>
           <tbody>
             {[...held].reverse().map((t) => {
               const off = t.diff !== null && t.revenue !== null && Math.abs(t.diff) > Math.max(1, Math.abs(t.revenue) * 0.005);
               return (
                 <tr key={t.period} className="row">
-                  <td className="text-left">{mlabel(t.period)}</td>
+                  <td className="text-start">{mlabel(t.period)}</td>
                   <td className="num">{money(t.sales, cur)}</td>
                   <td className="num">{t.revenue === null ? "–" : money(t.revenue, cur)}</td>
                   <td className={cn("num", off ? "text-red" : "text-mute")}>{t.diff === null ? "–" : money(t.diff, cur)}</td>
