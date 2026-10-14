@@ -1,5 +1,5 @@
 "use client";
-import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { mlabel, money, type ClassKey } from "@/lib/engine";
@@ -10,27 +10,41 @@ import { financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/li
 import { financialsFill, salesCsv } from "@/lib/templates/fill";
 import { RawSheets, ROLE, type RawSheetData } from "@/components/upload/raw-sheet";
 import { SortedView, type Focus, type SortedViewProps } from "@/components/upload/sorted-view";
-import { StepStrip, TwoBox } from "@/components/upload/two-box";
+import { TwoBox } from "@/components/upload/two-box";
+import { ChoiceCard, WizardNav, WizardSteps, WizardTitle, type Screen } from "@/components/upload/wizard-shell";
+import { ImportReadiness } from "@/components/setup/import-readiness";
+import { useCompany } from "@/lib/company/context";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { readWorkbooks } from "@/lib/ingest/read";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
-import { checkKey, groupChecks, runChecks, type Check } from "@/lib/company/checks";
+import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
-import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeline";
+import { CheckList, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
 import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
+import { salesPeriods } from "@/lib/ingest/sales";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
-import { isTemplateGrid } from "@/lib/ingest/template";
 import { TemplateButton } from "@/components/setup/readiness-view";
 
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" }) {
+/**
+ * Upload, one step at a time: what you are uploading → where to get the file → upload → check (your file beside what
+ * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
+ * salesLoaded: months that already have sales from an uploaded file (to warn about duplicates).
+ */
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales"; salesLoaded?: string[] }) {
   const router = useRouter();
+  const company = useCompany();
+  const [kind, setKind] = useState<"accounts" | "sales" | null>(setupStep === "sales" ? "sales" : setupStep === "financials" ? "accounts" : null);
+  const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
+  const [modeChosen, setModeChosen] = useState(false);
+  const [salesMode, setSalesMode] = useState<"add" | "replace" | null>(null);
+  const [done, setDone] = useState<{ what: string } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [grids, setGrids] = useState<Grid[] | null>(null);
   const [overrides, setOverrides] = useState<Overrides>({});
@@ -40,7 +54,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
   const [saving, start] = useTransition();
-  const [step, setStep] = useState<"map" | "timeline">("map");
   const [mode, setMode] = useState<ImportMode>("merge");
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -59,27 +72,24 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [picked, setPicked] = useState<SortedViewProps["picked"]>(null);
 
   /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
-  const [notice, setNotice] = useState<string | null>(null);
   const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
     // iReport templates' mistakes are shown on the sheet and fixed in the box beside it, like any other file's.
     const sales = grids.filter((g) => readSalesGrid(g));
     const accounting = grids.filter((g) => !sales.includes(g));
     if (sales.length) setSalesGrids(sales);
-    // Opened from a setup step: say so when the file is not the kind that step asks for.
-    const meaningful = accounting.filter((g) => isTemplateGrid(g) || g.rows.some((r) => r?.some((v) => typeof v === "number")));
-    setNotice(setupStep === "sales" && !sales.length ? "This file has no sales lines (it looks like accounting figures), so it is read as financials. For sales, upload the Invoice Analysis export or the sales template."
-      : setupStep === "financials" && !meaningful.length && sales.length ? "This file holds sales lines, not financial statements: only the sales are saved. For the P&L and balance sheet, upload the General Ledger or the financials template." : null);
-    if (!accounting.length) { setGrids(null); return; }
+    if (!accounting.length) { setGrids(null); setScreen("check"); return; }
     const { raw: lines, issues } = extractAll(accounting);
     setDiag(diagnostic(fs, accounting, issues));
     const broken = issues.layouts.some((l) => l.cellErrors?.length);
+    // A sales file's other sheets (help text, notes) hold no figures: the sales alone are read.
+    if (!lines.length && !broken && sales.length) { setGrids(null); setScreen("check"); return; }
     if (!lines.length && !broken) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-    setOverrides({}); setGrids(accounting); setFocus(null); setPicked(null);
-  }, [setupStep]);
+    setOverrides({}); setGrids(accounting); setFocus(null); setPicked(null); setScreen("check");
+  }, []);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null); setSalesGrids(null); setSalesOv({}); setFocus(null); setPicked(null);
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setSalesGrids(null); setSalesOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null);
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -99,10 +109,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       setErr((e as Error).message || "The file could not be read."); setGrids(null);
     } finally { setBusy(false); }
   }, [demo, takeSheets]);
-  const stepHelp = setupStep === "sales"
-    ? { title: "Step: sales lines", text: "Upload Odoo's Invoice Analysis export (list view: Invoice Date, Number, Partner, Product, Product Category, Salesperson, Quantity, Untaxed Total, Margin) or the filled sales template.", kind: "sales" as const }
-    : setupStep === "financials" ? { title: "Step: monthly financials", text: "Upload Odoo's General Ledger for the financial year (with Initial Balance), optionally with the Trial Balance and P&L for the same dates, or the filled monthly financials template.", kind: "financials" as const } : null;
-
   function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
     setPdfJob(null); setPdfSummary(summary); setErr(null);
@@ -120,9 +126,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   }, [grids, overrides, opts, mapping]);
 
   const setCls = (labelKey: string, cls: ClassKey | "") => setMapping((m) => ({ ...m, [labelKey]: cls }));
-  const lines = res?.lines.filter((l) => !l.system) ?? [];
-  const review = lines.filter((l) => !l.cls || (l.conf < 0.7 && !l.excluded));
-  const lastP = res?.periods[res.periods.length - 1];
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
   const fileChecks = useMemo(() => {
@@ -225,7 +228,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     try {
       const out = await previewImport(p);
       if (!out.ok) { setErr(out.error); return; }
-      setPreview(out.data); setStep("timeline"); setAcceptOn(false);
+      setPreview(out.data); setScreen("save"); setAcceptOn(false);
+      // The file repeats loaded months with the very same figures: adding only the new months is the safe default.
+      if (!modeChosen && m === "merge" && out.data.overlap.length && out.data.overlap.every((o) => o.same)) { setMode("add"); setModeChosen(true); void runPreview("add"); }
     } catch (e) {
       console.error("preview failed", e);
       setErr(`The import could not be checked (${(e as Error).message || "network error"}).`);
@@ -248,12 +253,19 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         });
         if (!out.ok) { setErr(out.error); return; }
         // The General Ledger's invoice lines become sales; a sales file uploaded with it is saved too.
+        // "Add only new months" keeps the sales of months already loaded as well.
         const filename = files.map((f) => f.name).join(" + ");
-        for (const [source, ls] of [["ledger", salesFromLedger(res.lines)], ["file", salesRead?.lines ?? []]] as const) {
+        const addedPL = new Set(preview?.timeline.filter((t) => t.PL === "new").map((t) => t.period) ?? []);
+        const loadedSales = new Set(salesLoaded);
+        const ledger = salesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
+        const fileSales = (salesRead?.lines ?? []).filter((l) => mode !== "add" || !loadedSales.has(l.period));
+        for (const [source, ls] of [["ledger", ledger], ["file", fileSales]] as const) {
           const saved = await saveSales(companyId, source, [...ls], filename);
-          if (!saved.ok) { setErr(`The figures were imported, but the sales could not be saved: ${saved.error}`); return; }
+          if (!saved.ok) { setErr(`The figures were saved, but the sales could not be: ${saved.error}`); return; }
         }
-        router.push(`/company/${companyId}/settings/data-health?imported=1`);
+        const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
+        setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved` });
+        setScreen("done");
         router.refresh();
       } catch (e) {
         console.error("import failed", e);
@@ -262,183 +274,289 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     });
   }
 
+  // ---- duplicates: months in the file that are already loaded
+  const overlap = preview?.overlap ?? [];
+  const overlapMonths = [...new Set(overlap.map((o) => o.period))].sort();
+  const allSame = overlap.length > 0 && overlap.every((o) => o.same);
+  const newMonths = res ? [...new Set([...res.slices.PL.filter((p) => !overlap.some((o) => o.statement === "PL" && o.period === p)), ...res.slices.BS.filter((p) => !overlap.some((o) => o.statement === "BS" && o.period === p))])].sort() : [];
+  const choose = (m: ImportMode) => { setMode(m); setModeChosen(true); runPreview(m); };
+  const salesOverlap = salesRead ? salesPeriods(salesRead.lines).filter((p) => salesLoaded.includes(p)) : [];
+  const salesToSave = (salesRead?.lines ?? []).filter((l) => salesMode !== "add" || !salesLoaded.includes(l.period));
+  const reset = (k: "accounts" | "sales" | null) => { setGrids(null); setSalesGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
+  const wrongKind = kind === "accounts" && !res && salesRead?.lines.length ? "sales" : kind === "sales" && res && !salesRead ? "accounts" : null;
+
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
 
-  if (!res && salesRead && (salesRead.lines.length || salesRead.layouts.some((l) => l.errors.length))) {
+  // 1 · What are you uploading?
+  if (screen === "what") {
     return (
-      <div data-testid="sales-only">
-        <StepStrip at={2} />
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <FileSpreadsheet className="h-5 w-5 text-brand-d" />
-          <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-          <button onClick={() => { setSalesGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
-        </div>
-        {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
-        <SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />
-        <div className="mt-5">{box}</div>
-        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
-        <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-          <span className="mr-auto text-xs text-mute">{errorCount ? `Fix the ${errorCount} error${errorCount > 1 ? "s" : ""} in the box above to save.` : demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Only sales are saved from this file; the financial figures are not changed."}</span>
-          {!demo && (
-            <button disabled={saving || errorCount > 0 || !salesRead.lines.length} data-testid="save-sales" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50"
-              onClick={() => start(async () => {
-                setErr(null);
-                const out = await saveSales(companyId, "file", salesRead.lines, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() });
-                if (!out.ok) { setErr(out.error); return; }
-                router.push(`/company/${companyId}/sales`);
-                router.refresh();
-              })}>
-              {saving ? "Saving…" : `Save ${salesRead.lines.length.toLocaleString("en-US")} sales lines`}
-            </button>
-          )}
+      <div data-testid="wiz-what">
+        <WizardSteps at="what" />
+        <WizardTitle title="What are you uploading?" hint="Pick one." />
+        <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+          <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
+          <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
         </div>
       </div>
     );
   }
 
-  if (!res) {
+  // 2 · Get your file
+  if (screen === "get") {
+    const sales = kind === "sales";
+    const steps = sales
+      ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Select all lines. Click Export."]
+      : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
     return (
-      <>
-      {stepHelp && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-brand/40 bg-brand-bg/40 px-4 py-3 text-sm" data-testid="upload-step">
-          <div className="min-w-0 flex-1"><b>{stepHelp.title}.</b> {stepHelp.text}</div>
-          <TemplateButton kind={stepHelp.kind} compact />
+      <div data-testid="wiz-get">
+        <WizardSteps at="get" />
+        <WizardTitle title={sales ? "Get your sales file" : "Get your accounts file"} hint="Use Odoo, or our template." />
+        <div className="grid max-w-4xl gap-4 md:grid-cols-2">
+          <section className="rounded-xl border border-line p-5" data-testid="get-odoo">
+            <h3 className="mb-3 text-lg font-medium">From Odoo</h3>
+            <ol className="space-y-2.5 text-[15px]">
+              {steps.map((t, k) => <li key={k} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-bg text-[12px] font-semibold text-brand-d">{k + 1}</span>{t}</li>)}
+            </ol>
+          </section>
+          <section className="rounded-xl border border-line p-5" data-testid="get-template">
+            <h3 className="mb-3 text-lg font-medium">No Odoo? Use our template</h3>
+            <TemplateButton kind={sales ? "sales" : "financials"} />
+            <ul className="mt-3 space-y-1.5 text-[15px] text-mute"><li>Fill it in. Save it.</li><li>One number in each box.</li></ul>
+          </section>
         </div>
-      )}
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+        <p className="mt-3 text-[13px] text-mute">Only have a PDF? That works too.</p>
+        <WizardNav onBack={setupStep ? undefined : () => setScreen("what")} next="Next: upload my file" onNext={() => setScreen("upload")} />
+      </div>
+    );
+  }
+
+  // 3 · Upload
+  if (screen === "upload" || (!res && !salesRead && screen !== "done")) {
+    return (
+      <div data-testid="wiz-upload">
+        <WizardSteps at="upload" />
+        <WizardTitle title="Upload your file" hint={kind === "sales" ? "Your sales file." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
           onClick={() => input.current?.click()}
-          className="flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-line px-6 py-16 text-center transition hover:border-brand hover:bg-brand-bg/20"
+          className="flex max-w-4xl cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-brand/50 bg-brand-bg/10 px-6 py-20 text-center transition hover:border-brand hover:bg-brand-bg/30"
           data-testid="dropzone"
         >
-          {busy ? <Loader2 className="h-10 w-10 animate-spin text-brand" /> : <Upload className="h-10 w-10 text-brand" strokeWidth={1.5} />}
-          <div className="mt-3 text-lg">{busy ? `Reading ${files.map((f) => f.name).join(", ")}…` : "Drop Odoo exports here, or click to choose"}</div>
-          <div className="mt-1 text-sm text-mute">One or several files · accounting reports or sales exports · .xlsx, .xls, .csv, .txt, or .pdf (scanned or digital) · English or Arabic</div>
+          {busy ? <Loader2 className="h-12 w-12 animate-spin text-brand" /> : <Upload className="h-12 w-12 text-brand" strokeWidth={1.5} />}
+          <div className="mt-4 text-xl">{busy ? "Reading your file…" : "Drop your file here, or click to choose"}</div>
+          <div className="mt-1 text-[14px] text-mute">Excel, CSV or PDF</div>
           <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf,.jpg,.jpeg,.png" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
-          {(err || ingestErr) && <p className="mt-4 max-w-xl whitespace-pre-line rounded bg-red-bg px-3 py-2 text-left text-sm text-red" role="alert" data-testid="upload-error" onClick={(e) => e.stopPropagation()}>{err || ingestErr}</p>}
-          {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Download a diagnostic file to send to support</button>}
+          {(err || ingestErr) && <p className="mt-5 max-w-xl whitespace-pre-line rounded bg-red-bg px-3 py-2 text-left text-sm text-red" role="alert" data-testid="upload-error" onClick={(e) => e.stopPropagation()}>{err || ingestErr}</p>}
+          {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Send this to support (download)</button>}
         </div>
-        <aside className="rounded-lg bg-band p-4 text-[13px]">
-          <div className="label mb-2">Which Odoo export?</div>
-          <ol className="list-decimal space-y-2 pl-4">
-            <li><b>Best:</b> Accounting → Reporting → <b>General Ledger</b> for the year → Export XLSX. It gives every month and the opening balances.</li>
-            <li>Add the <b>Trial Balance</b> and <b>Profit and Loss</b> for the same dates in the same upload: they are used to prove the figures, account by account, and are not counted twice.</li>
-            <li>Or a <b>Trial Balance</b> / <b>P&amp;L</b> + <b>Balance Sheet</b> with monthly comparison periods, or <b>Journal Items</b> (Account, Date, Debit, Credit).</li>
-            <li><b>For Sales:</b> the General Ledger already gives sales by customer and product. Add Sales → Reporting → <b>Sales</b> or Invoicing → Reporting → <b>Invoice Analysis</b> (list view → Export) for quantities, salespeople and margins.</li>
-          </ol>
-          <p className="mt-3"><b>Only have a PDF?</b> Printed or scanned statements, trial balances and sales reports can be uploaded too. Each page is read by Claude (Anthropic) and is not kept; you check the figures before anything is imported. Excel exports remain the most exact.</p>
-          <p className="mt-3"><b>No Odoo?</b> Use iReport&apos;s templates: each is read exactly, and any mistake is listed with its sheet and row.</p>
-          <div className="mt-2 flex flex-col items-start gap-2"><TemplateButton kind="financials" compact /><TemplateButton kind="sales" compact /></div>
-          <p className="mt-3 text-mute">Spreadsheets are read in your browser and nothing is saved until you confirm. Budget, variance and total columns are skipped automatically.</p>
-        </aside>
+        <WizardNav onBack={() => setScreen("get")} />
       </div>
-      </>
     );
   }
 
-  if (step === "timeline" && preview) {
-    const canImport = !blocking.length || (acceptOn && reason.trim().length >= 10);
+  // 6 · Done
+  if (screen === "done" && done) {
     return (
-      <div data-testid="timeline-step" className="space-y-5">
-        <StepStrip at={3} />
-        <div className="flex flex-wrap items-center gap-3">
-          <FileSpreadsheet className="h-5 w-5 text-brand-d" />
-          <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-          <button onClick={() => setStep("map")} className="text-sm text-mute underline">Back to mapping</button>
+      <div data-testid="done-step">
+        <WizardSteps at="done" />
+        <div className="mb-6 flex items-center gap-4 rounded-xl bg-green-bg p-6 text-green-d">
+          <CheckCircle2 className="h-12 w-12 shrink-0" />
+          <div><div className="text-2xl font-medium">Saved!</div><div className="text-[15px]">{done.what}.</div></div>
         </div>
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">What this import changes</h2>
-          <p className="text-sm text-mute">This file covers {sliceText(res.slices)}.</p>
-          <ModeChoice mode={mode} hasData={preview.hasData} onChange={(m) => { setMode(m); runPreview(m); }} />
-          <Timeline cells={preview.timeline} checks={preview.checks} />
-          <OverwriteDiffs diffs={preview.diffs} currency={currency} />
-        </section>
-        <section className="space-y-3">
-          <h2 className="text-lg font-medium">Checks</h2>
-          <CheckList checks={preview.checks} />
-          {blocking.length > 0 && (
-            <div className="rounded-md border border-red/40 p-3 text-sm" data-testid="accept-box">
-              <p className="mb-2">The import is stopped until {groupChecks(blocking).length === 1 ? "this issue is" : `these ${groupChecks(blocking).length} issues are`} fixed: go back to the mapping, or import anyway and record why. The reason is shown on Data health and in report notes.</p>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={acceptOn} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Import anyway</label>
-              {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why these figures are right, e.g. 'Odoo's own balance sheet is out by this suspense balance; being fixed by the accountant.'" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
-            </div>
-          )}
-        </section>
-        {err && <p className="rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-          <span className="mr-auto text-xs text-mute">{preview.accounts} accounts will be stored. The previous data stays available to restore from Data health.</span>
-          <button disabled={saving || previewing || !canImport} onClick={commit} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="commit-import">
-            {saving ? "Importing…" : previewing ? "Checking…" : mode === "replace" && preview.hasData ? "Replace data" : "Import"}
-          </button>
+        {kind !== "sales" && <ImportReadiness />}
+        <div className="flex flex-wrap gap-3">
+          {kind === "sales"
+            ? <a href={`${company.basePath}/sales`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my sales</a>
+            : <a href={`${company.basePath}/summary`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my reports</a>}
+          <button onClick={() => reset(kind === "sales" ? "accounts" : "sales")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "sales" ? "Upload accounts next" : "Upload sales next"}</button>
         </div>
       </div>
     );
   }
 
+  const wrong = wrongKind && (
+    <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border-2 border-amber bg-amber/10 px-4 py-3 text-[15px]" data-testid="upload-notice">
+      <span>{wrongKind === "sales" ? "This looks like a sales file." : "This looks like an accounts file."}</span>
+      <button onClick={() => setKind(wrongKind)} className="rounded bg-ink px-3 py-1.5 text-sm text-white" data-testid="switch-kind">Switch to {wrongKind}</button>
+    </div>
+  );
+  const fileLine = (
+    <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
+      <FileSpreadsheet className="h-4 w-4 text-brand-d" />
+      <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
+      <button onClick={() => { setGrids(null); setSalesGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
+    </div>
+  );
+  const more = (children: React.ReactNode) => (
+    <details className="group mt-5 rounded-lg border border-line" data-testid="more-options">
+      <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[14px] text-mute"><ChevronDown className="h-4 w-4 transition group-open:rotate-180" />More options</summary>
+      <div className="space-y-4 border-t border-line px-4 py-3">{children}</div>
+    </details>
+  );
+
+  // 4 · Check (sales only)
+  if (!res && salesRead) {
+    const ps = salesPeriods(salesRead.lines);
+    if (screen === "save") {
+      return (
+        <div data-testid="sales-save">
+          <WizardSteps at="save" />
+          <WizardTitle title="Save your sales" hint={`${salesToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
+          {salesOverlap.length > 0 ? (
+            <Duplicates months={salesOverlap} same={false} newMonths={ps.filter((p) => !salesLoaded.includes(p))} chosen={salesMode === null ? null : salesMode === "add" ? "add" : "merge"}
+              onAdd={() => setSalesMode("add")} onReplace={() => setSalesMode("replace")} />
+          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+          <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save sales"} nextTestId="save-sales"
+            disabled={saving || !salesToSave.length || (salesOverlap.length > 0 && salesMode === null)}
+            hint={salesOverlap.length > 0 && salesMode === null ? "Choose one first." : !salesToSave.length ? "Nothing new to save." : undefined}
+            onNext={() => start(async () => {
+              setErr(null);
+              const out = await saveSales(companyId, "file", salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes(), mode: salesMode ?? "new" });
+              if (!out.ok) { setErr(out.error); return; }
+              setDone({ what: `${salesToSave.length.toLocaleString("en-US")} sales lines saved` }); setScreen("done"); router.refresh();
+            })} />
+        </div>
+      );
+    }
+    const total = salesRead.lines.reduce((a, l) => a + l.amount, 0);
+    return (
+      <div data-testid="sales-only">
+        <WizardSteps at="check" />
+        <WizardTitle title="Check your sales" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
+        {wrong}
+        {fileLine}
+        <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="sales-preview">
+          <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
+          <Stat label="Total sales" value={money(total, currency)} testId="sales-total" />
+          <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} />
+        </div>
+        {box}
+        {more(<SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />)}
+        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {demo
+          ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : undefined} />}
+      </div>
+    );
+  }
+  if (!res) return null;
+
+  // 5 · Save (accounts)
+  if (screen === "save" && preview) {
+    const canImport = !blocking.length || (acceptOn && reason.trim().length >= 10);
+    const needChoice = overlap.length > 0 && !modeChosen && !allSame;
+    const nothingNew = mode === "add" && !newMonths.length;
+    return (
+      <div data-testid="timeline-step">
+        <WizardSteps at="save" />
+        <WizardTitle title="Save your data" hint={`This file has ${monthsText([...new Set([...res.slices.PL, ...res.slices.BS])].sort())}.`} />
+        {overlap.length > 0 && (
+          <Duplicates months={overlapMonths} same={allSame} newMonths={newMonths} chosen={modeChosen || allSame ? (mode === "add" ? "add" : mode === "merge" ? "merge" : null) : null}
+            onAdd={() => choose("add")} onReplace={() => choose("merge")} onReplaceAll={() => choose("replace")} replaceAll={mode === "replace"} />
+        )}
+        {!overlap.length && <p className="text-[15px]" data-testid="all-new">All these months are new. Nothing is replaced.</p>}
+        {blocking.length > 0 && (
+          <div className="mt-4 rounded-lg border-2 border-red/50 p-4 text-[14px]" data-testid="accept-box">
+            <p className="mb-2 font-medium">Something doesn&apos;t add up.</p>
+            <CheckList checks={blocking} />
+            <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={acceptOn} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Save anyway</label>
+            {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why is it right? (at least 10 letters)" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
+          </div>
+        )}
+        <details className="group mt-5 rounded-lg border border-line" data-testid="month-by-month">
+          <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[14px] text-mute"><ChevronDown className="h-4 w-4 transition group-open:rotate-180" />See month by month</summary>
+          <div className="space-y-4 border-t border-line px-4 py-3">
+            <Timeline cells={preview.timeline} checks={preview.checks} />
+            <OverwriteDiffs diffs={preview.diffs} currency={currency} />
+            <CheckList checks={preview.checks.filter((c) => !blocking.includes(c))} />
+          </div>
+        </details>
+        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : mode === "replace" && preview.hasData ? "Replace all and save" : "Save"} onNext={commit}
+          disabled={saving || previewing || !canImport || needChoice || nothingNew} busy={previewing} nextTestId="commit-import"
+          hint={needChoice ? "Choose one first." : nothingNew ? "Nothing new to add." : undefined} />
+      </div>
+    );
+  }
+
+  // 4 · Check (accounts)
   return (
     <div data-testid="review">
-      <StepStrip at={2} />
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <FileSpreadsheet className="h-5 w-5 text-brand-d" />
-        <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-        <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
+      <WizardSteps at="check" />
+      <WizardTitle title="Check your data" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
+      {wrong}
+      {fileLine}
+      <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3">
+        <Stat label="Months" value={String(res.periods.length)} sub={res.periods.length ? monthsText(res.periods) : ""} />
+        <Stat label="Balanced?" value={maxImb < 1 ? "Yes ✓" : "No"} sub={maxImb < 1 ? undefined : `out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} testId="balanced" />
+        <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="problems" />
       </div>
-      {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
-      <div className="mb-4 grid gap-4 sm:grid-cols-4">
-        <Stat label="Months" value={res.periods.length ? `${res.periods.length}` : "0"} sub={res.periods.length ? `${mlabel(res.periods[0])} – ${mlabel(lastP!)}` : ""} />
-        <Stat label="Accounts mapped" value={`${lines.filter((l) => l.cls && !l.excluded).length} / ${lines.length}`} sub={`${review.length} to review`} tone={review.length ? "warn" : "ok"} />
-        <Stat label={`Revenue ${lastP ? mlabel(lastP) : ""}`} value={lastP ? money(res.totals.revenue[lastP] ?? 0, currency) : "–"} sub={res.asOf ? `part month, to ${Number(res.asOf.slice(8))} ${mlabel(lastP!).split(" ")[0]}` : "compare with your Odoo report"} />
-        <Stat label="Balance sheet" value={maxImb < 1 ? "Balances" : `Out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} sub={lastP ? `cash ${money(res.totals.cash[lastP] ?? 0, currency)}` : ""} />
-      </div>
-      <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
-      <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-line px-4 py-2.5 text-sm">
-        <label className="flex items-center gap-2">P&amp;L columns are year-to-date
-          <select value={opts.ytd} onChange={(e) => setOpts({ ...opts, ytd: e.target.value as IngestOptions["ytd"] })} className="rounded border border-line px-1.5 py-0.5">
-            <option value="auto">Detect ({res.detected.ytd ? "yes" : "no"})</option><option value="yes">Yes</option><option value="no">No</option>
-          </select></label>
-        <label className="flex items-center gap-2">Close current-year earnings
-          <select value={String(opts.closeEarnings)} onChange={(e) => setOpts({ ...opts, closeEarnings: e.target.value === "auto" ? "auto" : e.target.value === "true" })} className="rounded border border-line px-1.5 py-0.5">
-            <option value="auto">Detect ({res.detected.unclosedEarnings ? "yes" : "no"})</option><option value="true">Yes</option><option value="false">No</option>
-          </select></label>
-        <label className="flex items-center gap-2"><input type="checkbox" checked={opts.plugEquity} onChange={(e) => setOpts({ ...opts, plugEquity: e.target.checked })} /> Force balance into Other Equity (last resort)</label>
-      </div>
-      {salesRead && salesRead.lines.length > 0 && <p className="mb-4 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="sales-alongside">Also in this upload: a sales file ({salesRead.layouts.map((l) => l.sheet).join(", ")}) with {salesRead.lines.length.toLocaleString("en-US")} lines. It is saved to the Sales sector when you import.</p>}
-      {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="mb-4 text-[13px] text-mute" data-testid="ledger-sales-note">The invoice lines on revenue accounts become sales by customer, product and month in the Sales sector.</p>}
       {box}
-      <div className="mt-4 space-y-2">
+      {more(<>
+        <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <label className="flex items-center gap-2">P&amp;L columns are year-to-date
+            <select value={opts.ytd} onChange={(e) => setOpts({ ...opts, ytd: e.target.value as IngestOptions["ytd"] })} className="rounded border border-line px-1.5 py-0.5">
+              <option value="auto">Detect ({res.detected.ytd ? "yes" : "no"})</option><option value="yes">Yes</option><option value="no">No</option>
+            </select></label>
+          <label className="flex items-center gap-2">Close current-year earnings
+            <select value={String(opts.closeEarnings)} onChange={(e) => setOpts({ ...opts, closeEarnings: e.target.value === "auto" ? "auto" : e.target.value === "true" })} className="rounded border border-line px-1.5 py-0.5">
+              <option value="auto">Detect ({res.detected.unclosedEarnings ? "yes" : "no"})</option><option value="true">Yes</option><option value="false">No</option>
+            </select></label>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={opts.plugEquity} onChange={(e) => setOpts({ ...opts, plugEquity: e.target.checked })} /> Force balance into Other Equity (last resort)</label>
+        </div>
+        {salesRead && salesRead.lines.length > 0 && <p className="text-[13px]" data-testid="sales-alongside">Also in this upload: {salesRead.lines.length.toLocaleString("en-US")} sales lines. They are saved too.</p>}
+        {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="text-[13px] text-mute" data-testid="ledger-sales-note">Invoice lines on revenue accounts also become your sales.</p>}
         {fileChecks.length > 0 && <CheckList checks={fileChecks} />}
-        {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals printed in the file ({controlCount} total{controlCount > 1 ? "s" : ""} checked: net profit, total assets…).</p>}
+        {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals in the file ({controlCount} checked).</p>}
         {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
           <div className="space-y-1.5 text-[13px]">
             {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{w}</div>)}
             {[...res.issues.flips, ...res.issues.notes].map((w) => <div key={w} className="flex gap-2 rounded bg-band px-3 py-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-d" />{w}</div>)}
           </div>
         )}
-      </div>
+      </>)}
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
-      <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-        <span className="mr-auto text-xs text-mute" data-testid="continue-hint">{errorCount ? `Fix the ${errorCount} error${errorCount > 1 ? "s" : ""} in the box above to continue: each one has its fix beside it.` : demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Your class choices are remembered for the next upload."}</span>
-        {demo ? (
-          <a href="/login?mode=signup" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white" data-testid="commit-import">Create a free account to import</a>
-        ) : <button disabled={previewing || !res.periods.length || errorCount > 0} onClick={() => runPreview()} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
-          {previewing ? "Checking…" : `Continue: check ${res.periods.length} months`}
-        </button>}
-      </div>
+      {demo
+        ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || !res.periods.length || errorCount > 0} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : undefined} />}
     </div>
   );
 }
 
-function sliceText(s: { PL: string[]; BS: string[] }) {
-  const r = (ps: string[]) => (ps.length === 1 ? mlabel(ps[0]) : `${mlabel(ps[0])} – ${mlabel(ps[ps.length - 1])}`);
-  const parts = [s.PL.length ? `Profit & Loss for ${r(s.PL)}` : "", s.BS.length ? `Balance sheet for ${r(s.BS)}` : ""].filter(Boolean);
-  return parts.join(" and ") || "no months";
+/** Months already loaded: add only the new months, or replace them with the file. */
+function Duplicates({ months, same, newMonths, chosen, onAdd, onReplace, onReplaceAll, replaceAll }: { months: string[]; same: boolean; newMonths: string[]; chosen: "add" | "merge" | null; onAdd: () => void; onReplace: () => void; onReplaceAll?: () => void; replaceAll?: boolean }) {
+  return (
+    <div className="rounded-xl border-2 border-amber bg-amber/5 p-4" data-testid="duplicates">
+      <p className="text-[16px]"><b>You already have {monthsText(months)}.</b> {same ? "This file has the same numbers for them." : "What should we do?"}</p>
+      <div className="mt-3 grid max-w-3xl gap-3 sm:grid-cols-2">
+        <ChoiceCard icon="➕" title="Add only new months" sub={newMonths.length ? `Adds ${monthsText(newMonths)}. Keeps what you have.` : "Nothing new in this file."} onClick={onAdd} selected={chosen === "add" && !replaceAll} testId="mode-add" />
+        <ChoiceCard icon="🔁" title="Replace those months" sub="Use this file's numbers for them." onClick={onReplace} selected={chosen === "merge" && !replaceAll} testId="mode-merge" />
+      </div>
+      {onReplaceAll && <button onClick={onReplaceAll} className={cn("mt-3 text-[13px] underline", replaceAll ? "font-semibold text-red" : "text-mute")} data-testid="mode-replace">{replaceAll ? "Replacing ALL your data with this file" : "Or replace all my data with this file"}</button>}
+    </div>
+  );
 }
 
-function Stat({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "ok" | "bad" | "warn" }) {
+/** "Jan – Mar 2026, May 2026": months grouped into runs. */
+function monthsText(ps: string[]) {
+  const s = [...new Set(ps)].sort();
+  const runs: string[][] = [];
+  for (const p of s) {
+    const last = runs[runs.length - 1];
+    const prev = last?.[last.length - 1];
+    if (prev && monthAfter(prev) === p) last.push(p); else runs.push([p]);
+  }
+  const txt = runs.map((r) => (r.length === 1 ? mlabel(r[0]) : `${mlabel(r[0])} – ${mlabel(r[r.length - 1])}`));
+  return txt.length > 3 ? `${txt.slice(0, 3).join(", ")} and more` : txt.join(", ");
+}
+const monthAfter = (p: string) => { const [y, m] = p.split("-").map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`; };
+
+function Stat({ label, value, sub, tone, testId }: { label: string; value: string; sub?: string; tone?: "ok" | "bad" | "warn"; testId?: string }) {
   return (
-    <div className={cn("rounded-md border-t-[3px] bg-band px-3 py-2.5", tone === "bad" ? "border-red" : tone === "warn" ? "border-amber" : "border-green")}>
+    <div className={cn("rounded-md border-t-[3px] bg-band px-3 py-2.5", tone === "bad" ? "border-red" : tone === "warn" ? "border-amber" : "border-green")} data-testid={testId}>
       <div className="label">{label}</div>
       <div className="num text-lg">{value}</div>
       {sub && <div className="text-xs text-mute">{sub}</div>}

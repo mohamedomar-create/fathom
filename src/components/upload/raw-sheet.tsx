@@ -21,18 +21,18 @@ export interface RawSheetData {
 
 const ROW_H = 26;
 export const ROLE: Record<RowRole, { label: string; row: string; dot: string }> = {
-  account: { label: "Read as an account", row: "bg-brand-bg/50", dot: "bg-brand-d" },
-  entry: { label: "Read as a line", row: "bg-brand-bg/25", dot: "bg-brand" },
+  account: { label: "Used", row: "bg-brand-bg/50", dot: "bg-brand-d" },
+  entry: { label: "Used (line)", row: "bg-brand-bg/25", dot: "bg-brand" },
   opening: { label: "Opening balance", row: "bg-brand-bg/50", dot: "bg-brand-d" },
   heading: { label: "Heading", row: "font-medium text-ink/80", dot: "bg-ink/40" },
-  header: { label: "Column headings", row: "bg-band font-medium", dot: "bg-ink" },
+  header: { label: "Headings", row: "bg-band font-medium", dot: "bg-ink" },
   title: { label: "Title", row: "text-mute", dot: "bg-line" },
-  total: { label: "Total (iReport adds its own)", row: "text-mute italic", dot: "bg-[#b9b9b0]" },
+  total: { label: "Total (we add our own)", row: "text-mute italic", dot: "bg-[#b9b9b0]" },
   unused: { label: "Not used", row: "text-mute/80", dot: "bg-line" },
-  skipped: { label: "Left out", row: "text-mute line-through", dot: "bg-line" },
-  error: { label: "Error to fix", row: "bg-red-bg/70", dot: "bg-red" },
+  skipped: { label: "Skipped", row: "text-mute line-through", dot: "bg-line" },
+  error: { label: "Problem", row: "bg-red-bg/70", dot: "bg-red" },
 };
-const LEGEND: RowRole[] = ["account", "entry", "heading", "total", "unused", "error"];
+const LEGEND: RowRole[] = ["account", "heading", "total", "unused", "error"];
 
 const fmt = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString().slice(0, 10) : typeof v === "number" ? (Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", { maximumFractionDigits: 2 })) : String(v));
 
@@ -96,7 +96,7 @@ function Grid({ s, focus, onRow }: { s: RawSheetData; focus: number[] | null; on
             <div className="w-11 shrink-0" />
             {colW.map((w, c) => {
               const h = s.heads?.[c];
-              return <div key={c} style={{ width: w }} className={cn("shrink-0 truncate border-l border-line px-1.5 py-0.5 text-center", out.has(c) ? "bg-[repeating-linear-gradient(45deg,#f1f1ec,#f1f1ec_4px,#fff_4px,#fff_8px)] text-mute" : h ? "bg-brand-bg font-medium text-brand-d" : "")} title={out.has(c) ? "Left out" : h ? `Read as ${h}` : undefined}>
+              return <div key={c} style={{ width: w }} className={cn("shrink-0 truncate border-l border-line px-1.5 py-0.5 text-center", out.has(c) ? "bg-[repeating-linear-gradient(45deg,#f1f1ec,#f1f1ec_4px,#fff_4px,#fff_8px)] text-mute" : h ? "bg-brand-bg font-medium text-brand-d" : "")} title={out.has(c) ? "Skipped" : h ? `Read as ${h}` : undefined}>
                 {out.has(c) ? "left out" : h ? (/^\d{4}-\d{2}$/.test(h) ? mlabel(h) : h) : ""}
               </div>;
             })}

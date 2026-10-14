@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp } from "./helpers";
+import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp, startUpload } from "./helpers";
 
 requireLocalStack();
 
@@ -69,19 +69,16 @@ test("an Odoo ledger with an unexplained opening adjustment imports cleanly and 
   test.setTimeout(180_000);
   await signUp(page, { name: "Ledger Owner", org: "Ledger Advisory", email: newEmail("ledger") });
   const id = await createCompany(page, "Ledger Co");
-  await page.goto(`/company/${id}/settings/source-data`);
-  await page.waitForLoadState("networkidle");
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles(["general-ledger", "trial-balance", "profit-and-loss"].map((n) => fixture(`egypt-odoo-${n}.xlsx`)));
-    await expect(page.getByTestId("review")).toBeVisible({ timeout: 4000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(page.getByTestId("review")).toContainText("Balances");
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(["general-ledger", "trial-balance", "profit-and-loss"].map((n) => fixture(`egypt-odoo-${n}.xlsx`)));
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("balanced")).toContainText("Yes");
   await page.getByTestId("continue-timeline").click();
   await expect(page.getByTestId("timeline-step")).toBeVisible();
-  await expect(page.locator('[data-testid="check-list"] [data-severity="block"]')).toHaveCount(0);
+  await expect(page.getByTestId("all-new")).toBeVisible();
   await expect(page.getByTestId("accept-box")).toHaveCount(0);
   await page.getByTestId("commit-import").click();
-  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
   await page.goto(`/company/${id}/analysis/financials`);
   await page.getByTestId("period-picker").waitFor();
   // The ledger's revenue lines became sales, and they agree with the P&L.
@@ -99,15 +96,28 @@ test("an Odoo Invoice Analysis export becomes sales by customer and product", as
   test.setTimeout(120_000);
   await signUp(page, { name: "Sales Owner", org: "Sales Advisory", email: newEmail("sales") });
   const id = await createCompany(page, "Sales Co");
-  await page.goto(`/company/${id}/settings/source-data`);
-  await page.waitForLoadState("networkidle");
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
-    await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 4000 });
-  }).toPass({ timeout: 30_000 });
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+  await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 15_000 });
   await expect(page.getByTestId("sales-total")).toContainText("197,800");
   await expect(page.getByTestId("tax-warning")).toHaveCount(0);
+  await page.getByTestId("sales-next").click();
   await page.getByTestId("save-sales").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+
+  // The same file again: the months are already loaded, so it asks first.
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+  await page.getByTestId("sales-next").click();
+  await expect(page.getByTestId("duplicates")).toContainText("You already have");
+  await expect(page.getByTestId("save-sales")).toBeDisabled();
+  await page.getByTestId("mode-add").click();
+  await expect(page.getByTestId("save-sales")).toBeDisabled();
+  await expect(page.getByTestId("wiz-nav")).toContainText("Nothing new to save.");
+  await page.getByTestId("mode-merge").click();
+  await page.getByTestId("save-sales").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("done-see").click();
   await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
   await expect(page.getByTestId("tile-sales")).toContainText("93,800");
   await page.goto(`/company/${id}/sales/products?type=year&end=2026-02`);
@@ -151,12 +161,9 @@ test("PDF statements are read, checked, corrected and imported", async ({ page }
 
   await signUp(page, { name: "Pdf Owner", org: "Pdf Advisory", email: newEmail("pdf") });
   const id = await createCompany(page, "Pdf Co");
-  await page.goto(`/company/${id}/settings/source-data`);
-  await page.waitForLoadState("networkidle");
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles({ name: "statements.pdf", mimeType: "application/pdf", buffer: pdf });
-    await expect(page.getByTestId("pdf-review")).toBeVisible({ timeout: 8000 });
-  }).toPass({ timeout: 60_000 });
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles({ name: "statements.pdf", mimeType: "application/pdf", buffer: pdf });
+  await expect(page.getByTestId("pdf-review")).toBeVisible({ timeout: 30_000 });
   expect(asked.sort()).toEqual(["bs", "bs again", "pl", "pl again"]);
 
   // Left to check: total assets (cash misread) and the unclear share capital.
@@ -178,7 +185,7 @@ test("PDF statements are read, checked, corrected and imported", async ({ page }
     await page.getByTestId("accept-reason").fill("Annual audited statements read from PDF.");
   }
   await page.getByTestId("commit-import").click();
-  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
   // The year's revenue from the corrected reading, not the first misreading.
   await page.goto(`/company/${id}/analysis/financials?type=year&end=2025-12`);
   await expect(page.getByText(/12,000,000|12\.0M/).first()).toBeVisible();
@@ -198,31 +205,28 @@ test("filled templates import exactly, and mistakes are listed before anything i
   rowOf(pl, "Rent").getCell(5).value = "five thousand";
   const bad = Buffer.from(await fin.xlsx.writeBuffer());
 
-  await page.goto(`/company/${id}/settings/source-data?step=financials`);
-  await page.waitForLoadState("networkidle");
-  await expect(page.getByTestId("upload-step")).toContainText("monthly financials");
+  await startUpload(page, id, "accounts", "financials");
   // A mistake is shown on the sheet and named by row and column; nothing can be imported until it is fixed in the box.
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: bad });
-    await expect(page.getByTestId("error-count")).toHaveText("1 error to fix", { timeout: 4000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(page.getByTestId("issue-list")).toContainText('row 11, column E: "five thousand" is not a number');
+  await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: bad });
+  await expect(page.getByTestId("error-count")).toHaveText("1 problem to fix", { timeout: 15_000 });
+  await expect(page.getByTestId("issue-text")).toHaveText("Row 11, column E: must be a number.");
   await expect(page.getByTestId("raw-tab-P&L")).toContainText("1");
   await expect(page.getByTestId("continue-timeline")).toBeDisabled();
   await page.getByTestId("fix-input").fill("5000");
   await page.getByTestId("fix-apply").click();
-  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
-  await expect(page.getByTestId("review")).toContainText("Balances");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
+  await expect(page.getByTestId("balanced")).toContainText("Yes");
   await page.getByTestId("continue-timeline").click();
   await expect(page.getByTestId("timeline-step")).toBeVisible();
   await page.getByTestId("commit-import").click();
-  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("import-readiness")).toBeVisible();
+  await expect(page.getByTestId("ready-item-financials-opening")).toHaveAttribute("data-status", "done");
   // The correction is kept with the import.
+  await page.goto(`/company/${id}/settings/data-health`);
   const fixes = page.getByTestId("history-fixes").first();
   await fixes.locator("summary").click();
   await expect(fixes).toContainText("P&L, row 11, column E set to 5,000 (was 'five thousand')");
-  await expect(page.getByTestId("ready-item-financials-opening")).toHaveAttribute("data-status", "done");
   await page.goto(`/company/${id}/analysis/cashflow?type=month&end=2026-01`);
   await expect(page.getByTestId("tile-dcash")).toContainText("7,000");
 
@@ -232,20 +236,39 @@ test("filled templates import exactly, and mistakes are listed before anything i
   // The third line has no date: an error to fix (here, the row is left out) before the sales can be saved.
   [[new Date(Date.UTC(2026, 0, 15)), "INV/2026/0001", "Clinic A", "Concentrator", "Devices", "Sara", 2, 60000, 36000], [new Date(Date.UTC(2026, 0, 20)), "INV/2026/0002", "Clinic B", "Mask", "Consumables", "Omar", 100, 40000, 24000], [null, "INV/2026/0003", "Clinic C", "Mask", "Consumables", "Omar", 1, 999, 500]]
     .forEach((r, i) => r.forEach((v, j) => { ws.getRow(5 + i).getCell(j + 1).value = v; }));
-  await page.goto(`/company/${id}/settings/source-data?step=sales`);
-  await page.waitForLoadState("networkidle");
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles({ name: "sales.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await sales.xlsx.writeBuffer()) });
-    await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 4000 });
-  }).toPass({ timeout: 30_000 });
-  await expect(page.getByTestId("error-count")).toHaveText("1 error to fix");
-  await expect(page.getByTestId("issue-list")).toContainText("row 7, column A: no invoice date on this line");
-  await expect(page.getByTestId("save-sales")).toBeDisabled();
+  await startUpload(page, id, "sales", "sales");
+  await page.getByTestId("file-input").setInputFiles({ name: "sales.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await sales.xlsx.writeBuffer()) });
+  await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("error-count")).toHaveText("1 problem to fix");
+  await expect(page.getByTestId("issue-text")).toHaveText("Row 7: needs a date.");
+  await expect(page.getByTestId("sales-next")).toBeDisabled();
   await page.getByTestId("fix-skip").click();
-  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
+  await expect(page.getByTestId("error-count")).toHaveText("All good");
   await expect(page.getByTestId("sorted-sales-total")).toContainText("100,000");
+  await page.getByTestId("sales-next").click();
   await page.getByTestId("save-sales").click();
-  await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
   await page.goto(`/company/${id}/settings/data-setup`);
   await expect(page.getByTestId("ready-item-sales-reconciled")).toHaveAttribute("data-status", "done");
+});
+
+/** Monthly uploads: months already loaded are named, and the person chooses to add only new months or replace them. */
+test("re-uploading loaded months asks: add only new months, or replace them", async ({ page }) => {
+  test.setTimeout(150_000);
+  await signUp(page, { name: "Dup Owner", org: "Dup Advisory", email: newEmail("dup") });
+  const id = await createCompany(page, "Dup Co");
+  await importFiles(page, id, ["odoo-pl-bs.xlsx"]);
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("duplicates")).toContainText("You already have");
+  await expect(page.getByTestId("duplicates")).toContainText("same numbers");
+  // Same figures: "Add only new months" is chosen for you, and there is nothing new.
+  await expect(page.getByTestId("mode-add")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("commit-import")).toBeDisabled();
+  await expect(page.getByTestId("wiz-nav")).toContainText("Nothing new to add.");
+  await page.getByTestId("mode-merge").click();
+  await expect(page.getByTestId("commit-import")).toBeEnabled();
+  await page.getByTestId("commit-import").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
 });

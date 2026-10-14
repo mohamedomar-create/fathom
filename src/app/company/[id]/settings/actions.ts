@@ -5,7 +5,7 @@ import type { ClassKey } from "@/lib/engine";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { ALL_CLASSES } from "@/lib/company/build";
 import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
-import { planImport, unresolved, type MonthDiff, type TimelineCell } from "@/lib/company/import-plan";
+import { planImport, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/load";
@@ -25,7 +25,7 @@ const CheckSchema = z.object({
 });
 const PlanSchema = z.object({
   companyId: z.string().uuid(),
-  mode: z.enum(["merge", "replace"]),
+  mode: z.enum(["merge", "add", "replace"]),
   slices: z.object({ PL: z.array(Period).max(600), BS: z.array(Period).max(600) }),
   accounts: z.array(z.object({
     code: z.string().max(40), name: z.string().min(1).max(300), cls: ClassEnum,
@@ -57,7 +57,7 @@ const ImportSchema = PlanSchema.extend({
 });
 
 export interface AcceptedItem { key: string; title: string; period?: string; reason: string; by: string; at: string }
-export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean }
+export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[] }
 type Plan = z.output<typeof PlanSchema>;
 
 /** Current data version, its accepted issues and notes, then the merged plan for this upload. */
@@ -82,7 +82,7 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   try {
     const { plan, prevAccepted, hasData } = await buildPlan(supabase, v.data);
     const ok = new Set(prevAccepted.map((a) => a.key));
-    return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData } };
+    return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData, overlap: plan.overlap } };
   } catch (e) {
     return { ok: false, error: safeError(e, "previewImport") };
   }
@@ -114,9 +114,10 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
       else if (newKeys.has(key) && d.accept) accepted.push({ key, title: c.title, period: c.period, reason: d.accept.reason, by: user.email ?? user.id, at: now });
     }
     const fileNotes = [...d.report.flips, ...d.report.notes];
-    const allNotes = d.mode === "merge" ? [...new Set([...notes, ...fileNotes])].slice(-30) : fileNotes;
+    const allNotes = d.mode !== "replace" ? [...new Set([...notes, ...fileNotes])].slice(-30) : fileNotes;
     const wrote = (st: "PL" | "BS") => plan.timeline.filter((t) => t[st] === "new" || t[st] === "overwrite").map((t) => t.period);
     const touched = { PL: wrote("PL"), BS: wrote("BS") };
+    if (d.mode === "add" && !touched.PL.length && !touched.BS.length) return { ok: false, error: "Nothing new to add: every month in this file is already loaded." };
     const { version } = await saveCompanyData(supabase, d.companyId, plan.accounts, {
       kind: "upload", filename: d.filename,
       report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,

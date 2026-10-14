@@ -155,3 +155,40 @@ describe("planImport", () => {
     expect(unresolved(plan2.checks, block.map(checkKey))).toEqual([]);
   });
 });
+
+describe("uploading months that are already loaded", () => {
+  const asIncoming = (vs: VersionAccount[]) => vs.map((a) => inc(a.code, a.name, a.cls, { ...a.amounts }));
+  const slices = (ps: string[]) => ({ PL: ps, BS: ps });
+
+  it("names each month already loaded, and says when the file has the same figures", () => {
+    const current = books(["2025-01", "2025-02", "2025-03"]);
+    const file = asIncoming(books(["2025-01", "2025-02", "2025-03", "2025-04", "2025-05"]));
+    file[0].amounts["2025-03"] = 600; // March sales differ
+    const plan = planImport(current, file, { mode: "merge", slices: slices(["2025-01", "2025-02", "2025-03", "2025-04", "2025-05"]) });
+    const pl = plan.overlap.filter((o) => o.statement === "PL").map((o) => [o.period, o.same]);
+    expect(pl).toEqual([["2025-01", true], ["2025-02", true], ["2025-03", false]]);
+  });
+
+  it("'add only new months' keeps the loaded months exactly and adds the rest", () => {
+    const current = books(["2025-01", "2025-02", "2025-03"]);
+    const file = asIncoming(books(["2025-01", "2025-02", "2025-03", "2025-04", "2025-05"]));
+    file[0].amounts["2025-03"] = 600;
+    const plan = planImport(current, file, { mode: "add", slices: slices(["2025-01", "2025-02", "2025-03", "2025-04", "2025-05"]) });
+    const sales = plan.accounts.find((a) => a.name === "Sales")!;
+    expect(sales.amounts["2025-03"]).toBe(500); // kept, not the file's 600
+    expect(sales.amounts["2025-05"]).toBe(500); // added
+    expect(sales.sources?.["2025-03"]).toBe("imp-1");
+    expect(plan.timeline.map((t) => [t.period, t.PL])).toEqual([["2025-01", "keep"], ["2025-02", "keep"], ["2025-03", "keep"], ["2025-04", "new"], ["2025-05", "new"]]);
+    expect(plan.overlap.length).toBeGreaterThan(0);
+    // "Replace those months" uses the file's figures instead.
+    const merged = planImport(current, file, { mode: "merge", slices: slices(["2025-01", "2025-02", "2025-03", "2025-04", "2025-05"]) });
+    expect(merged.accounts.find((a) => a.name === "Sales")!.amounts["2025-03"]).toBe(600);
+  });
+
+  it("a file with only loaded months adds nothing in 'add' mode", () => {
+    const current = books(["2025-01", "2025-02"]);
+    const plan = planImport(current, asIncoming(books(["2025-01", "2025-02"])), { mode: "add", slices: slices(["2025-01", "2025-02"]) });
+    expect(plan.timeline.every((t) => t.PL === "keep" && t.BS === "keep")).toBe(true);
+    expect(plan.overlap.every((o) => o.same)).toBe(true);
+  });
+});

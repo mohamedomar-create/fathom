@@ -56,18 +56,25 @@ export async function createCompany(page: Page, name: string) {
   return page.url().match(/\/company\/([0-9a-f-]{36})\//)![1];
 }
 
+/** Opens the upload, step by step, up to the drop box: what (accounts or sales) → get file → upload. */
+export async function startUpload(page: Page, companyId: string, kind: "accounts" | "sales" = "accounts", step?: "financials" | "sales") {
+  await page.goto(`/company/${companyId}/settings/source-data${step ? `?step=${step}` : ""}`);
+  await page.waitForLoadState("networkidle");
+  // A click before the page has hydrated is lost: try again until the next screen shows.
+  await expect(async () => {
+    if (await page.getByTestId(`pick-${kind}`).isVisible()) await page.getByTestId(`pick-${kind}`).click({ timeout: 2000 });
+    if (await page.getByTestId("get-odoo").isVisible()) await page.getByTestId("wiz-next").click({ timeout: 2000 });
+    await expect(page.getByTestId("dropzone")).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 30_000 });
+}
+
 /** Uploads files on the source-data page and saves the import. */
 export async function importFiles(page: Page, companyId: string, files: string[]) {
-  await page.goto(`/company/${companyId}/settings/source-data`);
-  await page.waitForLoadState("networkidle");
-  // A file picked before the page has hydrated is lost (no change handler yet): pick it again until it is read.
-  await expect(async () => {
-    await page.getByTestId("file-input").setInputFiles(files.map(fixture));
-    await expect(page.getByTestId("review")).toBeVisible({ timeout: 4000 });
-  }).toPass({ timeout: 30_000 });
+  await startUpload(page, companyId);
+  await page.getByTestId("file-input").setInputFiles(files.map(fixture));
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("continue-timeline").click();
   await expect(page.getByTestId("timeline-step")).toBeVisible();
   await page.getByTestId("commit-import").click();
-  await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
-  await expect(page.getByTestId("import-done")).toBeVisible();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
 }
