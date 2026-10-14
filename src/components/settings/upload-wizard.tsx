@@ -23,17 +23,24 @@ import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
 import { isPL } from "@/lib/company/build";
-import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
+import { salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
-import { expensePeriods, expensesFromLedger, readExpenseGrid, type ExpenseOverride } from "@/lib/ingest/expenses";
+import { expensePeriods, expensesFromLedger, type ExpenseOverride } from "@/lib/ingest/expenses";
 import { saveExpenses } from "@/lib/company/save-expenses";
 import { clearLedgerLines } from "@/app/company/[id]/settings/ledger-actions";
 import { EXPENSE_FIELD_LABEL, ExpensesPreview, readExpenses } from "./expenses-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
 import { TemplateButton } from "@/components/setup/readiness-view";
+import { guessRoles, IMPORTED, needsConfirm, type RoleGuess, type SheetRole } from "@/lib/ingest/roles";
+import { readCashBook, type CashLayout, type CashOverride } from "@/lib/ingest/cashbook";
+import { readBankStatement, type BankLayout, type BankOverride } from "@/lib/ingest/bank";
+import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
+import { SheetRoles } from "@/components/upload/sheet-roles";
+import type { SalesLine } from "@/lib/ingest/sales";
+import type { ExpenseLine } from "@/lib/ingest/expenses";
 
 type Kind = "accounts" | "sales" | "expenses";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses" };
@@ -55,7 +62,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [expMode, setExpMode] = useState<"add" | "replace" | null>(null);
   const [done, setDone] = useState<{ what: string } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
-  const [grids, setGrids] = useState<Grid[] | null>(null);
+  // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
+  const [allGrids, setAllGrids] = useState<Grid[] | null>(null);
+  const [guesses, setGuesses] = useState<RoleGuess[]>([]);
+  const [roles, setRoles] = useState<Record<string, SheetRole>>({});
+  const [rolesOk, setRolesOk] = useState(false);
+  const roleOf = useCallback((sheet: string): SheetRole => roles[sheet] ?? guesses.find((x) => x.sheet === sheet)?.role ?? "summary", [roles, guesses]);
+  const sheetsAs = useCallback((r: SheetRole) => { const gs = (allGrids ?? []).filter((g) => roleOf(g.name) === r); return gs.length ? gs : null; }, [allGrids, roleOf]);
+  const grids = useMemo(() => sheetsAs("statement"), [sheetsAs]);
   const [overrides, setOverrides] = useState<Overrides>({});
   const [diag, setDiag] = useState<Diagnostic | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,13 +84,23 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [reason, setReason] = useState("");
   const input = useRef<HTMLInputElement>(null);
   // Sales exports (invoice lines or a pivot) uploaded alongside, or instead of, the accounting files.
-  const [salesGrids, setSalesGrids] = useState<Grid[] | null>(null);
+  const salesGrids = useMemo(() => sheetsAs("sales"), [sheetsAs]);
   const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
   const salesRead = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
   // Purchases (vendor bills, the expenses template) uploaded alongside, or instead of, the accounting files.
-  const [expGrids, setExpGrids] = useState<Grid[] | null>(null);
+  const expGrids = useMemo(() => sheetsAs("bills"), [sheetsAs]);
   const [expOv, setExpOv] = useState<Record<string, ExpenseOverride>>({});
   const expRead = useMemo(() => (expGrids ? readExpenses(expGrids, expOv) : null), [expGrids, expOv]);
+  // Cash books and bank statements give both: money out (expenses) and money in (sales).
+  const [cashOv, setCashOv] = useState<Record<string, CashOverride>>({});
+  const [bankOv, setBankOv] = useState<Record<string, BankOverride>>({});
+  const cashRead = useMemo(() => readBooks<CashOverride, CashLayout>(sheetsAs("cashbook"), cashOv, readCashBook), [sheetsAs, cashOv]);
+  const bankRead = useMemo(() => readBooks<BankOverride, BankLayout>(sheetsAs("bank"), bankOv, readBankStatement), [sheetsAs, bankOv]);
+  const allSales = useMemo(() => [...(salesRead?.lines ?? []), ...cashRead.sales, ...bankRead.sales], [salesRead, cashRead, bankRead]);
+  const allExp = useMemo(() => [...(expRead?.lines ?? []), ...cashRead.expenses, ...bankRead.expenses], [expRead, cashRead, bankRead]);
+  const hasBooks = cashRead.layouts.length + bankRead.layouts.length > 0;
+  const rolesNeed = !!allGrids && needsConfirm(guesses, roles);
+  const rolesBlock = rolesNeed && !rolesOk;
   // PDFs and scanned images are read page by page and checked by the person before joining the spreadsheets.
   const [pdfJob, setPdfJob] = useState<{ files: File[]; sheets: Grid[] } | null>(null);
   const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null);
@@ -84,27 +108,22 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [focus, setFocus] = useState<Focus | null>(null);
   const [picked, setPicked] = useState<SortedViewProps["picked"]>(null);
 
-  /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
-  const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
-    // iReport templates' mistakes are shown on the sheet and fixed in the box beside it, like any other file's.
-    const expenses = grids.filter((g) => readExpenseGrid(g));
-    const sales = grids.filter((g) => !expenses.includes(g) && readSalesGrid(g));
-    const accounting = grids.filter((g) => !sales.includes(g) && !expenses.includes(g));
-    if (sales.length) setSalesGrids(sales);
-    if (expenses.length) setExpGrids(expenses);
-    if (!accounting.length) { setGrids(null); setScreen("check"); return; }
-    const { raw: lines, issues } = extractAll(accounting);
-    setDiag(diagnostic(fs, accounting, issues));
-    const broken = issues.layouts.some((l) => l.cellErrors?.length);
-    // A sales or expenses file's other sheets (help text, notes) hold no figures: the lines alone are read.
-    if (!lines.length && !broken && (sales.length || expenses.length)) { setGrids(null); setScreen("check"); return; }
-    if (!lines.length && !broken) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-    setOverrides({}); setGrids(accounting); setFocus(null); setPicked(null); setScreen("check");
+  /**
+   * Sheets from the files (spreadsheets, or tables read from PDF pages): iReport decides what each one is (accounts, a
+   * sales or bills list, a cash book, a bank statement, a price list, a summary) and the person can change it.
+   */
+  const takeSheets = useCallback((fs: File[], gs: Grid[]) => {
+    const gu = guessRoles(gs);
+    setAllGrids(gs); setGuesses(gu); setRoles({}); setRolesOk(false);
+    setOverrides({}); setSalesOv({}); setExpOv({}); setCashOv({}); setBankOv({});
+    const acc = gs.filter((g) => gu.find((x) => x.sheet === g.name)?.role === "statement");
+    setDiag(diagnostic(fs, gs, acc.length ? extractAll(acc).issues : { warnings: [], skippedCols: [] }));
+    setFocus(null); setPicked(null); setScreen("check");
   }, []);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setSalesGrids(null); setSalesOv({}); setExpGrids(null); setExpOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null); setExpMode(null);
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setAllGrids(null); setSalesOv({}); setExpOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null); setExpMode(null);
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -117,18 +136,18 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         catch { throw new Error(`${sheets.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
       }
       setPdfSummary(null);
-      if (pdfs.length) { setGrids(null); setPdfJob({ files: pdfs, sheets: grids }); return; }
+      if (pdfs.length) { setAllGrids(null); setPdfJob({ files: pdfs, sheets: grids }); return; }
       takeSheets(fs, grids);
     } catch (e) {
       console.error("upload read failed", e);
-      setErr((e as Error).message || "The file could not be read."); setGrids(null);
+      setErr((e as Error).message || "The file could not be read."); setAllGrids(null);
     } finally { setBusy(false); }
   }, [demo, takeSheets]);
   function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
     setPdfJob(null); setPdfSummary(summary); setErr(null);
     try { takeSheets(files, [...(job?.sheets ?? []), ...pdfGrids]); }
-    catch (e) { setErr((e as Error).message || "The figures could not be read."); setGrids(null); }
+    catch (e) { setErr((e as Error).message || "The figures could not be read."); setAllGrids(null); }
   }
 
   // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
@@ -154,14 +173,20 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [downloading, setDownloading] = useState(false);
   const [showFile, setShowFile] = useState(0);
   const sorted = useMemo(() => (res ? sortedFinancials(res, raw) : null), [res, raw]);
-  const issues = useMemo(() => [...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : [])], [res, fileChecks, salesRead, expRead]);
+  const issues = useMemo(() => [
+    ...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : []),
+    ...bookIssues([...cashRead.layouts, ...bankRead.layouts]),
+    ...[...cashRead.failed.map((n) => ({ n, what: "a cash book" })), ...bankRead.failed.map((n) => ({ n, what: "a bank statement" }))].map(({ n, what }) => ({ id: `role:${n}`, severity: "check" as const, sheet: n, message: `${n.split(" › ").pop()} could not be read as ${what}. Change what it is under "Your sheets".`, fix: "settings" as const })),
+    ...sheetIssues(guesses, (sh) => IMPORTED.has(roleOf(sh))),
+  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
-  const isSalesSheet = (sheet: string) => !!salesGrids?.some((g) => g.name === sheet);
-  const isExpenseSheet = (sheet: string) => !!expGrids?.some((g) => g.name === sheet);
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
-    if (isSalesSheet(sheet)) setSalesOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
-    else if (isExpenseSheet(sheet)) setExpOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    const r = roleOf(sheet);
+    if (r === "sales") setSalesOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    else if (r === "bills") setExpOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    else if (r === "cashbook") setCashOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    else if (r === "bank") setBankOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
     else setOverrides((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
   };
   const onCell = (sheet: string, row: number, col: number, value: number | string | null) => fixAt(sheet, (o) => ({ cells: { ...o.cells, [`${row}:${col}`]: value } }));
@@ -184,6 +209,27 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       for (const c of l.columns) { if (c.period) heads[c.col] = c.period; else if (c.field) heads[c.col] = FIELD_LABEL[c.field]; }
       out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
     }
+    for (const l of cashRead.layouts) {
+      const g = allGrids?.find((x) => x.name === l.sheet);
+      if (!g) continue;
+      const heads: Record<number, string> = {};
+      for (const b of l.blocks) {
+        heads[b.label] = b.dir === "out" ? "Paid for" : "From";
+        if (b.date !== null) heads[b.date] = "Date";
+        if (b.vat !== null) heads[b.vat] = "VAT";
+        for (const a of b.amounts) heads[a.col] = b.dir === "out" ? `Out: ${a.header}` : "In: amount";
+      }
+      out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
+    }
+    for (const l of bankRead.layouts) {
+      const g = allGrids?.find((x) => x.name === l.sheet);
+      if (!g) continue;
+      const c = l.cols, heads: Record<number, string> = { [c.date]: "Date", [c.desc]: "Description", [c.balance]: "Balance" };
+      if (c.debit !== null) heads[c.debit] = "Money out";
+      if (c.credit !== null) heads[c.credit] = "Money in";
+      if (c.amount !== null) heads[c.amount] = "Amount";
+      out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
+    }
     for (const l of expRead?.layouts ?? []) {
       const g = expGrids?.find((x) => x.name === l.sheet);
       if (!g) continue;
@@ -192,7 +238,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
     }
     return out;
-  }, [res, grids, salesRead, salesGrids, expRead, expGrids]);
+  }, [res, grids, salesRead, salesGrids, expRead, expGrids, cashRead, bankRead, allGrids]);
   /** A row clicked on the left: the line it became on the right, or why it was not used. */
   const onRow = (sheet: string, row: number) => {
     const s = rawSheets.find((x) => x.name === sheet);
@@ -208,6 +254,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     ...Object.entries(overrides).flatMap(([sheet, o]) => fixRecords(sheet, grids?.find((g) => g.name === sheet)?.rows ?? [], o)),
     ...Object.entries(salesOv).flatMap(([sheet, o]) => fixRecords(sheet, salesGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
     ...Object.entries(expOv).flatMap(([sheet, o]) => fixRecords(sheet, expGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
+    ...Object.entries({ ...cashOv, ...bankOv }).flatMap(([sheet, o]) => fixRecords(sheet, allGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
   ].slice(0, 500);
   /** The sorted reading as iReport's own template: the financials as a filled workbook, sales lines as the sales template (CSV). */
   async function download() {
@@ -219,8 +266,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         if (!r.ok) throw new Error("The template could not be prepared.");
         save(await r.blob(), "ireport-financials-filled.xlsx");
       }
-      if (salesRead?.lines.length) save(new Blob([salesCsv(salesRead.lines, currency)], { type: "text/csv;charset=utf-8" }), "ireport-sales-filled.csv");
-      if (expRead?.lines.length) save(new Blob([expensesCsv(expRead.lines, currency)], { type: "text/csv;charset=utf-8" }), "ireport-expenses-filled.csv");
+      if (allSales.length) save(new Blob([salesCsv(allSales, currency)], { type: "text/csv;charset=utf-8" }), "ireport-sales-filled.csv");
+      if (allExp.length) save(new Blob([expensesCsv(allExp, currency)], { type: "text/csv;charset=utf-8" }), "ireport-expenses-filled.csv");
     } catch (e) { setErr((e as Error).message); } finally { setDownloading(false); }
   }
   const box = (
@@ -228,7 +275,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       leftSub={`${rawSheets.length} sheet${rawSheets.length === 1 ? "" : "s"} · click a row to see what it became`}
       rightTone={errorCount ? "bad" : "ok"} showFile={showFile}
       left={<RawSheets sheets={rawSheets} focus={focus} onRow={onRow} />}
-      right={<SortedView fin={sorted} sales={salesRead?.lines ?? null} expenses={expRead?.lines ?? null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
+      right={<SortedView fin={sorted} sales={allSales.length || salesRead ? allSales : null} expenses={allExp.length || expRead ? allExp : null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
         picked={picked} onFocus={(f, o) => { setFocus(f); if (f && !o?.stay) setShowFile((n) => n + 1); }} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} onDownload={download} downloading={downloading} />}
     />
   );
@@ -291,7 +338,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         }
         const loadedSales = new Set(salesLoaded);
         const ledger = salesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
-        const fileSales = (salesRead?.lines ?? []).filter((l) => mode !== "add" || !loadedSales.has(l.period));
+        const fileSales = allSales.filter((l) => mode !== "add" || !loadedSales.has(l.period));
         for (const [source, ls] of [["ledger", ledger], ["file", fileSales]] as const) {
           const saved = await saveSales(companyId, source, [...ls], filename);
           if (!saved.ok) { setErr(`The figures were saved, but the sales could not be: ${saved.error}`); return; }
@@ -299,7 +346,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         // The ledger's cost lines become expense lines (who was paid, for what); a purchases file is saved too.
         const loadedExp = new Set(expensesLoaded);
         const ledgerExp = expensesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
-        const fileExp = (expRead?.lines ?? []).filter((l) => mode !== "add" || !loadedExp.has(l.period));
+        const fileExp = allExp.filter((l) => mode !== "add" || !loadedExp.has(l.period));
         for (const [source, ls] of [["ledger", ledgerExp], ["file", fileExp]] as const) {
           const saved = await saveExpenses(companyId, source, [...ls], filename);
           if (!saved.ok) { setErr(`The figures were saved, but the expense lines could not be: ${saved.error}`); return; }
@@ -321,13 +368,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const allSame = overlap.length > 0 && overlap.every((o) => o.same);
   const newMonths = res ? [...new Set([...res.slices.PL.filter((p) => !overlap.some((o) => o.statement === "PL" && o.period === p)), ...res.slices.BS.filter((p) => !overlap.some((o) => o.statement === "BS" && o.period === p))])].sort() : [];
   const choose = (m: ImportMode) => { setMode(m); setModeChosen(true); runPreview(m); };
-  const salesOverlap = salesRead ? salesPeriods(salesRead.lines).filter((p) => salesLoaded.includes(p)) : [];
-  const salesToSave = (salesRead?.lines ?? []).filter((l) => salesMode !== "add" || !salesLoaded.includes(l.period));
-  const expOverlap = expRead ? expensePeriods(expRead.lines).filter((p) => expensesLoaded.includes(p)) : [];
-  const expToSave = (expRead?.lines ?? []).filter((l) => expMode !== "add" || !expensesLoaded.includes(l.period));
-  const reset = (k: Kind | null) => { setGrids(null); setSalesGrids(null); setExpGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
+  const salesOverlap = salesPeriods(allSales).filter((p) => salesLoaded.includes(p));
+  const salesToSave = allSales.filter((l) => salesMode !== "add" || !salesLoaded.includes(l.period));
+  const expOverlap = expensePeriods(allExp).filter((p) => expensesLoaded.includes(p));
+  const expToSave = allExp.filter((l) => expMode !== "add" || !expensesLoaded.includes(l.period));
+  const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
-  const found: Record<Kind, boolean> = { accounts: !!res, sales: !!salesRead?.lines.length, expenses: !!expRead?.lines.length };
+  const found: Record<Kind, boolean> = { accounts: !!res, sales: allSales.length > 0, expenses: allExp.length > 0 };
   const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses"] as Kind[]).find((k) => found[k]) ?? null : null;
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
@@ -385,7 +432,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   }
 
   // 3 · Upload
-  if (screen === "upload" || (!res && !salesRead && !expRead && screen !== "done")) {
+  if (screen === "upload" || (!allGrids && screen !== "done")) {
     return (
       <div data-testid="wiz-upload">
         <WizardSteps at="upload" />
@@ -441,7 +488,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
       <FileSpreadsheet className="h-4 w-4 text-brand-d" />
       <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-      <button onClick={() => { setGrids(null); setSalesGrids(null); setExpGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
+      <button onClick={() => { setAllGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
     </div>
   );
   const more = (children: React.ReactNode) => (
@@ -450,6 +497,94 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div className="space-y-4 border-t border-line px-4 py-3">{children}</div>
     </details>
   );
+
+  // What each sheet gives, in a few words, beside iReport's guess of what it is.
+  const gives: Record<string, string> = {};
+  for (const g of guesses) {
+    const r = roleOf(g.sheet);
+    const lines = (n: number, w: string) => `${n.toLocaleString("en-US")} ${w}${n === 1 ? "" : "s"}`;
+    if (r === "statement") { const l = res?.layouts.find((x) => x.sheet === g.sheet); gives[g.sheet] = l ? (l.lines ? lines(l.lines, "account line") : "Nothing read from it: see the notes below.") : ""; }
+    else if (r === "sales") { const l = salesRead?.layouts.find((x) => x.sheet === g.sheet); gives[g.sheet] = l ? `${lines(l.lines, "sales line")}, ${money(l.total, currency)}` : "Could not be read as a sales list."; }
+    else if (r === "bills") { const l = expRead?.layouts.find((x) => x.sheet === g.sheet); gives[g.sheet] = l ? `${lines(l.lines, "expense line")}, ${money(l.total, currency)}` : "Could not be read as a bills list."; }
+    else if (r === "cashbook") {
+      const l = cashRead.layouts.find((x) => x.sheet === g.sheet);
+      const direct = l?.controls.filter((c) => !c.derived) ?? [], bad = direct.filter((c) => !c.ok).length;
+      gives[g.sheet] = l ? `Money out: ${lines(l.out.lines, "cost")}, ${money(l.out.total, currency)} · money in: ${lines(l.in.lines, "sale")}, ${money(l.in.total, currency)}${l.salesOn ? "" : " (not counted)"}${direct.length ? ` · ${bad ? `${bad} of your ${direct.length} totals do not match` : `all ${direct.length} of your totals match ✓`}` : ""}` : "Could not be read as a cash book.";
+    } else if (r === "bank") {
+      const l = bankRead.layouts.find((x) => x.sheet === g.sheet);
+      gives[g.sheet] = l ? `${lines(l.moneyOut.lines, "payment")} ${money(l.moneyOut.total, currency)} · ${lines(l.moneyIn.lines, "receipt")} ${money(l.moneyIn.total, currency)} · balance follows on ${l.balanced} line${l.balanced === 1 ? "" : "s"}` : "Could not be read as a bank statement.";
+    } else gives[g.sheet] = r === "notes" ? "No figures: left out." : "Left out on purpose: not entries.";
+  }
+  const rolesPanel = allGrids && (allGrids.length > 1 || rolesNeed) ? (
+    <SheetRoles guesses={guesses} roles={roles} gives={gives} need={rolesNeed} confirmed={rolesOk}
+      onRole={(sheet, r) => { setRoles((o) => ({ ...o, [sheet]: r })); setRolesOk(false); setPreview(null); }}
+      onConfirm={() => setRolesOk(true)}
+      bank={Object.fromEntries(Object.entries(bankOv).map(([k, o]) => [k, { out: !!o.outAsExpenses, in: !!o.inAsSales }]))}
+      onBank={(sheet, k, on) => setBankOv((o) => ({ ...o, [sheet]: { ...o[sheet], [k === "out" ? "outAsExpenses" : "inAsSales"]: on } }))}
+      cashSales={Object.fromEntries(Object.entries(cashOv).map(([k, o]) => [k, !o.salesOff]))}
+      onCashSales={(sheet, on) => setCashOv((o) => ({ ...o, [sheet]: { ...o[sheet], salesOff: !on } }))} />
+  ) : null;
+  const rolesHint = rolesBlock ? "Confirm what each sheet is (above) first." : undefined;
+
+  // 4 · Check (money in and out: cash books, bank statements, or a sales list with a bills list)
+  if (!res && (hasBooks || (salesRead && expRead))) {
+    const months = [...new Set([...salesPeriods(allSales), ...expensePeriods(allExp)])].sort();
+    const overlapB = [...new Set([...salesOverlap, ...expOverlap])].sort();
+    const toSave = salesToSave.length + expToSave.length;
+    if (screen === "save") {
+      return (
+        <div data-testid="books-save">
+          <WizardSteps at="save" />
+          <WizardTitle title="Save your money in and out" hint={`${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines${months.length ? `, ${monthsText(months)}` : ""}.`} />
+          {overlapB.length > 0 ? (
+            <Duplicates months={overlapB} same={false} newMonths={months.filter((p) => !salesLoaded.includes(p) && !expensesLoaded.includes(p))} chosen={expMode === null ? null : expMode === "add" ? "add" : "merge"}
+              onAdd={() => { setExpMode("add"); setSalesMode("add"); }} onReplace={() => { setExpMode("replace"); setSalesMode("replace"); }} />
+          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+          <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save"} nextTestId="save-books"
+            disabled={saving || !toSave || (overlapB.length > 0 && expMode === null)}
+            hint={overlapB.length > 0 && expMode === null ? "Choose one first." : !toSave ? "Nothing new to save." : undefined}
+            onNext={() => start(async () => {
+              setErr(null);
+              const name = files.map((f) => f.name).join(" + ");
+              const report = {
+                roles: Object.fromEntries(guesses.map((g) => [g.sheet, roleOf(g.sheet)])),
+                books: [
+                  ...cashRead.layouts.map((l) => ({ sheet: l.sheet, kind: "cashbook", out: l.out, in: l.in, salesOn: l.salesOn, totals: l.controls.filter((c) => !c.derived).length })),
+                  ...bankRead.layouts.map((l) => ({ sheet: l.sheet, kind: "bank", moneyOut: l.moneyOut, moneyIn: l.moneyIn, balanced: l.balanced, outAsExpenses: l.outAsExpenses, inAsSales: l.inAsSales })),
+                ],
+                fixes: fixes(),
+              };
+              const e = await saveExpenses(companyId, "file", expToSave, name, { ...report, mode: expMode ?? "new" });
+              if (!e.ok) { setErr(e.error); return; }
+              const sv = await saveSales(companyId, "file", salesToSave, name, { ...report, mode: salesMode ?? "new" });
+              if (!sv.ok) { setErr(`The expenses were saved, but the sales could not be: ${sv.error}`); return; }
+              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines saved` }); setScreen("done"); router.refresh();
+            })} />
+        </div>
+      );
+    }
+    return (
+      <div data-testid="books-only">
+        <WizardSteps at="check" />
+        <WizardTitle title="Check your money in and out" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : rolesBlock ? "Check what each sheet is, then confirm." : "All good. Look, then press Next."} />
+        {fileLine}
+        {rolesPanel}
+        <div className="mb-4 grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4" data-testid="books-preview">
+          <Stat label="Months" value={String(months.length)} sub={months.length ? monthsText(months) : ""} />
+          <Stat label="Money out (costs)" value={money(allExp.reduce((a, l) => a + l.amount, 0), currency)} testId="books-out" />
+          <Stat label="Money in (sales)" value={money(allSales.reduce((a, l) => a + l.amount, 0), currency)} testId="books-in" />
+          <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="books-problems" />
+        </div>
+        {box}
+        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {demo
+          ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { const o = overlapB.length > 0; setExpMode(o ? null : "replace"); setSalesMode(o ? null : "replace"); setScreen("save"); }}
+              disabled={errorCount > 0 || !(allSales.length + allExp.length) || rolesBlock} nextTestId="books-next" hint={errorCount ? "Fix the problems first." : rolesHint ?? (!(allSales.length + allExp.length) ? "Nothing to save from these sheets." : undefined)} />}
+      </div>
+    );
+  }
 
   // 4 · Check (expenses only)
   if (!res && expRead && !salesRead) {
@@ -483,6 +618,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         <WizardTitle title="Check your expenses" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
+        {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="expenses-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
           <Stat label="Total costs" value={money(total, currency)} testId="expenses-total" />
@@ -493,7 +629,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : undefined} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }
@@ -530,6 +666,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         <WizardTitle title="Check your sales" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
+        {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="sales-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
           <Stat label="Total sales" value={money(total, currency)} testId="sales-total" />
@@ -540,11 +677,29 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : undefined} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }
-  if (!res) return null;
+  // Nothing in these sheets can be saved as they are: say why, sheet by sheet, and let the person change what they are.
+  if (!res) {
+    return (
+      <div data-testid="nothing-to-save">
+        <WizardSteps at="check" />
+        <WizardTitle title="Nothing to save yet" hint="No sheet here has entries to save. See why, or change what a sheet is." />
+        {fileLine}
+        {rolesPanel ?? <p className="mb-4 text-[15px]">{guesses[0]?.why}</p>}
+        {(ingestErr || issues.length > 0) && (
+          <div className="max-w-5xl space-y-1.5 text-[13px]">
+            {ingestErr && <div className="rounded bg-red-bg px-3 py-2 text-red">{ingestErr}</div>}
+            {issues.slice(0, 12).map((i) => <div key={i.id} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{i.message}</div>)}
+          </div>
+        )}
+        <p className="mt-4 max-w-3xl text-[14px] text-mute">Files that work: a General Ledger, Trial Balance or P&amp;L export; a sales or bills list; a cash book; a bank statement; or our templates.</p>
+        <WizardNav onBack={() => setScreen("upload")} />
+      </div>
+    );
+  }
 
   // 5 · Save (accounts)
   if (screen === "save" && preview) {
@@ -591,6 +746,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <WizardTitle title="Check your data" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
       {wrong}
       {fileLine}
+      {rolesPanel}
       <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3">
         <Stat label="Months" value={String(res.periods.length)} sub={res.periods.length ? monthsText(res.periods) : ""} />
         <Stat label="Balanced?" value={maxImb < 1 ? "Yes ✓" : "No"} sub={maxImb < 1 ? undefined : `out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} testId="balanced" />
@@ -610,10 +766,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
             </select></label>
           <label className="flex items-center gap-2"><input type="checkbox" checked={opts.plugEquity} onChange={(e) => setOpts({ ...opts, plugEquity: e.target.checked })} /> Force balance into Other Equity (last resort)</label>
         </div>
-        {salesRead && salesRead.lines.length > 0 && <p className="text-[13px]" data-testid="sales-alongside">Also in this upload: {salesRead.lines.length.toLocaleString("en-US")} sales lines. They are saved too.</p>}
+        {allSales.length > 0 && <p className="text-[13px]" data-testid="sales-alongside">Also in this upload: {allSales.length.toLocaleString("en-US")} sales lines. They are saved too.</p>}
         {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="text-[13px] text-mute" data-testid="ledger-sales-note">Invoice lines on revenue accounts also become your sales.</p>}
         {res.lines.some((l) => l.entries?.length && l.cls && !l.excluded && isPL(l.cls) && l.cls !== "revenue") && <p className="text-[13px] text-mute" data-testid="ledger-expenses-note">Lines on cost accounts also become your expenses (who you pay).</p>}
-        {expRead && expRead.lines.length > 0 && <p className="text-[13px]" data-testid="expenses-alongside">Also in this upload: {expRead.lines.length.toLocaleString("en-US")} expense lines. They are saved too.</p>}
+        {allExp.length > 0 && <p className="text-[13px]" data-testid="expenses-alongside">Also in this upload: {allExp.length.toLocaleString("en-US")} expense lines. They are saved too.</p>}
         {fileChecks.length > 0 && <CheckList checks={fileChecks} />}
         {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals in the file ({controlCount} checked).</p>}
         {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
@@ -626,7 +782,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {demo
         ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || !res.periods.length || errorCount > 0} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : undefined} />}
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || !res.periods.length || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : rolesHint} />}
     </div>
   );
 }
@@ -687,4 +843,15 @@ function downloadDiagnostic(d: Diagnostic) {
   const a = Object.assign(document.createElement("a"), { href: url, download: `import-diagnostic-${d.file.replace(/[^\w.-]+/g, "_")}.json` });
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Reads every cash book (or bank statement) with the person's corrections: its money out, money in, and layouts. */
+function readBooks<O, L>(gs: Grid[] | null, ov: Record<string, O>, read: (g: Grid, o?: O) => { sales: SalesLine[]; expenses: ExpenseLine[]; layout: L } | null) {
+  const out = { sales: [] as SalesLine[], expenses: [] as ExpenseLine[], layouts: [] as L[], failed: [] as string[] };
+  for (const g of gs ?? []) {
+    const r = read(g, ov[g.name]);
+    if (!r) { out.failed.push(g.name); continue; }
+    out.sales.push(...r.sales); out.expenses.push(...r.expenses); out.layouts.push(r.layout);
+  }
+  return out;
 }

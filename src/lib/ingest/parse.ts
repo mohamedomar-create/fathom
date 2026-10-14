@@ -87,6 +87,28 @@ function parsePeriodRaw(v: Cell, order: DateOrder): string | null {
 }
 
 /**
+ * A month written as a heading over rows of entries: "JANUARY", "Jan 2025 sales", "DECEMBER 2024 sales", "Octobre",
+ * "مبيعات يناير 2025". The year is null when the heading has none; `sales` is true when it says what the rows are for.
+ */
+export function monthHeading(text: string): { month: number; year: number | null; sales: boolean } | null {
+  let s = normAr(arToLatin(String(text))).toLowerCase().replace(/\s+/g, " ").trim();
+  if (!s || s.length > 40) return null;
+  const sales = /\b(sales|revenues?|income|receipts)\b|مبيعات|ايرادات|ايراد/.test(s);
+  s = s.replace(/\b(sales|revenues?|income|receipts|expenses|costs|month|of|for|the|total)\b|مبيعات|ايرادات|ايراد|مصروفات|شهر/g, " ");
+  let year: number | null = null;
+  const y4 = s.match(/\b(19|20)\d{2}\b/);
+  if (y4) { year = Number(y4[0]); s = s.replace(y4[0], " "); }
+  s = s.replace(/[-_/.,:'()]/g, " ").replace(/\s+/g, " ").trim();
+  if (year === null) {
+    const y2 = s.match(/^([a-zéû]{3,9}) (\d{2})$/);
+    if (y2 && MONTHS[y2[1]]) { year = 2000 + Number(y2[2]); s = y2[1]; }
+  }
+  if (MONTHS[s]) return { month: MONTHS[s], year, sales };
+  for (const [rx, mo] of AR_MONTHS) if (rx.test(s) && s.replace(rx, "").trim().length === 0) return { month: mo, year, sales };
+  return null;
+}
+
+/**
  * Day/month order of a whole column of text dates: one "31/01/2026" or "01/31/2026" settles it for every row.
  * `order` is null when every date is ambiguous (each part ≤ 12); `sample` is the date that decided it.
  */

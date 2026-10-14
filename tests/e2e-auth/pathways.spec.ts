@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
 import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp, startUpload } from "./helpers";
+import { bookOf, cashBookCells, priceListCells, summaryCells } from "../fixtures/messy";
 
 requireLocalStack();
 
@@ -348,4 +349,49 @@ test("re-uploading loaded months asks: add only new months, or replace them", as
   await expect(page.getByTestId("commit-import")).toBeEnabled();
   await page.getByTestId("commit-import").click();
   await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+});
+
+/**
+ * A hand-kept workbook: a cash book beside a price list and a summary. Each sheet is named with why, the owner's own
+ * totals are checked against the entries, the person confirms, and money out and money in are saved together.
+ */
+test("a messy cash book workbook: sheets named, the owner's totals checked, money out and in saved", async ({ page }) => {
+  test.setTimeout(150_000);
+  await signUp(page, { name: "Cash Owner", org: "Cash Advisory", email: newEmail("cashbook") });
+  const id = await createCompany(page, "Cash Co");
+  await startUpload(page, id, "expenses");
+  const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  await page.getByTestId("file-input").setInputFiles({ name: "planning-2026.xlsx", mimeType: xlsx, buffer: Buffer.from(bookOf({ "Q1 cash": cashBookCells(), Prices: priceListCells(), Valuation: summaryCells() })) });
+  await expect(page.getByTestId("books-only")).toBeVisible({ timeout: 20_000 });
+  const roles = page.getByTestId("role-row");
+  await expect(roles).toHaveCount(3);
+  await expect(roles.nth(0)).toContainText("all 6 of your totals match");
+  await expect(roles.nth(1)).toContainText("Left out on purpose");
+  await expect(page.getByTestId("role-select-1")).toHaveValue("pricelist");
+  await expect(page.getByTestId("books-out")).toContainText("43,150");
+  await expect(page.getByTestId("books-in")).toContainText("26,000");
+  // Nothing goes on until the person has looked at what each sheet is.
+  await expect(page.getByTestId("books-next")).toBeDisabled();
+  await page.getByTestId("roles-confirm").click();
+  await expect(page.getByTestId("roles-confirmed")).toBeVisible();
+  await page.getByTestId("books-next").click();
+  await page.getByTestId("save-books").click();
+  await expect(page.getByTestId("done-step")).toContainText("8 expense lines and 5 sales lines saved", { timeout: 30_000 });
+  await page.goto(`/company/${id}/expenses?type=year&end=2026-02`);
+  await expect(page.getByTestId("tile-costs")).toContainText("43,150", { timeout: 30_000 });
+  await page.goto(`/company/${id}/sales?type=year&end=2026-02`);
+  await expect(page.getByTestId("tile-sales")).toContainText("13,500");
+});
+
+/** A workbook with no entries at all: it says why for each sheet instead of stopping without a word. */
+test("a workbook with only a price list and a summary says why nothing can be saved", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signUp(page, { name: "Price Owner", org: "Price Advisory", email: newEmail("prices") });
+  const id = await createCompany(page, "Price Co");
+  await startUpload(page, id, "accounts");
+  const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  await page.getByTestId("file-input").setInputFiles({ name: "prices.xlsx", mimeType: xlsx, buffer: Buffer.from(bookOf({ Prices: priceListCells(), Valuation: summaryCells() })) });
+  await expect(page.getByTestId("nothing-to-save")).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("sheet-roles")).toContainText("Price list");
+  await expect(page.getByTestId("sheet-roles")).toContainText("1 cell shows a spreadsheet error");
 });

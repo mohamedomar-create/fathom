@@ -6,7 +6,17 @@ import type { Check } from "@/lib/company/checks";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
 
 /** One sheet as uploaded. origin: where its used range starts in the spreadsheet (rows and columns before it were empty). */
-export interface Grid { name: string; rows: Cell[][]; origin?: { r: number; c: number } }
+export interface Grid {
+  name: string;
+  rows: Cell[][];
+  origin?: { r: number; c: number };
+  /** Formulas by cell ("row:col" in this grid), as written in the spreadsheet ("SUM(L21:L82)"). */
+  formulas?: Record<string, string>;
+  /** Cells far away from the table (past a wide gap of empty columns or rows), left out: where they were and how many. */
+  cut?: { what: "columns" | "rows"; from: string; to: string; cells: number; rows: number[] }[];
+  /** Cells showing a spreadsheet error (#REF!, #DIV/0!…): they hold that text, so a reader that needs them says so. */
+  broken?: number;
+}
 
 /** What a reader records while reading: row marks and unreadable cells, both indexed by the trimmed rows it read. */
 export interface Tr { marks: Marks; errs: { row: number; col: number; text: string; message: string }[] }
