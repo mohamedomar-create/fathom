@@ -46,9 +46,11 @@ describe("reading a sales export", () => {
     expect(r?.layout.kind).toBe("list");
     expect(r?.layout.taxIncluded).toBe(false);
     expect(r?.lines).toEqual([
-      { day: "2026-01-15", period: "2026-01", doc: "INV/2026/0001", series: "INV", customer: "Clinic A", product: "Concentrator", category: "Devices", salesperson: "Sara", qty: 2, amount: 20000, cost: 13000 },
-      { day: "2026-02-03", period: "2026-02", doc: "INV/2026/0002", series: "INV", customer: "Clinic B", product: "Mask", category: "Consumables", salesperson: "Omar", qty: 10, amount: 2600, cost: 1500 },
+      { day: "2026-01-15", period: "2026-01", doc: "INV/2026/0001", series: "INV", customer: "Clinic A", product: "Concentrator", category: "Devices", salesperson: "Sara", qty: 2, amount: 20000, cost: 13000, src: { sheet: "Invoice Analysis", row: 1 } },
+      { day: "2026-02-03", period: "2026-02", doc: "INV/2026/0002", series: "INV", customer: "Clinic B", product: "Mask", category: "Consumables", salesperson: "Omar", qty: 10, amount: 2600, cost: 1500, src: { sheet: "Invoice Analysis", row: 2 } },
     ]);
+    expect(r?.layout.trace.map((t) => t?.role)).toEqual(["header", "entry", "entry", "total"]);
+    expect(r?.layout.errors).toEqual([]);
   });
 
   it("an Arabic list with only a tax-inclusive total says so", () => {

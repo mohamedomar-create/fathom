@@ -1,5 +1,7 @@
 import { arRx, arToLatin, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
 import { headerPeriod, str, type Grid, type LedgerEntry } from "./extract";
+import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
+import { checkSalesTemplate, templateMarkOf } from "./template";
 
 /**
  * Sales lines for the Sales and Business Lines sectors, from two places:
@@ -20,6 +22,8 @@ export interface SalesLine {
   qty: number | null;
   amount: number;
   cost: number | null;
+  /** Where the line was read (sales files only): the sheet and its row as uploaded. Never saved. */
+  src?: { sheet: string; row: number };
 }
 
 export const NO_CATEGORY = "No category";
@@ -96,86 +100,141 @@ export interface SalesLayout {
   taxIncluded: boolean;
   lines: number;
   total: number;
+  /** Rows kept (empty rows removed) → row in the sheet as uploaded; headerRow indexes the kept rows. */
+  rowNo: number[];
+  /** Where each row of the sheet as uploaded went, and the cells that cannot be read (each blocks saving until fixed). */
+  trace: Marks;
+  errors: CellError[];
 }
-export type SalesOverride = Partial<Record<number, SalesField | null>>;
+/** The person's corrections: what a column holds (by column index), retyped cells and rows left out (sheet as uploaded). */
+export interface SalesOverride extends Fixes { cols?: Partial<Record<number, SalesField | null>> }
 
 /** Reads a sales export, or returns null when the sheet is not one (an accounting report goes to the accounting reader). */
 export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLine[]; layout: SalesLayout } | null {
-  const rows = g.rows.filter((r) => r && r.some((c) => str(c) !== ""));
+  const fixed = applyFixes(g.rows, ov);
+  const rowNo: number[] = [];
+  fixed.forEach((r, i) => { if (r && r.some((c) => str(c) !== "")) rowNo.push(i); });
+  const rows = rowNo.map((i) => fixed[i]);
+  const cols = ov.cols ?? {};
   for (let r = 0; r < Math.min(rows.length, 25); r++) {
     const heads = rows[r].map((v) => str(v));
     if (heads.some((h) => ACCOUNT_HDR.test(normAr(h)))) return null;
-    const fields = heads.map((h, c) => (c in ov ? ov[c] ?? null : fieldOf(h)));
+    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : fieldOf(h)));
     const has = (f: SalesField) => fields.includes(f);
     const months = heads.map((h, c) => ({ c, p: headerPeriod(h) })).filter((x) => x.p && x.p.months === 1);
+    const ctx: Ctx = { g, rows, rowNo, r, heads, marks: [], errors: [] };
     // A list: an amount column and something to group by (customer or product), with a date or month on each row.
-    if ((has("untaxed") || has("total")) && (has("customer") || has("product")) && (has("date") || has("period"))) return readList(g.name, rows, r, heads, fields);
+    if ((has("untaxed") || has("total")) && (has("customer") || has("product")) && (has("date") || has("period"))) return finish(ctx, ov, readList(ctx, fields));
     // A pivot: a product, category or customer column and two or more month columns.
     const dim = fields.findIndex((f) => f === "product" || f === "category" || f === "customer");
     // Without a Product / Category / Customer heading, only Odoo's pivot layout counts: an empty corner cell and a measure
     // row ("Untaxed Total", "Quantity") under the months. A P&L with month columns has neither.
     const measureRow = (rows[r + 1] ?? []).some((v) => MEASURE.test(normAr(str(v))));
-    if (months.length >= 2 && (dim >= 0 || (months[0].c > 0 && !heads[0] && measureRow))) return readPivot(g.name, rows, r, heads, dim >= 0 ? dim : 0, (dim >= 0 ? fields[dim] : "product") as "product" | "category" | "customer", months.map((m) => ({ c: m.c, p: m.p!.p })), [...rows.slice(0, r), rows[r + 1] ?? []].map((x) => x.map(str).join(" ")).join(" "));
+    if (months.length >= 2 && (dim >= 0 || (months[0].c > 0 && !heads[0] && measureRow))) return finish(ctx, ov, readPivot(ctx, dim >= 0 ? dim : 0, (dim >= 0 ? fields[dim] : "product") as "product" | "category" | "customer", months.map((m) => ({ c: m.c, p: m.p!.p })), [...rows.slice(0, r), rows[r + 1] ?? []].map((x) => x.map(str).join(" ")).join(" ")));
   }
   return null;
 }
 
-function readList(sheet: string, rows: Cell[][], r: number, heads: string[], fields: (SalesField | null)[]) {
+/** What a sales reader works with: the kept rows, the heading row, and the row marks and errors it records (kept-row indexes). */
+interface Ctx { g: Grid; rows: Cell[][]; rowNo: number[]; r: number; heads: string[]; marks: Marks; errors: { row: number; col: number; text: string; message: string }[] }
+
+/** Marks and errors moved onto the sheet as uploaded; an iReport sales template is also checked cell by cell. */
+function finish(ctx: Ctx, ov: SalesOverride, out: { lines: SalesLine[]; layout: Omit<SalesLayout, "rowNo" | "trace" | "errors"> } | null) {
+  if (!out) return null;
+  const { g, rowNo } = ctx;
+  const trace: Marks = [];
+  rowNo.forEach((orig, i) => { trace[orig] = ctx.marks[i] ?? (i === ctx.r ? { role: "header" } : i < ctx.r ? { role: "title" } : { role: "unused", note: "nothing to read on this row" }); });
+  for (const r of ov.skipRows ?? []) if (r >= 0 && r < g.rows.length) trace[r] = { role: "skipped", note: "left out by you" };
+  const errors: CellError[] = ctx.errors.map((e) => { const row = rowNo[e.row] ?? e.row; return { sheet: g.name, row, col: e.col, text: e.text, message: `${cellRef(row, e.col, g.origin)}: ${e.message}` }; });
+  if (templateMarkOf(g) === "sales") {
+    for (const p of checkSalesTemplate({ ...g, rows: applyFixes(g.rows, ov) })) {
+      if (p.r === undefined || errors.some((e) => e.row === p.r && e.col === p.c)) continue;
+      errors.push({ sheet: g.name, row: p.r, col: p.c ?? 0, text: p.text ?? "", message: `${cellRef(p.r, p.c, g.origin)}: ${p.message}` });
+      trace[p.r] = { role: "error", note: p.message };
+    }
+  }
+  return { lines: out.lines, layout: { ...out.layout, rowNo, trace, errors } };
+}
+
+function readList(ctx: Ctx, fields: (SalesField | null)[]) {
+  const { g, rows, r, heads } = ctx;
+  const sheet = g.name;
   const col = (f: SalesField) => fields.indexOf(f);
   const cAmt = col("untaxed") >= 0 ? col("untaxed") : col("total");
   const cDate = col("date"), cPer = col("period");
-  const body = rows.slice(r + 1);
-  const order = detectDateOrder(body.map((x) => x[cDate])).order ?? "dmy";
+  const order = detectDateOrder(rows.slice(r + 1).map((x) => x[cDate])).order ?? "dmy";
   const lines: SalesLine[] = [];
   const text = (x: Cell[], f: SalesField) => (col(f) >= 0 ? str(x[col(f)]).replace(/\s+/g, " ") : "");
-  for (const x of body) {
+  const err = (i: number, c: number, message: string) => { ctx.errors.push({ row: i, col: c, text: shown(rows[i][c]), message }); ctx.marks[i] = { role: "error", note: message }; };
+  for (let i = r + 1; i < rows.length; i++) {
+    const x = rows[i];
     const first = str(x[0]);
-    if (TOTAL_ROW.test(normAr(first)) && !text(x, "customer") && !text(x, "product")) continue;
+    if (TOTAL_ROW.test(normAr(first)) && !text(x, "customer") && !text(x, "product")) { ctx.marks[i] = { role: "total", note: "iReport works out totals itself" }; continue; }
     const amount = cleanNum(x[cAmt]);
-    if (amount === null || amount === 0) continue;
+    if (amount === null) {
+      if (badAmount(x[cAmt], amount)) err(i, cAmt, `"${shown(x[cAmt])}" is not a number`);
+      else ctx.marks[i] = { role: "unused", note: `no amount in "${heads[cAmt]}"` };
+      continue;
+    }
+    if (amount === 0) { ctx.marks[i] = { role: "unused", note: "the amount is 0" }; continue; }
     const day = cDate >= 0 ? parseDay(x[cDate], order) : null;
     const period = day?.slice(0, 7) ?? (cDate >= 0 ? parsePeriod(x[cDate], order) : null) ?? (cPer >= 0 ? parsePeriod(x[cPer]) : null);
-    if (!period) continue;
+    if (!period) {
+      const c = cDate >= 0 ? cDate : cPer;
+      err(i, c, str(x[c]) ? `"${shown(x[c])}" is not a date` : `no ${cDate >= 0 ? "invoice date" : "month"} on this line`);
+      continue;
+    }
+    for (const f of ["qty", "cost", "margin"] as const) if (col(f) >= 0 && badAmount(x[col(f)], cleanNum(x[col(f)]))) err(i, col(f), `"${shown(x[col(f)])}" is not a number`);
     const cost = col("cost") >= 0 ? cleanNum(x[col("cost")]) : col("margin") >= 0 && cleanNum(x[col("margin")]) !== null ? amount - cleanNum(x[col("margin")])! : null;
     const doc = text(x, "doc");
     const rawProduct = text(x, "product");
     const lab = rawProduct ? splitLabel(rawProduct) : { product: "No description", category: NO_CATEGORY };
+    if (!ctx.marks[i]) ctx.marks[i] = { role: "entry" };
     lines.push({
       day, period, doc, series: seriesOf(doc), customer: text(x, "customer") || NO_CUSTOMER,
       product: lab.product, category: text(x, "category") || lab.category, salesperson: text(x, "salesperson"),
       qty: col("qty") >= 0 ? cleanNum(x[col("qty")]) : null, amount: Math.round(amount * 100) / 100, cost: cost === null ? null : Math.round(cost * 100) / 100,
+      src: { sheet, row: ctx.rowNo[i] },
     });
   }
-  if (!lines.length) return null;
-  const layout: SalesLayout = {
-    sheet, kind: "list", headerRow: r, columns: heads.map((h, c) => ({ col: c, header: h, field: fields[c] })), dateOrder: cDate >= 0 ? order : undefined,
+  if (!lines.length && !ctx.errors.length) return null;
+  const layout = {
+    sheet, kind: "list" as const, headerRow: r, columns: heads.map((h, c) => ({ col: c, header: h, field: fields[c] })), dateOrder: cDate >= 0 ? order : undefined,
     taxIncluded: col("untaxed") < 0, lines: lines.length, total: lines.reduce((s, l) => s + l.amount, 0),
   };
   return { lines, layout };
 }
 
-function readPivot(sheet: string, rows: Cell[][], r: number, heads: string[], cDim: number, rowsAre: "product" | "category" | "customer", months: { c: number; p: string }[], title: string) {
+function readPivot(ctx: Ctx, cDim: number, rowsAre: "product" | "category" | "customer", months: { c: number; p: string }[], title: string) {
+  const { g, rows, r, heads } = ctx;
+  const sheet = g.name;
   const t = normAr(arToLatin(title + " " + heads.join(" ")).toLowerCase());
   const measure: "untaxed" | "total" | "qty" = /quantit|qty|الكمية/.test(t) ? "qty" : /untaxed|subtotal|net|قبل الضريبة|الصافي/.test(t) ? "untaxed" : "total";
   if (measure === "qty") return null; // quantities alone carry no value
   const lines: SalesLine[] = [];
-  for (const x of rows.slice(r + 1)) {
+  for (let i = r + 1; i < rows.length; i++) {
+    const x = rows[i];
     const name = str(x[cDim]).replace(/\s+/g, " ");
-    if (!name || TOTAL_ROW.test(normAr(name))) continue;
+    if (!name) { ctx.marks[i] = { role: i === r + 1 ? "header" : "unused", note: i === r + 1 ? undefined : "no name in the first column" }; continue; }
+    if (TOTAL_ROW.test(normAr(name))) { ctx.marks[i] = { role: "total", note: "iReport works out totals itself" }; continue; }
+    let n = 0;
     for (const m of months) {
       const amount = cleanNum(x[m.c]);
+      if (badAmount(x[m.c], amount)) { ctx.errors.push({ row: i, col: m.c, text: shown(x[m.c]), message: `"${shown(x[m.c])}" is not a number` }); ctx.marks[i] = { role: "error", note: "an amount cannot be read" }; continue; }
       if (!amount) continue;
       const lab = rowsAre === "product" ? splitLabel(name) : null;
+      n++;
       lines.push({
         day: null, period: m.p, doc: "", series: "", customer: rowsAre === "customer" ? name : NO_CUSTOMER,
         product: lab ? lab.product : rowsAre === "category" ? name : "No description", category: lab ? lab.category : rowsAre === "category" ? name : NO_CATEGORY,
-        salesperson: "", qty: null, amount: Math.round(amount * 100) / 100, cost: null,
+        salesperson: "", qty: null, amount: Math.round(amount * 100) / 100, cost: null, src: { sheet, row: ctx.rowNo[i] },
       });
     }
+    if (!ctx.marks[i]) ctx.marks[i] = n ? { role: "entry", note: `${n} month${n > 1 ? "s" : ""}` } : { role: "unused", note: "no amounts" };
   }
-  if (!lines.length) return null;
-  const layout: SalesLayout = {
-    sheet, kind: "pivot", headerRow: r, rowsAre, measure, taxIncluded: measure === "total",
+  if (!lines.length && !ctx.errors.length) return null;
+  const layout = {
+    sheet, kind: "pivot" as const, headerRow: r, rowsAre, measure, taxIncluded: measure === "total",
     columns: heads.map((h, c) => ({ col: c, header: h, field: c === cDim ? rowsAre : null, period: months.find((m) => m.c === c)?.p })),
     lines: lines.length, total: lines.reduce((s, l) => s + l.amount, 0),
   };

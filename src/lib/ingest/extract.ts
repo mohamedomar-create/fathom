@@ -3,8 +3,17 @@ import { extractOdoo } from "./odoo";
 import { readFinancialTemplate, templateMarkOf } from "./template";
 import type { ClassKey } from "@/lib/engine";
 import type { Check } from "@/lib/company/checks";
+import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
 
-export interface Grid { name: string; rows: Cell[][] }
+/** One sheet as uploaded. origin: where its used range starts in the spreadsheet (rows and columns before it were empty). */
+export interface Grid { name: string; rows: Cell[][]; origin?: { r: number; c: number } }
+
+/** What a reader records while reading: row marks and unreadable cells, both indexed by the trimmed rows it read. */
+export interface Tr { marks: Marks; errs: { row: number; col: number; text: string; message: string }[] }
+const newTr = (): Tr => ({ marks: [], errs: [] });
+const mark = (tr: Tr | undefined, row: number, t: TraceRow) => { if (tr && !tr.marks[row]) tr.marks[row] = t; };
+/** An amount cell that cannot be read: recorded as an error (never silently a heading or a zero). */
+const bad = (tr: Tr | undefined, row: number, col: number, v: Cell) => { tr?.errs.push({ row, col, text: shown(v), message: `"${shown(v)}" is not a number` }); };
 
 export interface RawLine {
   key: string;
@@ -55,9 +64,19 @@ export interface SheetLayout {
   asOf?: string;
   /** "check": the sheet only verifies figures that another sheet in the upload provides month by month. */
   role?: "data" | "check";
+  /** Rows and columns read (empty ones removed) → their index in the sheet as uploaded. headerRow and columns[].col index the rows read. */
+  rowNo?: number[];
+  colNo?: number[];
+  /** Where each row of the sheet as uploaded went (indexed like Grid.rows). */
+  trace?: Marks;
+  /** Cells that should hold an amount but cannot be read (indexed like Grid.rows). Each one blocks the import until fixed. */
+  cellErrors?: CellError[];
 }
-/** User corrections for one sheet. periods: column index → month ("YYYY-MM") or null to leave the column out. */
-export interface SheetOverride { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null>; dateOrder?: DateOrder }
+/**
+ * User corrections for one sheet. periods: column index (of the rows read) → month ("YYYY-MM") or null to leave the column out.
+ * cells / skipRows (from Fixes) index the sheet as uploaded.
+ */
+export interface SheetOverride extends Fixes { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null>; dateOrder?: DateOrder }
 export type Overrides = Record<string, SheetOverride>;
 
 /** A total row printed in the file, used to verify the imported figures. */
@@ -109,11 +128,16 @@ const BUDGET_WORDS = /budget|forecast|\bplan\b|\btarget|variance|\bvar\b|%|\bpri
 export const isText = (v: Cell) => typeof v === "string" && v.trim() !== "";
 export const str = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v)).trim();
 
-function trimGrid(rows: Cell[][]): Cell[][] {
-  const nonEmpty = rows.filter((r) => r && r.some((c) => str(c) !== ""));
-  const width = Math.max(0, ...nonEmpty.map((r) => r.length));
-  const keepCols = Array.from({ length: width }, (_, c) => nonEmpty.some((r) => str(r[c]) !== ""));
-  return nonEmpty.map((r) => keepCols.map((k, c) => (k ? r[c] : undefined)).filter((_, c) => keepCols[c]));
+/** Empty rows and columns removed; rowNo / colNo give each kept row's and column's index in the sheet as uploaded. */
+export function trimGrid(all: Cell[][]): { rows: Cell[][]; rowNo: number[]; colNo: number[] } {
+  const rowNo: number[] = [];
+  all.forEach((r, i) => { if (r && r.some((c) => str(c) !== "")) rowNo.push(i); });
+  const nonEmpty = rowNo.map((i) => all[i]);
+  let width = 0;
+  for (const r of nonEmpty) if (r.length > width) width = r.length;
+  const colNo: number[] = [];
+  for (let c = 0; c < width; c++) if (nonEmpty.some((r) => str(r[c]) !== "")) colNo.push(c);
+  return { rows: nonEmpty.map((r) => colNo.map((c) => r[c])), rowNo, colNo };
 }
 
 type Header = { row: number; cols: Map<number, string>; spans: Map<number, number> };
@@ -187,7 +211,7 @@ function headingDepth(label: string) {
   return /^(assets?|liabilit\w*|equity|income|revenue|expenses?)(\s|$)/i.test(t) || /^(الأصول|الاصول|الخصوم|الالتزامات|حقوق|الإيرادات|الايرادات|المصروفات|المصاريف)/.test(t) ? 0 : 1;
 }
 
-export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols: Map<number, string>; spans?: Map<number, number>; forced?: Set<number> }, issues: ExtractIssues, num: (v: Cell) => number | null = cleanNum, info: ColumnInfo[] = []): RawLine[] {
+export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols: Map<number, string>; spans?: Map<number, number>; forced?: Set<number> }, issues: ExtractIssues, num: (v: Cell) => number | null = cleanNum, info: ColumnInfo[] = [], tr?: Tr): RawLine[] {
   const rows = rowsIn;
   const span = (c: number) => hdr.spans?.get(c) ?? 1;
   const head = (c: number) => str(rows[hdr.row][c]).slice(0, 80);
@@ -234,6 +258,7 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
   if (!cols.length) return [];
   const firstCol = Math.min(...cols.map((c) => c.val ?? c.deb ?? 0), openDeb ?? Infinity);
   const start = hdr.row + (dcMode ? 2 : 1);
+  for (let r = hdr.row; r < start; r++) mark(tr, r, { role: "header" });
   const { label: lc, code: cc } = labelColumn(rows, start, firstCol);
   const out: RawLine[] = [];
   const heads: string[] = [];
@@ -245,21 +270,27 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
     if (codeCell && !lab.startsWith(codeCell)) lab = `${codeCell} ${lab}`;
     const values: Record<string, number> = {};
     let any = false;
+    const badCols: number[] = [];
+    const read = (c: number) => { const v = num(rows[r][c]); if (badAmount(rows[r][c], v)) badCols.push(c); return v; };
     for (const col of cols) {
       let v: number | null;
       if (dcMode) {
-        const d = num(rows[r][col.deb!]), c2 = num(rows[r][col.cred!]);
+        const d = read(col.deb!), c2 = read(col.cred!);
         v = d === null && c2 === null ? null : (d ?? 0) - (c2 ?? 0);
-      } else v = num(rows[r][col.val!]);
+      } else v = read(col.val!);
       if (v !== null) { values[col.p] = v; any = true; }
     }
     // An account with an opening balance but no movement in the months shown is still an account, not a heading.
     const hasOpening = dcMode && openDeb !== undefined && (num(rows[r][openDeb]) !== null || (openCred !== undefined && num(rows[r][openCred]) !== null));
-    if (!any && !hasOpening) {
+    // Text across several month columns and no figure at all is a heading or a second heading row ("Actual", "Note"), not a mistake.
+    const broken = badCols.length > 0 && (any || hasOpening || badCols.length === 1);
+    if (broken) for (const c of badCols) bad(tr, r, c, rows[r][c]);
+    if (!any && !hasOpening && !broken) {
       // heading row: keep a two-level section path
       if (headingDepth(lab) === 0) heads.length = 0;
       heads.splice(1);
       heads.push(lab);
+      mark(tr, r, { role: "heading" });
       continue;
     }
     const opening = dcMode && openDeb !== undefined ? (num(rows[r][openDeb]) ?? 0) - (openCred !== undefined ? num(rows[r][openCred]) ?? 0 : 0) : 0;
@@ -269,12 +300,14 @@ export function extractWide(g: Grid, rowsIn: Cell[][], hdr: { row: number; cols:
       const metric = controlMetric(name);
       if (metric) for (const col of cols) if (col.p in values && !issues.controls?.some((x) => x.metric === metric && x.period === col.p)) (issues.controls ??= []).push({ metric, period: col.p, value: values[col.p], months: span(col.c), source: `${g.name} row ${r + 1} '${lab.slice(0, 60)}'` });
     }
-    out.push({ key: `${g.name}|${r + 1}|${lab}`, sheet: g.name, row: r + 1, label: lab, code, name, section: heads.join(" / "), stmt: hint, kind: dcMode ? "movement" : "natural", values, opening, ...(Object.keys(spans).length ? { spans } : {}) });
+    const key = `${g.name}|${r + 1}|${lab}`;
+    mark(tr, r, broken ? { role: "error", ref: key, note: "an amount cannot be read" } : { role: "account", ref: key });
+    out.push({ key, sheet: g.name, row: r + 1, label: lab, code, name, section: heads.join(" / "), stmt: hint, kind: dcMode ? "movement" : "natural", values, opening, ...(Object.keys(spans).length ? { spans } : {}) });
   }
   return out;
 }
 
-export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder): RawLine[] | null {
+export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder, tr?: Tr): RawLine[] | null {
   const hint = stmtFromText(g.name);
   for (let r = 0; r < Math.min(rows.length, 15); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
@@ -292,21 +325,27 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
     const movement = (deb !== undefined && cre !== undefined) || cells.some((x) => /journal|move|entry|قيد/.test(x));
     const order = dateOrderOf(rows.slice(r + 1).map((row) => row[dat]), layout, forced);
     const agg = new Map<string, RawLine>();
+    mark(tr, r, { role: "header" });
     for (let rr = r + 1; rr < rows.length; rr++) {
       const lab = str(rows[rr][acc]);
       const per = parsePeriod(rows[rr][dat], order);
-      if (!lab || !per) continue;
-      const v = deb !== undefined && cre !== undefined ? (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0) : num(rows[rr][amt!]);
-      if (v === null) continue;
+      if (!lab && !per) continue;
+      if (!lab) { mark(tr, rr, { role: "unused", note: "no account on this line" }); continue; }
+      if (!per) { mark(tr, rr, /^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab) ? { role: "total", note: "iReport works out totals itself" } : { role: "unused", note: "no date or month on this line" }); continue; }
+      const cell = (c: number) => { const v = num(rows[rr][c]); if (badAmount(rows[rr][c], v)) bad(tr, rr, c, rows[rr][c]); return v; };
+      const errs = tr?.errs.length ?? 0;
+      const v = deb !== undefined && cre !== undefined ? (cell(deb) ?? 0) - (cell(cre) ?? 0) : cell(amt!);
       const sec = typ !== undefined ? str(rows[rr][typ]) : "";
       const k = `${lab}|${sec}`;
+      if (v === null && (tr?.errs.length ?? 0) === errs) { mark(tr, rr, { role: "unused", note: "no amount" }); continue; }
       let line = agg.get(k);
       if (!line) {
         const { code, name } = splitCode(lab);
         line = { key: `${g.name}|${k}`, sheet: g.name, row: 0, label: lab, code, name, section: sec, stmt: hint, kind: movement ? "movement" : "natural", values: {}, opening: 0 };
         agg.set(k, line);
       }
-      line.values[per] = (line.values[per] ?? 0) + v;
+      mark(tr, rr, (tr?.errs.length ?? 0) > errs ? { role: "error", ref: line.key, note: "the amount cannot be read" } : { role: "entry", ref: line.key });
+      if (v !== null) line.values[per] = (line.values[per] ?? 0) + v;
     }
     return [...agg.values()];
   }
@@ -317,7 +356,7 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
  * Odoo General Ledger: account headings ("101401 Bank") with dated move lines below them,
  * an optional "Initial Balance" row, and Date / Debit / Credit columns (no account column).
  */
-export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder): RawLine[] | null {
+export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number | null = cleanNum, layout?: SheetLayout, forced?: DateOrder, tr?: Tr): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
     const cells = rows[r].map((x) => str(x).toLowerCase());
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/.test(x));
@@ -331,26 +370,31 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
     if (!first || parsePeriod(first[dat], order) || !str(first[lc])) return null;
     const accounts = new Map<string, RawLine>();
     let cur: RawLine | null = null;
+    mark(tr, r, { role: "header" });
     for (let rr = r + 1; rr < rows.length; rr++) {
       let lab = str(rows[rr][lc]);
       // Account headings may carry their code in a column of its own: keep it, so same-name accounts stay apart.
       const codeCell = cc !== null ? str(rows[rr][cc]) : "";
       if (codeCell && lab && !lab.startsWith(codeCell)) lab = `${codeCell} ${lab}`;
       const per = parsePeriod(rows[rr][dat], order);
-      const amt = (num(rows[rr][deb]) ?? 0) - (num(rows[rr][cre]) ?? 0);
+      const errs = tr?.errs.length ?? 0;
+      const cell = (c: number) => { const v = num(rows[rr][c]); if (per && badAmount(rows[rr][c], v)) bad(tr, rr, c, rows[rr][c]); return v; };
+      const amt = (cell(deb) ?? 0) - (cell(cre) ?? 0);
       if (per) {
-        if (cur) cur.values[per] = (cur.values[per] ?? 0) + amt;
+        if (cur) { cur.values[per] = (cur.values[per] ?? 0) + amt; mark(tr, rr, (tr?.errs.length ?? 0) > errs ? { role: "error", ref: cur.key, note: "the amount cannot be read" } : { role: "entry", ref: cur.key }); }
+        else mark(tr, rr, { role: "unused", note: "a dated line before any account heading" });
         continue;
       }
       if (!lab) continue;
       if (/^(initial balance|opening balance|balance forward|solde (initial|d'ouverture)|رصيد افتتاحي|الرصيد الافتتاحي|رصيد أول المدة)/i.test(lab)) {
-        if (cur) cur.opening += amt;
+        if (cur) { cur.opening += amt; mark(tr, rr, { role: "opening", ref: cur.key }); }
         continue;
       }
-      if (/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab)) { cur = null; continue; }
+      if (/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab)) { cur = null; mark(tr, rr, { role: "total", note: "iReport works out totals itself" }); continue; }
       const { code, name } = splitCode(lab);
       cur = accounts.get(lab) ?? { key: `${g.name}|gl|${lab}`, sheet: g.name, row: rr + 1, label: lab, code, name, section: "", stmt: null, kind: "movement", values: {}, opening: 0 };
       accounts.set(lab, cur);
+      mark(tr, rr, { role: "account", ref: cur.key });
     }
     const out = [...accounts.values()].filter((a) => a.opening || Object.keys(a.values).length);
     return out.length ? out : null;
@@ -373,28 +417,38 @@ const NOTHING_FOUND = (name: string) =>
 export const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
 export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}, today = isoToday()): RawLine[] {
-  const rows = trimGrid(g.rows);
+  // The person's corrections (retyped cells, rows left out) apply to a copy; the trace and errors index the sheet as uploaded.
+  const fixed = applyFixes(g.rows, ov);
+  const { rows, rowNo, colNo } = trimGrid(fixed);
   const sc = detectScale(rows);
-  const layout: SheetLayout = { sheet: g.name, kind: "none", headerRow: null, columns: [], scale: ov.scale ?? sc.scale, scaleFrom: sc.from, decimal: ov.decimal ?? detectDecimal(rows), lines: 0 };
+  const layout: SheetLayout = { sheet: g.name, kind: "none", headerRow: null, columns: [], scale: ov.scale ?? sc.scale, scaleFrom: sc.from, decimal: ov.decimal ?? detectDecimal(rows), lines: 0, rowNo, colNo };
   (issues.layouts ??= []).push(layout);
-  if (ov.skip) { layout.kind = "skipped"; return []; }
+  const whole = (note: string) => { layout.trace = []; for (const i of rowNo) layout.trace[i] = { role: "skipped", note }; layout.cellErrors = []; };
+  if (ov.skip) { layout.kind = "skipped"; whole("sheet left out by you"); return []; }
   if (!rows.length) return [];
   // Odoo adds a "Filters" sheet (Company, Journals, Options): report settings, not figures.
   if (/^filters?$/i.test(g.name.split(" › ").pop() ?? "") && rows.length <= 40 && !rows.some((r) => r.some((v) => typeof v === "number"))) {
-    layout.kind = "skipped"; layout.source = "Report filters (no figures)"; return [];
+    layout.kind = "skipped"; layout.source = "Report filters (no figures)"; whole("report settings, no figures"); return [];
   }
   const num = numReader(layout.scale, layout.decimal);
-  const done = (kind: SheetLayout["kind"], lines: RawLine[]) => { layout.kind = kind; layout.lines = lines.length; return lines; };
+  let tr = newTr();
+  const attempt = () => (tr = newTr());
+  const done = (kind: SheetLayout["kind"], lines: RawLine[]) => { layout.kind = kind; layout.lines = lines.length; finishTrace(g, layout, tr, ov); return lines; };
   // iReport's own templates are read exactly by their layout (their mistakes are listed before the import starts).
   const mark = templateMarkOf(g);
   if (mark === "pl" || mark === "bs") {
-    const t = readFinancialTemplate(g);
+    const t = readFinancialTemplate({ ...g, rows: fixed });
     layout.source = mark === "pl" ? "iReport template: P&L by month" : "iReport template: balance sheet by month";
-    layout.scale = 1; layout.columns = t.periods.map((p, i) => ({ col: 3 + i, header: p, period: p, months: 1, used: true }));
+    layout.scale = 1;
+    // The template is read on the sheet as uploaded (not trimmed): its rows and columns are the spreadsheet's own.
+    layout.rowNo = fixed.map((_, i) => i); layout.colNo = Array.from({ length: Math.max(0, ...fixed.map((r) => r?.length ?? 0)) }, (_, i) => i);
+    layout.columns = t.periods.map((p, i) => ({ col: 3 + i, header: p, period: p, months: 1, used: true }));
+    layout.headerRow = t.headerRow;
+    tr = { marks: t.marks, errs: t.problems.filter((p) => p.r !== undefined).map((p) => ({ row: p.r!, col: p.c ?? 0, text: p.text ?? "", message: p.message })) };
     return done("columns", t.lines);
   }
   // Known exports first: Odoo's General Ledger, Trial Balance and statements are read by their exact layout.
-  const odoo = extractOdoo(g, rows, num, ov, layout, issues, today);
+  const odoo = extractOdoo(g, rows, num, ov, layout, issues, today, attempt);
   if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" ? "ledger" : "trial-balance", odoo);
   layout.columns = []; layout.source = undefined; layout.asOf = undefined; layout.dates = undefined; layout.headerRow = null;
   const found = findHeader(rows);
@@ -408,18 +462,37 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   if (hdr) layout.headerRow = hdr.row;
   // A lone period in a title ("2026") above a dated ledger or list is the report's period, not an amount column.
   const lone = !!hdr && hdr.cols.size === 1 && [...hdr.spans.values()][0] > 1;
-  const ledgerFirst = lone ? extractLedger(g, rows, num, layout, ov.dateOrder) ?? extractLong(g, rows, num, layout, ov.dateOrder) : null;
+  const ledgerFirst = lone ? extractLedger(g, rows, num, layout, ov.dateOrder, attempt()) ?? extractLong(g, rows, num, layout, ov.dateOrder, attempt()) : null;
   if (ledgerFirst?.length) { layout.headerRow = null; return done(ledgerFirst[0].row === 0 ? "list" : "ledger", ledgerFirst); }
-  const got = hdr && hdr.cols.size ? extractWide(g, rows, hdr, issues, num, layout.columns) : null;
+  const got = hdr && hdr.cols.size ? extractWide(g, rows, hdr, issues, num, layout.columns, attempt()) : null;
   layout.columns.sort((a, b) => a.col - b.col);
   if (got?.length) return done(got.some((l) => l.kind === "movement") ? "trial-balance" : "columns", got);
   layout.columns = [];
   // A ledger (account headings over dated lines) before a list: its description column would otherwise pass for accounts.
-  const ledger = extractLedger(g, rows, num, layout, ov.dateOrder);
+  const ledgerTr = attempt();
+  const ledger = extractLedger(g, rows, num, layout, ov.dateOrder, ledgerTr);
   if (ledger && ledger.length >= 2) return done("ledger", ledger);
-  const long = extractLong(g, rows, num, layout, ov.dateOrder);
+  const long = extractLong(g, rows, num, layout, ov.dateOrder, attempt());
   if (long?.length) return done("list", long);
-  if (ledger?.length) return done("ledger", ledger);
+  if (ledger?.length) { tr = ledgerTr; return done("ledger", ledger); }
   issues.warnings.push(NOTHING_FOUND(g.name));
+  finishTrace(g, layout, newTr(), ov);
   return [];
+}
+
+/** The reader's marks and errors moved onto the sheet as uploaded; every other non-empty row says why it was not used. */
+function finishTrace(g: Grid, layout: SheetLayout, tr: Tr, ov: SheetOverride) {
+  const rowNo = layout.rowNo ?? [], colNo = layout.colNo ?? [];
+  const trace: Marks = [];
+  const h = layout.headerRow;
+  rowNo.forEach((orig, i) => {
+    trace[orig] = tr.marks[i] ?? (h !== null && i === h ? { role: "header" } : h !== null && i < h ? { role: "title" }
+      : layout.kind === "none" ? { role: "unused", note: "the sheet's layout was not recognised" } : { role: "unused", note: "no amount in a month column" });
+  });
+  for (const r of ov.skipRows ?? []) if (r >= 0 && r < g.rows.length) trace[r] = { role: "skipped", note: "left out by you" };
+  layout.trace = trace;
+  layout.cellErrors = tr.errs.map((e) => {
+    const row = rowNo[e.row] ?? e.row, col = colNo[e.col] ?? e.col;
+    return { sheet: g.name, row, col, text: e.text, message: `${cellRef(row, col, g.origin)}: ${e.message}` };
+  });
 }

@@ -6,6 +6,7 @@ import { useMemo, useState, useTransition } from "react";
 import { mlabel } from "@/lib/engine";
 import { restoreVersion, type AcceptedItem } from "@/app/company/[id]/settings/actions";
 import { cn } from "@/lib/cn";
+import { cellRef, type FixRecord } from "@/lib/ingest/trace";
 import { CheckList, type PreviewCheck } from "./import-timeline";
 import { SourceDrawer, type SourceLine } from "@/components/analysis/source-drawer";
 
@@ -20,6 +21,8 @@ export interface HistoryRow {
   id: string; kind: string; action: string; file: string | null; at: string; by: string | null; version: number | null;
   current: boolean; restorable: boolean; mode: string | null; pl: string[]; bs: string[]; accepted: number;
   restoredFrom: number | null; restoredTo: number | null;
+  /** Corrections made in the upload's reading box (retyped cells, rows left out). */
+  fixes?: FixRecord[];
 }
 
 type Status = "ok" | "warn" | "block" | "accepted" | "missing" | "none";
@@ -190,6 +193,12 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
                 {r.action === "restore" ? <span>Restored earlier data{r.file ? ` (${r.file})` : ""}</span> : <span><span className="capitalize">{r.kind === "odoo" ? "Odoo sync" : r.kind}</span>{r.file ? ` · ${r.file}` : ""}</span>}
                 {r.mode && r.action === "import" && <span className="ml-1.5 rounded bg-band px-1.5 text-[11px] text-mute">{r.mode === "merge" ? "merged" : "replaced all"}</span>}
                 {r.accepted > 0 && <span className="ml-1.5 rounded bg-[#efe3f5] px-1.5 text-[11px]">{r.accepted} accepted</span>}
+                {!!r.fixes?.length && (
+                  <details className="mt-0.5 whitespace-normal text-[12px] text-mute" data-testid="history-fixes">
+                    <summary className="cursor-pointer">{r.fixes.length} correction{r.fixes.length > 1 ? "s" : ""} made in the upload</summary>
+                    <ul className="mt-1 list-disc pl-4">{r.fixes.slice(0, 30).map((f, i) => <li key={i}>{fixText(f)}</li>)}</ul>
+                  </details>
+                )}
               </td>
               <td className="!text-left text-mute">{r.action === "restore" ? "–" : [r.pl.length ? `P&L ${span(r.pl)}` : "", r.bs.length ? `BS ${span(r.bs)}` : ""].filter(Boolean).join(" · ") || "–"}</td>
               <td className="!text-left text-mute">{r.by ?? "–"}</td>
@@ -204,6 +213,14 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
       </table>
     </div>
   );
+}
+
+/** "P&L, row 11, column E set to 5,000 (was 'five thousand')". */
+function fixText(f: FixRecord) {
+  const where = `${f.sheet.split(" › ").pop()}, ${cellRef(f.row, f.col)}`;
+  if (f.action === "skip-row") return `${where} left out${f.was ? ` (${f.was})` : ""}`;
+  const v = typeof f.value === "number" ? f.value.toLocaleString("en-US") : f.value;
+  return f.action === "empty" ? `${where} left empty (was '${f.was ?? ""}')` : `${where} set to ${v} (was '${f.was ?? ""}')`;
 }
 
 function Tile({ label, value, sub, tone = "ok", testid }: { label: string; value: string; sub?: string; tone?: "ok" | "bad" | "warn"; testid?: string }) {

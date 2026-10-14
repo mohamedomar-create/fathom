@@ -195,26 +195,33 @@ test("filled templates import exactly, and mistakes are listed before anything i
   const pl = fin.getWorksheet("P&L")!, bs = fin.getWorksheet("Balance Sheet")!;
   for (const [n, a, b] of [["Sales revenue", 100000, 120000], ["Cost of goods sold", 60000, 70000], ["Salaries and wages", 20000, 20000], ["Rent", 5000, 5000], ["Income tax", 3000, 5000]] as const) { const r = rowOf(pl, n); r.getCell(4).value = a; r.getCell(5).value = b; }
   for (const [n, o, a, b] of [["Cash in hand and banks", 50000, 57000, 72000], ["Customers", 30000, 35000, 40000], ["Inventory", 20000, 20000, 25000], ["Suppliers", 25000, 25000, 30000], ["Share capital", 50000, 50000, 50000], ["Retained earnings incl. profit to date", 25000, 37000, 57000]] as const) { const r = rowOf(bs, n); r.getCell(4).value = o; r.getCell(5).value = a; r.getCell(6).value = b; }
-  const good = Buffer.from(await fin.xlsx.writeBuffer());
   rowOf(pl, "Rent").getCell(5).value = "five thousand";
   const bad = Buffer.from(await fin.xlsx.writeBuffer());
 
   await page.goto(`/company/${id}/settings/source-data?step=financials`);
   await page.waitForLoadState("networkidle");
   await expect(page.getByTestId("upload-step")).toContainText("monthly financials");
-  // A mistake stops the upload and is named by sheet, row and column.
+  // A mistake is shown on the sheet and named by row and column; nothing can be imported until it is fixed in the box.
   await expect(async () => {
     await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: bad });
-    await expect(page.getByTestId("upload-error")).toContainText("P&L, row 11, column E", { timeout: 4000 });
+    await expect(page.getByTestId("error-count")).toHaveText("1 error to fix", { timeout: 4000 });
   }).toPass({ timeout: 30_000 });
-  await page.getByTestId("file-input").setInputFiles({ name: "financials.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: good });
-  await expect(page.getByTestId("review")).toBeVisible();
+  await expect(page.getByTestId("issue-list")).toContainText('row 11, column E: "five thousand" is not a number');
+  await expect(page.getByTestId("raw-tab-P&L")).toContainText("1");
+  await expect(page.getByTestId("continue-timeline")).toBeDisabled();
+  await page.getByTestId("fix-input").fill("5000");
+  await page.getByTestId("fix-apply").click();
+  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
   await expect(page.getByTestId("review")).toContainText("Balances");
   await page.getByTestId("continue-timeline").click();
   await expect(page.getByTestId("timeline-step")).toBeVisible();
   await page.getByTestId("commit-import").click();
   await expect(page).toHaveURL(/data-health\?imported=1/, { timeout: 30_000 });
   await expect(page.getByTestId("import-readiness")).toBeVisible();
+  // The correction is kept with the import.
+  const fixes = page.getByTestId("history-fixes").first();
+  await fixes.locator("summary").click();
+  await expect(fixes).toContainText("P&L, row 11, column E set to 5,000 (was 'five thousand')");
   await expect(page.getByTestId("ready-item-financials-opening")).toHaveAttribute("data-status", "done");
   await page.goto(`/company/${id}/analysis/cashflow?type=month&end=2026-01`);
   await expect(page.getByTestId("tile-dcash")).toContainText("7,000");
@@ -222,7 +229,8 @@ test("filled templates import exactly, and mistakes are listed before anything i
   // Sales template: one row per invoice line, saved to the Sales sector.
   const sales = await get("sales");
   const ws = sales.getWorksheet("Sales")!;
-  [[new Date(Date.UTC(2026, 0, 15)), "INV/2026/0001", "Clinic A", "Concentrator", "Devices", "Sara", 2, 60000, 36000], [new Date(Date.UTC(2026, 0, 20)), "INV/2026/0002", "Clinic B", "Mask", "Consumables", "Omar", 100, 40000, 24000]]
+  // The third line has no date: an error to fix (here, the row is left out) before the sales can be saved.
+  [[new Date(Date.UTC(2026, 0, 15)), "INV/2026/0001", "Clinic A", "Concentrator", "Devices", "Sara", 2, 60000, 36000], [new Date(Date.UTC(2026, 0, 20)), "INV/2026/0002", "Clinic B", "Mask", "Consumables", "Omar", 100, 40000, 24000], [null, "INV/2026/0003", "Clinic C", "Mask", "Consumables", "Omar", 1, 999, 500]]
     .forEach((r, i) => r.forEach((v, j) => { ws.getRow(5 + i).getCell(j + 1).value = v; }));
   await page.goto(`/company/${id}/settings/source-data?step=sales`);
   await page.waitForLoadState("networkidle");
@@ -230,6 +238,12 @@ test("filled templates import exactly, and mistakes are listed before anything i
     await page.getByTestId("file-input").setInputFiles({ name: "sales.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await sales.xlsx.writeBuffer()) });
     await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 4000 });
   }).toPass({ timeout: 30_000 });
+  await expect(page.getByTestId("error-count")).toHaveText("1 error to fix");
+  await expect(page.getByTestId("issue-list")).toContainText("row 7, column A: no invoice date on this line");
+  await expect(page.getByTestId("save-sales")).toBeDisabled();
+  await page.getByTestId("fix-skip").click();
+  await expect(page.getByTestId("error-count")).toHaveText("0 errors: ready to import");
+  await expect(page.getByTestId("sorted-sales-total")).toContainText("100,000");
   await page.getByTestId("save-sales").click();
   await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
   await page.goto(`/company/${id}/settings/data-setup`);

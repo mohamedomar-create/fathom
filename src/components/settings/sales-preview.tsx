@@ -4,7 +4,7 @@ import { mlabel, money } from "@/lib/engine";
 import { readSalesGrid, salesPeriods, type SalesField, type SalesLayout, type SalesLine, type SalesOverride } from "@/lib/ingest/sales";
 import type { Grid } from "@/lib/ingest/extract";
 
-const FIELD_LABEL: Record<SalesField, string> = {
+export const FIELD_LABEL: Record<SalesField, string> = {
   date: "Date", period: "Month", doc: "Invoice number", customer: "Customer", product: "Product", category: "Category", salesperson: "Salesperson",
   qty: "Quantity", untaxed: "Amount before tax", total: "Amount (with tax)", cost: "Cost", margin: "Margin",
 };
@@ -47,7 +47,7 @@ export function SalesPreview({ read, currency, overrides, onChange }: { read: Sa
                 <label key={c.col} className="flex items-center gap-1 rounded border border-line px-2 py-1">
                   <span className="max-w-[160px] truncate text-mute" title={c.header}>{c.header}</span>
                   <select value={c.field ?? ""} data-testid={`sales-col-${c.col}`}
-                    onChange={(e) => onChange({ ...overrides, [l.sheet]: { ...(overrides[l.sheet] ?? {}), [c.col]: (e.target.value || null) as SalesField | null } })}
+                    onChange={(e) => onChange({ ...overrides, [l.sheet]: { ...(overrides[l.sheet] ?? {}), cols: { ...overrides[l.sheet]?.cols, [c.col]: (e.target.value || null) as SalesField | null } } })}
                     className="rounded border-0 bg-band px-1 py-0.5">
                     <option value="">not used</option>
                     {FIELDS.map((f) => <option key={f} value={f}>{FIELD_LABEL[f]}</option>)}
@@ -58,16 +58,6 @@ export function SalesPreview({ read, currency, overrides, onChange }: { read: Sa
           )}
         </section>
       ))}
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
-        <table className="tbl min-w-[640px]" data-testid="sales-sample">
-          <thead><tr><th className="text-left">Date</th><th className="text-left">Customer</th><th className="text-left">Product</th><th className="text-left">Category</th><th>Qty</th><th>Amount</th></tr></thead>
-          <tbody>
-            {read.lines.slice(0, 8).map((x, i) => (
-              <tr key={i} className="row"><td className="text-left">{x.day ?? mlabel(x.period)}</td><td className="max-w-[180px] truncate text-left">{x.customer}</td><td className="max-w-[220px] truncate text-left">{x.product}</td><td className="text-left text-mute">{x.category}</td><td className="num">{x.qty ?? "–"}</td><td className="num">{money(x.amount, currency)}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
       <p className="text-xs text-mute">Saving replaces the sales previously uploaded from a file for these months. Sales from the General Ledger are kept for other months.</p>
     </div>
   );

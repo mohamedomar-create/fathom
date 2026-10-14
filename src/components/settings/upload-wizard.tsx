@@ -3,8 +3,14 @@ import { AlertTriangle, CheckCircle2, FileSpreadsheet, Loader2, Upload } from "l
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { mlabel, money, type ClassKey } from "@/lib/engine";
-import { CLASS_LABEL, CLASS_OPTIONS, extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
-import type { Grid, Overrides } from "@/lib/ingest/extract";
+import { extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
+import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
+import { financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
+import { financialsFill, salesCsv } from "@/lib/templates/fill";
+import { RawSheets, ROLE, type RawSheetData } from "@/components/upload/raw-sheet";
+import { SortedView, type Focus, type SortedViewProps } from "@/components/upload/sorted-view";
+import { StepStrip, TwoBox } from "@/components/upload/two-box";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { readWorkbooks } from "@/lib/ingest/read";
@@ -15,13 +21,12 @@ import { CheckList, ModeChoice, OverwriteDiffs, Timeline } from "./import-timeli
 import { cn } from "@/lib/cn";
 import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
-import { readSales, SalesPreview } from "./sales-preview";
+import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
-import { isTemplateGrid, problemText, templateProblems } from "@/lib/ingest/template";
+import { isTemplateGrid } from "@/lib/ingest/template";
 import { TemplateButton } from "@/components/setup/readiness-view";
 
-type Filter = "review" | "all" | "excluded";
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
 export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" }) {
@@ -34,7 +39,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [err, setErr] = useState<string | null>(null);
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
-  const [filter, setFilter] = useState<Filter>("review");
   const [saving, start] = useTransition();
   const [step, setStep] = useState<"map" | "timeline">("map");
   const [mode, setMode] = useState<ImportMode>("merge");
@@ -50,13 +54,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   // PDFs and scanned images are read page by page and checked by the person before joining the spreadsheets.
   const [pdfJob, setPdfJob] = useState<{ files: File[]; sheets: Grid[] } | null>(null);
   const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null);
+  // The row or line the person is looking at in the two boxes.
+  const [focus, setFocus] = useState<Focus | null>(null);
+  const [picked, setPicked] = useState<SortedViewProps["picked"]>(null);
 
   /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
   const [notice, setNotice] = useState<string | null>(null);
   const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
-    // iReport templates are checked first: any mistake stops the upload with its sheet, row and fix.
-    const problems = templateProblems(grids);
-    if (problems.length) throw new Error(problemText(problems));
+    // iReport templates' mistakes are shown on the sheet and fixed in the box beside it, like any other file's.
     const sales = grids.filter((g) => readSalesGrid(g));
     const accounting = grids.filter((g) => !sales.includes(g));
     if (sales.length) setSalesGrids(sales);
@@ -67,13 +72,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     if (!accounting.length) { setGrids(null); return; }
     const { raw: lines, issues } = extractAll(accounting);
     setDiag(diagnostic(fs, accounting, issues));
-    if (!lines.length) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
-    setOverrides({}); setGrids(accounting);
+    const broken = issues.layouts.some((l) => l.cellErrors?.length);
+    if (!lines.length && !broken) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
+    setOverrides({}); setGrids(accounting); setFocus(null); setPicked(null);
   }, [setupStep]);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null); setSalesGrids(null); setSalesOv({});
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setStep("map"); setPreview(null); setSalesGrids(null); setSalesOv({}); setFocus(null); setPicked(null);
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -105,18 +111,17 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   }
 
   // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
-  const [res, ingestErr]: [IngestResult | null, string | null] = useMemo(() => {
-    if (!grids) return [null, null];
+  const [res, ingestErr, raw]: [IngestResult | null, string | null, RawLine[]] = useMemo(() => {
+    if (!grids) return [null, null, []];
     try {
       const { raw, issues } = extractAll(grids, overrides);
-      return [runIngest(raw, issues, { ...opts, mapping }), null];
-    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed."]; }
+      return [runIngest(raw, issues, { ...opts, mapping }), null, raw];
+    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", []]; }
   }, [grids, overrides, opts, mapping]);
 
   const setCls = (labelKey: string, cls: ClassKey | "") => setMapping((m) => ({ ...m, [labelKey]: cls }));
   const lines = res?.lines.filter((l) => !l.system) ?? [];
   const review = lines.filter((l) => !l.cls || (l.conf < 0.7 && !l.excluded));
-  const shown = filter === "review" ? review : filter === "excluded" ? lines.filter((l) => l.excluded) : lines;
   const lastP = res?.periods[res.periods.length - 1];
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
@@ -126,6 +131,78 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     return runChecks({ accounts: accts, controls: res.controls, extra: res.checks }).filter((c) => FILE_CHECKS.has(c.id));
   }, [res]);
   const controlCount = res?.controls.length ?? 0;
+
+  // ---- the two boxes: the file as uploaded (left) and iReport's sorted reading (right), with fixes made in the box.
+  const [downloading, setDownloading] = useState(false);
+  const [showFile, setShowFile] = useState(0);
+  const sorted = useMemo(() => (res ? sortedFinancials(res, raw) : null), [res, raw]);
+  const issues = useMemo(() => [...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : [])], [res, fileChecks, salesRead]);
+  const errorCount = issues.filter((i) => i.severity === "error").length;
+  const isSalesSheet = (sheet: string) => !!salesGrids?.some((g) => g.name === sheet);
+  const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
+    setPreview(null);
+    if (isSalesSheet(sheet)) setSalesOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    else setOverrides((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+  };
+  const onCell = (sheet: string, row: number, col: number, value: number | string | null) => fixAt(sheet, (o) => ({ cells: { ...o.cells, [`${row}:${col}`]: value } }));
+  const onSkipRow = (sheet: string, row: number) => fixAt(sheet, (o) => ({ skipRows: [...new Set([...(o.skipRows ?? []), row])] }));
+  const onClass = (key: string, cls: ClassKey | "") => { const l = res?.lines.find((x) => x.key === key); if (l) setCls(normLabel(l.label), cls); };
+  const rawSheets: RawSheetData[] = useMemo(() => {
+    const out: RawSheetData[] = [];
+    for (const l of res?.layouts ?? []) {
+      const g = grids?.find((x) => x.name === l.sheet);
+      if (!g) continue;
+      const colNo = l.colNo ?? [];
+      const heads: Record<number, string> = {}, leftOut: number[] = [];
+      for (const c of l.columns) { const orig = colNo[c.col] ?? c.col; if (c.used && c.period) heads[orig] = c.period; else if (!c.used) leftOut.push(orig); }
+      out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: finalTrace(l, res), errors: l.cellErrors ?? [], heads, leftOut });
+    }
+    for (const l of salesRead?.layouts ?? []) {
+      const g = salesGrids?.find((x) => x.name === l.sheet);
+      if (!g) continue;
+      const heads: Record<number, string> = {};
+      for (const c of l.columns) { if (c.period) heads[c.col] = c.period; else if (c.field) heads[c.col] = FIELD_LABEL[c.field]; }
+      out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
+    }
+    return out;
+  }, [res, grids, salesRead, salesGrids]);
+  /** A row clicked on the left: the line it became on the right, or why it was not used. */
+  const onRow = (sheet: string, row: number) => {
+    const s = rawSheets.find((x) => x.name === sheet);
+    const t = s?.trace[row];
+    const where = `${sheet.split(" › ").pop()}, ${cellRef(row, undefined, s?.origin)}`;
+    setFocus({ sheet, rows: [row] });
+    if (!t) { setPicked({ note: `${where}: empty.` }); return; }
+    const role = ROLE[t.role];
+    const used = t.role === "account" || t.role === "entry" || t.role === "opening";
+    setPicked({ key: t.ref, sheet, row, note: `${where}: ${role.label.toLowerCase()}${t.note ? `, ${t.note}` : ""}.${used ? " Highlighted on the right." : ""}` });
+  };
+  const fixes = (): FixRecord[] => [
+    ...Object.entries(overrides).flatMap(([sheet, o]) => fixRecords(sheet, grids?.find((g) => g.name === sheet)?.rows ?? [], o)),
+    ...Object.entries(salesOv).flatMap(([sheet, o]) => fixRecords(sheet, salesGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
+  ].slice(0, 500);
+  /** The sorted reading as iReport's own template: the financials as a filled workbook, sales lines as the sales template (CSV). */
+  async function download() {
+    setDownloading(true); setErr(null);
+    try {
+      const save = (blob: Blob, name: string) => { const url = URL.createObjectURL(blob); Object.assign(document.createElement("a"), { href: url, download: name }).click(); setTimeout(() => URL.revokeObjectURL(url), 1000); };
+      if (sorted && (sorted.plPeriods.length || sorted.bsPeriods.length)) {
+        const r = await fetch("/api/templates/financials", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ currency: /^[A-Z]{3}$/.test(currency) ? currency : "EGP", fy: fyStart, ...financialsFill(sorted) }) });
+        if (!r.ok) throw new Error("The template could not be prepared.");
+        save(await r.blob(), "ireport-financials-filled.xlsx");
+      }
+      if (salesRead?.lines.length) save(new Blob([salesCsv(salesRead.lines, currency)], { type: "text/csv;charset=utf-8" }), "ireport-sales-filled.csv");
+    } catch (e) { setErr((e as Error).message); } finally { setDownloading(false); }
+  }
+  const box = (
+    <TwoBox
+      leftSub={`${rawSheets.length} sheet${rawSheets.length === 1 ? "" : "s"} · click a row to see what it became`}
+      rightTone={errorCount ? "bad" : "ok"} showFile={showFile}
+      left={<RawSheets sheets={rawSheets} focus={focus} onRow={onRow} />}
+      right={<SortedView fin={sorted} sales={salesRead?.lines ?? null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
+        picked={picked} onFocus={(f, o) => { setFocus(f); if (f && !o?.stay) setShowFile((n) => n + 1); }} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} onDownload={download} downloading={downloading} />}
+    />
+  );
 
   /** Everything the server needs to plan this import (the merge itself and the checks run on the server). */
   function payload(m: ImportMode) {
@@ -166,7 +243,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       try {
         const out = await commitImport({
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
-          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))) },
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
@@ -187,24 +264,26 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
 
-  if (!res && salesRead && salesRead.lines.length) {
+  if (!res && salesRead && (salesRead.lines.length || salesRead.layouts.some((l) => l.errors.length))) {
     return (
       <div data-testid="sales-only">
-        <div className="mb-5 flex flex-wrap items-center gap-3">
+        <StepStrip at={2} />
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <FileSpreadsheet className="h-5 w-5 text-brand-d" />
           <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
           <button onClick={() => { setSalesGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
         </div>
         {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
         <SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />
+        <div className="mt-5">{box}</div>
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         <div className="mt-5 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-          <span className="mr-auto text-xs text-mute">{demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Only sales are saved from this file; the financial figures are not changed."}</span>
+          <span className="mr-auto text-xs text-mute">{errorCount ? `Fix the ${errorCount} error${errorCount > 1 ? "s" : ""} in the box above to save.` : demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Only sales are saved from this file; the financial figures are not changed."}</span>
           {!demo && (
-            <button disabled={saving} data-testid="save-sales" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50"
+            <button disabled={saving || errorCount > 0 || !salesRead.lines.length} data-testid="save-sales" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50"
               onClick={() => start(async () => {
                 setErr(null);
-                const out = await saveSales(companyId, "file", salesRead.lines, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })) });
+                const out = await saveSales(companyId, "file", salesRead.lines, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() });
                 if (!out.ok) { setErr(out.error); return; }
                 router.push(`/company/${companyId}/sales`);
                 router.refresh();
@@ -263,6 +342,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     const canImport = !blocking.length || (acceptOn && reason.trim().length >= 10);
     return (
       <div data-testid="timeline-step" className="space-y-5">
+        <StepStrip at={3} />
         <div className="flex flex-wrap items-center gap-3">
           <FileSpreadsheet className="h-5 w-5 text-brand-d" />
           <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
@@ -299,30 +379,21 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   return (
     <div data-testid="review">
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      <StepStrip at={2} />
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <FileSpreadsheet className="h-5 w-5 text-brand-d" />
         <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
         <button onClick={() => { setGrids(null); setFiles([]); }} className="text-sm text-mute underline">Choose other files</button>
       </div>
       {notice && <p className="mb-4 rounded bg-amber/15 px-3 py-2 text-[13px]" data-testid="upload-notice">{notice}</p>}
-      <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
-      {salesRead && salesRead.lines.length > 0 && <p className="mb-5 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="sales-alongside">Also in this upload: a sales file ({salesRead.layouts.map((l) => l.sheet).join(", ")}) with {salesRead.lines.length.toLocaleString("en-US")} lines. It is saved to the Sales sector when you import.</p>}
-      {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="mb-5 text-[13px] text-mute" data-testid="ledger-sales-note">The invoice lines on revenue accounts become sales by customer, product and month in the Sales sector.</p>}
-      <div className="mb-5 grid gap-4 sm:grid-cols-4">
+      <div className="mb-4 grid gap-4 sm:grid-cols-4">
         <Stat label="Months" value={res.periods.length ? `${res.periods.length}` : "0"} sub={res.periods.length ? `${mlabel(res.periods[0])} – ${mlabel(lastP!)}` : ""} />
         <Stat label="Accounts mapped" value={`${lines.filter((l) => l.cls && !l.excluded).length} / ${lines.length}`} sub={`${review.length} to review`} tone={review.length ? "warn" : "ok"} />
         <Stat label={`Revenue ${lastP ? mlabel(lastP) : ""}`} value={lastP ? money(res.totals.revenue[lastP] ?? 0, currency) : "–"} sub={res.asOf ? `part month, to ${Number(res.asOf.slice(8))} ${mlabel(lastP!).split(" ")[0]}` : "compare with your Odoo report"} />
         <Stat label="Balance sheet" value={maxImb < 1 ? "Balances" : `Out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} sub={lastP ? `cash ${money(res.totals.cash[lastP] ?? 0, currency)}` : ""} />
       </div>
-      {fileChecks.length > 0 && <div className="mb-5"><CheckList checks={fileChecks} /></div>}
-      {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="mb-5 flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals printed in the file ({controlCount} total{controlCount > 1 ? "s" : ""} checked: net profit, total assets…).</p>}
-      {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
-        <div className="mb-5 space-y-1.5 text-[13px]">
-          {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{w}</div>)}
-          {[...res.issues.flips, ...res.issues.notes].map((w) => <div key={w} className="flex gap-2 rounded bg-band px-3 py-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-d" />{w}</div>)}
-        </div>
-      )}
-      <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-line px-4 py-3 text-sm">
+      <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
+      <div className="mb-4 flex flex-wrap gap-x-6 gap-y-2 rounded-md border border-line px-4 py-2.5 text-sm">
         <label className="flex items-center gap-2">P&amp;L columns are year-to-date
           <select value={opts.ytd} onChange={(e) => setOpts({ ...opts, ytd: e.target.value as IngestOptions["ytd"] })} className="rounded border border-line px-1.5 py-0.5">
             <option value="auto">Detect ({res.detected.ytd ? "yes" : "no"})</option><option value="yes">Yes</option><option value="no">No</option>
@@ -333,46 +404,25 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           </select></label>
         <label className="flex items-center gap-2"><input type="checkbox" checked={opts.plugEquity} onChange={(e) => setOpts({ ...opts, plugEquity: e.target.checked })} /> Force balance into Other Equity (last resort)</label>
       </div>
-      <div className="mb-2 flex items-center gap-2 text-sm">
-        {(["review", "all", "excluded"] as Filter[]).map((f) => (
-          <button key={f} onClick={() => setFilter(f)} className={cn("rounded-full px-3 py-1", filter === f ? "bg-ink text-white" : "bg-band")}>
-            {f === "review" ? `Needs review (${review.length})` : f === "all" ? `All lines (${lines.length})` : `Excluded (${lines.filter((l) => l.excluded).length})`}
-          </button>
-        ))}
-      </div>
-      <div className="-mx-4 max-h-[52vh] overflow-auto px-4">
-        <table className="tbl text-[13px]">
-          <thead className="sticky top-0 bg-white"><tr><th>Account</th><th>Section</th><th>Maps to</th><th>Confidence</th><th>{lastP ? mlabel(lastP) : "Last value"}</th></tr></thead>
-          <tbody>
-            {shown.map((l) => {
-              const k = normLabel(l.label);
-              return (
-                <tr key={l.key} className={cn("row", l.excluded && "opacity-50")}>
-                  <td><div className="text-xs text-mute">{l.code}{l.sheet ? ` · ${l.sheet}` : ""}</div>{l.name}</td>
-                  <td className="max-w-40 truncate text-mute">{l.section || "–"}</td>
-                  <td>
-                    <select value={l.excluded ? "" : l.cls ?? ""} onChange={(e) => setCls(k, e.target.value as ClassKey | "")} aria-label={`Class for ${l.name}`}
-                      className={cn("max-w-56 rounded border px-1.5 py-1 text-left", !l.cls || l.excluded ? "border-red/50" : "border-line")}>
-                      <option value="">— Exclude —</option>
-                      <optgroup label="Profit & Loss">{CLASS_OPTIONS.slice(0, 14).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
-                      <optgroup label="Balance Sheet">{CLASS_OPTIONS.slice(14).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
-                    </select>
-                  </td>
-                  <td><span className={cn("rounded px-1.5 py-0.5 text-xs", l.conf >= 0.85 ? "bg-green-bg text-green-d" : l.conf >= 0.6 ? "bg-amber/20 text-[#9a6b00]" : "bg-red-bg text-red")} title={l.why}>{Math.round(l.conf * 100)}%</span> <span className="text-xs text-mute">{l.why}</span></td>
-                  <td>{lastP && l.values[lastP] !== undefined ? money(l.values[lastP], currency) : "–"}</td>
-                </tr>
-              );
-            })}
-            {!shown.length && <tr><td colSpan={5} className="py-6 text-center text-mute">{filter === "review" ? "Everything is mapped with good confidence." : "Nothing here."}</td></tr>}
-          </tbody>
-        </table>
+      {salesRead && salesRead.lines.length > 0 && <p className="mb-4 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="sales-alongside">Also in this upload: a sales file ({salesRead.layouts.map((l) => l.sheet).join(", ")}) with {salesRead.lines.length.toLocaleString("en-US")} lines. It is saved to the Sales sector when you import.</p>}
+      {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="mb-4 text-[13px] text-mute" data-testid="ledger-sales-note">The invoice lines on revenue accounts become sales by customer, product and month in the Sales sector.</p>}
+      {box}
+      <div className="mt-4 space-y-2">
+        {fileChecks.length > 0 && <CheckList checks={fileChecks} />}
+        {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals printed in the file ({controlCount} total{controlCount > 1 ? "s" : ""} checked: net profit, total assets…).</p>}
+        {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
+          <div className="space-y-1.5 text-[13px]">
+            {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{w}</div>)}
+            {[...res.issues.flips, ...res.issues.notes].map((w) => <div key={w} className="flex gap-2 rounded bg-band px-3 py-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-d" />{w}</div>)}
+          </div>
+        )}
       </div>
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       <div className="mt-6 flex flex-wrap items-center justify-end gap-3 border-t border-line pt-4">
-        <span className="mr-auto text-xs text-mute">{demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Your mapping choices are remembered for the next upload."}</span>
+        <span className="mr-auto text-xs text-mute" data-testid="continue-hint">{errorCount ? `Fix the ${errorCount} error${errorCount > 1 ? "s" : ""} in the box above to continue: each one has its fix beside it.` : demo ? "Demo mode: your file was read in this browser only and nothing was saved." : "Your class choices are remembered for the next upload."}</span>
         {demo ? (
           <a href="/login?mode=signup" className="rounded bg-brand-d px-5 py-2.5 font-medium text-white" data-testid="commit-import">Create a free account to import</a>
-        ) : <button disabled={previewing || !res.periods.length} onClick={() => runPreview()} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
+        ) : <button disabled={previewing || !res.periods.length || errorCount > 0} onClick={() => runPreview()} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white disabled:opacity-50" data-testid="continue-timeline">
           {previewing ? "Checking…" : `Continue: check ${res.periods.length} months`}
         </button>}
       </div>

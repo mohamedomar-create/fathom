@@ -1,5 +1,6 @@
 import { arRx, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
-import { controlMetric, headerPeriod, str, type ExtractIssues, type RawLine, type SheetLayout, type SheetOverride } from "./extract";
+import { controlMetric, headerPeriod, str, type ExtractIssues, type RawLine, type SheetLayout, type SheetOverride, type Tr } from "./extract";
+import { badAmount, shown, type TraceRow } from "./trace";
 
 /**
  * Odoo's own XLSX exports (Accounting → Reporting), read exactly rather than guessed:
@@ -34,7 +35,17 @@ interface Ctx {
   head: string[]; above: string[];
   /** Last of the code and name columns: amounts are to its right. */
   last: number;
+  /** Row marks and unreadable cells for the reader that runs. */
+  tr: Tr;
 }
+const mark = (tr: Tr, row: number, t: TraceRow) => { if (!tr.marks[row]) tr.marks[row] = t; };
+/** Reads an amount cell, recording text that is not a number as an error to fix. */
+const amount = (tr: Tr, num: Num, rows: Cell[][], r: number, c: number) => {
+  const v = num(rows[r][c]);
+  if (badAmount(rows[r][c], v)) tr.errs.push({ row: r, col: c, text: shown(rows[r][c]), message: `"${shown(rows[r][c])}" is not a number` });
+  return v;
+};
+const TOTAL_NOTE = { role: "total", note: "iReport works out totals itself" } as const;
 
 const DC_WORD = arRx(/(debit|credit|مدين|دائن|débit|crédit)/i);
 /**
@@ -57,7 +68,7 @@ function headings(rows: Cell[][], r: number): { head: string[]; above: string[] 
   return { head, above };
 }
 
-export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string): RawLine[] | null {
+export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string, attempt: () => Tr): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 12); r++) {
     const { head: cells, above } = headings(rows, r);
     const cCode = cells.findIndex((x) => CODE_HDR.test(x));
@@ -66,14 +77,14 @@ export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][],
     const cName = NAME_HDR.test(cells[cCode + 1] ?? "") ? cCode + 1 : cCode > 0 && NAME_HDR.test(cells[cCode - 1] ?? "") ? cCode - 1 : -1;
     if (cName < 0) continue;
     const last = Math.max(cCode, cName);
-    const ctx: Ctx = { g, rows, num, ov, layout, issues, today, head: cells, above, last };
+    const ctx: Ctx = { g, rows, num, ov, layout, issues, today, head: cells, above, last, tr: attempt() };
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/i.test(x));
     const debits = cells.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
     // A heading row that turns out not to be one of these layouts (e.g. the group row above Debit/Credit) lets the next row try.
     if (dat > last && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)), cells.findIndex((x) => PARTNER_HDR.test(x)), cells.findIndex((x) => LABEL_HDR.test(x)));
     if (debits.length >= 2 || (debits.length === 1 && dat < 0)) { const tb = trialBalance(ctx, r, cCode, cName); if (tb) return tb; continue; }
     const vals = cells.map((x, i) => (i > last && x ? i : -1)).filter((i) => i >= 0);
-    if (vals.length) { const st = statement(ctx, r, cCode, cName, vals); if (st) return st; layout.columns = []; }
+    if (vals.length) { const st = statement({ ...ctx, tr: attempt() }, r, cCode, cName, vals); if (st) return st; layout.columns = []; }
   }
   return null;
 }
@@ -89,7 +100,7 @@ const monthEnd = (day: string) => { const [y, m] = day.split("-").map(Number); r
 /** "2026-10-10" when the figures stop before the month ends; undefined for a full month. */
 export const partialDay = (day?: string | null) => (day && Number(day.slice(8)) < monthEnd(day) ? day : undefined);
 
-function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
+function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
   if (cCred < 0) return null;
   const found = detectDateOrder(rows.slice(r + 1).map((row) => row[cDate]));
   const order: DateOrder = ov.dateOrder ?? found.order ?? "dmy";
@@ -105,6 +116,7 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
   const accounts: Acc[] = [];
   let cur: Acc | null = null;
   const dc = (row: Cell[]) => (num(row[cDeb]) ?? 0) - (num(row[cCred]) ?? 0);
+  mark(tr, r, { role: "header" });
   for (let i = r + 1; i < rows.length; i++) {
     const row = rows[i];
     const code = str(row[cCode]), name = str(row[cName]);
@@ -115,19 +127,23 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
     if ((code && noDate) || codeless) {
       cur = { key: `${g.name}|gl|${code || "-"}|${name}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: "", stmt: null, kind: "movement", values: {}, opening: 0, closing: dc(row), initial: false, moves: 0, entries: [] };
       accounts.push(cur);
+      mark(tr, i, { role: "account", ref: cur.key });
       continue;
     }
-    if (!cur) continue;
-    if (!code && INITIAL.test(name)) { cur.opening += dc(row); cur.initial = true; continue; }
+    if (!cur) { if (code || name) mark(tr, i, { role: "unused", note: "before the first account heading" }); continue; }
+    if (!code && INITIAL.test(name)) { cur.opening += dc(row); cur.initial = true; mark(tr, i, { role: "opening", ref: cur.key }); continue; }
     const p = parsePeriod(date, order);
     if (p) {
       const day = parseDay(date, order);
-      if (day && day > cutoff) { late.push({ acc: cur.label, ref: name, day, amt: dc(row) }); cur.closing = (cur.closing ?? 0) - dc(row); continue; }
-      cur.values[p] = (cur.values[p] ?? 0) + dc(row); cur.moves++;
-      cur.entries!.push({ day: day ?? `${p}-01`, period: p, ref: name, label: cLabel >= 0 ? str(row[cLabel]) : "", partner: cPartner >= 0 ? str(row[cPartner]) : "", amount: dc(row) });
+      if (day && day > cutoff) { late.push({ acc: cur.label, ref: name, day, amt: dc(row) }); cur.closing = (cur.closing ?? 0) - dc(row); mark(tr, i, { role: "unused", note: `dated after ${fmtDay(cutoff)}, outside the report's period` }); continue; }
+      const errs = tr.errs.length;
+      const amt = (amount(tr, num, rows, i, cDeb) ?? 0) - (amount(tr, num, rows, i, cCred) ?? 0);
+      cur.values[p] = (cur.values[p] ?? 0) + amt; cur.moves++;
+      cur.entries!.push({ day: day ?? `${p}-01`, period: p, ref: name, label: cLabel >= 0 ? str(row[cLabel]) : "", partner: cPartner >= 0 ? str(row[cPartner]) : "", amount: amt });
+      mark(tr, i, tr.errs.length > errs ? { role: "error", ref: cur.key, note: "the amount cannot be read" } : { role: "entry", ref: cur.key });
       continue;
     }
-    if (!code && (GRAND_TOTAL.test(name) || TOTAL_PREFIX.test(name))) { if (GRAND_TOTAL.test(name)) cur = null; continue; }
+    if (!code && (GRAND_TOTAL.test(name) || TOTAL_PREFIX.test(name))) { if (GRAND_TOTAL.test(name)) cur = null; mark(tr, i, TOTAL_NOTE); continue; }
   }
   // An account without an "Initial Balance" row still has one when its heading balance differs from its movements (e.g. undistributed profits).
   for (const a of accounts) if (!a.initial) a.opening = (a.closing ?? 0) - Object.values(a.values).reduce((s, v) => s + v, 0);
@@ -139,7 +155,7 @@ function ledger({ g, rows, num, ov, layout, issues, today }: Ctx, r: number, cCo
   return out.length ? out : null;
 }
 
-function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: Ctx, r: number, cCode: number, cName: number): RawLine[] | null {
+function trialBalance({ g, rows, num, ov, layout, issues, head, above, last, tr }: Ctx, r: number, cCode: number, cName: number): RawLine[] | null {
   // Group labels sit in the nearest non-empty row above the Debit/Credit headings, at or left of each Debit column.
   const groupAt = (c: number) => { for (let k = c; k > last; k--) if (above[k]) return { label: above[k], col: k }; return null; };
   type Grp = { kind: "initial" | "end" | "period"; deb: number; cred: number; col: number; label: string; p?: string; months?: number; endDay?: string };
@@ -204,7 +220,7 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: C
     const values: Record<string, number> = {};
     const spans: Record<string, number> = {};
     for (const gp of used) {
-      const d = num(row[gp.deb]), c = num(row[gp.cred]);
+      const d = amount(tr, num, rows, i, gp.deb), c = amount(tr, num, rows, i, gp.cred);
       if (d === null && c === null) continue;
       values[gp.p!] = (d ?? 0) - (c ?? 0);
       if ((gp.months ?? 1) > 1) spans[gp.p!] = gp.months!;
@@ -213,8 +229,11 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: C
     if (!Object.keys(values).length && Math.abs(opening) < 0.005 && !closing) return null;
     const section = stack.filter((s) => s.code === "(none)" || (code && code.startsWith(s.code))).map((s) => s.label).join(" / ");
     // A single period column: the closing balance proves opening + movement; with several, only the last month can be checked.
-    return { key: `${g.name}|${i + 1}|${code || "-"}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section, stmt: null, kind: "movement", values, opening, ...(Object.keys(spans).length ? { spans } : {}), ...(closing !== undefined && used.length === periods.length ? { closing } : {}) };
+    const key = `${g.name}|${i + 1}|${code || "-"}`;
+    mark(tr, i, tr.errs.some((e) => e.row === i) ? { role: "error", ref: key, note: "an amount cannot be read" } : { role: "account", ref: key });
+    return { key, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section, stmt: null, kind: "movement", values, opening, ...(Object.keys(spans).length ? { spans } : {}), ...(closing !== undefined && used.length === periods.length ? { closing } : {}) };
   };
+  for (let k = r; k >= 0 && k >= r - 1; k--) if (rows[k].some((v) => DEBIT.test(hn(v)) || CREDIT.test(hn(v)) || CODE_HDR.test(hn(v)))) mark(tr, k, { role: "header" });
   for (let i = r + 1; i < rows.length; i++) {
     const row = rows[i];
     const code = str(row[cCode]), name = str(row[cName]);
@@ -226,6 +245,7 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: C
           const d = num(row[gp.deb]) ?? 0, c = num(row[gp.cred]) ?? 0;
           if (Math.abs(d - c) > Math.max(1, Math.abs(d) * 1e-6)) issues.warnings.push(`${g.name}: the Total row's debits and credits differ in '${gp.label || "a column"}' (${Math.round(d).toLocaleString("en-GB")} vs ${Math.round(c).toLocaleString("en-GB")}).`);
         }
+        mark(tr, i, TOTAL_NOTE);
         break;
       }
       // Group row: "121 Cash & Cash Equivalent" or "(No Group)". Pop groups that are not its parents.
@@ -238,6 +258,7 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: C
       }
       while (stack.length && (gcode === "(none)" || !gcode.startsWith(stack[stack.length - 1].code))) stack.pop();
       stack.push({ code: gcode, label: name });
+      mark(tr, i, { role: "heading", note: "a group: its accounts are read one by one" });
       continue;
     }
     const line = leaf(row, i, code, name);
@@ -246,7 +267,7 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last }: C
   return out.length ? out : null;
 }
 
-function statement({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCode: number, cName: number, valCols: number[]): RawLine[] | null {
+function statement({ g, rows, num, ov, layout, issues, tr }: Ctx, r: number, cCode: number, cName: number, valCols: number[]): RawLine[] | null {
   const head = rows[r].map((v) => str(v));
   const title = titlePeriod(rows, r);
   const cols: { c: number; p: string; months: number; endDay?: string }[] = [];
@@ -273,17 +294,20 @@ function statement({ g, rows, num, ov, layout, issues }: Ctx, r: number, cCode: 
     const code = str(row[cCode]), name = str(row[cName]);
     if (!name && !code) continue;
     const values: Record<string, number> = {};
-    for (const col of cols) { const v = num(row[col.c]); if (v !== null) values[col.p] = v; }
     if (!code) {
+      for (const col of cols) { const v = num(row[col.c]); if (v !== null) values[col.p] = v; }
       const metric = controlMetric(name);
       if (metric) for (const col of cols) if (col.p in values) (issues.controls ??= []).push({ metric, period: col.p, value: values[col.p], months: col.months, source: `${g.name} row ${i + 1} '${name.slice(0, 60)}'`, sheet: g.name });
       // Section rows ("Revenue", "Less Costs of Revenue") open a section; their "Total …" rows close it.
-      if (TOTAL_PREFIX.test(name) || metric) heads.length = 0;
-      else { heads.length = 0; heads.push(name); }
+      if (TOTAL_PREFIX.test(name) || metric) { heads.length = 0; mark(tr, i, TOTAL_NOTE); }
+      else { heads.length = 0; heads.push(name); mark(tr, i, { role: "heading" }); }
       continue;
     }
-    if (!Object.keys(values).length) continue;
+    const errs = tr.errs.length;
+    for (const col of cols) { const v = amount(tr, num, rows, i, col.c); if (v !== null) values[col.p] = v; }
+    if (!Object.keys(values).length && tr.errs.length === errs) continue;
     const spans = Object.fromEntries(cols.filter((c) => c.months > 1 && c.p in values).map((c) => [c.p, c.months]));
+    mark(tr, i, tr.errs.length > errs ? { role: "error", ref: `${g.name}|${i + 1}|${code}`, note: "an amount cannot be read" } : { role: "account", ref: `${g.name}|${i + 1}|${code}` });
     out.push({ key: `${g.name}|${i + 1}|${code}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: heads.join(" / "), stmt, kind: "natural", values, opening: 0, ...(Object.keys(spans).length ? { spans } : {}) });
   }
   return out.length ? out : null;
