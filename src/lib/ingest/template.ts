@@ -2,9 +2,13 @@ import { isPL } from "@/lib/company/build";
 import { classFromChoice, FIN_HEAD, MARK, MARK_PREFIX, SALES_COLS, type SheetMark } from "@/lib/templates/spec";
 import { cleanNum, parseDay, parsePeriod, type Cell } from "./parse";
 import type { Grid, RawLine } from "./extract";
+import { shown, type Marks } from "./trace";
 
-/** A mistake in a filled-in template: where it is and how to fix it. */
-export interface TemplateProblem { sheet: string; row: number; col?: string; message: string }
+/**
+ * A mistake in a filled-in template: where it is and how to fix it. row / col are the spreadsheet's (1-based row, column letter);
+ * r / c index the sheet as uploaded (0-based) and text is what the cell holds.
+ */
+export interface TemplateProblem { sheet: string; row: number; col?: string; message: string; grid?: string; r?: number; c?: number; text?: string }
 
 const text = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString() : String(v)).trim();
 const colName = (i: number) => { let s = "", n = i + 1; while (n) { s = String.fromCharCode(65 + ((n - 1) % 26)) + s; n = Math.floor((n - 1) / 26); } return s; };
@@ -34,13 +38,25 @@ function monthOf(v: Cell): string | null {
  * Reads a P&L or balance sheet template exactly: every row with figures must name its account and an iReport class
  * of the right statement, every figure must be a number and every month heading a single month. Rows left empty are skipped.
  */
-export function readFinancialTemplate(g: Grid): { lines: RawLine[]; periods: string[]; problems: TemplateProblem[] } {
+export function readFinancialTemplate(g: Grid): { lines: RawLine[]; periods: string[]; problems: TemplateProblem[]; marks: Marks; headerRow: number | null } {
   const mark = templateMarkOf(g);
   const sheet = sheetName(g);
-  const problems: TemplateProblem[] = [];
+  const marks: Marks = [];
+  const raw: Omit<TemplateProblem, "sheet" | "grid">[] = [];
+  const problems = { push: (p: Omit<TemplateProblem, "grid">) => { raw.push(p); } };
+  const done = (lines: RawLine[], periods: string[], headerRow: number | null) => ({
+    lines, periods, marks, headerRow,
+    problems: raw.map((p) => {
+      const c = p.c ?? (p.col ? p.col.split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1 : undefined);
+      const r = p.r ?? p.row - 1;
+      return { ...p, sheet, grid: g.name, r, ...(c !== undefined ? { c, text: p.text ?? shown(g.rows[r]?.[c]) } : {}) };
+    }),
+  });
   const stmt = mark === "pl" ? "PL" : "BS";
   const hi = g.rows.findIndex((r) => text(r?.[0]).toLowerCase() === FIN_HEAD[0].toLowerCase() && text(r?.[2]).toLowerCase() === FIN_HEAD[2].toLowerCase());
-  if (hi < 0) return { lines: [], periods: [], problems: [{ sheet, row: 1, message: `The heading row (Code, Account, iReport class, then the months) is missing. Download a fresh template and copy your figures into it.` }] };
+  if (hi < 0) { problems.push({ sheet, row: 1, message: `The heading row (Code, Account, iReport class, then the months) is missing. Download a fresh template and copy your figures into it.` }); return done([], [], null); }
+  for (let r = 0; r < hi; r++) marks[r] = { role: "title" };
+  marks[hi] = { role: "header" };
   const head = g.rows[hi] ?? [];
   const cols: { i: number; p: string }[] = [];
   const seen = new Map<string, number>();
@@ -67,16 +83,18 @@ export function readFinancialTemplate(g: Grid): { lines: RawLine[]; periods: str
       if (n === null || !Number.isFinite(n)) { problems.push({ sheet, row: r + 1, col: colName(i), message: `"${text(v)}" is not a number. Enter the amount as a plain number.` }); bad = true; continue; }
       if (n) values[p] = n;
     }
-    if (!any) continue; // an unused row (its account name and class may be the template's suggestion)
-    if (!name) { problems.push({ sheet, row: r + 1, col: "B", message: "This row has figures but no account name." }); continue; }
+    if (!any) { if (code || name || choice) marks[r] = { role: "unused", note: "no figures on this row" }; continue; } // an unused row (its account name and class may be the template's suggestion)
+    const fail = (col: string, message: string) => { problems.push({ sheet, row: r + 1, col, message }); marks[r] = { role: "error", note: message }; };
+    if (!name) { fail("B", "This row has figures but no account name."); continue; }
     const cls = classFromChoice(choice);
-    if (!choice) { problems.push({ sheet, row: r + 1, col: "C", message: `"${name}" has figures but no iReport class. Pick one from the drop-down list.` }); continue; }
-    if (!cls) { problems.push({ sheet, row: r + 1, col: "C", message: `"${choice}" is not an iReport class. Pick one from the drop-down list (the Classes sheet lists them).` }); continue; }
-    if ((stmt === "PL") !== isPL(cls)) { problems.push({ sheet, row: r + 1, col: "C", message: `"${choice}" is a ${isPL(cls) ? "P&L" : "balance sheet"} class but this is the ${stmt === "PL" ? "P&L" : "balance sheet"} sheet. Move the row to the right sheet or change its class.` }); continue; }
-    if (bad) continue;
+    if (!choice) { fail("C", `"${name}" has figures but no iReport class. Pick one from the drop-down list.`); continue; }
+    if (!cls) { fail("C", `"${choice}" is not an iReport class. Pick one from the drop-down list (the Classes sheet lists them).`); continue; }
+    if ((stmt === "PL") !== isPL(cls)) { fail("C", `"${choice}" is a ${isPL(cls) ? "P&L" : "balance sheet"} class but this is the ${stmt === "PL" ? "P&L" : "balance sheet"} sheet. Move the row to the right sheet or change its class.`); continue; }
+    if (bad) { marks[r] = { role: "error", note: "an amount is not a number" }; continue; }
+    marks[r] = { role: "account", ref: `${g.name}#${r + 1}` };
     lines.push({ key: `${g.name}#${r + 1}`, sheet: g.name, row: r + 1, label: code ? `${code} ${name}` : name, code, name, section: "", stmt, kind: "natural", values, opening: 0, forcedCls: cls, template: true });
   }
-  return { lines, periods: cols.map((c) => c.p), problems };
+  return done(lines, cols.map((c) => c.p), hi);
 }
 
 /** Checks a filled-in sales template row by row; the sales reader then reads it. */
@@ -99,7 +117,10 @@ export function checkSalesTemplate(g: Grid): TemplateProblem[] {
     if (problems.length > 200) break;
   }
   if (!rows) problems.push({ sheet, row: hi + 2, message: "The sheet has no sales lines yet." });
-  return problems;
+  return problems.map((p) => {
+    const c = p.col ? p.col.split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1 : undefined;
+    return { ...p, grid: g.name, r: p.row - 1, ...(c !== undefined ? { c, text: shown(g.rows[p.row - 1]?.[c]) } : {}) };
+  });
 }
 
 /** Every problem in the iReport templates among these sheets (other files are not checked here). */

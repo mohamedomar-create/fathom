@@ -65,6 +65,8 @@ export interface IngestResult {
   layouts: SheetLayout[];
   /** Last day the latest month covers, when it is a part month ("2026-10-10"). */
   asOf: string | null;
+  /** Lines read from the file but not imported, by key: why (a total iReport works out itself, a parent account, a check sheet). */
+  removed: Record<string, string>;
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
@@ -122,7 +124,9 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   const issues = { warnings: [...extractIssues.warnings], notes: [] as string[], flips: [] as string[], subtotals: [] as string[], skippedCols: [...extractIssues.skippedCols] };
   // Parent accounts printed with codes (1 → 11 → 1101) are headings: drop them before anything is summed.
   const tree = dropParentAccounts(rawIn);
-  for (const p of tree.parents) issues.subtotals.push(`${p.sheet} row ${p.row}: '${p.label}' (parent account: equals the sum of its sub-accounts)`);
+  const removed: Record<string, string> = {};
+  for (const p of tree.parents) { issues.subtotals.push(`${p.sheet} row ${p.row}: '${p.label}' (parent account: equals the sum of its sub-accounts)`); removed[p.key] = "a parent account: the sum of the accounts under it, which are read one by one"; }
+  for (const r of tree.lines) if (roles.get(r.sheet) === "check") removed[r.key] = "used to check the figures of the other file, not imported";
   const checkRaw = tree.lines.filter((r) => roles.get(r.sheet) === "check");
   const raw = tree.lines.filter((r) => roles.get(r.sheet) !== "check");
   // ---- subtotal removal (natural lines only; movement exports are per account)
@@ -132,7 +136,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     if (r.template) return;
     const isTotal = r.kind === "movement" ? !r.code && /^\s*(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(r.name) : SUBTOTAL.test(r.name);
     if (isTotal && !(r.stmt === "BS" && /^\s*net (profit|income|loss|earnings)/i.test(r.name))) {
-      skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (name looks like a computed total)`);
+      skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (name looks like a computed total)`); removed[r.key] = "a total: iReport works out totals itself";
     }
   });
   raw.forEach((r, i) => {
@@ -145,7 +149,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
       if (n.sheet !== r.sheet || skip.has(n.key)) continue;
       for (const p of ps) run[p] += n.values[p] ?? 0;
       if (j - i >= 2 && ps.every((p) => Math.abs(run[p] - (r.values[p] ?? 0)) <= 1) && ps.some((p) => run[p])) {
-        skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (equals the sum of the ${j - i} rows below it)`); break;
+        skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (equals the sum of the ${j - i} rows below it)`); removed[r.key] = `a subtotal: equals the sum of the ${j - i} rows below it`; break;
       }
     }
   });
@@ -484,7 +488,7 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : []), ...(openingMonth ? [openingMonth] : [])])].filter((p) => kept.includes(p)).sort(),
     },
-    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null,
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, removed,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
     openingMonth,
   };

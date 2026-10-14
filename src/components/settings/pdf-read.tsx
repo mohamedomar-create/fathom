@@ -7,6 +7,7 @@ import { MAX_PDF_PAGES, openFile, type OpenedFile } from "@/lib/ingest/pdf-clien
 import type { PageRead } from "@/lib/ingest/pdf-schema";
 import type { Grid } from "@/lib/ingest/extract";
 import { cn } from "@/lib/cn";
+import { StepStrip } from "@/components/upload/two-box";
 
 export interface PdfSummary { pages: number; corrected: number; flagged: number }
 
@@ -161,6 +162,7 @@ export function PdfRead({ companyId, files, onDone, onCancel }: { companyId: str
   const grids = pdfGrids(pages);
   return (
     <div className="space-y-5" data-testid="pdf-review">
+      <StepStrip at={2} />
       <div>
         <h2 className="text-lg font-medium">Check what was read</h2>
         <p className="text-sm text-mute">Compare each table with its page and correct any figure before continuing. Rows that do not add up, or that could not be read with certainty, are highlighted.</p>
@@ -210,11 +212,16 @@ function PageReview({ page, file, flags, onEdit, onRetry }: { page: PdfPage; fil
         {page.rereads ? <span className="text-xs text-mute">(read twice to check its totals)</span> : null}
       </header>
       <div className="grid gap-4 p-4 lg:grid-cols-2">
-        <div className="max-h-[70vh] overflow-auto rounded bg-band">
+        <div className="min-w-0">
+        <div className="mb-1.5 text-xs font-medium text-mute">Your page, as uploaded</div>
+        <div className="max-h-[70vh] overflow-auto rounded border border-line bg-band">
           {/* eslint-disable-next-line @next/next/no-img-element -- a local picture of the page (blob URL) */}
           {img ? <img src={img} alt={`Page ${page.n} of ${page.file}`} className="w-full" /> : <div className="flex h-40 items-center justify-center text-xs text-mute">Drawing the page…</div>}
         </div>
-        <div className="max-h-[70vh] overflow-auto">
+        </div>
+        <div className="min-w-0">
+        <div className="mb-1.5 text-xs font-medium text-brand-d">What iReport read (correct any figure here)</div>
+        <div className="max-h-[70vh] overflow-auto rounded border-2 border-brand/50">
           {page.error ? (
             <div className="space-y-2 text-sm"><p className="rounded bg-red-bg px-3 py-2 text-red" role="alert">{page.error}</p><button onClick={onRetry} className="flex items-center gap-1.5 text-brand-d underline"><RotateCcw className="h-3.5 w-3.5" />Try this page again</button></div>
           ) : !r ? <Loader2 className="h-5 w-5 animate-spin text-brand" />
@@ -251,6 +258,7 @@ function PageReview({ page, file, flags, onEdit, onRetry }: { page: PdfPage; fil
                 </tbody>
               </table>
             )}
+        </div>
         </div>
       </div>
     </section>

@@ -47,6 +47,11 @@ const ImportSchema = PlanSchema.extend({
     asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     // Figures read from PDF pages: how many pages, and how many figures the person corrected before importing.
     pdf: z.object({ pages: z.number().int().min(0).max(1000), corrected: z.number().int().min(0).max(100000), flagged: z.number().int().min(0).max(100000) }).optional(),
+    // Corrections made in the upload's reading box: retyped cells and rows left out, with what the file held.
+    fixes: z.array(z.object({
+      sheet: z.string().max(200), row: z.number().int().min(0).max(10_000_000), col: z.number().int().min(0).max(100_000).optional(),
+      action: z.enum(["set", "empty", "skip-row"]), value: z.union([z.number().finite(), z.string().max(120)]).optional(), was: z.string().max(120).optional(),
+    })).max(500).optional(),
   }),
   accept: z.object({ keys: z.array(z.string().max(80)).max(500), reason: z.string().trim().min(10, "Give a reason of at least 10 characters.").max(500) }).optional(),
 });

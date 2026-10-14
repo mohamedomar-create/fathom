@@ -1,11 +1,13 @@
 import ExcelJS from "exceljs";
 import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { BS_ROWS, CLASS_HELP, classChoice, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
+import type { FinancialsFill, FillRow } from "./fill";
 
 const TEAL = "FF0B6E70", BAND = "FFF5F5F3", INPUT = "FFFFFBEA", MUTE = "FF76766F";
 const NUM = '#,##0.00;[Red]-#,##0.00';
 
-export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string }
+/** fill: the template comes back filled with figures already read and sorted by iReport (financials only). */
+export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string; fill?: FinancialsFill }
 
 /** The workbook for one kind of template, as an .xlsx buffer. */
 export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Promise<Buffer> {
@@ -73,11 +75,17 @@ function financials(wb: ExcelJS.Workbook, o: TemplateOptions) {
   header(classes.getRow(1));
   [...PL_KEYS, ...BS_KEYS].forEach((k) => classes.addRow([classChoice(k), PL_KEYS.includes(k as never) ? "P&L" : "Balance sheet", CLASS_HELP[k][0], CLASS_HELP[k][1]]));
   const plRange = `Classes!$A$2:$A$${1 + PL_KEYS.length}`, bsRange = `Classes!$A$${2 + PL_KEYS.length}:$A$${1 + PL_KEYS.length + BS_KEYS.length}`;
+  const f = o.fill;
+  if (f) {
+    if (f.pl) sheet(wb, "P&L", MARK.pl, "Profit and loss: the month's total for each account", `Filled by iReport from your upload. Amounts in ${o.currency}. Costs positive.`, f.pl.months, f.pl.rows, plRange);
+    if (f.bs) sheet(wb, "Balance Sheet", MARK.bs, "Balance sheet: each account's balance at the end of the month", `Filled by iReport from your upload. Amounts in ${o.currency}.`, f.bs.months, f.bs.rows, bsRange);
+    return;
+  }
   sheet(wb, "P&L", MARK.pl, "Profit and loss: the month's total for each account", `One column per month. Amounts in ${o.currency}. Costs positive.`, months, PL_ROWS, plRange);
   sheet(wb, "Balance Sheet", MARK.bs, "Balance sheet: each account's balance at the end of the month", `The first month column is the opening balance (end of ${mlabel(opening)}). Amounts in ${o.currency}.`, [opening, ...months], BS_ROWS, bsRange);
 }
 
-function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, sub: string, months: string[], rows: [string, ClassKey][], range: string) {
+function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, sub: string, months: string[], rows: [string, ClassKey][] | FillRow[], range: string) {
   const ws = wb.addWorksheet(name, { views: [{ state: "frozen", xSplit: 3, ySplit: 5 }] });
   title(ws, mark, text, sub);
   ws.getColumn(1).width = 12; ws.getColumn(2).width = 40; ws.getColumn(3).width = 34;
@@ -88,7 +96,13 @@ function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, s
   const total = rows.length + 40;
   for (let i = 0; i < total; i++) {
     const r = ws.getRow(6 + i);
-    if (rows[i]) { r.getCell(2).value = rows[i][0]; r.getCell(3).value = classChoice(rows[i][1]); }
+    const row = rows[i];
+    if (Array.isArray(row)) { r.getCell(2).value = row[0]; r.getCell(3).value = classChoice(row[1]); }
+    else if (row) {
+      if (row.code) r.getCell(1).value = row.code;
+      r.getCell(2).value = row.name; r.getCell(3).value = classChoice(row.cls);
+      months.forEach((p, c) => { const v = row.values[p]; if (v) r.getCell(4 + c).value = Math.round(v * 100) / 100; });
+    }
     r.getCell(3).dataValidation = { type: "list", allowBlank: true, formulae: [range], showErrorMessage: true, errorTitle: "Choose a class", error: "Pick the iReport class from the list (see the Classes sheet)." };
     for (let c = 0; c < months.length; c++) {
       const cell = r.getCell(4 + c);

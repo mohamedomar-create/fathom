@@ -4,6 +4,7 @@ import { checkKey, coverageOf, runChecks } from "@/lib/company/checks";
 import { statementOf } from "@/lib/company/import-plan";
 import { getUser } from "@/lib/supabase/server";
 import { DataHealth, type HistoryRow, type MonthSource } from "@/components/settings/data-health";
+import type { FixRecord } from "@/lib/ingest/trace";
 import type { AcceptedItem } from "../actions";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 
@@ -44,7 +45,7 @@ export default async function DataHealthPage({ params, searchParams }: { params:
   const cov = coverageOf(bundle.accounts);
   const maxVersion = Math.max(bundle.dataVersion, ...rows.map((r) => r.data_version ?? 0));
   const history: HistoryRow[] = rows.map((r) => {
-    const rep = (r.report ?? {}) as { mode?: string; periods?: string[]; slices?: { PL?: string[]; BS?: string[] }; accepted?: AcceptedItem[]; restored_from?: number; restored_to?: number; checks?: { severity: string }[] };
+    const rep = (r.report ?? {}) as { mode?: string; periods?: string[]; slices?: { PL?: string[]; BS?: string[] }; accepted?: AcceptedItem[]; restored_from?: number; restored_to?: number; checks?: { severity: string }[]; fixes?: FixRecord[] };
     return {
       id: r.id, kind: r.kind, action: r.action, file: r.filename, at: r.created_at, by: r.created_by ? people.get(r.created_by) ?? null : null,
       version: r.data_version, current: r.data_version === bundle.dataVersion && r.action === "import",
@@ -52,6 +53,7 @@ export default async function DataHealthPage({ params, searchParams }: { params:
       mode: rep.mode ?? (r.action === "restore" ? null : "replace"),
       pl: rep.slices?.PL ?? (rep.mode ? [] : rep.periods ?? []), bs: rep.slices?.BS ?? (rep.mode ? [] : rep.periods ?? []),
       accepted: rep.accepted?.length ?? 0, restoredFrom: rep.restored_from ?? null, restoredTo: rep.restored_to ?? null,
+      fixes: Array.isArray(rep.fixes) ? rep.fixes.slice(0, 100) : [],
     };
   });
 
