@@ -69,15 +69,84 @@ export async function readWorkbook(data: ArrayBuffer, filename: string): Promise
   const wb = isCsv
     ? XLSX.read(decodeText(data), { type: "string", raw: true })
     : XLSX.read(new Uint8Array(data), { type: "array", cellDates: true });
-  return wb.SheetNames.map((name) => {
+  return wb.SheetNames.map((name): Grid => {
     const ws = wb.Sheets[name];
-    const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true });
-    if (isCsv) return { name: filename.replace(/\.[^.]+$/, ""), rows: csvCells(rows) };
+    if (isCsv) return { name: filename.replace(/\.[^.]+$/, ""), rows: csvCells(XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })) };
+    if (!ws["!ref"]) return { name, rows: [] };
     // Rows and columns are counted from the sheet's used range, which need not start at A1.
-    const at = XLSX.utils.decode_range(ws["!ref"] ?? "A1").s;
+    const at = XLSX.utils.decode_range(ws["!ref"]).s;
+    const cells: { r: number; c: number; cell: SheetCell }[] = [];
+    for (const k of Object.keys(ws)) {
+      if (k[0] === "!") continue;
+      const cell = ws[k] as SheetCell;
+      if ((cell.v === undefined || cell.v === null || cell.v === "") && !cell.f) continue;
+      const a = XLSX.utils.decode_cell(k);
+      cells.push({ r: a.r, c: a.c, cell });
+    }
+    if (!cells.length) return { name, rows: [] };
+    const { end, cut } = extent(cells, at, XLSX.utils.encode_col);
+    const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true, range: { s: at, e: end } });
+    const formulas: Record<string, string> = {};
+    let broken = 0;
+    for (const { r, c, cell } of cells) {
+      if (r > end.r || c > end.c) continue;
+      const i = r - at.r, j = c - at.c;
+      // An error cell (#REF!, #DIV/0!) would otherwise read as empty: it keeps its text, so whatever needs it says so.
+      if (cell.t === "e") { (rows[i] ??= [])[j] = String(cell.w ?? "#ERROR!"); broken++; continue; }
+      if (cell.f) formulas[`${i}:${j}`] = String(cell.f);
+    }
     const merges = ((ws["!merges"] ?? []) as Merge[]).map((m) => ({ s: { r: m.s.r - at.r, c: m.s.c - at.c }, e: { r: m.e.r - at.r, c: m.e.c - at.c } }));
-    return { name, rows: fillMerges(rows, merges) };
+    return {
+      name, rows: fillMerges(rows, merges), origin: at,
+      ...(Object.keys(formulas).length ? { formulas } : {}), ...(cut.length ? { cut } : {}), ...(broken ? { broken } : {}),
+    };
   });
+}
+
+type SheetCell = { t?: string; v?: unknown; w?: string; f?: string };
+/** Columns (or rows) this far past the table's last filled one are not part of it: cells pasted across a whole row, stray notes. */
+export const FAR_COLS = 15, FAR_ROWS = 200;
+
+/**
+ * Where the table ends. A run of FAR_COLS empty columns (or FAR_ROWS empty rows) after it separates the table from cells
+ * far away: those are left out, and named, so nothing is dropped silently.
+ */
+export function extent(cells: { r: number; c: number }[], at: { r: number; c: number }, col: (c: number) => string) {
+  const cut: NonNullable<Grid["cut"]> = [];
+  const edge = (vals: number[], start: number, gap: number) => {
+    const s = [...new Set(vals)].sort((a, b) => a - b);
+    let last = Math.max(start, s[0]);
+    for (const v of s) { if (v - last > gap) return { end: last, far: v }; last = Math.max(last, v); }
+    return { end: last, far: null as number | null };
+  };
+  const cs = edge(cells.map((x) => x.c), at.c, FAR_COLS);
+  // A long scattered tail (a row pasted across the sheet leaves one to three cells every few columns) past the last
+  // well-filled column is not part of the table either. A note or two beside the table is kept.
+  if (cs.far === null) {
+    const per = new Map<number, number>();
+    for (const x of cells) per.set(x.c, (per.get(x.c) ?? 0) + 1);
+    const full = Math.max(...per.values());
+    const dense = [...per].filter(([, n]) => n >= Math.max(4, full * 0.1)).map(([c]) => c);
+    if (dense.length) {
+      let prev = Math.max(...dense);
+      const later = [...per.keys()].filter((c) => c > prev).sort((a, b) => a - b);
+      for (const c of later) {
+        if (c - prev >= 4) { if (Math.max(...later) - c > 30) { cs.far = c; cs.end = prev; } break; }
+        prev = c;
+      }
+    }
+  }
+  if (cs.far !== null) {
+    const away = cells.filter((x) => x.c > cs.end);
+    cut.push({ what: "columns", from: col(cs.far), to: col(Math.max(...away.map((x) => x.c))), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
+  }
+  const inCols = cells.filter((x) => x.c <= cs.end);
+  const rs = edge(inCols.map((x) => x.r), at.r, FAR_ROWS);
+  if (rs.far !== null) {
+    const away = inCols.filter((x) => x.r > rs.end);
+    cut.push({ what: "rows", from: String(rs.far + 1), to: String(Math.max(...away.map((x) => x.r)) + 1), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
+  }
+  return { end: { r: rs.end, c: cs.end }, cut };
 }
 
 /** Several files read as one upload: sheets are named "file › sheet" so each stays identifiable. */

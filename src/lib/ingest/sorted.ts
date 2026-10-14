@@ -7,6 +7,9 @@ import { materialUnmapped, type IngestLine, type IngestResult } from "./pipeline
 import type { RawLine, SheetLayout } from "./extract";
 import type { SalesLayout } from "./sales";
 import type { ExpenseLayout } from "./expenses";
+import type { CashLayout } from "./cashbook";
+import type { BankLayout } from "./bank";
+import type { RoleGuess } from "./roles";
 import type { Marks, TraceRow } from "./trace";
 
 /**
@@ -177,6 +180,21 @@ export function expenseIssues(layouts: ExpenseLayout[]): UploadIssue[] {
     if (l.taxIncluded) out.push({ id: `tax:${l.sheet}`, severity: "check", sheet: l.sheet, message: `${l.sheet}: only a total including VAT was found, so costs would read about 14% high. Pick the "Untaxed" column if the file has one.`, fix: "settings" });
   }
   return out;
+}
+
+/** A cash book or bank statement: unreadable cells and totals that do not match block saving; what was not counted is listed. */
+export function bookIssues(layouts: (CashLayout | BankLayout)[]): UploadIssue[] {
+  const out: UploadIssue[] = [];
+  for (const l of layouts) {
+    for (const e of l.errors) out.push({ id: `cell:${l.sheet}:${e.row}:${e.col}`, severity: "error", sheet: l.sheet, row: e.row, col: e.col, message: e.message, fix: "cell", text: e.text });
+    l.checks.forEach((c, i) => out.push({ id: `book:${l.sheet}:${i}`, severity: "check", sheet: l.sheet, row: c.row, col: c.col, message: c.message, fix: c.row !== undefined ? "cell" : "settings" }));
+  }
+  return out;
+}
+
+/** What iReport noticed about the file itself (cells far from the table, spreadsheet errors), for sheets it reads. */
+export function sheetIssues(guesses: RoleGuess[], read: (sheet: string) => boolean): UploadIssue[] {
+  return guesses.filter((g) => read(g.sheet)).flatMap((g) => g.notes.map((n, i) => ({ id: `sheet:${g.sheet}:${i}`, severity: "check" as const, sheet: g.sheet, message: `${g.sheet.split(" › ").pop()}: ${n}`, fix: "settings" as const })));
 }
 
 /** Lines (sales or expenses) by month, with each month's total. */
