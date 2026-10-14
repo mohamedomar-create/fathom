@@ -2,7 +2,7 @@
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
-import { mlabel, money, type ClassKey } from "@/lib/engine";
+import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
 import { extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
 import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
@@ -588,8 +588,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
               if (plWanted) {
                 const accounts = cashAccounts(cashRead.sales, cashRead.expenses, plMap);
                 const periods = [...new Set(accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
+                // An entry that moved month since the last upload of this cash book (a December-dated payment now under
+                // JANUARY) must not stay behind: the month either side is rewritten too when it holds only cash-book figures.
+                const cashNames = new Set(["Sales (cash book)", ...cashCostColumns(cashRead.expenses).map((c) => c.name)]);
+                const onlyCash = (p: string) => company.accounts.some((a) => a.amounts[p] && cashNames.has(a.name)) && company.accounts.every((a) => !a.amounts[p] || !isPL(a.cls) || cashNames.has(a.name));
+                const edges = periods.length && expMode !== "add" ? [addMonths(periods[0], -1), addMonths(periods[periods.length - 1], 1)].filter((p) => !periods.includes(p) && onlyCash(p)) : [];
                 const pl = await commitImport({
-                  companyId, mode: expMode === "add" ? "add" : "merge", slices: { PL: periods, BS: [] }, accounts, extra: [], controls: [], ranges: {}, openingFrom: null, filename: name.slice(0, 300),
+                  companyId, mode: expMode === "add" ? "add" : "merge", slices: { PL: [...periods, ...edges].sort(), BS: [] }, accounts, extra: [], controls: [], ranges: {}, openingFrom: null, filename: name.slice(0, 300),
                   report: { kind: "cashbook", periods, warnings: [], notes: ["Cash basis: the P&L is built from a cash book (money in and money out), not from accounts."], flips: [], mapping: Object.fromEntries(Object.entries(plMap)), fixes: report.fixes },
                 });
                 if (!pl.ok && !/Nothing new to add/.test(pl.error)) { setErr(`Nothing was saved: the P&L could not be built. ${pl.error}${pl.blocking?.length ? ` (${pl.blocking.slice(0, 3).map((c) => c.title).join("; ")})` : ""}`); return; }

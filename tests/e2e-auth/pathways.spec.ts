@@ -426,3 +426,34 @@ test("a many-tab workbook matches the owner's own summary and fills every sector
   await page.goto(`/company/${id}/sales?type=year&end=2026-06`);
   await expect(page.getByTestId("tile-sales")).toContainText("50,360");
 });
+
+/**
+ * The same cash book uploaded again, with an entry now in another month (the owner's December-dated payment moved to
+ * its JANUARY heading): nothing of the earlier upload stays behind, in Expenses or in the P&L.
+ */
+test("uploading the same cash book again leaves nothing behind in the month an entry moved from", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Again Owner", org: "Again Advisory", email: newEmail("again") });
+  const id = await createCompany(page, "Again Co");
+  const xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  const file = { name: "cash-2026.xlsx", mimeType: xlsx, buffer: Buffer.from(bookOf({ "Q1 2026": quarterCells(1) })) };
+  for (const rule of ["date", "heading"] as const) {
+    await startUpload(page, id, "expenses");
+    await page.getByTestId("file-input").setInputFiles(file);
+    await expect(page.getByTestId("books-only")).toBeVisible({ timeout: 20_000 });
+    await page.getByTestId("rule-months").selectOption(rule);
+    await page.getByTestId("roles-confirm").click();
+    await page.getByTestId("books-next").click();
+    if (rule === "heading") await page.getByTestId("mode-merge").click();
+    await page.getByTestId("save-books").click();
+    await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+    // With the dates, the 30 December payment (12,000) counts in December 2025.
+    if (rule === "date") { await page.goto(`/company/${id}/expenses?type=year&end=2025-12`); await expect(page.getByTestId("tile-costs")).toContainText("12,000", { timeout: 30_000 }); }
+  }
+  // Under its heading it counts in January: December is empty again, in Expenses and in the P&L, and the quarter is whole.
+  // (with nothing left in 2025, the page opens on the latest year it has).
+  await page.goto(`/company/${id}/expenses?type=year&end=2025-12`);
+  await expect(page.getByTestId("expenses-headline")).toContainText("in Year 2026", { timeout: 30_000 });
+  await expect(page.getByTestId("tile-costs")).toContainText("40,950");
+  await expect(page.getByTestId("expenses-reconciled")).toBeVisible();
+});
