@@ -39,7 +39,7 @@ export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{
     const { data, error } = await supabase.rpc("begin_expense_batch", {
       p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
     });
-    if (!error) { await dropEmpty(supabase, v.data.companyId, v.data.source, data as string); return { ok: true, batch: data as string }; }
+    if (!error) { await dropEmpty(supabase, v.data.companyId, v.data.source, data as string, sameFile(v.data), periods); return { ok: true, batch: data as string }; }
     // A database without the function (its update not yet applied) does the same steps through the table rules,
     // which let only the company's editors delete and add its expense lines.
     if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "begin_expense_batch") };
@@ -47,7 +47,7 @@ export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{
     if (del.error) return { ok: false, error: dbError(del.error, "expense_lines delete") };
     const ins = await supabase.from("expense_batches").insert({ company_id: v.data.companyId, source: v.data.source, periods, filename: v.data.filename?.slice(0, 300) ?? null, report: (v.data.report ?? {}) as Json, created_by: user.id }).select("id").single();
     if (ins.error) return { ok: false, error: dbError(ins.error, "expense_batches insert") };
-    await dropEmpty(supabase, v.data.companyId, v.data.source, ins.data.id);
+    await dropEmpty(supabase, v.data.companyId, v.data.source, ins.data.id, sameFile(v.data), periods);
     return { ok: true, batch: ins.data.id };
   } catch (e) {
     return { ok: false, error: safeError(e, "startExpenseBatch") };
@@ -81,12 +81,25 @@ export async function addExpenseLines(companyId: string, batch: string, lines: z
   }
 }
 
+/** A file saved again in place of its earlier upload ("replace", or saved as new), never "add only new months". */
+const sameFile = (d: { source: "ledger" | "file"; filename?: string; report?: Record<string, unknown> }) =>
+  d.source === "file" && d.filename && d.report?.mode !== "add" ? d.filename.slice(0, 300) : null;
+
 /**
  * Uploads left with no lines (every month replaced by a later upload) are removed, so Data health lists only uploads
  * that still count. Best effort: a failure here never stops the upload.
  */
-async function dropEmpty(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, source: "ledger" | "file", keep: string) {
+async function dropEmpty(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, source: "ledger" | "file", keep: string, file: string | null = null, periods: string[] = []) {
   try {
+    // The same file uploaded again (replacing what it gave before): its earlier lines go entirely, not only the months
+    // the new upload holds, so an entry that moved month is never left behind in its old one.
+    if (file) {
+      // Only an earlier upload of that name that overlaps these months is the same file: last year's file of the same
+      // name (other months) is kept.
+      const { data: same } = await supabase.from("expense_batches").select("id, periods").eq("company_id", companyId).eq("source", "file").eq("filename", file).neq("id", keep);
+      const ids = (same ?? []).filter((b) => ((b.periods as string[] | null) ?? []).some((p) => periods.includes(p))).map((b) => b.id);
+      if (ids.length) await supabase.from("expense_lines").delete().eq("company_id", companyId).in("batch_id", ids);
+    }
     const { data } = await supabase.from("expense_batches").select("id, lines:expense_lines(count)").eq("company_id", companyId).eq("source", source).neq("id", keep);
     const empty = ((data ?? []) as unknown as { id: string; lines: { count: number }[] }[]).filter((b) => !(b.lines?.[0]?.count ?? 0)).map((b) => b.id);
     if (empty.length) await supabase.from("expense_batches").delete().in("id", empty);
