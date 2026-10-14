@@ -213,3 +213,62 @@ describe("a PDF sales page becomes sales lines", () => {
     ]);
   });
 });
+
+describe("only vendor bills and purchase entries name a supplier", () => {
+  const { COGS_SUPPLIER, CUSTOMER_DOCS } = { COGS_SUPPLIER: "Cost of goods sold (stock)", CUSTOMER_DOCS: "Customer invoices (no supplier)" };
+  const ledger = [
+    { code: "510000", name: "Cost of Sales", cls: "cos_variable" as const, excluded: false, entries: [
+      entry("2026-10-05", "INV/2026/00412", "Vapotherm HVT 2.0", "مستشفي عين شمس التخصصي", 85000),
+      entry("2026-10-06", "STJ/2026/01077", "WH/OUT/00512 - Vapotherm HVT 2.0", "مستشفى حورس التخصصي", 60000),
+    ] },
+    { code: "522004", name: "Penality - Late Delivery", cls: "exp_fixed" as const, excluded: false, entries: [entry("2026-10-07", "INV2/2026/0009", "Late delivery penalty", "مستشفي الكرنك الدولي", 4000)] },
+    { code: "522006", name: "Office Rent", cls: "exp_fixed" as const, excluded: false, entries: [entry("2026-10-01", "BILL/2026/00301", "October rent", "Regus", 27753)] },
+    { code: "522001", name: "Transportations", cls: "exp_fixed" as const, excluded: false, entries: [entry("2026-10-09", "EXP/2026/00881", "Taxi", "EPX Logistics", 3500)] },
+    { code: "w.2", name: "Stock Interim (Received)", cls: "other_cl" as const, excluded: false, entries: [
+      entry("2026-10-03", "BILL/2026/00290", "Aerogen Solo", "Aerogen Ltd", 120000),
+      entry("2026-10-03", "STJ/2026/01001", "Receipt", "Aerogen Ltd", -120000),
+    ] },
+    { code: "121000", name: "Customers", cls: "ar" as const, excluded: false, entries: [entry("2026-10-05", "INV/2026/00412", "", "مستشفي عين شمس التخصصي", 99000)] },
+  ];
+  const lines = expensesFromLedger(ledger);
+
+  it("cost of sales on a customer invoice or a stock move is cost of goods sold, never the customer", () => {
+    const cogs = lines.filter((l) => l.account.startsWith("510000"));
+    expect(cogs.map((l) => l.supplier)).toEqual([COGS_SUPPLIER, COGS_SUPPLIER]);
+    expect(lines.find((l) => l.account.startsWith("522004"))!.supplier).toBe(CUSTOMER_DOCS);
+    expect(lines.find((l) => l.doc.startsWith("BILL/2026/00301"))!.supplier).toBe("Regus");
+    expect(lines.find((l) => l.doc.startsWith("EXP/"))!.supplier).toBe("EPX Logistics");
+  });
+
+  it("a vendor bill for goods bought into stock lists its supplier, but never counts as a cost", () => {
+    const stock = lines.filter((l) => l.cls === "other_cl");
+    expect(stock.map((l) => [l.supplier, l.amount])).toEqual([["Aerogen Ltd", 120000]]);
+    expect(lines.some((l) => l.cls === "ar")).toBe(false);
+    const accts = [
+      { id: "1", code: "510000", name: "Cost of Sales", cls: "cos_variable" as const, amounts: { "2026-10": 145000 } },
+      { id: "2", code: "522004", name: "Penality", cls: "exp_fixed" as const, amounts: { "2026-10": 4000 } },
+      { id: "3", code: "522006", name: "Office Rent", cls: "exp_fixed" as const, amounts: { "2026-10": 27753 } },
+      { id: "4", code: "522001", name: "Transportations", cls: "exp_fixed" as const, amounts: { "2026-10": 3500 } },
+    ];
+    const a = expensesAnalysis(accts, summariseExpenses(lines), { type: "month", end: "2026-10" }, 1);
+    const names = a.bySupplier.map((r) => r.name);
+    expect(names).not.toContain("مستشفي عين شمس التخصصي");
+    expect(names).not.toContain("مستشفى حورس التخصصي");
+    expect(a.bySupplier.filter((r) => !["Cost of goods sold (stock)", "Customer invoices (no supplier)"].includes(r.name)).map((r) => r.name)).toEqual(["Aerogen Ltd", "Regus", "EPX Logistics"]);
+    expect(a.bySupplier.find((r) => r.name === "Aerogen Ltd")!.stock).toBe(120000);
+    expect(a.stockBought).toBe(120000);
+    expect(a.total).toBe(180253);
+    expect(a.lines.total).toBe(180253);
+    expect(a.unreconciled).toEqual([]);
+    expect(a.concentration.topName).toBe("Aerogen Ltd");
+  });
+
+  it("a partner who is also a customer is flagged, not listed as a supplier", () => {
+    const withHospitalBill = [...lines, { day: "2026-10-12", period: "2026-10", doc: "BILL/2026/00305", series: "BILL", supplier: "مستشفي عين شمس التخصصي", account: "522006 Office Rent", cls: "exp_fixed" as const, category: "Office Rent", label: "", amount: 1500 }];
+    const accts = [{ id: "3", code: "522006", name: "Office Rent", cls: "exp_fixed" as const, amounts: { "2026-10": 29253 } }];
+    const a = expensesAnalysis(accts, summariseExpenses(withHospitalBill), { type: "month", end: "2026-10" }, 1, { customers: new Set(["مستشفي عين شمس التخصصي"]) });
+    expect(a.bySupplier.map((r) => r.name)).not.toContain("مستشفي عين شمس التخصصي");
+    expect(a.alsoCustomers.map((r) => [r.name, r.amount])).toEqual([["مستشفي عين شمس التخصصي", 1500]]);
+    expect(a.findings.some((f) => /also a customer/.test(f.title))).toBe(true);
+  });
+});

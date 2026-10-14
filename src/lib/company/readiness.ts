@@ -1,4 +1,4 @@
-import { addMonths, bsCalc, cashFlowByMonth, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
+import { addMonths, bsCalc, cashFlowByMonth, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, isCostLine, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
 import type { TemplateKind } from "@/lib/templates/spec";
 import type { Check } from "./checks";
 
@@ -188,20 +188,21 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
     detail: pl.length ? `${n} of ${pl.length} financial months have expense lines.` : `${months.length} months of expense lines.`,
     fix: covered < 1 ? { ...FIX, what: "Upload the General Ledger for the missing months" } : undefined }));
   const byMonth = new Map<string, number>();
-  for (const r of e.suppliers) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
+  for (const r of e.suppliers) if (isCostLine(r.c)) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
   const both = pl.filter((m) => byMonth.has(m.period));
   const tied = both.filter((m) => { const c = costsOf(m); return Math.abs((byMonth.get(m.period) ?? 0) - c) <= Math.max(1, Math.abs(c) * 0.01); });
   items.push(item({ id: "reconciled", axis: "Ties to P&L", title: "Monthly lines equal P&L costs (within 1%)", completion: both.length ? 100 : 0, accuracy: both.length ? pct(tied.length / both.length) : null,
     detail: both.length ? `${tied.length} of ${both.length} months tie to the P&L.` : "Load the P&L for the same months to check.",
     fix: both.length && tied.length < both.length ? { what: "Use the General Ledger for all costs", how: "A bills file holds bills only. The ledger also has salaries, rent and depreciation.", template: "financials", href: "expenses/trend" } : undefined }));
-  const pay = e.suppliers.filter((r) => r.s !== "Depreciation (no payment)");
+  const pay = e.suppliers.filter((r) => r.s !== "Depreciation (no payment)" && r.s !== "Cost of goods sold (stock)" && isCostLine(r.c));
   const total = pay.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
   const named = pay.filter((r) => !NOT_SUPPLIERS.has(r.s)).reduce((t, r) => t + Math.abs(r.a), 0);
   items.push(item({ id: "suppliers", axis: "Suppliers named", title: "Payments name the supplier", completion: pct(named / total / 0.8), accuracy: null,
     detail: `${pct(named / total)}% of spend names who was paid (salaries usually don't; 80% is plenty).`,
     fix: named / total < 0.8 ? { what: "Fill the Partner on bills and payments", how: "In Odoo, set the Vendor on each bill. In our template, fill Supplier.", template: "expenses" } : undefined }));
-  const atotal = e.accounts.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
-  const typed = e.accounts.filter((r) => r.c).reduce((t, r) => t + Math.abs(r.a), 0);
+  const costAcc = e.accounts.filter((r) => isCostLine(r.c));
+  const atotal = costAcc.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
+  const typed = costAcc.filter((r) => r.c).reduce((t, r) => t + Math.abs(r.a), 0);
   items.push(item({ id: "types", axis: "Cost types", title: "Each line has a cost type", completion: pct(typed / atotal), accuracy: null, detail: `${pct(typed / atotal)}% of spend has a cost type (rent, salaries, materials…).`,
     fix: typed < atotal ? { what: "Give each line an expense type", how: "Fill the Expense type column with a plain name, like Rent.", template: "expenses" } : undefined }));
   const latest = pl[pl.length - 1]?.period;

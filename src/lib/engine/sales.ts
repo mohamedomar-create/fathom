@@ -272,3 +272,6 @@ export function salesFromAccounts(accounts: { code: string; name: string; cls: s
   })));
   return summariseSales(lines, "ledger");
 }
+
+/** Everyone the sales data names as a customer (to tell a customer from a supplier on a cost line). */
+export const customersOf = (d: SalesData) => new Set(d.customers.filter((r) => r.c && r.c !== NO_CUSTOMER && r.a > 0).map((r) => r.c));

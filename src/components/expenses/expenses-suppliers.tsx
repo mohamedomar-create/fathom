@@ -1,5 +1,5 @@
 "use client";
-import { pct } from "@/lib/engine";
+import { money, pct } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
 import { BarList } from "@/components/charts/bar-list";
@@ -24,6 +24,12 @@ export function ExpensesSuppliers() {
       </div>
       <h2 className="mb-3 text-xl font-light">Who you pay</h2>
       <ExpenseTable rows={s.bySupplier} cur={cur} nameLabel="Supplier" compareLabel={s.compareLabel} kind="suppliers" max={40} testId="supplier-table" />
+      {s.stockBought > 0 && <p className="mt-2 text-[13px] text-mute" data-testid="stock-note">Includes {money(s.stockBought, cur)} of goods bought for stock. They reach your costs as cost of goods sold when sold, so they are not in the cost totals.</p>}
+      {s.alsoCustomers.length > 0 && <>
+        <h3 className="mb-2 mt-8 text-lg font-normal">Also your customers: check these</h3>
+        <p className="mb-2 text-[13px] text-mute">These partners buy from you too. Their cost lines may be cost of goods sold to them rather than purchases.</p>
+        <ExpenseTable rows={s.alsoCustomers} cur={cur} nameLabel="Partner" compareLabel={s.compareLabel} kind="suppliers" max={20} testId="also-customers" />
+      </>}
       <div className="mt-10 grid gap-10 lg:grid-cols-2">
         <div>
           <h3 className="mb-2 text-lg font-normal">Where the lines came from</h3>

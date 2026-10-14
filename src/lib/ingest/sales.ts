@@ -2,6 +2,7 @@ import { arRx, arToLatin, cleanNum, detectDateOrder, normAr, parseDay, parsePeri
 import { headerPeriod, str, type Grid, type LedgerEntry } from "./extract";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { checkSalesTemplate, templateMarkOf } from "./template";
+import { isBillDoc, seriesOf } from "@/lib/engine/series";
 
 /**
  * Sales lines for the Sales and Business Lines sectors, from two places:
@@ -30,8 +31,8 @@ export const NO_CATEGORY = "No category";
 export const NO_CUSTOMER = "No customer";
 export const JOURNAL_ENTRIES = "Revenue journal entries (no invoice)";
 
-/** "INV/2026/0044" → "INV"; "RINV/2026/0003" → "RINV". */
-export const seriesOf = (doc: string) => (doc.match(/^([A-Za-z][A-Za-z0-9]*)[/\-]/)?.[1] ?? "").toUpperCase();
+/** Document series ("INV", "BILL"…) are shared with the expenses reader and the engine. */
+export { isBillDoc, seriesOf };
 
 /**
  * An Odoo invoice line label: "[Trudell] Aero Chamber Plus, Medium Mask" or "[Device] Airtech AE-8\n01/04/2026 13:00 to 02/04/2026".
@@ -87,8 +88,6 @@ const MEASURE = arRx(/^(untaxed total|untaxed amount|total untaxed|price subtota
 const ACCOUNT_HDR = arRx(/^(code|account|account code|account name|الحساب|اسم الحساب|كود الحساب|رقم الحساب)$/i);
 /** Headings that make a list a purchases / vendor bills file (the expenses reader), never sales. */
 export const VENDOR_HDR = arRx(/^(vendor|vendors|supplier|suppliers|vendor name|supplier name|vendor reference|bill date|bill number|bill reference|المورد|الموردين|اسم المورد|المورّد|تاريخ فاتورة المورد|فاتورة المورد)$/i);
-/** Vendor bills and refunds: "BILL/2026/0001", "RBILL/…". */
-export const isBillDoc = (doc: string) => /^R?BILL\b/i.test(seriesOf(doc)) || /^(R?BILL)[/\-]/i.test(doc);
 /** A list whose document numbers are mostly vendor bills: purchases, even under a generic "Partner" heading. */
 export function mostlyBills(rows: Cell[][], col: number) {
   if (col < 0) return false;

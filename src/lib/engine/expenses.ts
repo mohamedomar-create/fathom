@@ -1,6 +1,7 @@
 import { addMonths, mlabel } from "./format";
 import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
 import type { ClassKey, Comparison } from "./types";
+import { isBillDoc } from "./series";
 
 /**
  * Expenses analysis: what the company spends, on what and with whom, how it changes and how it compares with sales.
@@ -17,10 +18,16 @@ export interface ExpenseFlag { k: "large" | "double"; d: string | null; p: strin
 export interface ExpensesData { suppliers: ExpenseSupplierRow[]; accounts: ExpenseAccountRow[]; sources: Record<string, "ledger" | "file">; flags: ExpenseFlag[] }
 export const EMPTY_EXPENSES: ExpensesData = { suppliers: [], accounts: [], sources: {}, flags: [] };
 
+export const NO_SUPPLIER = "No supplier";
+export const EXPENSE_JOURNAL = "Journal entries";
+export const DEPRECIATION_SUPPLIER = "Depreciation (no payment)";
+/** Cost of sales posted by a stock move or a customer invoice: its partner is the customer, never a supplier. */
+export const COGS_SUPPLIER = "Cost of goods sold (stock)";
+/** Other cost lines on customer invoices (penalties, collection fees): their partner is a customer too. */
+export const CUSTOMER_DOCS = "Customer invoices (no supplier)";
 /** Names that are not a supplier one pays (left out of supplier concentration and of double-payment checks). */
-export const NOT_SUPPLIERS = new Set(["", "No supplier", "Journal entries", "Depreciation (no payment)"]);
+export const NOT_SUPPLIERS = new Set(["", NO_SUPPLIER, EXPENSE_JOURNAL, DEPRECIATION_SUPPLIER, COGS_SUPPLIER, CUSTOMER_DOCS]);
 const DEPRECIATION = new Set<string>(["cos_depreciation", "exp_depreciation"]);
-const isBill = (doc: string) => /^R?BILL[/-]/i.test(doc);
 
 type Line = { day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: ClassKey | null; category: string; amount: number };
 
@@ -28,6 +35,7 @@ type Line = { day: string | null; period: string; doc: string; series: string; s
 export function expenseFlags(lines: (Line & { source?: "ledger" | "file" })[]): ExpenseFlag[] {
   const monthTotal = new Map<string, number>(), acctMonth = new Map<string, Map<string, number>>();
   for (const l of lines) {
+    if (!isCostLine(l.cls)) continue;
     monthTotal.set(l.period, (monthTotal.get(l.period) ?? 0) + l.amount);
     if (DEPRECIATION.has(l.cls ?? "")) continue;
     const m = acctMonth.get(l.account) ?? acctMonth.set(l.account, new Map()).get(l.account)!;
@@ -39,10 +47,10 @@ export function expenseFlags(lines: (Line & { source?: "ledger" | "file" })[]): 
   // Large: one entry bigger than twice the account's usual month, on an account with 4+ months of costs, 2%+ of the month.
   const large: ExpenseFlag[] = lines.filter((l) => {
     const t = typical.get(l.account);
-    return !!t && t.n >= 4 && l.amount > 2 * t.med && l.amount >= 0.02 * (monthTotal.get(l.period) ?? 0) && !DEPRECIATION.has(l.cls ?? "");
+    return !!t && isCostLine(l.cls) && t.n >= 4 && l.amount > 2 * t.med && l.amount >= 0.02 * (monthTotal.get(l.period) ?? 0) && !DEPRECIATION.has(l.cls ?? "");
   }).map((l) => ({ k: "large" as const, d: l.day, p: l.period, doc: l.doc, s: l.supplier, t: l.account, a: l.amount, m: Math.round(typical.get(l.account)!.med * 100) / 100 })).sort(order).slice(0, 100);
   // Double: same supplier and amount on two bills within 7 days, an amount seen only those two times within 30 days.
-  const bills = lines.filter((l) => l.day && l.amount > 0 && !NOT_SUPPLIERS.has(l.supplier) && !DEPRECIATION.has(l.cls ?? "") && (l.source === "file" || isBill(l.doc)));
+  const bills = lines.filter((l) => l.day && l.amount > 0 && !NOT_SUPPLIERS.has(l.supplier) && !DEPRECIATION.has(l.cls ?? "") && (l.source === "file" || isBillDoc(l.doc)));
   const days = (a: string, b: string) => Math.abs(Date.parse(b) - Date.parse(a)) / 86400000;
   const doubles: ExpenseFlag[] = [];
   for (let x = 0; x < bills.length; x++) for (let y = x + 1; y < bills.length; y++) {
@@ -91,6 +99,8 @@ export const EXPENSE_GROUPS: { key: string; name: string; classes: ClassKey[] }[
 ];
 const GROUP_OF = new Map(EXPENSE_GROUPS.flatMap((g) => g.classes.map((c) => [c, g] as const)));
 export const isExpenseClass = (c: string) => GROUP_OF.has(c as ClassKey);
+/** A line that is a cost (a P&L cost class, or a file line with no class), not goods bought for stock. */
+export const isCostLine = (c: ClassKey | string | null) => c === null || c === "" || isExpenseClass(c);
 const VARIABLE = new Set<string>(["cos_variable", "exp_variable"]), FIXED = new Set<string>(["cos_fixed", "exp_fixed"]);
 
 /** Where lines came from, by their document series. */
@@ -112,6 +122,8 @@ export interface ExpenseRow {
   months?: number; recurring?: boolean; spark?: number[];
   /** Suppliers: documents, the average one, and whether they were not paid in the 12 months before the window. */
   docs?: number; avg?: number | null; isNew?: boolean;
+  /** Suppliers: of the amount, goods bought for stock (they reach costs as cost of sales when sold). */
+  stock?: number;
 }
 export interface ExpenseFinding { kind: "risk" | "watch" | "win"; title: string; text: string }
 
@@ -134,7 +146,12 @@ export interface ExpensesAnalysis {
   bridge: { name: string; delta: number }[];
   /** Lines (suppliers): whether any are loaded for the window, their total and the share of costs they cover. */
   lines: { has: boolean; total: number; coverage: number | null; months: string[] };
+  /** Who was paid: costs plus goods bought for stock. */
   bySupplier: ExpenseRow[];
+  /** Partners that are also customers in the sales data: shown for a check, not as suppliers. */
+  alsoCustomers: ExpenseRow[];
+  /** Goods bought for stock from the suppliers above in the period (not in the cost totals). */
+  stockBought: number;
   bySource: ExpenseRow[];
   byCategory: ExpenseRow[];
   concentration: { suppliers: number; topName: string | null; topShare: number | null; top5Share: number | null; newCount: number | null };
@@ -174,7 +191,7 @@ function rank<R extends { p: string; a: number }>(rows: R[], cur: Set<string>, c
 
 export function expensesAnalysis(
   accounts: ExpenseAccount[], d: ExpensesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number> } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string> } = {},
 ): ExpensesAnalysis {
   const window = windowFor(sel, fyStart);
   const shift = opts.comparison === "ly" ? 12 : sel.type === "month" ? 1 : sel.type === "quarter" ? 3 : 12;
@@ -223,8 +240,17 @@ export function expensesAnalysis(
   const lineCur = window.periods.filter((p) => lineHeld.has(p));
   const lineCmpOk = cmpW.periods.every((p) => lineHeld.has(p));
   const lcmp = lineCmpOk ? new Set(cmpW.periods) : null;
-  const linesTotal = sum(d.suppliers.filter((r) => cur.has(r.p)), (r) => r.a);
-  const bySupplier = rank(d.suppliers, cur, lcmp, (r) => r.s || "No supplier", (r) => r.s || "No supplier", revenue);
+  // Costs come from cost lines only; goods bought for stock count under their supplier, never in costs.
+  const costSup = d.suppliers.filter((r) => isCostLine(r.c));
+  const linesTotal = sum(costSup.filter((r) => cur.has(r.p)), (r) => r.a);
+  const allSuppliers = rank(d.suppliers, cur, lcmp, (r) => r.s || "No supplier", (r) => r.s || "No supplier", revenue);
+  const stockBy = new Map<string, number>();
+  for (const r of d.suppliers) if (cur.has(r.p) && !isCostLine(r.c)) stockBy.set(r.s, (stockBy.get(r.s) ?? 0) + r.a);
+  for (const r of allSuppliers) r.stock = stockBy.get(r.key) ?? 0;
+  // A partner who also buys from the company is checked, not ranked as a supplier: it may be a customer on a cost line.
+  const customers = opts.customers ?? new Set<string>();
+  const alsoCustomers = allSuppliers.filter((r) => customers.has(r.key) && !NOT_SUPPLIERS.has(r.key) && r.amount);
+  const bySupplier = allSuppliers.filter((r) => !alsoCustomers.includes(r));
   const docs = new Map<string, number>();
   for (const r of d.suppliers) if (cur.has(r.p)) docs.set(r.s, (docs.get(r.s) ?? 0) + r.d);
   // "New" needs history: lines for at least three months before the window, so a first payment really is a first.
@@ -239,17 +265,18 @@ export function expensesAnalysis(
   }
   const named = bySupplier.filter((r) => !NOT_SUPPLIERS.has(r.key) && r.amount > 0);
   const namedTotal = sum(named, (r) => r.amount);
-  const bySource = rank(d.suppliers, cur, lcmp, (r) => sourceName(r.j), (r) => sourceName(r.j), revenue);
-  const byCategory = rank(d.accounts, cur, lcmp, (r) => r.g || "No category", (r) => r.g || "No category", revenue);
+  const bySource = rank(costSup, cur, lcmp, (r) => sourceName(r.j), (r) => sourceName(r.j), revenue);
+  const byCategory = rank(d.accounts.filter((r) => isCostLine(r.c)), cur, lcmp, (r) => r.g || "No category", (r) => r.g || "No category", revenue);
 
   // ---- trend and reconciliation
+  const costHeld = new Set(costSup.map((r) => r.p));
   const trend = Array.from({ length: 24 }, (_, i) => addMonths(window.end, -23 + i)).map((p) => {
     const has = held.has(p);
     const groups: Record<string, number> = {};
     let t = 0;
     if (has) for (const r of acctRows) if (r.p === p) { const g = GROUP_OF.get(r.acct.cls)!.key; groups[g] = (groups[g] ?? 0) + r.a; t += r.a; }
     const rv = opts.revenue?.[p] ?? null;
-    return { period: p, total: has ? t : null, groups, revenue: rv, ofSales: has && rv ? (t / rv) * 100 : null, lines: lineHeld.has(p) ? sum(d.suppliers.filter((r) => r.p === p), (r) => r.a) : null };
+    return { period: p, total: has ? t : null, groups, revenue: rv, ofSales: has && rv ? (t / rv) * 100 : null, lines: costHeld.has(p) ? sum(costSup.filter((r) => r.p === p), (r) => r.a) : null };
   });
   const unreconciled = trend.filter((t) => cur.has(t.period) && t.lines !== null && t.total !== null && Math.abs(t.lines - t.total) > Math.max(1, Math.abs(t.total) * 0.005))
     .map((t) => ({ period: t.period, lines: t.lines!, costs: t.total!, diff: t.lines! - t.total! }));
@@ -273,6 +300,7 @@ export function expensesAnalysis(
   else if (named.length >= 8 && namedTotal > 0 && top5 / namedTotal > 0.6) findings.push({ kind: "watch", title: `Five suppliers take ${Math.round((top5 / namedTotal) * 100)}% of spend`, text: "Spend sits with a small group of suppliers: worth checking prices against others once a year." });
   if (doubles.length) findings.push({ kind: "risk", title: `${doubles.length} possible double payment${doubles.length > 1 ? "s" : ""}`, text: `Same supplier and amount within a week. ${doubles.slice(0, 2).map((f) => `${f.s}: ${f.doc || "no number"} and ${f.doc2 || "no number"}`).join("; ")}. Check them in Odoo.` });
   if (large.length) findings.push({ kind: "watch", title: `${large.length} unusually large entr${large.length > 1 ? "ies" : "y"}`, text: `Each is bigger than twice the account's usual month. ${large.slice(0, 2).map((f) => `${f.t}: ${fmtSigned(f.a)}`).join("; ")}.` });
+  if (alsoCustomers.length) findings.push({ kind: "watch", title: `${alsoCustomers.length} partner${alsoCustomers.length > 1 ? "s are" : " is"} also ${alsoCustomers.length > 1 ? "customers" : "a customer"}`, text: `${alsoCustomers.slice(0, 3).map((r) => r.name).join(", ")}. Their cost lines are listed apart from suppliers: check they are real purchases, not cost of goods sold to them.` });
   if (unreconciled.length) findings.push({ kind: "watch", title: `Lines differ from P&L costs in ${unreconciled.length} month${unreconciled.length > 1 ? "s" : ""}`, text: `${unreconciled.slice(0, 3).map((u) => `${mlabel(u.period)}: ${fmtSigned(u.diff)}`).join("; ")}. A purchases file only holds bills: salaries, rent paid by bank and depreciation are not in it.` });
 
   const notes: string[] = [];
@@ -283,7 +311,7 @@ export function expensesAnalysis(
   return {
     window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, revenue, ofSales, ofSalesCompare, split, byGroup, byAccount, bridge,
     lines: { has: lineCur.length > 0, total: linesTotal, coverage: lineCur.length && total ? (linesTotal / total) * 100 : null, months: lineCur },
-    bySupplier, bySource, byCategory,
+    bySupplier, alsoCustomers, stockBought: sum(bySupplier, (r) => r.stock ?? 0), bySource, byCategory,
     concentration: { suppliers: named.length, topName: top?.name ?? null, topShare: top && namedTotal ? (top.amount / namedTotal) * 100 : null, top5Share: namedTotal ? (top5 / namedTotal) * 100 : null, newCount: history ? bySupplier.filter((r) => r.isNew).length : null },
     trend, unreconciled, large, doubles, findings, notes,
   };
@@ -295,6 +323,7 @@ const fmtSigned = (v: number) => `${v >= 0 ? "+" : "−"}${Math.round(Math.abs(v
 export function accountsFromLines(d: ExpensesData): ExpenseAccount[] {
   const m = new Map<string, ExpenseAccount>();
   for (const r of d.accounts) {
+    if (!isCostLine(r.c)) continue;
     const a = m.get(r.t) ?? { id: r.t, code: "", name: r.t, cls: r.c && isExpenseClass(r.c) ? r.c : "exp_fixed", amounts: {} };
     a.amounts[r.p] = (a.amounts[r.p] ?? 0) + r.a;
     m.set(r.t, a);
