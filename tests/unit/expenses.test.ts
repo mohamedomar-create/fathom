@@ -272,3 +272,56 @@ describe("only vendor bills and purchase entries name a supplier", () => {
     expect(a.findings.some((f) => /also a customer/.test(f.title))).toBe(true);
   });
 });
+
+describe("banks are lenders, not suppliers", () => {
+  const gl = [
+    { code: "550000", name: "Financing Interest", cls: "interest_expenses" as const, excluded: false, entries: [
+      entry("2026-10-05", "CIB/2026/0101", "Loan interest Oct", "", 30000),
+      entry("2026-10-06", "BMISR/2026/0044", "Overdraft interest", "", 5000),
+      entry("2026-10-28", "MISC/2026/0090", "Interest accrual", "", 2000),
+    ] },
+    { code: "522015", name: "Bank Charges & Fees Exp.", cls: "exp_variable" as const, excluded: false, entries: [
+      entry("2026-10-07", "CIB/2026/0102", "Transfer fees", "", 400),
+      entry("2026-10-08", "AAIB/2026/0021", "Account fees", "", 100),
+    ] },
+    { code: "522016", name: "مصاريف بنكية", cls: "exp_variable" as const, excluded: false, entries: [entry("2026-10-09", "NBE/2026/0003", "عمولة", "", 60)] },
+    // Salaries paid from the bank journal: the bank is only how they were paid.
+    { code: "521100", name: "Salaries & Allowances", cls: "exp_fixed" as const, excluded: false, entries: [entry("2026-10-25", "CIB/2026/0110", "October payroll", "", 90000)] },
+    { code: "522006", name: "Office Rent", cls: "exp_fixed" as const, excluded: false, entries: [entry("2026-10-02", "BILL/2026/0300", "Rent", "Nasr City Properties", 20000)] },
+  ];
+  const lines = expensesFromLedger(gl);
+  const who = (label: string) => lines.find((l) => l.label === label)!.supplier;
+
+  it("puts interest and bank charges on the bank, from the bank journal they were booked in", () => {
+    expect(who("Loan interest Oct")).toBe("Bank: CIB");
+    expect(who("Overdraft interest")).toBe("Bank: Banque Misr");
+    expect(who("Transfer fees")).toBe("Bank: CIB");
+    expect(who("Account fees")).toBe("Bank: AAIB");
+    expect(who("عمولة")).toBe("Bank: National Bank of Egypt");
+    expect(who("Interest accrual")).toBe("Bank: (not named)");
+  });
+
+  it("leaves costs that were only paid through the bank with what they are for", () => {
+    expect(who("October payroll")).toBe("No supplier");
+    expect(who("Rent")).toBe("Nasr City Properties");
+  });
+
+  it("lists banks apart, with interest and charges, and keeps them out of supplier rankings", () => {
+    const accts: ExpenseAccount[] = gl.map((l) => ({ id: l.code, code: l.code, name: l.name, cls: l.cls, amounts: { "2026-10": l.entries.reduce((s, e) => s + e.amount, 0) } }));
+    const a = expensesAnalysis(accts, summariseExpenses(lines), { type: "month", end: "2026-10" }, 1, { revenue: { "2026-10": 500000 } });
+    expect(a.byLender.map((r) => [r.name, r.interest, r.fees, r.amount])).toEqual([
+      ["CIB", 30000, 400, 30400], ["Banque Misr", 5000, 0, 5000], ["Bank not named", 2000, 0, 2000], ["AAIB", 0, 100, 100], ["National Bank of Egypt", 0, 60, 60],
+    ]);
+    expect(a.finance).toMatchObject({ interest: 37000, fees: 560, total: 37560 });
+    expect(a.bySupplier.some((r) => r.key.startsWith("Bank: "))).toBe(false);
+    expect(a.concentration.suppliers).toBe(1);
+    expect(a.findings.find((f) => f.title.startsWith("Banks take"))).toMatchObject({ kind: "risk", title: "Banks take 7.5% of sales" });
+  });
+
+  it("the demo company pays its loan interest and bank charges to CIB", () => {
+    const accts = spreadAccounts(sample.months as MonthData[]).filter((x) => ["740100", "610300"].includes(x.code)) as ExpenseAccount[];
+    const a = expensesAnalysis(accts, demoExpenses(), { type: "month", end: "2026-09" }, 1);
+    expect(a.byLender[0].name).toBe("CIB");
+    expect(a.byLender[0].interest).toBeGreaterThan(0);
+  });
+});

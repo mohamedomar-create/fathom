@@ -1,13 +1,13 @@
 "use client";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
-import { mlabel, money, mshort, NOT_SUPPLIERS, pct, type ExpenseFlag } from "@/lib/engine";
+import { isLender, lenderName, mlabel, money, mshort, notSupplier, pct, type ExpenseFlag } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
 import { ReadinessCard } from "@/components/setup/readiness-view";
-import { CostBridge, costVs, DataNotes, ExpensesPicker, type ExpensesView, Findings, NoExpenses, NoLines, Tile, useExpensesAnalysis } from "./common";
+import { CostBridge, costVs, DataNotes, ExpensesPicker, type ExpensesView, Findings, LenderTable, NoExpenses, NoLines, Tile, useExpensesAnalysis } from "./common";
 
 export function ExpensesOverview() {
   const c = useCompany();
@@ -31,7 +31,7 @@ export function ExpensesOverview() {
       </div>
       <Reconciliation s={s} cur={cur} />
       <div className="grid gap-10 lg:grid-cols-2">
-        <div>
+        <div className="min-w-0">
           <Findings title="Needs attention" kind="risk" findings={s.findings} />
           <Findings title="Watch" kind="watch" findings={s.findings} />
           <Findings title="Going well" kind="win" findings={s.findings} />
@@ -41,6 +41,10 @@ export function ExpensesOverview() {
           </>}
           <h3 className="mb-2 mt-8 text-lg font-normal">Costs by type</h3>
           <BarList items={s.byGroup.map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="group-bars" />
+          {s.byLender.length > 0 && <>
+            <h3 className="mb-2 mt-8 text-lg font-normal">Banks: interest and charges</h3>
+            <LenderTable s={s} cur={cur} testId="lender-table-overview" />
+          </>}
         </div>
         <div>
           <h3 className="mb-1 text-lg font-normal">Monthly costs, against the year before</h3>
@@ -51,7 +55,7 @@ export function ExpensesOverview() {
             ]} />
           <h3 className="mb-2 mt-8 text-lg font-normal">Largest suppliers</h3>
           {s.lines.has
-            ? <BarList items={s.bySupplier.filter((r) => r.amount > 0 && !NOT_SUPPLIERS.has(r.key)).map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="supplier-bars" />
+            ? <BarList items={s.bySupplier.filter((r) => r.amount > 0 && !notSupplier(r.key)).map((r) => ({ key: r.key, label: r.name, value: r.amount, share: r.share }))} cur={cur} max={8} testId="supplier-bars" />
             : <NoLines compact />}
           <CheckThese s={s} cur={cur} />
         </div>
@@ -97,7 +101,7 @@ export function CheckThese({ s, cur }: { s: ExpensesView; cur: string }) {
         ))}
         {s.large.slice(0, 5).map((f, i) => (
           <li key={`l${i}`} className="border-s-[3px] border-amber bg-band px-3 py-2" data-testid="flag-large">
-            <b className="font-semibold">Large entry.</b> {f.t}: {money(f.a, cur)} on {when(f)}{f.s && !NOT_SUPPLIERS.has(f.s) ? ` from ${f.s}` : ""}. A usual month is {money(f.m ?? 0, cur)}.
+            <b className="font-semibold">Large entry.</b> {f.t}: {money(f.a, cur)} on {when(f)}{f.s && isLender(f.s) ? ` (${lenderName(f.s)})` : f.s && !notSupplier(f.s) ? ` from ${f.s}` : ""}. A usual month is {money(f.m ?? 0, cur)}.
           </li>
         ))}
       </ul>

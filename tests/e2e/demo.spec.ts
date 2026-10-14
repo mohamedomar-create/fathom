@@ -319,6 +319,9 @@ test("demo expenses tie to the P&L, by account and supplier, with the entries to
   await page.goto("/demo/expenses/suppliers");
   await expect(page.getByTestId("supplier-table")).toContainText("Medline Supply");
   await expect(page.getByTestId("source-bars")).toContainText("Vendor bills");
+  // Banks are lenders, listed apart from suppliers with their interest and charges.
+  await expect(page.getByTestId("lender-table")).toContainText("CIB");
+  await expect(page.getByTestId("supplier-table")).not.toContainText("Bank: ");
   await page.goto("/demo/expenses/trend");
   await expect(page.getByTestId("expenses-month-table")).toBeVisible();
 });

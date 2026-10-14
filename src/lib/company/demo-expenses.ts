@@ -1,6 +1,7 @@
 import sample from "../../../reference/sample.json";
 import { isExpenseClass, summariseExpenses, type ClassKey, type ExpensesData, type MonthData } from "@/lib/engine";
 import { DEPRECIATION_SUPPLIER, NO_SUPPLIER, type ExpenseLine } from "@/lib/ingest/expenses";
+import { LENDER_TAG } from "@/lib/engine/expenses";
 import { spreadAccounts } from "./demo";
 
 /**
@@ -14,7 +15,7 @@ const SUPPLIERS: Record<string, { who: string[]; per: number; series: string }> 
   "500900": { who: [DEPRECIATION_SUPPLIER], per: 1, series: "ASSTE" },
   "610100": { who: [NO_SUPPLIER], per: 1, series: "SLIP" },
   "610200": { who: ["Bosta Delivery", "Aramex Freight", "Cairo Packaging Co."], per: 6, series: "BILL" },
-  "610300": { who: ["Commercial International Bank", "Paymob"], per: 3, series: "CIB" },
+  "610300": { who: [`${LENDER_TAG}CIB`, "Paymob"], per: 3, series: "CIB" },
   "620100": { who: [NO_SUPPLIER], per: 1, series: "SLIP" },
   "620200": { who: ["Nasr City Properties"], per: 1, series: "BILL" },
   "620300": { who: ["Meta Ads", "Google Ads", "Print House Cairo"], per: 3, series: "BILL" },
@@ -24,7 +25,7 @@ const SUPPLIERS: Record<string, { who: string[]; per: number; series: string }> 
   "620700": { who: ["Odoo SA", "Microsoft Egypt", "TE Data"], per: 3, series: "BILL" },
   "720100": { who: ["Journal entries"], per: 1, series: "MISC" },
   "720200": { who: ["Journal entries"], per: 1, series: "MISC" },
-  "740100": { who: ["Commercial International Bank"], per: 1, series: "CIB" },
+  "740100": { who: [`${LENDER_TAG}CIB`], per: 1, series: "CIB" },
   "750100": { who: ["Egyptian Tax Authority"], per: 1, series: "MISC" },
 };
 

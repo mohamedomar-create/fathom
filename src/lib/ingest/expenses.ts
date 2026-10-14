@@ -5,7 +5,7 @@ import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type
 import { checkExpenseTemplate, templateMarkOf } from "./template";
 import { classify } from "./classify";
 import { mostlyBills, VENDOR_HDR } from "./sales";
-import { COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, EXPENSE_JOURNAL, NO_SUPPLIER } from "@/lib/engine/expenses";
+import { COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, EXPENSE_JOURNAL, LENDER_TAG, NO_SUPPLIER, UNNAMED_LENDER } from "@/lib/engine/expenses";
 import { docKind, isBillDoc, seriesOf } from "@/lib/engine/series";
 
 /**
@@ -40,12 +40,39 @@ const COST_OF_SALES = new Set<ClassKey>(["cos_variable", "cos_fixed"]);
 const STOCK_ACCOUNT = /stock interim|interim (received|delivered)|goods received|grni|inventory|stock|مخزون|بضاعة/i;
 const isStockAccount = (cls: ClassKey, name: string) => cls === "inventory" || cls === "wip" || ((cls === "other_cl" || cls === "other_ca") && STOCK_ACCOUNT.test(name));
 
+/** Accounts that hold what banks charge: fees, commissions and charges (English and Arabic names). */
+const BANK_COST = arRx(/bank\s*(charges?|fees?|commissions?|expenses?|costs?)|charges?\s*(&|and)\s*fees|(مصاريف|مصروفات|عمولات?|رسوم)\s*(بنكية|البنوك|بنك)/i);
+/** Series that are not a bank journal: bills, invoices, stock, payroll, depreciation, exchange differences, journal entries. */
+const NOT_BANK_SERIES = /^(R?BILL|R?EXP|R?PURCH?|PO|VB|VBILL|R?INV\d*|STJ|WH|STK|STOCK|STV|SVL|SV|MISC|ASSTE|SAL|SLIP|EXCH|CABA|POSS?|OPEN|OB)$/;
+/** Odoo bank journal codes used by Egyptian banks, and the bank's name. Any other bank journal shows its own code. */
+const BANKS: Record<string, string> = {
+  CIB: "CIB", NBE: "National Bank of Egypt", BM: "Banque Misr", BMISR: "Banque Misr", MISR: "Banque Misr", AAIB: "AAIB", QNB: "QNB", HSBC: "HSBC",
+  ADIB: "ADIB", ALEX: "Bank of Alexandria", BOA: "Bank of Alexandria", BDC: "Banque du Caire", SAIB: "SAIB", FAB: "First Abu Dhabi Bank", ENBD: "Emirates NBD",
+  AUB: "Ahli United Bank", CAE: "Crédit Agricole Egypt", MASHREQ: "Mashreq", EGB: "EG Bank", HDB: "Housing & Development Bank", AIB: "Arab International Bank",
+  ABK: "Al Ahli Bank of Kuwait", NBK: "NBK", UB: "The United Bank", ABC: "Bank ABC", CITI: "Citibank", AB: "Arab Bank", FAISAL: "Faisal Islamic Bank",
+};
+
 /**
- * Who a cost line was paid to. Only a vendor bill or refund, or a purchase or expense-journal entry, names a supplier:
- * cost of sales from a stock move or a customer invoice carries the customer as partner, and is grouped as cost of goods.
+ * The bank behind an interest or bank-charge line: the partner of a bill, else the bank journal the entry was booked in, else
+ * the entry's partner; null when the line is neither interest nor a bank charge.
  */
-export function supplierOf(e: Pick<LedgerEntry, "ref" | "label" | "partner">, cls: ClassKey): string {
+export function lenderOf(e: Pick<LedgerEntry, "ref" | "partner">, cls: ClassKey, account: string): string | null {
+  if (cls !== "interest_expenses" && !BANK_COST.test(normAr(account))) return null;
+  if (docKind(e.ref) === "purchase" && e.partner) return LENDER_TAG + e.partner;
+  const s = seriesOf(e.ref);
+  if (s && !NOT_BANK_SERIES.test(s)) return LENDER_TAG + (BANKS[s] ?? s);
+  return e.partner ? LENDER_TAG + e.partner : UNNAMED_LENDER;
+}
+
+/**
+ * Who a cost line was paid to. Interest and bank charges go to their bank. Only a vendor bill or refund, or a purchase or
+ * expense-journal entry, names a supplier: cost of sales from a stock move or a customer invoice carries the customer as
+ * partner, and is grouped as cost of goods.
+ */
+export function supplierOf(e: Pick<LedgerEntry, "ref" | "label" | "partner">, cls: ClassKey, account = ""): string {
   if (DEPRECIATION.has(cls)) return DEPRECIATION_SUPPLIER;
+  const lender = lenderOf(e, cls, account);
+  if (lender) return lender;
   const kind = docKind(e.ref);
   if (kind === "purchase") return e.partner || NO_SUPPLIER;
   if (kind === "stock" || (kind === "customer" && COST_OF_SALES.has(cls))) return COGS_SUPPLIER;
@@ -73,7 +100,7 @@ export function expensesFromLedger(lines: { code: string; name: string; cls: Cla
       if (!e.amount) continue;
       if (stock && !(isBillDoc(e.ref) && e.partner)) continue;
       const series = seriesOf(e.ref);
-      const supplier = cost ? supplierOf(e, l.cls) : e.partner;
+      const supplier = cost ? supplierOf(e, l.cls, account) : e.partner;
       out.push({ day: e.day, period: e.period, doc: e.ref, series, supplier, account, cls: l.cls, category: l.name || account, label: (e.label || "").split(/\r?\n/)[0].trim().slice(0, 200), amount: round2(e.amount) });
     }
   }

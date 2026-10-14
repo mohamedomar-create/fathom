@@ -115,6 +115,46 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
   );
 }
 
+/** Banks the company pays interest and charges to: one row each, with the total and the comparison. */
+export function LenderTable({ s, cur, testId = "lender-table" }: { s: ExpensesView; cur: string; testId?: string }) {
+  if (!s.byLender.length) return null;
+  const f = s.finance;
+  return (
+    <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <table className="tbl min-w-[620px]" data-testid={testId}>
+        <thead>
+          <tr>
+            <th className="text-start">Bank</th><th>Interest</th><th>Bank charges</th><th>Total</th><th>Share</th>
+            {s.compareLabel && f.compare !== null && <th>{s.compareLabel}</th>}
+            {s.compareLabel && f.compare !== null && <th>Change</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {s.byLender.map((r) => (
+            <tr key={r.key} className="row" data-testid="lender-row">
+              <td className="text-start">{r.name}</td>
+              <td className="num">{money(r.interest, cur)}</td>
+              <td className="num">{money(r.fees, cur)}</td>
+              <td className="num font-medium">{money(r.amount, cur)}</td>
+              <td className="num">{pct(r.share, 1)}</td>
+              {s.compareLabel && f.compare !== null && <td className="num text-mute">{r.compare === null ? "–" : money(r.compare, cur)}</td>}
+              {s.compareLabel && f.compare !== null && <td><Delta value={r.growth} good={r.growth === null ? undefined : r.growth <= 0} /></td>}
+            </tr>
+          ))}
+          {s.byLender.length > 1 && (
+            <tr className="tot">
+              <td className="text-start">All banks</td>
+              <td className="num">{money(f.interest, cur)}</td><td className="num">{money(f.fees, cur)}</td><td className="num">{money(f.total, cur)}</td><td className="num">100%</td>
+              {s.compareLabel && f.compare !== null && <td className="num text-mute">{money(f.compare, cur)}</td>}
+              {s.compareLabel && f.compare !== null && <td><Delta value={f.compare ? ((f.total - f.compare) / Math.abs(f.compare)) * 100 : null} good={f.total <= f.compare} /></td>}
+            </tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** From last period's costs to this period's: what each account added (red) or saved (green). Adds up exactly. */
 export function CostBridge({ s, cur }: { s: ExpensesView; cur: string }) {
   if (s.compare === null || !s.bridge.length) return null;
