@@ -425,3 +425,33 @@ test("Arabic: the Sales and Expenses pages and their notes read in Arabic", asyn
   await expect(page.getByTestId("lender-table")).toContainText("المصاريف البنكية");
   expect(errors).toEqual([]);
 });
+
+test("Arabic: Bank readiness, Real profit, Forecast and Goalseek read in Arabic", async ({ page, context, baseURL }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await context.addCookies([{ name: "lang", value: "ar", url: baseURL! }]);
+  await page.goto("/demo/banking");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("الجاهزية البنكية");
+  await expect(page.getByTestId("bank-basis")).toContainText("12 شهرًا حتى سبتمبر 2026");
+  await expect(page.getByTestId("bank-ratios")).toContainText("تغطية خدمة الدين");
+  await expect(page.getByTestId("bank-memo")).toContainText("ابدأ بـ");
+  await expect(page.getByTestId("stress-table")).toContainText("السيناريو");
+  await expect(page.getByTestId("breaking-points")).toContainText("المبيعات");
+  await expect(page.getByTestId("bank-checklist")).not.toContainText("Audited");
+  await page.getByTestId("assume-requestAmount").fill("3000000");
+  await page.getByTestId("assume-requestType").selectOption("term_loan");
+  await expect(page.getByTestId("proforma")).toContainText("مع التسهيل الجديد");
+  await page.goto("/demo/analysis/real-profit");
+  await expect(page.getByTestId("real-bridge")).toContainText("الربح الحقيقي بأسعار اليوم");
+  await expect(page.getByTestId("collection")).toContainText("نسبة التحصيل");
+  await expect(page.getByTestId("real-memo")).not.toContainText("The largest");
+  await page.goto("/demo/analysis/forecast");
+  await expect(page.getByTestId("fc-basis")).toContainText("طريقة الإيرادات");
+  await expect(page.getByTestId("fc-accuracy")).toContainText("ما مدى دقة هذا؟");
+  await expect(page.getByTestId("fc-table")).toContainText("مجمل الربح");
+  await page.goto("/demo/analysis/goalseek");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("البحث عن الهدف");
+  await expect(page.getByTestId("lever-price")).toContainText("السعر");
+  await expect(page.getByText("حساسية عالية", { exact: false })).toBeVisible();
+  expect(errors).toEqual([]);
+});

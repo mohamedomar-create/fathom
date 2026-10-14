@@ -59,6 +59,8 @@ export interface BankInputs {
   inflation?: number | null;
   /** Account lines (natural sign), so the current portion of long-term loans can be found among short-term borrowing. */
   accounts?: LoanAccount[];
+  /** The language to write in (English when not given). */
+  lang?: "en" | "ar";
 }
 
 /** The fields of an account line the bank view needs. */
@@ -119,8 +121,23 @@ export const BANK_CHECKLIST: { item: string; why: string }[] = [
   { item: "Profile of the owners and management, and the main customer and supplier contracts", why: "Banks lend to people and to dependable revenue as much as to numbers." },
 ];
 
+/** The documents a bank asks for, in Arabic (same order as BANK_CHECKLIST). */
+export const BANK_CHECKLIST_AR: { item: string; why: string }[] = [
+  { item: "القوائم المالية المراجعة لآخر 3 سنوات، مع تقرير مراقب الحسابات والإيضاحات", why: "أساس كل ملف ائتماني؛ الرأي المتحفظ أو الإيضاحات الناقصة تؤخر القرار." },
+  { item: "حسابات الإدارة للسنة الحالية حتى آخر شهر", why: "تُري البنك النشاط اليوم، لا في نهاية آخر سنة فقط." },
+  { item: "كشوف أعمار ديون العملاء والموردين (حسب العميل والمورد)", why: "البنوك تخصم الأرصدة القديمة والمركزة؛ كشف الأعمار يجيب عن ذلك قبل السؤال." },
+  { item: "جدول القروض والتسهيلات الحالية: الجهة، الحد، الرصيد، السعر، الأقساط، الضمانات", why: "يجب أن يطابق تقرير iScore الائتماني؛ أي اختلاف يثير الشكوك." },
+  { item: "كشوف الحسابات البنكية لآخر 6 إلى 12 شهرًا لكل حساب", why: "تثبت أن حجم النشاط الظاهر في الحسابات يمر فعلًا عبر البنك." },
+  { item: "توقع التدفق النقدي لفترة القرض، شهريًا للسنة الأولى", why: "يوضح كيف سيُسدد كل قسط؛ ابنه من هذه الأرقام." },
+  { item: "السجل التجاري، البطاقة الضريبية، آخر الإقرارات الضريبية وإقرارات القيمة المضافة", why: "الوضع القانوني ودليل تقديم الإقرارات وسداد الضرائب." },
+  { item: "سجل الأصول الثابتة وأي تقارير تقييم للأصول المقدمة كضمان", why: "يدعم الضمانات التي سيعتمد عليها البنك." },
+  { item: "نبذة عن الملاك والإدارة، وأهم عقود العملاء والموردين", why: "البنوك تقرض الأشخاص والإيرادات الموثوقة بقدر ما تقرض الأرقام." },
+];
+
 export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): BankAssessment {
   const { Pa, P, B } = b;
+  const ar = inp.lang === "ar";
+  const L = (en: string, a: string) => (ar ? a : en);
   const m = (v: number) => money(v, cur, true);
   const debt = B.std + B.ltd;
   const interest = Pa.interest_expenses;
@@ -282,28 +299,81 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     },
   ];
 
+  if (ar) {
+    const x = (v: number | null, d: number) => (v === null ? "" : v.toFixed(d));
+    const estAr = principalSource === "current_portion"
+      ? `الأقساط مأخوذة من الجزء المتداول من القروض طويلة الأجل في الدفاتر (${cp.names.join("، ")}: ${m(principal12m)}). أدخل الرقم من جدول قروضك إن كان مختلفًا.`
+      : principalSource === "estimate" && B.ltd > 0 ? `الأقساط مقدّرة كالقروض طويلة الأجل ÷ ${BANK_LIMITS.existingLoanYears} سنوات (${m(principal12m)}). أدخل الرقم الحقيقي من جدول قروضك.` : undefined;
+    const curr = ratio(B.tca, B.tcl), quick = ratio(B.cash + B.ar, B.tcl);
+    const A: Record<string, Partial<BankRatio>> = {
+      dscr: { name: "تغطية خدمة الدين (DSCR)", guide: `${BANK_LIMITS.dscr} مرة أو أكثر`, formula: "(الأرباح قبل الفوائد والضرائب والإهلاك − الضرائب) ÷ (الفوائد + أقساط القروض المستحقة خلال 12 شهرًا)",
+        banker: service > 0 ? `كل 1 ${cur} من أقساط القروض السنوية يغطيه ${x(dscr, 2)} ${cur} من الربح النقدي التشغيلي بعد الضرائب. أقل من 1.0 مرة يعني أن النشاط لا يستطيع سداد قروضه من عملياته.` : "لا توجد فوائد أو أقساط لتغطيتها.",
+        advice: dscr === null ? "مع عدم وجود خدمة دين، ابدأ بالنقدية التي يولدها النشاط." : dscr >= BANK_LIMITS.dscr ? "ابدأ بهذا الرقم: إنه أول ما تنظر إليه لجنة الائتمان." : "اطلب مدة أطول أو فترة سماح لتنخفض الأقساط السنوية؛ اعرض توقعًا شهريًا للتدفق النقدي يثبت تغطية كل قسط؛ وفكّر في تمويل جزئي بحقوق ملكية.", estimate: estAr },
+      debt_ebitda: { name: "الديون إلى الأرباح قبل الفوائد والضرائب والإهلاك", guide: `${BANK_LIMITS.debtEbitda} مرة أو أقل`, formula: "(الاقتراض قصير وطويل الأجل) ÷ الأرباح قبل الفوائد والضرائب والإهلاك (12 شهرًا)",
+        banker: lev === null ? (debt > 0 ? "الربح التشغيلي قبل الإهلاك سالب، فلا يمكن سداد الديون من النشاط." : "لا اقتراض، ولا ربح تشغيلي قبل الإهلاك للقياس عليه.") : `يحتاج سداد كل الاقتراض نحو ${x(lev, 1)} سنة من الربح النقدي التشغيلي.`,
+        advice: lev !== null && lev <= BANK_LIMITS.debtEbitda ? "هناك مساحة للاقتراض: قل ذلك، واعرض كيف يبقي القرض الجديد النسبة أقل من 3 مرات." : "اعرض الخطة التي ترفع الأرباح (عقود موقعة، زيادات أسعار) أو خفّض الديون أولًا؛ البنوك عادة تحدّ الإقراض الجديد عند 3 إلى 4 مرات." },
+      net_debt_ebitda: { name: "صافي الديون إلى الأرباح قبل الفوائد والضرائب والإهلاك", guide: "2.5 مرة أو أقل", formula: "(الاقتراض − النقدية) ÷ الأرباح قبل الفوائد والضرائب والإهلاك (12 شهرًا)",
+        banker: "الديون بعد استخدام النقدية المتاحة. نقدية كبيرة بجانب ديون كبيرة تجعل البنك يسأل لماذا تقترض.",
+        advice: B.cash > 0.5 * debt && debt > 0 ? "اشرح النقدية: دفعات مقدمة من العملاء، أو دفعة مستحقة بعد نهاية السنة، أو وديعة كضمان." : "مقبولة ما دامت تتحرك مع نسبة الديون إلى الأرباح." },
+      int_cover: { name: "تغطية الفوائد", guide: `${BANK_LIMITS.intCover} مرة أو أكثر`, formula: "الربح قبل الفوائد والضرائب ÷ مصروف الفوائد",
+        banker: interest > 0 ? `الربح التشغيلي يغطي فاتورة الفوائد ${x(icr, 1)} مرة. بأسعار الفائدة الحالية في مصر تنخفض بسرعة عند اقتراض المزيد.` : "لا يوجد مصروف فوائد في الفترة.",
+        advice: icr !== null && icr < BANK_LIMITS.intCover ? "اعرض التغطية بعد القرض الجديد بالسعر المعروض، وما يحدث إذا ارتفعت الأسعار 2 إلى 3 نقاط." : "حافظ عليها: تُظهر أن النشاط يتحمل فوائده بارتياح." },
+      current: { name: "نسبة التداول", guide: "1.2 مرة أو أكثر", formula: "الأصول المتداولة ÷ الالتزامات المتداولة", banker: "هل تغطي الأصول قصيرة الأجل ما يستحق خلال سنة.",
+        advice: (curr ?? 9) < 1.2 ? "إذا أقرض المساهمون الشركة، فاعرض إخضاع هذه القروض كتابيًا؛ كثير من البنوك تعاملها حينها كحقوق ملكية. وإعادة تمويل جزء من السحب على المكشوف كقرض متوسط الأجل ترفع هذه النسبة أيضًا." : "اعرضها مع كشف الأعمار ليرى البنك أن الأصول المتداولة قابلة للتحصيل." },
+      quick: { name: "نسبة السيولة السريعة", guide: "1.0 مرة أو أكثر", formula: "(النقدية + العملاء) ÷ الالتزامات المتداولة", banker: "السيولة دون الاعتماد على بيع المخزون.",
+        advice: (quick ?? 9) < 1 ? "اشرح سرعة تحول المخزون إلى نقدية (أيام المخزون)، وأي طلبيات مؤكدة مقابله." : "لا يلزم إجراء." },
+      lt_funding: { name: "فائض التمويل طويل الأجل", guide: "صفر أو أكثر", formula: "حقوق الملكية + الالتزامات طويلة الأجل − الأصول غير المتداولة",
+        banker: ltFunding >= 0 ? "الأصول طويلة الأجل ممولة بأموال طويلة الأجل، كما تتوقع البنوك." : `الأصول الثابتة تتجاوز التمويل طويل الأجل بمبلغ ${m(-ltFunding)}: إنها ممولة جزئيًا بأموال قصيرة الأجل يجب تجديدها كل سنة.`,
+        advice: ltFunding >= 0 ? "لا يلزم إجراء." : "اطلب من البنك تحويل جزء من التسهيل قصير الأجل إلى قرض متوسط الأجل يتناسب مع عمر الأصول: أكثر أمانًا للطرفين وطلب شائع." },
+      gearing: { name: "الديون إلى حقوق الملكية", guide: "مرة واحدة أو أقل", formula: "الاقتراض ÷ إجمالي حقوق الملكية",
+        banker: B.te <= 0 ? "حقوق الملكية سالبة: الخسائر استهلكت رأس مال الملاك. معظم البنوك لن تقرض حتى تُستعاد." : "إلى أي حد يموّل المقرضون النشاط بدلًا من الملاك.",
+        advice: B.te <= 0 || debt / B.te > 1 ? "فكّر في زيادة رأس المال أو تحويل قروض المساهمين إلى رأس مال قبل التقدم." : "الملاك يتحملون نصيبًا عادلًا من المخاطر: اذكر ذلك." },
+      liab_tnw: { name: "الالتزامات إلى صافي الحقوق الملموسة", guide: "2.5 مرة أو أقل", formula: "إجمالي الالتزامات ÷ (حقوق الملكية − الأصول غير الملموسة)",
+        banker: "البنوك تستبعد الشهرة والأصول غير الملموسة من حقوق الملكية: لا يمكن بيعها لسداد قرض.",
+        advice: B.intangibles > 0 ? `تُخصم أصول غير ملموسة بقيمة ${m(B.intangibles)}. كن مستعدًا لتوضيح ماهيتها وهل تدر دخلًا.` : "لا توجد أصول غير ملموسة للخصم." },
+      equity_ratio: { name: "نسبة حقوق الملكية", guide: "30% أو أكثر", formula: "إجمالي حقوق الملكية ÷ إجمالي الأصول", banker: "الوسادة التي تمتص الخسائر قبل أن يخسر المقرضون.", advice: "احتجاز الأرباح بدلًا من توزيعها يقوي هذه النسبة عامًا بعد عام." },
+      rev_growth: { name: "نمو الإيرادات", guide: infl !== null ? `${pct(infl, 1)} أو أكثر (التضخم)` : "موجب", formula: "(الإيرادات − إيرادات الـ 12 شهرًا السابقة) ÷ الإيرادات السابقة",
+        banker: growth === null ? "يحتاج اثني عشر شهرًا سابقة للمقارنة." : infl !== null && growth < infl ? `المبيعات نمت ${pct(growth, 1)}، أقل من تضخم ${pct(infl, 1)}: بالقيمة الحقيقية الكميات على الأرجح تنخفض.` : "نمو يمكن للبنك أن يبني عليه توقعاته.",
+        advice: growth !== null && infl !== null && growth < infl ? "افصل السعر عن الكمية: اعرض الوحدات المباعة أو عدد العملاء، وزيادات الأسعار المطبقة." : "اشرح ما يدفعه وهل يستمر." },
+      ebitda_margin: { name: "هامش الأرباح قبل الفوائد والضرائب والإهلاك", guide: "10% أو أكثر (يختلف حسب القطاع)", formula: "الأرباح قبل الفوائد والضرائب والإهلاك ÷ الإيرادات",
+        banker: "الربح النقدي التشغيلي من كل عملية بيع: مصدر سداد القروض. التجار يعملون بهوامش أقل من المصنعين.", advice: "قارن نفسك بقطاعك عند العرض، واشرح أي تكاليف غير متكررة في السنة." },
+      ocf_ebitda: { name: "التحويل النقدي", guide: "70% أو أكثر", formula: "التدفق النقدي التشغيلي (بعد الضرائب وقبل الفوائد) ÷ الأرباح قبل الفوائد والضرائب والإهلاك",
+        banker: ocfE === null ? "يحتاج الميزانية السابقة للفترة." : `${pct(ocfE, 0)} من الربح التشغيلي تحول إلى نقدية. التحويل المنخفض يعني أن الربح محتجز لدى العملاء وفي المخزون.`,
+        advice: ocfE !== null && ocfE < 70 ? "جهّز مذكرة قصيرة توضح أين ذهبت النقدية (العملاء، المخزون) والتحصيلات منذ نهاية السنة." : "جودة أرباح قوية: أشر إليها." },
+      dso: { name: "أيام التحصيل من العملاء (DSO)", guide: "60 يومًا أو أقل", formula: "متوسط أرصدة العملاء ÷ الإيرادات × الأيام (أرصدة العملاء تشمل الضريبة، فيظهر الرقم أعلى قليلًا)",
+        banker: dso === null && avgAR < 0 ? "أرصدة العملاء دائنة في المتوسط: العملاء دفعوا أكثر مما فُوتر لهم، أو الفواتير غير المسددة في حساب آخر. لا يمكن قياس أيام التحصيل." : "مدة سداد العملاء. البنوك تقرض غالبًا مقابل أرصدة العملاء لكنها تستبعد ما تجاوز 90 يومًا.",
+        advice: dso === null && avgAR < 0 ? "راجع في سلامة البيانات أي حساب يحمل فواتير العملاء غير المسددة وصنّفه كعملاء ومدينين قبل عرض ذلك على بنك." : dso !== null && dso > 60 ? "أحضر كشف الأعمار؛ واعرض أي العملاء الكبار بطيئون وأنهم يسددون دائمًا (حكومة، شركات متعددة الجنسيات)." : "تحصيل سريع: اذكره." },
+      dio: { name: "أيام المخزون", guide: "90 يومًا أو أقل (يختلف حسب القطاع)", formula: "متوسط المخزون ÷ تكلفة المبيعات قبل الإهلاك × الأيام",
+        banker: "المخزون البطيء قد يكون متقادمًا؛ البنوك تقرض مقابله أقل مما تقرض مقابل أرصدة العملاء.",
+        advice: dio !== null && dio > 90 ? "اشرح المخزون الموسمي أو الاستراتيجي (استيراد قبل تخفيض العملة، عقد)، وأي أصناف بطيئة خُفضت قيمتها." : "لا يلزم إجراء." },
+      dpo: { name: "أيام السداد للموردين", guide: "للسياق فقط", formula: "متوسط أرصدة الموردين ÷ تكلفة المبيعات قبل الإهلاك × الأيام", banker: "أيام سداد طويلة جدًا قد تعني نقص النقدية والتأخر في السداد.", advice: "إذا منحك الموردون آجالًا طويلة باتفاق، فاذكر ذلك." },
+      ccc: { name: "الدورة النقدية", guide: "للسياق فقط", formula: "أيام التحصيل + أيام المخزون + أيام الإنتاج تحت التشغيل − أيام السداد للموردين", banker: "أيام النشاط التي يجب أن يمولها النشاط بنفسه، ومن ثم خط رأس المال العامل الذي يحتاجه.", advice: "حدد حجم تسهيل رأس المال العامل الذي تطلبه من هذه الدورة ومن مبيعات العام القادم." },
+    };
+    for (const r of ratios) Object.assign(r, A[r.key]);
+  }
+
   const flags: RedFlag[] = [];
   const flag = (key: string, severity: RedFlag["severity"], title: string, detail: string, advice: string) => flags.push({ key, severity, title, detail, advice });
-  if (Math.abs(B.imbalance) > 1) flag("imbalance", "high", "The balance sheet does not balance", `Assets differ from liabilities and equity by ${m(B.imbalance)}.`, "Fix the mapping in Data health before sharing anything with a bank.");
-  if (B.te <= 0) flag("neg_equity", "high", "Negative equity", `Equity is ${m(B.te)}.`, "Restore equity (capital increase, converting shareholder loans) before applying. Under Egyptian company law, losses reaching half the capital also require an extraordinary general assembly to decide whether the company continues.");
-  if (P.net_income < 0) flag("loss", "high", "A loss over the period", `Net result ${m(P.net_income)}.`, "Separate one-off items from the trading result and show the months since that prove recovery.");
+  if (Math.abs(B.imbalance) > 1) flag("imbalance", "high", L("The balance sheet does not balance", "الميزانية غير متوازنة"), L(`Assets differ from liabilities and equity by ${m(B.imbalance)}.`, `الأصول تختلف عن الالتزامات وحقوق الملكية بمبلغ ${m(B.imbalance)}.`), L("Fix the mapping in Data health before sharing anything with a bank.", "صحح التصنيف في سلامة البيانات قبل مشاركة أي شيء مع البنك."));
+  if (B.te <= 0) flag("neg_equity", "high", L("Negative equity", "حقوق ملكية سالبة"), L(`Equity is ${m(B.te)}.`, `حقوق الملكية ${m(B.te)}.`), L("Restore equity (capital increase, converting shareholder loans) before applying. Under Egyptian company law, losses reaching half the capital also require an extraordinary general assembly to decide whether the company continues.", "أعد حقوق الملكية (زيادة رأس المال، تحويل قروض المساهمين) قبل التقدم. وفق قانون الشركات المصري، بلوغ الخسائر نصف رأس المال يستلزم أيضًا جمعية عامة غير عادية لتقرر استمرار الشركة."));
+  if (P.net_income < 0) flag("loss", "high", L("A loss over the period", "خسارة خلال الفترة"), L(`Net result ${m(P.net_income)}.`, `صافي النتيجة ${m(P.net_income)}.`), L("Separate one-off items from the trading result and show the months since that prove recovery.", "افصل البنود غير المتكررة عن نتيجة النشاط، واعرض الأشهر اللاحقة التي تثبت التعافي."));
   const cashAfterInterest = b.ocf === null ? null : b.ocf - P.net_interest;
-  if (P.net_income > 0 && cashAfterInterest !== null && cashAfterInterest < 0) flag("profit_no_cash", "high", "Profit but no cash left after interest", `Profit ${m(P.net_income)}; operating cash flow ${m(b.ocf!)} less net interest paid ${m(P.net_interest)} leaves ${m(cashAfterInterest)}.`, "The first question the analyst will ask. Prepare the reconciliation and the collections after the period end.");
+  if (P.net_income > 0 && cashAfterInterest !== null && cashAfterInterest < 0) flag("profit_no_cash", "high", L("Profit but no cash left after interest", "ربح دون نقدية متبقية بعد الفوائد"), L(`Profit ${m(P.net_income)}; operating cash flow ${m(b.ocf!)} less net interest paid ${m(P.net_interest)} leaves ${m(cashAfterInterest)}.`, `الربح ${m(P.net_income)}؛ التدفق النقدي التشغيلي ${m(b.ocf!)} ناقص صافي الفوائد المدفوعة ${m(P.net_interest)} يترك ${m(cashAfterInterest)}.`), L("The first question the analyst will ask. Prepare the reconciliation and the collections after the period end.", "أول سؤال سيطرحه المحلل. جهّز التسوية والتحصيلات بعد نهاية الفترة."));
   if (b.prior && b.prior.B.ar > 0 && b.prior.P.revenue > 0) {
     const arG = (B.ar / b.prior.B.ar - 1) * 100, rG = (Pa.revenue / b.prior.P.revenue - 1) * 100;
-    if (arG - rG > 15) flag("ar_growth", "medium", "Receivables grew much faster than sales", `Receivables +${pct(arG, 0)} against sales +${pct(rG, 0)}.`, "Show the ageing and any large invoice billed near the year end; banks look for sales booked but not collectable.");
+    if (arG - rG > 15) flag("ar_growth", "medium", L("Receivables grew much faster than sales", "أرصدة العملاء نمت أسرع كثيرًا من المبيعات"), L(`Receivables +${pct(arG, 0)} against sales +${pct(rG, 0)}.`, `العملاء +${pct(arG, 0)} مقابل المبيعات +${pct(rG, 0)}.`), L("Show the ageing and any large invoice billed near the year end; banks look for sales booked but not collectable.", "اعرض كشف الأعمار وأي فاتورة كبيرة صدرت قرب نهاية السنة؛ البنوك تبحث عن مبيعات مسجلة غير قابلة للتحصيل."));
   }
   // Stock is compared with the goods bought (cost of sales before depreciation), as stock days are.
   const priorCogs = b.prior ? b.prior.P.cos - b.prior.P.cos_depreciation : 0;
   if (b.prior && b.prior.B.inventory > 0 && priorCogs > 0) {
     const iG = (B.inventory / b.prior.B.inventory - 1) * 100, cG = (((Pa.cos - Pa.cos_depreciation) / priorCogs) - 1) * 100;
-    if (iG - cG > 20) flag("inv_growth", "medium", "Stock grew much faster than cost of sales", `Stock +${pct(iG, 0)} against cost of sales +${pct(cG, 0)}.`, "Explain the build-up (imports ahead of price rises, a contract) and confirm slow items are written down.");
+    if (iG - cG > 20) flag("inv_growth", "medium", L("Stock grew much faster than cost of sales", "المخزون نما أسرع كثيرًا من تكلفة المبيعات"), L(`Stock +${pct(iG, 0)} against cost of sales +${pct(cG, 0)}.`, `المخزون +${pct(iG, 0)} مقابل تكلفة المبيعات +${pct(cG, 0)}.`), L("Explain the build-up (imports ahead of price rises, a contract) and confirm slow items are written down.", "اشرح سبب التراكم (استيراد قبل ارتفاع الأسعار، عقد) وأكد تخفيض قيمة الأصناف بطيئة الحركة."));
   }
-  if (B.ta > 0 && B.other_ca / B.ta > 0.15) flag("other_ca", "medium", "Large other current assets", `${m(B.other_ca)}, ${pct((B.other_ca / B.ta) * 100, 0)} of total assets.`, "If this includes amounts due from shareholders or sister companies, settle or document them: banks usually deduct them from net worth.");
-  if (debt > 0 && B.cash > 0.5 * debt && interest > 0) flag("cash_and_debt", "medium", "High cash alongside borrowing", `Cash ${m(B.cash)} against borrowing ${m(debt)}.`, "Be ready to explain why the cash is not used to cut debt (deposits held as security, customer advances, timing).");
-  if (b.prior && b.prior.B.tax_liab > 0 && B.tax_liab > b.prior.B.tax_liab * 1.5 && B.tax_liab > 0.05 * B.tcl) flag("tax_build", "medium", "Taxes payable building up", `Tax liabilities ${m(B.tax_liab)}, up from ${m(b.prior.B.tax_liab)}.`, "Show the tax payment receipts after the period end; overdue taxes worry lenders.");
-  if (P.dividends > 0 && debt > 0 && (lev === null || lev > BANK_LIMITS.debtEbitda)) flag("dividends", "medium", "Distributions while debt is high", `${m(P.dividends)} distributed with debt at ${lev === null ? "n/a" : lev.toFixed(1) + "x"} EBITDA.`, "Expect a covenant restricting dividends; offering one yourself can win better terms.");
-  if (b.covered < 12 && !b.annualColumn) flag("coverage", "medium", `Only ${b.covered} months of figures`, "Yearly figures are scaled up from the months held.", "Upload the last audited statements as well, so the bank sees full years.");
+  if (B.ta > 0 && B.other_ca / B.ta > 0.15) flag("other_ca", "medium", L("Large other current assets", "أصول متداولة أخرى كبيرة"), L(`${m(B.other_ca)}, ${pct((B.other_ca / B.ta) * 100, 0)} of total assets.`, `${m(B.other_ca)}، ${pct((B.other_ca / B.ta) * 100, 0)} من إجمالي الأصول.`), L("If this includes amounts due from shareholders or sister companies, settle or document them: banks usually deduct them from net worth.", "إذا كانت تشمل مبالغ مستحقة من المساهمين أو شركات شقيقة، فسوّها أو وثّقها: البنوك عادة تخصمها من صافي الحقوق."));
+  if (debt > 0 && B.cash > 0.5 * debt && interest > 0) flag("cash_and_debt", "medium", L("High cash alongside borrowing", "نقدية مرتفعة بجانب الاقتراض"), L(`Cash ${m(B.cash)} against borrowing ${m(debt)}.`, `النقدية ${m(B.cash)} مقابل اقتراض ${m(debt)}.`), L("Be ready to explain why the cash is not used to cut debt (deposits held as security, customer advances, timing).", "كن مستعدًا لشرح سبب عدم استخدام النقدية لخفض الديون (ودائع كضمان، دفعات مقدمة من العملاء، توقيت)."));
+  if (b.prior && b.prior.B.tax_liab > 0 && B.tax_liab > b.prior.B.tax_liab * 1.5 && B.tax_liab > 0.05 * B.tcl) flag("tax_build", "medium", L("Taxes payable building up", "تراكم الضرائب المستحقة"), L(`Tax liabilities ${m(B.tax_liab)}, up from ${m(b.prior.B.tax_liab)}.`, `الالتزامات الضريبية ${m(B.tax_liab)}، بعد أن كانت ${m(b.prior.B.tax_liab)}.`), L("Show the tax payment receipts after the period end; overdue taxes worry lenders.", "اعرض إيصالات سداد الضرائب بعد نهاية الفترة؛ الضرائب المتأخرة تقلق المقرضين."));
+  if (P.dividends > 0 && debt > 0 && (lev === null || lev > BANK_LIMITS.debtEbitda)) flag("dividends", "medium", L("Distributions while debt is high", "توزيعات أرباح مع ديون مرتفعة"), L(`${m(P.dividends)} distributed with debt at ${lev === null ? "n/a" : lev.toFixed(1) + "x"} EBITDA.`, `وُزّع ${m(P.dividends)} والديون ${lev === null ? "غير متاحة" : lev.toFixed(1) + " مرة"} من الأرباح قبل الفوائد والضرائب والإهلاك.`), L("Expect a covenant restricting dividends; offering one yourself can win better terms.", "توقع شرطًا يقيد التوزيعات؛ وعرضه بنفسك قد يحقق شروطًا أفضل."));
+  if (b.covered < 12 && !b.annualColumn) flag("coverage", "medium", L(`Only ${b.covered} months of figures`, `أرقام ${b.covered} أشهر فقط`), L("Yearly figures are scaled up from the months held.", "الأرقام السنوية مقدّرة من الأشهر المتاحة."), L("Upload the last audited statements as well, so the bank sees full years.", "ارفع آخر قوائم مراجعة أيضًا، ليرى البنك سنوات كاملة."));
 
   const rate = inp.rate && inp.rate > 0 ? inp.rate / 100 : null;
   const avgDebt = b.avg("std") + b.avg("ltd");

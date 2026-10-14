@@ -94,8 +94,10 @@ export interface RealProfit {
 
 const pos = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
-export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso = 45): RealProfit {
+export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso = 45, lang: "en" | "ar" = "en"): RealProfit {
   const { P, B, B0 } = b;
+  const ar = lang === "ar";
+  const L = (en: string, x: string) => (ar ? x : en);
   const yr = b.days / 365;
   const R = P.revenue;
   const avgAR = b.avg("ar");
@@ -131,19 +133,20 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
     const depRise = age ? Math.pow(1 + pi, age) - 1 : 0;
     const debt = b.avg("std") + b.avg("ltd");
     const owed = b.avg("ap") + b.avg("tax_liab") + b.avg("other_cl") + b.avg("other_ncl");
+    const n = (v: number) => `${cur} ${Math.round(v).toLocaleString("en-US")}`;
     const steps: BridgeStep[] = [
-      { key: "ar", label: "Customers paying later", value: -avgAR * pp,
-        explain: `Customers owed ${cur} ${Math.round(avgAR).toLocaleString("en-US")} on average${dso !== null ? ` (${Math.round(dso)} days of sales)` : ""}. Prices rose ${pctTxt(pp)} over the period, so that money buys less when it arrives.` },
-      { key: "cash", label: "Cash held", value: -b.avg("cash") * pp,
-        explain: `Average cash and bank balances of ${cur} ${Math.round(b.avg("cash")).toLocaleString("en-US")} lost ${pctTxt(pp)} of their purchasing power (less any interest earned, already in profit).` },
-      { key: "debt", label: "Borrowing repaid in cheaper pounds", value: debt * pp,
-        explain: `Average borrowing of ${cur} ${Math.round(debt).toLocaleString("en-US")} is repaid in money worth ${pctTxt(pp)} less. The interest in profit is the price of this gain.` },
-      { key: "owed", label: "Suppliers, taxes and other amounts owed", value: owed * pp,
-        explain: `Average amounts owed to suppliers and others of ${cur} ${Math.round(owed).toLocaleString("en-US")} are also settled in cheaper money.` },
-      { key: "stock", label: "Replacing the stock sold", value: -cogs * stockRise,
-        explain: cogs > 0 ? `Stock is held about ${Math.round(dio)} days. Goods sold were bought at older prices; replacing them costs ${pctTxt(stockRise)} more${share ? ` (${Math.round(share * 100)}% imported, priced with the exchange rate)` : ""}. That part of gross profit must be reinvested just to keep the same stock.` : "No cost of sales in the period." },
-      { key: "dep", label: "Depreciation at today's prices", value: -P.da * depRise,
-        explain: age ? `Assets about ${age} years old cost ${pctTxt(depRise)} more to replace today, so true depreciation is higher than the books show.` : "Enter the average age of your fixed assets to include this." },
+      { key: "ar", label: L("Customers paying later", "العملاء يسددون لاحقًا"), value: -avgAR * pp,
+        explain: L(`Customers owed ${n(avgAR)} on average${dso !== null ? ` (${Math.round(dso)} days of sales)` : ""}. Prices rose ${pctTxt(pp)} over the period, so that money buys less when it arrives.`, `العملاء مدينون بمتوسط ${n(avgAR)}${dso !== null ? ` (${Math.round(dso)} يومًا من المبيعات)` : ""}. ارتفعت الأسعار ${pctTxt(pp)} خلال الفترة، فهذه الأموال تشتري أقل عند وصولها.`) },
+      { key: "cash", label: L("Cash held", "النقدية المحتفظ بها"), value: -b.avg("cash") * pp,
+        explain: L(`Average cash and bank balances of ${n(b.avg("cash"))} lost ${pctTxt(pp)} of their purchasing power (less any interest earned, already in profit).`, `متوسط أرصدة النقدية والبنوك ${n(b.avg("cash"))} فقد ${pctTxt(pp)} من قوته الشرائية (ناقص أي فوائد محققة، مدرجة في الربح بالفعل).`) },
+      { key: "debt", label: L("Borrowing repaid in cheaper pounds", "اقتراض يُسدد بجنيهات أرخص"), value: debt * pp,
+        explain: L(`Average borrowing of ${n(debt)} is repaid in money worth ${pctTxt(pp)} less. The interest in profit is the price of this gain.`, `متوسط الاقتراض ${n(debt)} يُسدد بأموال تساوي أقل بنسبة ${pctTxt(pp)}. الفوائد في الربح هي ثمن هذا المكسب.`) },
+      { key: "owed", label: L("Suppliers, taxes and other amounts owed", "الموردون والضرائب والمبالغ المستحقة الأخرى"), value: owed * pp,
+        explain: L(`Average amounts owed to suppliers and others of ${n(owed)} are also settled in cheaper money.`, `متوسط المبالغ المستحقة للموردين وغيرهم ${n(owed)} يُسدد أيضًا بأموال أرخص.`) },
+      { key: "stock", label: L("Replacing the stock sold", "إحلال المخزون المباع"), value: -cogs * stockRise,
+        explain: cogs > 0 ? L(`Stock is held about ${Math.round(dio)} days. Goods sold were bought at older prices; replacing them costs ${pctTxt(stockRise)} more${share ? ` (${Math.round(share * 100)}% imported, priced with the exchange rate)` : ""}. That part of gross profit must be reinvested just to keep the same stock.`, `يبقى المخزون نحو ${Math.round(dio)} يومًا. البضاعة المباعة اشتُريت بأسعار أقدم؛ وإحلالها يكلف ${pctTxt(stockRise)} أكثر${share ? ` (${Math.round(share * 100)}% مستورد، يتسعر بسعر الصرف)` : ""}. هذا الجزء من مجمل الربح يجب إعادة استثماره فقط للحفاظ على نفس المخزون.`) : L("No cost of sales in the period.", "لا توجد تكلفة مبيعات في الفترة.") },
+      { key: "dep", label: L("Depreciation at today's prices", "الإهلاك بأسعار اليوم"), value: -P.da * depRise,
+        explain: age ? L(`Assets about ${age} years old cost ${pctTxt(depRise)} more to replace today, so true depreciation is higher than the books show.`, `أصول عمرها نحو ${age} سنوات تكلف ${pctTxt(depRise)} أكثر لإحلالها اليوم، فالإهلاك الحقيقي أعلى مما تظهره الدفاتر.`) : L("Enter the average age of your fixed assets to include this.", "أدخل متوسط عمر أصولك الثابتة لإضافة هذا.") },
     ];
     const real = P.net_income + steps.reduce((s, x) => s + x.value, 0);
     const roe = B0 && B0.te > 0 ? (Math.pow(1 + P.net_income / B0.te, 1 / yr) - 1) * 100 : null;
@@ -169,9 +172,20 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
 }
 
 /** Two or three plain sentences on the result, used when no commentary has been written. */
-export function realProfitSummary(x: RealProfit, cur: string): string {
+export function realProfitSummary(x: RealProfit, cur: string, lang: "en" | "ar" = "en"): string {
   const m = (v: number) => `${cur} ${Math.round(v).toLocaleString("en-US")}`;
   const out: string[] = [];
+  if (lang === "ar") {
+    if (x.inflation) {
+      const share = x.reported > 0 ? (x.inflation.real / x.reported) * 100 : null;
+      out.push(`الربح المعلن ${m(x.reported)} يساوي ${m(x.inflation.real)} بأسعار اليوم${share !== null ? ` (${Math.round(share)}% مما تظهره الدفاتر)` : ""}، بعد تضخم ${x.inflation.periodRate.toFixed(1)}%.`);
+      const worst = [...x.inflation.steps].sort((a, b) => a.value - b.value)[0];
+      if (worst && worst.value < 0) out.push(`أكبر تآكل هو ${worst.label} (${m(-worst.value)}).`);
+      if (x.inflation.realRoe !== null) out.push(x.inflation.realRoe < 0 ? `بالقيمة الحقيقية خسر الملاك ${Math.abs(x.inflation.realRoe).toFixed(1)}% من قيمة حقوق ملكيتهم خلال السنة.` : `حقق الملاك عائدًا حقيقيًا ${x.inflation.realRoe.toFixed(1)}% سنويًا على حقوق ملكيتهم.`);
+    } else out.push(`الربح المعلن ${m(x.reported)}؛ أدخل معدل التضخم لترى قيمته بأسعار اليوم.`);
+    if (x.collection.release !== null && x.collection.release > 0) out.push(`التحصيل من العملاء في ${Math.round(x.collection.targetDso)} يومًا بدلًا من ${Math.round(x.collection.dso!)} سيحرر ${m(x.collection.release)} من النقدية.`);
+    return out.join(" ");
+  }
   if (x.inflation) {
     const share = x.reported > 0 ? (x.inflation.real / x.reported) * 100 : null;
     out.push(`Reported profit of ${m(x.reported)} is worth ${m(x.inflation.real)} at today's prices${share !== null ? ` (${Math.round(share)}% of what the books show)` : ""}, after ${x.inflation.periodRate.toFixed(1)}% inflation.`);
