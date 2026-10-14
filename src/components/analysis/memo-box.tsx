@@ -6,8 +6,10 @@ import { useCompany } from "@/lib/company/context";
 import { useComments, usePeriod } from "@/lib/company/use-period";
 import { cn } from "@/lib/cn";
 import { readMemo } from "@/lib/engine";
+import { useT } from "@/lib/i18n/use-t";
 
-const HEADINGS = /^(lead with|risks and how to answer them|what to ask for|questions to expect)\s*:?$/i;
+// The rule memo's headings in both languages (real-profit and AI text use "# " headings).
+const HEADINGS = /^(lead with|risks and how to answer them|what to ask for|questions to expect|ابدأ بـ|المخاطر وكيف ترد عليها|ما الذي تطلبه|أسئلة متوقعة)\s*:?$/i;
 
 /** Memo text as written by the AI or the automatic memo: a headline, then headed groups of "• " bullets. */
 export function MemoText({ text, className }: { text: string; className?: string }) {
@@ -38,6 +40,7 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
   const { sel } = usePeriod();
   const comments = useComments();
   const router = useRouter();
+  const { d: { bank: { memo: t } } } = useT();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const memo = readMemo(comments(section), section, c.assumptions ?? {});
@@ -47,7 +50,7 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
     setErr(null);
     const res = await fetch(`/api/companies/${c.id}/commentary`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: sel.type, end: sel.end, sections: [section] }) });
     const j = await res.json().catch(() => ({}));
-    if (!res.ok) { setErr(j.error ?? "The AI could not write this."); return; }
+    if (!res.ok) { setErr(j.error ?? t.aiFailed); return; }
     router.refresh();
   });
   const text = saved ?? fallback;
@@ -55,14 +58,14 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
     <section className="rounded-lg border-s-[3px] border-brand bg-band px-4 py-4" data-testid={testId}>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <h2 className="text-lg font-normal">{title}</h2>
-        <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-mute">{saved ? "Saved for this period" : "Automatic, from the figures"}</span>
+        <span className="rounded bg-white px-1.5 py-0.5 text-[11px] text-mute">{saved ? t.savedPeriod : t.automatic}</span>
         {canAi && <button onClick={draft} disabled={pending} className="ms-auto inline-flex items-center gap-1.5 rounded border border-brand-d px-3 py-1.5 text-xs font-medium text-brand-d disabled:opacity-60" data-testid={`ai-${section}`}>
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{saved ? "Redraft with AI" : "Draft with AI"}</button>}
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{saved ? t.redraft : t.draft}</button>}
       </div>
-      {memo.stale && <p className="mb-3 rounded bg-white px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid={`${section}-memo-stale`}>Written before the {section === "bank" ? "request or loan terms" : "rates"} changed, so some figures below may no longer match.{canAi ? " Redraft it to update." : ""}</p>}
-      {text ? <MemoText text={text} /> : <p className="text-sm text-mute">Nothing to say yet for this period.</p>}
+      {memo.stale && <p className="mb-3 rounded bg-white px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid={`${section}-memo-stale`}>{t.stale(section === "bank" ? t.staleBank : t.staleRates)}{canAi ? t.redraftToUpdate : ""}</p>}
+      {text ? <MemoText text={text} /> : <p className="text-sm text-mute">{t.nothing}</p>}
       {err && <p className="mt-2 text-sm text-red" role="alert">{err}</p>}
-      {!canAi && c.source !== "demo" && !c.aiEnabled && <p className="mt-3 text-xs text-mute">AI drafting is not switched on for this workspace; the automatic memo is built from the figures alone.</p>}
+      {!canAi && c.source !== "demo" && !c.aiEnabled && <p className="mt-3 text-xs text-mute">{t.aiOff}</p>}
     </section>
   );
 }

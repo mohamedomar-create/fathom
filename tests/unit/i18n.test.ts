@@ -128,3 +128,63 @@ describe("sales and expenses in Arabic", async () => {
     expect(ar.bridge.map((b) => b.delta)).toEqual(en.bridge.map((b) => b.delta));
   });
 });
+
+describe("bank readiness, real profit and forecast in Arabic", async () => {
+  const sample = (await import("../../reference/sample.json")).default;
+  const { bankPack, formatBankValue, realProfit, realProfitSummary, twelveMonths, forecast, METHOD_LABEL, METHOD_LABEL_AR, METHOD_ABOUT_AR, REQUEST_LABEL_AR, BANK_CHECKLIST, BANK_CHECKLIST_AR } = await import("@/lib/engine");
+  const months = sample.months as import("@/lib/engine").MonthData[];
+  const settings = { currency: "EGP", fyStartMonth: sample.fy_start_month, taxRate: sample.tax_rate };
+  const a = { inflation: 20, fxStart: 49, fxEnd: 48.5, importShare: 40, assetAge: 3, rate: 24, tenor: 5, requestAmount: 2_000_000, requestType: "term_loan" as const };
+  const arabic = (s: string) => /[؀-ۿ]/.test(s);
+  // Acronyms bankers use in Arabic too (DSCR, EBITDA, EGP) are allowed; English words are not.
+  const english = (s: string) => /[A-Za-z]{4,}/.test(s.replace(/\b[A-Z]{2,}\b/g, ""));
+
+  it("writes every bank ratio, flag, scenario and the memo in Arabic, with the same figures", () => {
+    const en = bankPack(months, "2026-09", settings, a, "شركة العرض", undefined, "en");
+    const ar = bankPack(months, "2026-09", settings, a, "شركة العرض", undefined, "ar");
+    expect(ar.assessment.ratios.map((r) => [r.key, r.value, r.band])).toEqual(en.assessment.ratios.map((r) => [r.key, r.value, r.band]));
+    for (const r of ar.assessment.ratios) {
+      for (const s of [r.name, r.guide, r.banker, r.advice]) { expect(arabic(s), s).toBe(true); expect(english(s), `English left in: ${s}`).toBe(false); }
+      expect(formatBankValue(r, "EGP", "ar")).not.toMatch(/days|times/);
+    }
+    expect(ar.assessment.flags.map((f) => f.key)).toEqual(en.assessment.flags.map((f) => f.key));
+    for (const f of ar.assessment.flags) expect(arabic(f.title) && arabic(f.detail) && arabic(f.advice), f.title).toBe(true);
+    expect(ar.stress.scenarios.map((s) => [s.key, s.dscr])).toEqual(en.stress.scenarios.map((s) => [s.key, s.dscr]));
+    for (const s of ar.stress.scenarios) expect(arabic(s.name) && arabic(s.detail), s.name).toBe(true);
+    for (const r of ar.trend.rows) expect(arabic(r.name), r.name).toBe(true);
+    for (const y of ar.trend.years) expect(y.label).toMatch(/^12 شهرًا حتى /);
+    expect(ar.memo).toContain("ابدأ بـ");
+    expect(english(ar.memo), ar.memo).toBe(false);
+    // The English memo is unchanged by the Arabic option.
+    expect(en.memo).toContain("Lead with");
+    expect(Object.values(REQUEST_LABEL_AR).every(arabic)).toBe(true);
+    expect(BANK_CHECKLIST_AR.length).toBe(BANK_CHECKLIST.length);
+    for (const c of BANK_CHECKLIST_AR) expect(arabic(c.item) && arabic(c.why)).toBe(true);
+  });
+
+  it("writes the real-profit bridge and its summary in Arabic", () => {
+    const b = twelveMonths(months, "2026-09", 1);
+    const en = realProfit(b, a, "EGP", 45, "en"), ar = realProfit(b, a, "EGP", 45, "ar");
+    expect(ar.inflation!.steps.map((s) => s.value)).toEqual(en.inflation!.steps.map((s) => s.value));
+    for (const s of ar.inflation!.steps) expect(arabic(s.label) && arabic(s.explain), s.label).toBe(true);
+    const sum = realProfitSummary(ar, "EGP", "ar");
+    expect(arabic(sum) && !english(sum), sum).toBe(true);
+  });
+
+  it("writes the forecast notes and method names in Arabic", () => {
+    const en = forecast(months, settings, {}, a, undefined, "en"), ar = forecast(months, settings, {}, a, undefined, "ar");
+    expect(en.ok && ar.ok).toBe(true);
+    if (!en.ok || !ar.ok) return;
+    expect(ar.months.map((m) => m.P.revenue)).toEqual(en.months.map((m) => m.P.revenue));
+    for (const n of ar.notes) expect(arabic(n), n).toBe(true);
+    for (const k of Object.keys(METHOD_LABEL) as (keyof typeof METHOD_LABEL)[]) expect(arabic(METHOD_LABEL_AR[k]) && arabic(METHOD_ABOUT_AR[k])).toBe(true);
+    const short = forecast(months.slice(0, 2), settings, {}, a, undefined, "ar");
+    if (!short.ok) expect(arabic(short.reason), short.reason).toBe(true);
+  });
+
+  it("names the twelve-month basis in Arabic", () => {
+    expect(periodLabel("12 months to Sep 2026", "ar")).toBe("12 شهرًا حتى سبتمبر 2026");
+    expect(periodLabel("5 months to Jun 2026 (2 months missing)", "ar")).toBe("5 أشهر حتى يونيو 2026 (ناقص شهران)");
+    expect(periodLabel("11 months to Jun 2026 (Mar 2026 missing)", "ar")).toBe("11 شهرًا حتى يونيو 2026 (ناقص مارس 2026)");
+  });
+});

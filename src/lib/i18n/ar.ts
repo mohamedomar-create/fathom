@@ -6,6 +6,9 @@ import { fin } from "./areas/fin";
 import { ana } from "./areas/ana";
 import { sales } from "./areas/sales";
 import { exp } from "./areas/exp";
+import { bank } from "./areas/bank";
+import { rp } from "./areas/rp";
+import { plan } from "./areas/plan";
 
 /** The app's words in Arabic (Egyptian business usage, Modern Standard wording). */
 export const ar: Dict = {
@@ -94,4 +97,7 @@ export const ar: Dict = {
   ana: ana.ar,
   sales: sales.ar,
   exp: exp.ar,
+  bank: bank.ar,
+  rp: rp.ar,
+  plan: plan.ar,
 };

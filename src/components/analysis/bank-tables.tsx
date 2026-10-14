@@ -1,7 +1,10 @@
-import { BANK_LIMITS, money, pct, REQUEST_LABEL, type BankAssessment, type ProForma, type StressResult, type TrendRow, type YearTrend } from "@/lib/engine";
+import { BANK_LIMITS, money, pct, REQUEST_LABEL, REQUEST_LABEL_AR, type BankAssessment, type ProForma, type StressResult, type TrendRow, type YearTrend } from "@/lib/engine";
 import { cn } from "@/lib/cn";
+import { dict, type Dict } from "@/lib/i18n";
+import { useT } from "@/lib/i18n/use-t";
 
-const x2 = (v: number | null) => (v === null ? "n/a" : `${v.toFixed(2)}x`);
+type BankWords = Dict["bank"];
+const x2 = (v: number | null, na = "n/a") => (v === null ? na : `${v.toFixed(2)}x`);
 
 function cell(r: TrendRow, v: number | null, cur: string) {
   if (v === null) return "–";
@@ -13,16 +16,17 @@ function cell(r: TrendRow, v: number | null, cur: string) {
 
 /** Up to three years side by side, with whether the latest year moved the right way. */
 export function TrendTable({ trend, cur, small }: { trend: YearTrend; cur: string; small?: boolean }) {
+  const { d: { bank: t } } = useT();
   return (
     <table className={cn("tbl", small && "text-[11.5px]")} data-testid="trend-table">
-      <thead><tr><th>Measure</th>{trend.years.map((y) => <th key={y.end}>{y.label.replace("12 months to ", "")}</th>)}<th>Latest year</th></tr></thead>
+      <thead><tr><th>{t.measure}</th>{trend.years.map((y) => <th key={y.end}>{y.label.replace(t.yearPrefix, "")}</th>)}<th>{t.latestYear}</th></tr></thead>
       <tbody>
         {trend.rows.map((r) => (
           <tr key={r.key} className="row">
-            <td>{r.name}{r.unit === "days" ? " (days)" : ""}</td>
+            <td>{r.name}{r.unit === "days" ? t.days : ""}</td>
             {r.values.map((v, i) => <td key={i}>{cell(r, v, cur)}</td>)}
             <td className={r.direction === "better" ? "text-green-d" : r.direction === "worse" ? "text-red" : "text-mute"}>
-              {r.direction === "better" ? "▲ better" : r.direction === "worse" ? "▼ worse" : r.direction === "flat" ? "steady" : "–"}
+              {r.direction === "better" ? t.better : r.direction === "worse" ? t.worse : r.direction === "flat" ? t.steady : "–"}
             </td>
           </tr>
         ))}
@@ -32,25 +36,26 @@ export function TrendTable({ trend, cur, small }: { trend: YearTrend; cur: strin
 }
 
 const STRESS_BAND = {
-  pass: { label: "Covered", cls: "bg-green-bg text-green-d" },
-  tight: { label: "Tight", cls: "bg-amber/20 text-[#9a6b00]" },
-  fail: { label: "Not covered", cls: "bg-red-bg text-red" },
-  na: { label: "No debt", cls: "bg-band text-mute" },
+  pass: "bg-green-bg text-green-d",
+  tight: "bg-amber/20 text-[#9a6b00]",
+  fail: "bg-red-bg text-red",
+  na: "bg-band text-mute",
 } as const;
 
 export function StressTable({ stress, cur, small }: { stress: StressResult; cur: string; small?: boolean }) {
+  const { d: { bank: t } } = useT();
   return (
     <table className={cn("tbl", small && "text-[11.5px]")} data-testid="stress-table">
-      <thead><tr><th>Scenario</th><th>EBITDA</th><th>Interest</th><th>Cover</th><th>Debt / EBITDA</th><th>Result</th></tr></thead>
+      <thead><tr><th>{t.scenario}</th><th>{t.ebitda}</th><th>{t.interest}</th><th>{t.cover}</th><th>{t.debtEbitdaCol}</th><th>{t.result}</th></tr></thead>
       <tbody>
         {stress.scenarios.map((s) => (
           <tr key={s.key} className={cn("row", s.key === "base" && "font-medium")}>
-            <td><div>{s.name}</div>{!small && <div className="text-xs font-normal text-mute">{s.detail}{s.extraCash ? ` Extra cash tied up: ${money(s.extraCash, cur, true)}.` : ""}</div>}</td>
+            <td><div>{s.name}</div>{!small && <div className="text-xs font-normal text-mute">{s.detail}{s.extraCash ? t.extraCash(money(s.extraCash, cur, true)) : ""}</div>}</td>
             <td>{money(s.ebitda, cur, true)}</td>
             <td>{money(s.interest, cur, true)}</td>
-            <td>{x2(s.dscr)}</td>
-            <td>{x2(s.debtEbitda)}</td>
-            <td><span className={cn("inline-block rounded px-1.5 py-0.5 text-[11px] font-medium", STRESS_BAND[s.band].cls)}>{STRESS_BAND[s.band].label}</span></td>
+            <td>{x2(s.dscr, t.na)}</td>
+            <td>{x2(s.debtEbitda, t.na)}</td>
+            <td><span className={cn("inline-block rounded px-1.5 py-0.5 text-[11px] font-medium", STRESS_BAND[s.band])}>{t.stressBand[s.band]}</span></td>
           </tr>
         ))}
       </tbody>
@@ -58,31 +63,32 @@ export function StressTable({ stress, cur, small }: { stress: StressResult; cur:
   );
 }
 
-export function breakingPoints(stress: StressResult): string {
+export function breakingPoints(stress: StressResult, t: BankWords = dict("en").bank): string {
   const parts: string[] = [];
-  if (stress.maxSalesFall !== null) parts.push(stress.maxSalesFall <= 0 ? "Cash already falls short of loan payments" : stress.maxSalesFall >= 100 ? "Even with no sales the payments would be covered" : `Sales can fall ${Math.round(stress.maxSalesFall)}% before cash stops covering loan payments`);
-  if (stress.maxRateRise !== null && stress.maxSalesFall !== null && stress.maxSalesFall > 0) parts.push(stress.maxRateRise >= 100 ? "rates could rise more than 100 points" : `rates could rise ${stress.maxRateRise.toFixed(1)} points`);
-  return parts.length ? parts.join("; ") + "." : "There is no debt service to stress.";
+  if (stress.maxSalesFall !== null) parts.push(stress.maxSalesFall <= 0 ? t.bpShort : stress.maxSalesFall >= 100 ? t.bpNoSales : t.bpFall(Math.round(stress.maxSalesFall)));
+  if (stress.maxRateRise !== null && stress.maxSalesFall !== null && stress.maxSalesFall > 0) parts.push(stress.maxRateRise >= 100 ? t.bpRate100 : t.bpRate(stress.maxRateRise.toFixed(1)));
+  return parts.length ? parts.join(t.bpJoin) + "." : t.bpNone;
 }
 
 /** The request tested: cover, leverage and interest cover before and after, and the verdict. */
 export function ProFormaTable({ pf, a, cur, small }: { pf: ProForma; a: BankAssessment; cur: string; small?: boolean }) {
-  const verdict = pf.type === "lc_guarantee" ? "A non-cash facility: no repayments, so cover does not change. The bank will look at the cash margin it holds and your trading record."
-    : pf.dscr === null ? "Enter the borrowing rate to test this request."
-    : pf.fits ? `Fits: cover stays at ${pf.dscr.toFixed(2)}x and debt at ${pf.debtEbitda?.toFixed(1)}x EBITDA.`
-    : `Beyond common limits${pf.excess ? `: about ${money(pf.excess, cur)} above the estimated room to borrow` : ""}.${pf.tenorNeeded ? ` Repaying over ${pf.tenorNeeded} years would keep cover at ${a.capacity.targetDscr}x.` : pf.type === "term_loan" || pf.type === "other" ? " No tenor brings cover to the target at this rate; consider a smaller amount or more equity." : ""}`;
+  const { lang, d: { bank: t } } = useT();
+  const verdict = pf.type === "lc_guarantee" ? t.pfLc
+    : pf.dscr === null ? t.pfRate
+    : pf.fits ? t.pfFits(pf.dscr.toFixed(2), pf.debtEbitda?.toFixed(1) ?? "–")
+    : `${t.pfBeyond}${pf.excess ? t.pfExcess(money(pf.excess, cur)) : ""}.${pf.tenorNeeded ? t.pfTenor(pf.tenorNeeded, a.capacity.targetDscr) : pf.type === "term_loan" || pf.type === "other" ? t.pfNoTenor : ""}`;
   return (
     <div data-testid="proforma">
       <p className={cn("mb-2 rounded px-3 py-2", small ? "text-[11.5px]" : "text-[13px]", pf.fits === true ? "bg-green-bg text-green-d" : pf.fits === false ? "bg-red-bg text-red" : "bg-band")}>
-        <b>{money(pf.amount, cur)} · {REQUEST_LABEL[pf.type]}.</b> {verdict}
+        <b>{money(pf.amount, cur)} · {(lang === "ar" ? REQUEST_LABEL_AR : REQUEST_LABEL)[pf.type]}.</b> {verdict}
       </p>
       <table className={cn("tbl", small && "text-[11.5px]")}>
-        <thead><tr><th>Measure</th><th>Today</th><th>With the new facility</th><th>Guide</th></tr></thead>
+        <thead><tr><th>{t.measure}</th><th>{t.today}</th><th>{t.withNew}</th><th>{t.guideCol}</th></tr></thead>
         <tbody>
-          <tr className="row"><td>Yearly payment added</td><td>–</td><td>{pf.payment === null ? "n/a" : money(pf.payment, cur)}</td><td>{pf.type === "working_capital" ? "interest only" : pf.type === "lc_guarantee" ? "none" : `${pf.tenor} years${pf.rate !== null ? ` at ${pct(pf.rate, 1)}` : ""}`}</td></tr>
-          <tr className="row"><td>Debt service cover</td><td>{x2(pf.dscrBefore)}</td><td>{x2(pf.dscr)}</td><td>{BANK_LIMITS.dscr}x or more</td></tr>
-          <tr className="row"><td>Debt to EBITDA</td><td>{x2(pf.debtEbitdaBefore)}</td><td>{x2(pf.debtEbitda)}</td><td>{BANK_LIMITS.debtEbitda}x or less</td></tr>
-          <tr className="row"><td>Interest cover</td><td>{x2(pf.icrBefore)}</td><td>{x2(pf.icr)}</td><td>{BANK_LIMITS.intCover}x or more</td></tr>
+          <tr className="row"><td>{t.paymentAdded}</td><td>–</td><td>{pf.payment === null ? t.na : money(pf.payment, cur)}</td><td>{pf.type === "working_capital" ? t.interestOnly : pf.type === "lc_guarantee" ? t.none : t.yearsAt(pf.tenor, pf.rate !== null ? pct(pf.rate, 1) : null)}</td></tr>
+          <tr className="row"><td>{t.dscr}</td><td>{x2(pf.dscrBefore, t.na)}</td><td>{x2(pf.dscr, t.na)}</td><td>{t.orMore(BANK_LIMITS.dscr)}</td></tr>
+          <tr className="row"><td>{t.debtEbitda}</td><td>{x2(pf.debtEbitdaBefore, t.na)}</td><td>{x2(pf.debtEbitda, t.na)}</td><td>{t.orLess(BANK_LIMITS.debtEbitda)}</td></tr>
+          <tr className="row"><td>{t.intCover}</td><td>{x2(pf.icrBefore, t.na)}</td><td>{x2(pf.icr, t.na)}</td><td>{t.orMore(BANK_LIMITS.intCover)}</td></tr>
         </tbody>
       </table>
     </div>

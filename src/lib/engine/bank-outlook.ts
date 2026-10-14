@@ -3,13 +3,26 @@ import { twelveMonths, type Basis } from "./basis";
 import { addMonths, mlabel, money, pct } from "./format";
 import { REQUEST_LABEL, type Assumptions, type RequestType } from "./real-profit";
 import type { MonthData } from "./types";
+import { monthLabel } from "@/lib/i18n";
+
+type Lang = "en" | "ar";
+const TREND_AR: Record<string, string> = {
+  revenue: "الإيرادات", rev_growth: "نمو الإيرادات", ebitda: "الأرباح قبل الفوائد والضرائب والإهلاك", ebitda_margin: "هامش الأرباح قبل الفوائد والضرائب والإهلاك",
+  net_income: "صافي الربح", ocf: "التدفق النقدي التشغيلي", debt: "الاقتراض", equity: "حقوق الملكية", dscr: "تغطية خدمة الدين", debt_ebitda: "الديون إلى الأرباح قبل الفوائد والضرائب والإهلاك",
+  int_cover: "تغطية الفوائد", current: "نسبة التداول", dso: "أيام التحصيل من العملاء", ccc: "الدورة النقدية",
+};
+/** The kinds of facility in Arabic (same keys as REQUEST_LABEL). */
+export const REQUEST_LABEL_AR: Record<RequestType, string> = {
+  term_loan: "قرض لأجل (يُسدد على أقساط)", working_capital: "تسهيل رأس مال عامل / سحب على المكشوف", lc_guarantee: "اعتمادات مستندية أو خطابات ضمان", other: "تسهيل آخر",
+};
 
 /** A bank measure as text: 2.29x, 14.8%, 82 days, EGP 1,234. */
-export function formatBankValue(r: Pick<BankRatio, "value" | "unit">, cur: string) {
-  if (r.value === null) return "n/a";
-  if (r.unit === "x") return `${r.value.toFixed(2)}x`;
+export function formatBankValue(r: Pick<BankRatio, "value" | "unit">, cur: string, lang: Lang = "en") {
+  const ar = lang === "ar";
+  if (r.value === null) return ar ? "غير متاح" : "n/a";
+  if (r.unit === "x") return ar ? `${r.value.toFixed(2)} مرة` : `${r.value.toFixed(2)}x`;
   if (r.unit === "%") return pct(r.value, 1);
-  if (r.unit === "days") return `${Math.round(r.value)} days`;
+  if (r.unit === "days") return ar ? `${Math.round(r.value)} يوم` : `${Math.round(r.value)} days`;
   return money(r.value, cur);
 }
 
@@ -41,7 +54,7 @@ export function yearTrend(months: MonthData[], end: string, fyStart: number, inp
     if (k > 0 && b.covered < 12 && !b.annualColumn) break;
     // Repayments for past years always use the estimate: the schedule entered applies to the next 12 months only.
     const a = bankAssessment(b, k === 0 ? inp : { ...inp, principal12m: null }, cur);
-    years.unshift({ label: `12 months to ${mlabel(e)}`, end: e, basis: b, assessment: a });
+    years.unshift({ label: inp.lang === "ar" ? `12 شهرًا حتى ${monthLabel(e, "ar")}` : `12 months to ${mlabel(e)}`, end: e, basis: b, assessment: a });
   }
   const ratio = (key: string) => (y: TrendYear) => y.assessment.ratios.find((r) => r.key === key)?.value ?? null;
   const defs: [string, string, TrendRow["unit"], boolean, (y: TrendYear) => number | null][] = [
@@ -68,7 +81,7 @@ export function yearTrend(months: MonthData[], end: string, fyStart: number, inp
       const tol = unit === "cur" ? Math.max(1, Math.abs(prev) * 0.01) : unit === "days" ? 1 : unit === "%" ? 0.5 : 0.01;
       direction = Math.abs(last - prev) <= tol ? "flat" : (last > prev) === higher ? "better" : "worse";
     }
-    return { key, name, unit, higher, values, direction };
+    return { key, name: inp.lang === "ar" ? TREND_AR[key] ?? name : name, unit, higher, values, direction };
   });
   return { years, rows };
 }
@@ -99,7 +112,7 @@ export interface StressResult {
   maxRateRise: number | null;
   notes: string[];
 }
-export interface StressInputs { taxRate: number; importShare?: number | null; rate?: number | null }
+export interface StressInputs { taxRate: number; importShare?: number | null; rate?: number | null; lang?: Lang }
 
 /** Re-runs the year's figures under bank-style shocks. Variable costs move with sales; fixed costs do not; tax follows profit. */
 export function stressTest(b: Basis, a: BankAssessment, inp: StressInputs): StressResult {
@@ -131,18 +144,20 @@ export function stressTest(b: Basis, a: BankAssessment, inp: StressInputs): Stre
   };
   const band = (d: number | null): StressScenario["band"] => (d === null ? "na" : d >= BANK_LIMITS.dscr ? "pass" : d >= BANK_LIMITS.dscrFloor ? "tight" : "fail");
   const notes: string[] = [];
+  const ar = inp.lang === "ar";
+  const L = (en: string, a: string) => (ar ? a : en);
   const defs: [string, string, string, StressShock][] = [
-    ["base", "As reported", "The last 12 months as they are.", {}],
-    ["sales10", "Sales fall 10%", "Variable costs fall with sales; fixed costs stay.", { sales: -0.1 }],
-    ["sales20", "Sales fall 20%", "A severe year: the test most credit committees run.", { sales: -0.2 }],
-    ["rates", "Interest rates rise 3 points", "Egyptian loans mostly float with the Central Bank rate.", { ratePts: 3 }],
+    ["base", L("As reported", "كما هي"), L("The last 12 months as they are.", "آخر 12 شهرًا كما هي."), {}],
+    ["sales10", L("Sales fall 10%", "انخفاض المبيعات 10%"), L("Variable costs fall with sales; fixed costs stay.", "التكاليف المتغيرة تنخفض مع المبيعات؛ والثابتة تبقى."), { sales: -0.1 }],
+    ["sales20", L("Sales fall 20%", "انخفاض المبيعات 20%"), L("A severe year: the test most credit committees run.", "سنة صعبة: الاختبار الذي تجريه معظم لجان الائتمان."), { sales: -0.2 }],
+    ["rates", L("Interest rates rise 3 points", "ارتفاع أسعار الفائدة 3 نقاط"), L("Egyptian loans mostly float with the Central Bank rate.", "القروض في مصر غالبًا متغيرة مع سعر البنك المركزي."), { ratePts: 3 }],
   ];
-  if (share > 0) defs.push(["fx", "Pound loses 20% against the dollar", `Imported costs (${Math.round(share * 100)}% of cost of sales) rise 25%, before any price increase.`, { fx: 0.25 }]);
-  else notes.push("Enter the imported share of stock to include a devaluation scenario.");
-  defs.push(["dso", "Customers pay 30 days later", "The extra receivables are funded by overdraft.", { dsoDays: 30 }]);
-  defs.push(["combined", "All at once", share > 0 ? "Sales −10%, rates +3 points, pound −20%, customers 30 days later." : "Sales −10%, rates +3 points, customers 30 days later.",
+  if (share > 0) defs.push(["fx", L("Pound loses 20% against the dollar", "الجنيه يفقد 20% أمام الدولار"), L(`Imported costs (${Math.round(share * 100)}% of cost of sales) rise 25%, before any price increase.`, `التكاليف المستوردة (${Math.round(share * 100)}% من تكلفة المبيعات) ترتفع 25%، قبل أي زيادة في الأسعار.`), { fx: 0.25 }]);
+  else notes.push(L("Enter the imported share of stock to include a devaluation scenario.", "أدخل نسبة المخزون المستورد لإضافة سيناريو تخفيض العملة."));
+  defs.push(["dso", L("Customers pay 30 days later", "العملاء يسددون بعد 30 يومًا إضافية"), L("The extra receivables are funded by overdraft.", "أرصدة العملاء الإضافية تُموَّل بالسحب على المكشوف."), { dsoDays: 30 }]);
+  defs.push(["combined", L("All at once", "كلها معًا"), share > 0 ? L("Sales −10%, rates +3 points, pound −20%, customers 30 days later.", "المبيعات −10%، الفائدة +3 نقاط، الجنيه −20%، العملاء يتأخرون 30 يومًا.") : L("Sales −10%, rates +3 points, customers 30 days later.", "المبيعات −10%، الفائدة +3 نقاط، العملاء يتأخرون 30 يومًا."),
     { sales: -0.1, ratePts: 3, dsoDays: 30, ...(share > 0 ? { fx: 0.25 } : {}) }]);
-  if (!rate) notes.push("No borrowing rate entered or implied: the cost of funding later customer payments is left out.");
+  if (!rate) notes.push(L("No borrowing rate entered or implied: the cost of funding later customer payments is left out.", "لم يُدخل سعر اقتراض ولا يمكن استنتاجه: تكلفة تمويل تأخر سداد العملاء غير محسوبة."));
   const scenarios = defs.map(([key, name, detail, s]) => { const r = run(s); return { key, name, detail, ...r, band: band(r.dscr) }; });
 
   const solve = (f: (x: number) => number | null, hi: number) => {
@@ -219,7 +234,8 @@ export function proForma(b: Basis, a: BankAssessment, req: LoanRequest, rateIn?:
 export interface BankMemo { headline: string; lead: string[]; risks: { risk: string; answer: string }[]; ask: string[]; questions: string[] }
 
 /** The bank discussion memo built from the figures alone (no AI): the same shape the AI memo follows. */
-export function ruleMemo(name: string, a: BankAssessment, opts: { stress?: StressResult | null; pf?: ProForma | null; trend?: YearTrend | null; cur: string; purpose?: string | null }): BankMemo {
+export function ruleMemo(name: string, a: BankAssessment, opts: { stress?: StressResult | null; pf?: ProForma | null; trend?: YearTrend | null; cur: string; purpose?: string | null; lang?: Lang }): BankMemo {
+  if (opts.lang === "ar") return ruleMemoAr(name, a, opts);
   const { cur } = opts;
   const f = (r: BankRatio) => `${r.name} ${formatBankValue(r, cur)}`;
   const strong = a.strengths.slice(0, 3);
@@ -261,14 +277,55 @@ export function ruleMemo(name: string, a: BankAssessment, opts: { stress?: Stres
   return { headline, lead: lead.slice(0, 5), risks, ask, questions };
 }
 
+/** The same memo in Arabic, from the same figures and rules. */
+function ruleMemoAr(name: string, a: BankAssessment, opts: { stress?: StressResult | null; pf?: ProForma | null; trend?: YearTrend | null; cur: string; purpose?: string | null }): BankMemo {
+  const { cur } = opts;
+  const v = (r: BankRatio) => formatBankValue(r, cur, "ar");
+  const f = (r: BankRatio) => `${r.name} ${v(r)}`;
+  const strong = a.strengths.slice(0, 3);
+  const high = a.flags.filter((x) => x.severity === "high");
+  const concern = a.weaknesses[0]?.name ?? high[0]?.title ?? a.flags[0]?.title;
+  let headline: string;
+  if (!strong.length) headline = `أرقام ${name} ستجعل الاقتراض صعبًا حتى تتحسن ${concern ?? "القدرة على السداد"}.`;
+  else if (!a.weaknesses.length && !high.length) headline = `${name} في موقف قوي للاقتراض: ${strong.slice(0, 2).map(f).join(" و")}.`;
+  else headline = `${strong.slice(0, 2).map((r) => r.name).join(" و")} تدعم الطلب؛ استعد لأسئلة حول ${concern}.`;
+  const req = opts.pf;
+  if (req && req.amount > 0 && req.fits === false && strong.length)
+    headline = `${strong.slice(0, 2).map(f).join(" و")} قوية، لكن المبلغ المطلوب ${money(req.amount, cur)} يتجاوز الحدود المعتادة${a.capacity.headroom !== null && a.capacity.headroom > 0 ? `؛ الأرقام تدعم نحو ${money(a.capacity.headroom, cur)}` : ""}${req.tenorNeeded ? `، أو المبلغ كاملًا على ${req.tenorNeeded} سنوات` : ""}.`;
+  const lead = strong.map((r) => `${r.name}: ${v(r)}. ${r.banker}`);
+  const better = opts.trend?.rows.filter((r) => r.direction === "better" && ["revenue", "ebitda", "net_income", "equity", "dscr"].includes(r.key)).map((r) => TREND_AR[r.key] ?? r.name) ?? [];
+  if (better.length >= 2) lead.push(`تحسن عامًا بعد عام: ${better.join("، ")}.`);
+  if (opts.stress?.maxSalesFall !== null && opts.stress?.maxSalesFall !== undefined && opts.stress.maxSalesFall >= 15)
+    lead.push(`المرونة: يمكن أن تنخفض المبيعات ${Math.round(opts.stress.maxSalesFall)}% قبل أن تتوقف النقدية عن تغطية أقساط القروض.`);
+  const risks = [
+    ...high.map((x) => ({ risk: `${x.title} (${x.detail.replace(/\.$/, "")})`, answer: x.advice })),
+    ...a.weaknesses.map((r) => ({ risk: `${r.name} ${v(r)} مقابل معيار ${r.guide}`, answer: r.advice })),
+    ...a.flags.filter((x) => x.severity === "medium").map((x) => ({ risk: `${x.title} (${x.detail.replace(/\.$/, "")})`, answer: x.advice })),
+  ].slice(0, 5);
+  const ask: string[] = [];
+  const pf = opts.pf;
+  if (pf && pf.amount > 0) {
+    const what = `${REQUEST_LABEL_AR[pf.type]} بمبلغ ${money(pf.amount, cur)}${opts.purpose ? ` لغرض ${opts.purpose.replace(/\.$/, "")}` : ""}`;
+    if (pf.type === "lc_guarantee") ask.push(`اطلب ${what}: تسهيل غير نقدي؛ سينظر البنك إلى الهامش المحتجز وسجلك التجاري.`);
+    else if (pf.fits) ask.push(`اطلب ${what}: تبقى التغطية ${pf.dscr!.toFixed(2)} مرة والديون ${pf.debtEbitda!.toFixed(1)} مرة من الأرباح قبل الفوائد والضرائب والإهلاك بعده.`);
+    else if (pf.dscr !== null) ask.push(`${what} يأخذ التغطية إلى ${pf.dscr.toFixed(2)} مرة${pf.debtEbitda !== null ? ` والديون إلى ${pf.debtEbitda.toFixed(1)} مرة من الأرباح` : ""}، أبعد من الحدود المعتادة.${pf.tenorNeeded ? ` السداد على ${pf.tenorNeeded} سنوات يبقي التغطية عند ${a.capacity.targetDscr} مرة.` : ""}${pf.excess ? ` أو اطلب ${money(pf.amount - pf.excess, cur)}.` : ""}`);
+    else ask.push(`اطلب ${what}. أدخل سعر الاقتراض لاختبار أثره على التغطية.`);
+  } else if (a.capacity.headroom !== null && a.capacity.headroom > 0) ask.push(`هذه الأرقام تدعم اقتراضًا إضافيًا بنحو ${money(a.capacity.headroom, cur)}${a.capacity.rate !== null ? ` بسعر ${pct(a.capacity.rate, 1)} على ${a.capacity.tenor} سنوات` : ""}.`);
+  if (a.ratios.find((r) => r.key === "lt_funding")?.band === "weak") ask.push("اطلب نقل جزء من الاقتراض قصير الأجل إلى قرض متوسط الأجل يتناسب مع الأصول.");
+  if (a.ratios.find((r) => r.key === "dso")?.band !== "strong") ask.push("اسأل إن كان البنك سيمول أرصدة العملاء (خصم أو تخصيم) مقابل كشف الأعمار.");
+  const questions = a.flags.map((x) => `${x.title}: ${x.detail}`).slice(0, 5);
+  return { headline, lead: lead.slice(0, 5), risks, ask, questions };
+}
+
 /** The memo as plain text, in the same layout the AI writes (headings, then "• " bullets). */
-export function memoText(m: BankMemo): string {
+export function memoText(m: BankMemo, lang: Lang = "en"): string {
   const block = (h: string, items: string[]) => (items.length ? `\n\n${h}\n${items.map((x) => `• ${x}`).join("\n")}` : "");
+  const ar = lang === "ar";
   return m.headline
-    + block("Lead with", m.lead)
-    + block("Risks and how to answer them", m.risks.map((r) => `${r.risk}. ${r.answer}`))
-    + block("What to ask for", m.ask)
-    + block("Questions to expect", m.questions);
+    + block(ar ? "ابدأ بـ" : "Lead with", m.lead)
+    + block(ar ? "المخاطر وكيف ترد عليها" : "Risks and how to answer them", m.risks.map((r) => `${r.risk}. ${r.answer}`))
+    + block(ar ? "ما الذي تطلبه" : "What to ask for", m.ask)
+    + block(ar ? "أسئلة متوقعة" : "Questions to expect", m.questions);
 }
 
 // ------------------------------------------------------------------ everything the bank page and report show
@@ -282,15 +339,15 @@ export interface BankPack {
   memo: string;
 }
 
-export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[]): BankPack {
+export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en"): BankPack {
   const cur = settings.currency;
   const basis = twelveMonths(months, end, settings.fyStartMonth);
-  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts };
+  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang };
   const assessment = bankAssessment(basis, inputs, cur);
   const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur);
-  const stress = stressTest(basis, assessment, { taxRate: settings.taxRate, importShare: a.importShare, rate: a.rate });
+  const stress = stressTest(basis, assessment, { taxRate: settings.taxRate, importShare: a.importShare, rate: a.rate, lang });
   const pf = a.requestAmount && a.requestAmount > 0 ? proForma(basis, assessment, { amount: a.requestAmount, type: a.requestType ?? "term_loan" }, a.rate, a.tenor) : null;
-  const memo = memoText(ruleMemo(name, assessment, { stress, pf, trend, cur, purpose: a.requestPurpose }));
+  const memo = memoText(ruleMemo(name, assessment, { stress, pf, trend, cur, purpose: a.requestPurpose, lang }), lang);
   return { basis, assessment, trend, stress, pf, memo };
 }
 

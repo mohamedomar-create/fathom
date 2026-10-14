@@ -19,6 +19,9 @@ const MONTHS_AR = ["", "يناير", "فبراير", "مارس", "أبريل", "
 const MONTHS_EN = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const QUARTERS_AR = ["", "الربع الأول", "الربع الثاني", "الربع الثالث", "الربع الرابع"];
 
+/** "n months" in Arabic, with its number agreement: شهر واحد، شهران، 3 أشهر، 12 شهرًا. */
+export const monthsAr = (n: number) => (n === 1 ? "شهر واحد" : n === 2 ? "شهران" : n >= 3 && n <= 10 ? `${n} أشهر` : `${n} شهرًا`);
+
 /** Month names as the app shows them (index 1 = January). */
 export const monthNames = (lang: Lang) => (lang === "ar" ? MONTHS_AR : MONTHS_EN);
 
@@ -36,6 +39,9 @@ export function periodLabel(label: string, lang: Lang): string {
   if (lang === "en") return label;
   const mi = (abbr: string) => MONTHS_EN.indexOf(abbr);
   return label
+    .replace(/^(\d+) months? to /, (_, n: string) => `${monthsAr(Number(n))} حتى `)
+    .replace(/\((\d+) months missing\)/, (_, n: string) => `(ناقص ${monthsAr(Number(n))})`)
+    .replace(/\((\w{3} \d{4}) missing\)/, "(ناقص $1)")
     .replace(/\(to (\d+ )?(\w{3})\)/g, (_, d: string | undefined, a: string) => `(حتى ${d ?? ""}${MONTHS_AR[mi(a)] ?? a})`)
     .replace(/\bQ([1-4]) FY(\d{4})/g, (_, q: string, y: string) => `${QUARTERS_AR[Number(q)]} من السنة المالية ${y}`)
     .replace(/\bQ([1-4]) /g, (_, q: string) => `${QUARTERS_AR[Number(q)]} `)

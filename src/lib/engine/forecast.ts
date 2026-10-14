@@ -1,4 +1,5 @@
 import { cashWaterfall, type Waterfall } from "./cashflow";
+import { monthLabel } from "@/lib/i18n";
 import { addMonths, daysIn, mlabel, monthIndex, parsePeriod } from "./format";
 import { fyStartOf, indexMonths, isAnnualColumn } from "./period";
 import type { Assumptions } from "./real-profit";
@@ -47,6 +48,15 @@ export const METHOD_LABEL: Record<RevenueMethod, string> = {
   last_year: "Same month last year",
   trend: "Recent trend",
   average: "Recent average",
+};
+export const METHOD_LABEL_AR: Record<RevenueMethod, string> = {
+  seasonal: "اتجاه مع نمط موسمي", last_year: "نفس الشهر من العام الماضي", trend: "الاتجاه الأخير", average: "المتوسط الأخير",
+};
+export const METHOD_ABOUT_AR: Record<RevenueMethod, string> = {
+  seasonal: "مستوى العام الماضي، منمّى بمعدل النمو السنوي، ومشكّل بحصة كل شهر المعتادة من السنة.",
+  last_year: "كل شهر يكرر نفس الشهر قبل عام.",
+  trend: "معدل نمو آخر اثني عشر شهرًا (أو أقل)، مستمر ويتباطأ تدريجيًا بمرور الوقت.",
+  average: "متوسط آخر ستة أشهر، ثابت.",
 };
 export const METHOD_ABOUT: Record<RevenueMethod, string> = {
   seasonal: "Last year's level, grown at the year-on-year rate, shaped by each month's usual share of the year.",
@@ -394,22 +404,26 @@ function backtest(hist: MonthData[], settings: CompanySettings, a: Assumptions):
   };
 }
 
-export function forecast(months: MonthData[], settings: CompanySettings, drivers: ForecastDrivers = {}, assumptions: Assumptions = {}, asOf?: string): Forecast {
+export function forecast(months: MonthData[], settings: CompanySettings, drivers: ForecastDrivers = {}, assumptions: Assumptions = {}, asOf?: string, lang: "en" | "ar" = "en"): Forecast {
+  const ar = lang === "ar";
+  const L = (en: string, x: string) => (ar ? x : en);
+  const ml = (p: string) => (ar ? monthLabel(p, "ar") : mlabel(p));
+  const n0 = (v: number) => Math.round(v).toLocaleString("en-US");
   // History is the months holding a P&L; a month with only a balance sheet (the opening balance) is not activity.
   const all = indexMonths(months).sorted;
   let sorted = all.filter(hasPL);
-  if (!sorted.length) return { ok: false, reason: "Load at least six months of monthly figures to forecast." };
+  if (!sorted.length) return { ok: false, reason: L("Load at least six months of monthly figures to forecast.", "حمّل ستة أشهر على الأقل من الأرقام الشهرية لعمل التوقعات.") };
   const lastP = sorted[sorted.length - 1].period;
   if (isAnnualColumn(all, lastP, settings.fyStartMonth))
-    return { ok: false, reason: "The figures loaded are annual (audited statements), so there is no monthly pattern to forecast from. Upload the General Ledger for at least the last six months (Odoo: Accounting → Reporting → General Ledger → Export XLSX)." };
+    return { ok: false, reason: L("The figures loaded are annual (audited statements), so there is no monthly pattern to forecast from. Upload the General Ledger for at least the last six months (Odoo: Accounting → Reporting → General Ledger → Export XLSX).", "الأرقام المحمّلة سنوية (قوائم مراجعة)، فلا يوجد نمط شهري للتوقع منه. ارفع دفتر الأستاذ العام لآخر ستة أشهر على الأقل (Odoo: المحاسبة ← التقارير ← دفتر الأستاذ العام ← تصدير XLSX).") };
   // A part month (the books run only to a day inside it) would understate the base: the forecast starts after the last full month.
-  const partNote = asOf && asOf.startsWith(lastP) && Number(asOf.slice(8)) < daysIn(lastP) ? `${mlabel(lastP)} runs only to day ${Number(asOf.slice(8))}, so the forecast is built on the months to ${mlabel(addMonths(lastP, -1))}, the last full month, and ${mlabel(lastP)} is forecast in full.` : null;
+  const partNote = asOf && asOf.startsWith(lastP) && Number(asOf.slice(8)) < daysIn(lastP) ? L(`${mlabel(lastP)} runs only to day ${Number(asOf.slice(8))}, so the forecast is built on the months to ${mlabel(addMonths(lastP, -1))}, the last full month, and ${mlabel(lastP)} is forecast in full.`, `${ml(lastP)} يمتد حتى يوم ${Number(asOf.slice(8))} فقط، لذلك بُنيت التوقعات على الأشهر حتى ${ml(addMonths(lastP, -1))}، آخر شهر كامل، ويُتوقع ${ml(lastP)} كاملًا.`) : null;
   if (partNote) sorted = sorted.slice(0, -1);
   const hist = consecutiveTail(sorted);
-  if (hist.length < 6) return { ok: false, reason: `Forecasting needs at least six consecutive months of figures; the latest run has ${hist.length}. Upload the General Ledger covering the missing months.` };
-  if (!hasBS(hist[hist.length - 1])) return { ok: false, reason: `${mlabel(hist[hist.length - 1].period)} has a P&L but no balance sheet, so the forecast has no starting cash, debtors or loans. Upload the balance sheet for that month, or the General Ledger, which gives both.` };
+  if (hist.length < 6) return { ok: false, reason: L(`Forecasting needs at least six consecutive months of figures; the latest run has ${hist.length}. Upload the General Ledger covering the missing months.`, `التوقعات تحتاج ستة أشهر متتالية على الأقل من الأرقام؛ آخر سلسلة بها ${hist.length}. ارفع دفتر الأستاذ العام الذي يغطي الأشهر الناقصة.`) };
+  if (!hasBS(hist[hist.length - 1])) return { ok: false, reason: L(`${mlabel(hist[hist.length - 1].period)} has a P&L but no balance sheet, so the forecast has no starting cash, debtors or loans. Upload the balance sheet for that month, or the General Ledger, which gives both.`, `${ml(hist[hist.length - 1].period)} به قائمة دخل بدون ميزانية، فلا توجد نقدية أو مدينون أو قروض للبدء منها. ارفع ميزانية ذلك الشهر، أو دفتر الأستاذ العام الذي يعطي الاثنين.`) };
   const revHist = hist.map((m) => plCalc(m.pl).revenue);
-  if (sumBy(revHist.slice(-6), (x) => x) <= 0) return { ok: false, reason: "There is no revenue in the last six months to forecast from." };
+  if (sumBy(revHist.slice(-6), (x) => x) <= 0) return { ok: false, reason: L("There is no revenue in the last six months to forecast from.", "لا توجد إيرادات في آخر ستة أشهر للتوقع منها.") };
   const bt = backtest(hist, settings, assumptions);
   const eligible = (Object.keys(METHOD_NEEDS) as RevenueMethod[]).filter((m) => hist.length >= METHOD_NEEDS[m]);
   const method: RevenueMethod = bt && eligible.includes(bt.method) ? bt.method : eligible.includes("trend") ? "trend" : "average";
@@ -444,17 +458,19 @@ export function forecast(months: MonthData[], settings: CompanySettings, drivers
   if (partNote) notes.push(partNote);
   // Large working-capital moves change cash a lot: say where they come from so they can be checked or changed.
   const lastB = bsCalc(hist[hist.length - 1].bs), m3 = fm[Math.min(2, fm.length - 1)].B;
-  for (const [k, label, driver] of [["inventory", "Stock", "stock days"], ["ar", "Customer balances", "customer days"], ["ap", "Supplier balances", "supplier days"]] as const) {
+  for (const [k, label, driver, labelA, driverA] of [["inventory", "Stock", "stock days", "المخزون", "أيام المخزون"], ["ar", "Customer balances", "customer days", "أرصدة العملاء", "أيام التحصيل"], ["ap", "Supplier balances", "supplier days", "أرصدة الموردين", "أيام السداد للموردين"]] as const) {
     const a0 = lastB[k], a3 = m3[k];
-    if (a0 > 0 && Math.abs(a3 - a0) > Math.max(0.2 * a0, 0.05 * Math.abs(lastB.ta))) notes.push(`${label} ${k === "inventory" ? "moves" : "move"} from ${Math.round(a0).toLocaleString("en-US")} to ${Math.round(a3).toLocaleString("en-US")} over the first three months, because forecast ${k === "ar" ? "sales" : "costs"} differ from the last three months while ${driver} stay at ${Math.round(used[k === "ar" ? "dso" : k === "inventory" ? "dio" : "dpo"])}. This ${a3 < a0 ? "frees" : "uses"} ${Math.round(Math.abs(a3 - a0)).toLocaleString("en-US")} of cash${k === "ap" ? " in the opposite direction" : ""}; enter ${driver} to change it.`);
+    const days = Math.round(used[k === "ar" ? "dso" : k === "inventory" ? "dio" : "dpo"]);
+    if (a0 > 0 && Math.abs(a3 - a0) > Math.max(0.2 * a0, 0.05 * Math.abs(lastB.ta))) notes.push(L(`${label} ${k === "inventory" ? "moves" : "move"} from ${n0(a0)} to ${n0(a3)} over the first three months, because forecast ${k === "ar" ? "sales" : "costs"} differ from the last three months while ${driver} stay at ${days}. This ${a3 < a0 ? "frees" : "uses"} ${n0(Math.abs(a3 - a0))} of cash${k === "ap" ? " in the opposite direction" : ""}; enter ${driver} to change it.`,
+      `${labelA} تتحرك من ${n0(a0)} إلى ${n0(a3)} خلال أول ثلاثة أشهر، لأن ${k === "ar" ? "المبيعات" : "التكاليف"} المتوقعة تختلف عن آخر ثلاثة أشهر بينما ${driverA} ثابتة عند ${days}. هذا ${a3 < a0 ? "يحرر" : "يستخدم"} ${n0(Math.abs(a3 - a0))} من النقدية${k === "ap" ? " في الاتجاه المعاكس" : ""}؛ أدخل ${driverA} لتغييره.`));
   }
-  if (hist.length < sorted.length) notes.push(`A gap in the months loaded: the forecast uses the ${hist.length} consecutive months from ${mlabel(hist[0].period)}.`);
-  if (hist.length < 24) notes.push(hist.length < 12 ? "With under a year of figures there is no seasonal pattern to learn; load 24 months or more for one." : "With under two years of figures the seasonal pattern rests on one year; 24 months or more make it reliable.");
-  if (Math.abs(bsCalc(hist[hist.length - 1].bs).imbalance) > 1) notes.push("The latest balance sheet does not balance; the difference is carried unchanged through the forecast.");
-  if (!has(assumptions.principal12m) && !has(drivers.repayment) && bsCalc(hist[hist.length - 1].bs).ltd > 0) notes.push("Loan repayments are not entered, so long-term borrowing is held at today's balance. Enter the monthly repayment for a truer cash line.");
+  if (hist.length < sorted.length) notes.push(L(`A gap in the months loaded: the forecast uses the ${hist.length} consecutive months from ${mlabel(hist[0].period)}.`, `فجوة في الأشهر المحمّلة: التوقعات تستخدم ${hist.length} أشهر متتالية بدءًا من ${ml(hist[0].period)}.`));
+  if (hist.length < 24) notes.push(hist.length < 12 ? L("With under a year of figures there is no seasonal pattern to learn; load 24 months or more for one.", "مع أقل من سنة من الأرقام لا يوجد نمط موسمي للتعلم منه؛ حمّل 24 شهرًا أو أكثر.") : L("With under two years of figures the seasonal pattern rests on one year; 24 months or more make it reliable.", "مع أقل من سنتين من الأرقام يعتمد النمط الموسمي على سنة واحدة؛ 24 شهرًا أو أكثر تجعله موثوقًا."));
+  if (Math.abs(bsCalc(hist[hist.length - 1].bs).imbalance) > 1) notes.push(L("The latest balance sheet does not balance; the difference is carried unchanged through the forecast.", "آخر ميزانية غير متوازنة؛ والفرق يُنقل كما هو عبر التوقعات."));
+  if (!has(assumptions.principal12m) && !has(drivers.repayment) && bsCalc(hist[hist.length - 1].bs).ltd > 0) notes.push(L("Loan repayments are not entered, so long-term borrowing is held at today's balance. Enter the monthly repayment for a truer cash line.", "أقساط القروض غير مدخلة، لذلك يبقى الاقتراض طويل الأجل عند رصيد اليوم. أدخل القسط الشهري لخط نقدية أدق."));
   const booked = impliedRate(hist);
-  if ((has(drivers.rate) || has(assumptions.rate)) && booked !== null && Math.abs(booked - used.rate) > 10) notes.push(`Interest in the books is ${booked.toFixed(0)}% a year of average borrowing; the forecast uses the ${used.rate.toFixed(1)}% rate entered, so interest changes from the first forecast month.`);
-  if (!has(drivers.rate) && !has(assumptions.rate) && auto.rate > 40) notes.push(`Interest in the books is ${auto.rate.toFixed(0)}% a year of average borrowing, which is high: check that interest and loans are mapped correctly, or enter your borrowing rate.`);
-  if (used.dividends === 0) notes.push("No dividends are assumed.");
+  if ((has(drivers.rate) || has(assumptions.rate)) && booked !== null && Math.abs(booked - used.rate) > 10) notes.push(L(`Interest in the books is ${booked.toFixed(0)}% a year of average borrowing; the forecast uses the ${used.rate.toFixed(1)}% rate entered, so interest changes from the first forecast month.`, `الفوائد في الدفاتر ${booked.toFixed(0)}% سنويًا من متوسط الاقتراض؛ التوقعات تستخدم السعر المدخل ${used.rate.toFixed(1)}%، فتتغير الفوائد من أول شهر متوقع.`));
+  if (!has(drivers.rate) && !has(assumptions.rate) && auto.rate > 40) notes.push(L(`Interest in the books is ${auto.rate.toFixed(0)}% a year of average borrowing, which is high: check that interest and loans are mapped correctly, or enter your borrowing rate.`, `الفوائد في الدفاتر ${auto.rate.toFixed(0)}% سنويًا من متوسط الاقتراض، وهي مرتفعة: تحقق من تصنيف الفوائد والقروض، أو أدخل سعر اقتراضك.`));
+  if (used.dividends === 0) notes.push(L("No dividends are assumed.", "لا توزيعات أرباح مفترضة."));
   return { ok: true, start: fm[0].period, end: fm[fm.length - 1].period, method, auto, used, months: fm, summary, backtest: bt, notes };
 }
