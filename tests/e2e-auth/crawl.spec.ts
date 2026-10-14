@@ -4,7 +4,7 @@ import { createCompany, importFiles, newEmail, requireLocalStack, signUp } from 
 
 requireLocalStack();
 
-const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend"];
+const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend", "expenses", "expenses/accounts", "expenses/suppliers", "expenses/trend"];
 const SETTINGS = ["settings/data-setup", "settings/profile", "settings/source-data", "settings/data-health", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
 const ACCOUNT = ["/companies", "/dashboard", "/account", "/admin/organisation", "/admin/people"];
 
@@ -53,7 +53,7 @@ test("the navigation rail and menus take a user everywhere", async ({ page }) =>
   for (const p of ANALYSIS) {
     // The rail lists the current sector's pages; another sector is reached through its tab first.
     const link = page.locator(`a[href$="/company/${id}/${p}"]`).first();
-    if (!(await link.isVisible())) await page.getByTestId(`tab-${p.startsWith("sales") ? "sales" : p === "banking" ? "banking" : "financials"}`).click();
+    if (!(await link.isVisible())) await page.getByTestId(`tab-${p.startsWith("sales") ? "sales" : p.startsWith("expenses") ? "expenses" : p === "banking" ? "banking" : "financials"}`).click();
     await page.locator(`a[href$="/company/${id}/${p}"]`).first().click();
     await expect(page).toHaveURL(new RegExp(`/company/${id}/${p}`));
     await expect(page.locator("h1")).toBeVisible();

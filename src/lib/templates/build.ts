@@ -1,6 +1,6 @@
 import ExcelJS from "exceljs";
 import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
-import { BS_ROWS, CLASS_HELP, classChoice, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
+import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
 import type { FinancialsFill, FillRow } from "./fill";
 
 const TEAL = "FF0B6E70", BAND = "FFF5F5F3", INPUT = "FFFFFBEA", MUTE = "FF76766F";
@@ -14,6 +14,7 @@ export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Pro
   const wb = new ExcelJS.Workbook();
   wb.creator = "iReport";
   if (kind === "financials") financials(wb, o);
+  else if (kind === "expenses") expenses(wb, o);
   else sales(wb, o);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -140,6 +141,36 @@ function sales(wb: ExcelJS.Workbook, o: TemplateOptions) {
       const cell = r.getCell(j + 1);
       if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
       if (c.key === "qty" || c.key === "amount" || c.key === "cost") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
+    });
+  }
+}
+
+function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
+  readMe(wb, `iReport · Expenses template${o.company ? ` · ${o.company}` : ""}`, [
+    ["One row per bill or payment. iReport adds them up by month, supplier and expense type.", "صف لكل فاتورة أو مصروف. يجمعها iReport حسب الشهر والمورد ونوع المصروف."],
+    ["HOW TO FILL IT", "طريقة الملء"],
+    ['1. Sheet "Expenses": fill one row per bill, starting in row 5. Required columns are marked *.', "١. ورقة Expenses: صف لكل فاتورة بدءًا من الصف الخامس. الأعمدة المطلوبة عليها *."],
+    ["2. Supplier refunds and credit notes: the same columns with a negative amount.", "٢. المرتجعات وإشعارات الخصم من الموردين: بمبلغ بالسالب."],
+    ["3. Upload the file in iReport. Only the expense lines are saved; the financial figures are not changed.", "٣. ارفع الملف. تُحفظ المصروفات فقط ولا تتغير القوائم المالية."],
+    ["RULES", "القواعد"],
+    [`Amounts in ${o.currency}, before VAT, as plain numbers. Dates as date cells or written day first (15/01/2026).`, "المبالغ بدون ضريبة القيمة المضافة. التاريخ بصيغة يوم/شهر/سنة."],
+    ["Write each supplier and expense type the same way every time, so they add up correctly.", "اكتب اسم المورد ونوع المصروف بنفس الطريقة دائمًا."],
+    ["Include salaries, rent and other costs too (leave Supplier empty for salaries), so the months match your P&L.", "أضف الرواتب والإيجار وباقي المصروفات حتى تطابق قائمة الدخل."],
+    ["Do not change the headings in row 4 or the first cell (A1).", "لا تغيّر عناوين الصف الرابع ولا الخلية A1."],
+    ["COLUMNS", "الأعمدة"],
+    ...EXPENSE_COLS.map((c) => [`${c.head}${c.required ? " *" : ""}: ${c.help}`, ""] as [string, string]),
+  ]);
+  const ws = wb.addWorksheet("Expenses", { views: [{ state: "frozen", ySplit: 4 }] });
+  title(ws, MARK.expenses, "Expenses: one row per bill or payment", `Amounts in ${o.currency}, before VAT. * = required.`);
+  const h = ws.getRow(4);
+  EXPENSE_COLS.forEach((c, i) => { h.getCell(i + 1).value = `${c.head}${c.required ? " *" : ""}`; ws.getColumn(i + 1).width = c.key === "supplier" || c.key === "description" ? 32 : c.key === "type" ? 26 : c.key === "amount" ? 22 : 16; });
+  header(h);
+  for (let i = 0; i < 3000; i++) {
+    const r = ws.getRow(5 + i);
+    EXPENSE_COLS.forEach((c, j) => {
+      const cell = r.getCell(j + 1);
+      if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
+      if (c.key === "amount") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
     });
   }
 }

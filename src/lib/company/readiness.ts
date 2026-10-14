@@ -1,4 +1,4 @@
-import { addMonths, bsCalc, cashFlowByMonth, hasBS, hasPL, isAnnualColumn, mlabel, monthIndex, plCalc, type Assumptions, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
+import { addMonths, bsCalc, cashFlowByMonth, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
 import type { TemplateKind } from "@/lib/templates/spec";
 import type { Check } from "./checks";
 
@@ -6,7 +6,7 @@ import type { Check } from "./checks";
  * How ready each sector's data is: what is loaded (completion) and how much of it passes the accounting checks
  * (accuracy), item by item, each with exactly what to upload or enter and how.
  */
-export type ReadinessSector = "financials" | "sales" | "banking" | "forecast";
+export type ReadinessSector = "financials" | "sales" | "expenses" | "banking" | "forecast";
 export type ItemStatus = "done" | "partial" | "missing";
 
 export interface ReadinessFix {
@@ -40,6 +40,7 @@ export interface ReadinessInput {
   checks: Check[];
   fyStart: number;
   sales?: SalesData | null;
+  expenses?: ExpensesData | null;
   assumptions?: Assumptions;
   forecast?: ForecastDrivers;
   today?: string;
@@ -167,6 +168,49 @@ export function salesReadiness(x: ReadinessInput): SectorReadiness {
   return { key: "sales", label: "Sales", ...summarise(items), items };
 }
 
+const COST_CLASSES = EXPENSE_GROUPS.flatMap((g) => g.classes);
+/** A month's P&L costs, as the Expenses pages add them up. */
+const costsOf = (m: MonthData) => COST_CLASSES.reduce((t, k) => t + ((m.pl as Record<string, number>)[k] ?? 0), 0);
+
+export function expensesReadiness(x: ReadinessInput): SectorReadiness {
+  const e = x.expenses;
+  const FIX: ReadinessFix = { what: "Upload your General Ledger", how: "Odoo: Accounting → Reporting → General Ledger → Export. Its cost lines show who you pay.", template: "financials", href: "settings/source-data?step=financials" };
+  const months = e ? expenseMonths(e) : [];
+  const items: ReadinessItem[] = [];
+  if (!e || !months.length) {
+    items.push(item({ id: "loaded", axis: "Lines loaded", title: "Expense lines (who you pay)", completion: 0, accuracy: null, detail: "No expense lines yet. Your costs show from the P&L; suppliers need the lines.", fix: FIX }));
+    return { key: "expenses", label: "Expenses", ...summarise(items), items };
+  }
+  const pl = plMonths(x.months).slice(-12);
+  const n = pl.filter((m) => months.includes(m.period)).length;
+  const covered = pl.length ? n / pl.length : 1;
+  items.push(item({ id: "loaded", axis: "Months covered", title: "Expense lines for every financial month", completion: pct(covered), accuracy: null,
+    detail: pl.length ? `${n} of ${pl.length} financial months have expense lines.` : `${months.length} months of expense lines.`,
+    fix: covered < 1 ? { ...FIX, what: "Upload the General Ledger for the missing months" } : undefined }));
+  const byMonth = new Map<string, number>();
+  for (const r of e.suppliers) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
+  const both = pl.filter((m) => byMonth.has(m.period));
+  const tied = both.filter((m) => { const c = costsOf(m); return Math.abs((byMonth.get(m.period) ?? 0) - c) <= Math.max(1, Math.abs(c) * 0.01); });
+  items.push(item({ id: "reconciled", axis: "Ties to P&L", title: "Monthly lines equal P&L costs (within 1%)", completion: both.length ? 100 : 0, accuracy: both.length ? pct(tied.length / both.length) : null,
+    detail: both.length ? `${tied.length} of ${both.length} months tie to the P&L.` : "Load the P&L for the same months to check.",
+    fix: both.length && tied.length < both.length ? { what: "Use the General Ledger for all costs", how: "A bills file holds bills only. The ledger also has salaries, rent and depreciation.", template: "financials", href: "expenses/trend" } : undefined }));
+  const pay = e.suppliers.filter((r) => r.s !== "Depreciation (no payment)");
+  const total = pay.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
+  const named = pay.filter((r) => !NOT_SUPPLIERS.has(r.s)).reduce((t, r) => t + Math.abs(r.a), 0);
+  items.push(item({ id: "suppliers", axis: "Suppliers named", title: "Payments name the supplier", completion: pct(named / total / 0.8), accuracy: null,
+    detail: `${pct(named / total)}% of spend names who was paid (salaries usually don't; 80% is plenty).`,
+    fix: named / total < 0.8 ? { what: "Fill the Partner on bills and payments", how: "In Odoo, set the Vendor on each bill. In our template, fill Supplier.", template: "expenses" } : undefined }));
+  const atotal = e.accounts.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
+  const typed = e.accounts.filter((r) => r.c).reduce((t, r) => t + Math.abs(r.a), 0);
+  items.push(item({ id: "types", axis: "Cost types", title: "Each line has a cost type", completion: pct(typed / atotal), accuracy: null, detail: `${pct(typed / atotal)}% of spend has a cost type (rent, salaries, materials…).`,
+    fix: typed < atotal ? { what: "Give each line an expense type", how: "Fill the Expense type column with a plain name, like Rent.", template: "expenses" } : undefined }));
+  const latest = pl[pl.length - 1]?.period;
+  if (latest) items.push(item({ id: "fresh", axis: "Up to date", title: "The latest month has expense lines", completion: months.includes(latest) ? 100 : 0, accuracy: null,
+    detail: months.includes(latest) ? `${mlabel(latest)} is in.` : `${mlabel(latest)} has no expense lines yet.`,
+    fix: months.includes(latest) ? undefined : { ...FIX, what: `Upload the General Ledger for ${mlabel(latest)}` } }));
+  return { key: "expenses", label: "Expenses", ...summarise(items), items };
+}
+
 export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const pl = plMonths(x.months);
   const a = x.assumptions ?? {};
@@ -214,5 +258,5 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
 }
 
 export function readiness(x: ReadinessInput): SectorReadiness[] {
-  return [financialsReadiness(x), salesReadiness(x), bankingReadiness(x), forecastReadiness(x)];
+  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), bankingReadiness(x), forecastReadiness(x)];
 }

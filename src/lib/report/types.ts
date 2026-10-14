@@ -1,4 +1,4 @@
-import type { Assumptions, CompanySettings, ForecastDrivers, MonthData, PeriodSel, SalesData } from "@/lib/engine";
+import type { Assumptions, CompanySettings, ExpensesData, ForecastDrivers, MonthData, PeriodSel, SalesData } from "@/lib/engine";
 import type { AccountLine, AlertSetting } from "@/lib/company/types";
 
 export const REPORT_SECTIONS = [
@@ -16,6 +16,7 @@ export const REPORT_SECTIONS = [
   { key: "goalseek", label: "Goalseek" },
   { key: "forecast", label: "Forecast" },
   { key: "sales", label: "Sales" },
+  { key: "expenses", label: "Expenses" },
   { key: "bank", label: "Bank Readiness" },
   { key: "bank_outlook", label: "Bank: trend & stress test" },
   { key: "realprofit", label: "Real Profit" },
@@ -55,6 +56,8 @@ export interface ReportInput {
   forecast?: ForecastDrivers;
   /** Sales by customer and product per month, for the Sales page (left out when there are none). */
   sales?: SalesData;
+  /** Expense lines by supplier and account per month, for the Expenses page (suppliers are left out when there are none). */
+  expenses?: ExpensesData;
 }
 
 export interface AcceptedIssue { title: string; period?: string; reason: string }

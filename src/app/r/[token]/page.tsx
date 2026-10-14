@@ -5,6 +5,7 @@ import { buildMonths, naturalAccounts } from "@/lib/company/build";
 import { assumptionsFromRow, forecastFromRow, settingsFromRow } from "@/lib/company/load";
 import { normaliseSections } from "@/lib/report/types";
 import { parseSalesSummary } from "@/lib/company/sales-parse";
+import { parseExpenseSummary } from "@/lib/company/expenses-parse";
 import type { ClassKey, PeriodType } from "@/lib/engine";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { PublicReport } from "./public-report";
@@ -23,9 +24,10 @@ interface Payload {
 export default async function PublicReportPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
   const supabase = await createClient();
-  const [{ data }, { data: salesRaw }] = await Promise.all([
+  const [{ data }, { data: salesRaw }, { data: expensesRaw }] = await Promise.all([
     supabase.rpc("get_published_report", { p_token: token }),
     supabase.rpc("get_published_sales", { p_token: token }),
+    supabase.rpc("get_published_expenses", { p_token: token }),
   ]);
   if (!data) notFound();
   const p = data as unknown as Payload;
@@ -36,7 +38,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
       input={{
         title: p.report.title, companyName: p.company.name, months: buildMonths(accounts), accounts, settings, alerts,
         sel: { type: p.report.period_type as PeriodType, end: p.report.period_end }, sections: normaliseSections(p.report.sections),
-        assumptions: assumptionsFromRow(p.company), forecast: forecastFromRow(p.company), sales: parseSalesSummary(salesRaw), commentary: p.commentary ?? {}, notes: (p.company.notes as string[]) ?? [],
+        assumptions: assumptionsFromRow(p.company), forecast: forecastFromRow(p.company), sales: parseSalesSummary(salesRaw), expenses: parseExpenseSummary(expensesRaw), commentary: p.commentary ?? {}, notes: (p.company.notes as string[]) ?? [],
         accepted: (p.accepted ?? []).map((a) => ({ title: a.title, period: a.period ?? undefined, reason: a.reason })),
         org: { name: p.org.name, logoUrl: p.org.logo_url, brandColour: p.org.brand_colour, disclaimer: p.org.disclaimer, footer: p.org.report_footer },
         preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),

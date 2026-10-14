@@ -86,6 +86,11 @@ test("an Odoo ledger with an unexplained opening adjustment imports cleanly and 
   await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`));
   await expect(page.getByTestId("sales-headline")).toBeVisible();
   await expect(page.getByTestId("sales-reconciled")).toBeVisible();
+  // Its cost lines became expense lines: who was paid, tying to the P&L costs.
+  await page.getByTestId("tab-expenses").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/expenses`));
+  await expect(page.getByTestId("expenses-headline")).toBeVisible();
+  await expect(page.getByTestId("expenses-reconciled")).toBeVisible();
   await page.goto(`/company/${id}/settings/chart-of-accounts`);
   await page.getByRole("button", { name: "Balance Sheet" }).click();
   await expect(page.locator('select[aria-label="Reclassify z Adjustment"]')).toHaveValue("other_equity");
@@ -123,6 +128,34 @@ test("an Odoo Invoice Analysis export becomes sales by customer and product", as
   await page.goto(`/company/${id}/sales/products?type=year&end=2026-02`);
   await expect(page.getByTestId("product-table")).toContainText("CPAP Machine");
   await expect(page.getByTestId("product-table")).toContainText("Margin");
+});
+
+/** Vendor bills on their own: read as expenses, saved, shown by supplier; the same file again asks before replacing. */
+test("an Odoo vendor bills export becomes expenses by supplier", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signUp(page, { name: "Cost Owner", org: "Cost Advisory", email: newEmail("expenses") });
+  const id = await createCompany(page, "Cost Co");
+  await startUpload(page, id, "expenses");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-vendor-bills.xlsx"));
+  await expect(page.getByTestId("expenses-preview")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("expenses-total")).toContainText("126,000");
+  await page.getByTestId("expenses-next").click();
+  await page.getByTestId("save-expenses").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+
+  await startUpload(page, id, "expenses");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-vendor-bills.xlsx"));
+  await page.getByTestId("expenses-next").click();
+  await expect(page.getByTestId("duplicates")).toContainText("You already have");
+  await expect(page.getByTestId("save-expenses")).toBeDisabled();
+  await page.getByTestId("mode-merge").click();
+  await page.getByTestId("save-expenses").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("done-see").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/expenses`), { timeout: 30_000 });
+  await page.goto(`/company/${id}/expenses/suppliers`);
+  await expect(page.getByTestId("supplier-table")).toContainText("Philips Healthcare Egypt");
+  await expect(page.getByTestId("tile-supplier-count")).toContainText("3");
 });
 
 /** A scanned PDF of audited statements: pages read (by a stand-in for the reader), totals checked, a misread figure corrected, then imported. */

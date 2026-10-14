@@ -7,16 +7,18 @@ import { cleanNum } from "@/lib/ingest/parse";
 import { salesMonths, type SortedFinancials, type SortedRow, type UploadIssue } from "@/lib/ingest/sorted";
 import { plainIssue } from "@/lib/ingest/plain";
 import type { SalesLine } from "@/lib/ingest/sales";
+import type { ExpenseLine } from "@/lib/ingest/expenses";
 import { isPL } from "@/lib/company/build";
 import { cn } from "@/lib/cn";
 import { useWindow } from "./virtual";
 
 export interface Focus { sheet: string; rows: number[] }
-type Tab = "issues" | "pl" | "bs" | "sales" | "out";
+type Tab = "issues" | "pl" | "bs" | "sales" | "expenses" | "out";
 
 export interface SortedViewProps {
   fin?: SortedFinancials | null;
   sales?: SalesLine[] | null;
+  expenses?: ExpenseLine[] | null;
   issues: UploadIssue[];
   currency: string;
   origin?: (sheet: string) => { r: number; c: number } | undefined;
@@ -43,6 +45,7 @@ export function SortedView(p: SortedViewProps) {
     ...(p.fin && p.fin.plPeriods.length ? [{ k: "pl" as Tab, label: "P&L" }] : []),
     ...(p.fin && p.fin.bsPeriods.length ? [{ k: "bs" as Tab, label: "Balance sheet" }] : []),
     ...(p.sales?.length ? [{ k: "sales" as Tab, label: "Sales", n: p.sales.length }] : []),
+    ...(p.expenses?.length ? [{ k: "expenses" as Tab, label: "Expenses", n: p.expenses.length }] : []),
     ...(p.fin && p.fin.leftOut.length ? [{ k: "out" as Tab, label: "Left out", n: p.fin.leftOut.length }] : []),
   ];
   const [tab, setTab] = useState<Tab>(errors.length ? "issues" : tabs.find((t) => t.k !== "issues")?.k ?? "issues");
@@ -53,7 +56,8 @@ export function SortedView(p: SortedViewProps) {
     setSeen(p.picked);
     const k = p.picked.key;
     const inPl = k && p.fin?.pl.some((g) => g.rows.some((r) => r.key === k)), inBs = k && p.fin?.bs.some((g) => g.rows.some((r) => r.key === k));
-    const t: Tab | null = inPl ? "pl" : inBs ? "bs" : k && p.fin?.leftOut.some((o) => o.key === k) ? "out" : p.picked.row !== undefined && p.sales?.some((l) => l.src?.sheet === p.picked!.sheet && l.src?.row === p.picked!.row) ? "sales" : null;
+    const t: Tab | null = inPl ? "pl" : inBs ? "bs" : k && p.fin?.leftOut.some((o) => o.key === k) ? "out" : p.picked.row !== undefined && p.sales?.some((l) => l.src?.sheet === p.picked!.sheet && l.src?.row === p.picked!.row) ? "sales"
+      : p.picked.row !== undefined && p.expenses?.some((l) => l.src?.sheet === p.picked!.sheet && l.src?.row === p.picked!.row) ? "expenses" : null;
     if (t && t !== tab) setTab(t);
   }
   return (
@@ -80,6 +84,7 @@ export function SortedView(p: SortedViewProps) {
         {shown === "issues" && <Issues {...p} errors={errors} checks={checks} />}
         {(shown === "pl" || shown === "bs") && p.fin && <Statement fin={p.fin} pl={shown === "pl"} currency={p.currency} picked={p.picked?.key} onFocus={p.onFocus} onClass={p.onClass} />}
         {shown === "sales" && p.sales && <SalesTable lines={p.sales} currency={p.currency} picked={p.picked} onFocus={p.onFocus} />}
+        {shown === "expenses" && p.expenses && <ExpensesTable lines={p.expenses} currency={p.currency} picked={p.picked} onFocus={p.onFocus} />}
         {shown === "out" && p.fin && <LeftOutList fin={p.fin} currency={p.currency} picked={p.picked?.key} onFocus={p.onFocus} onClass={p.onClass} />}
       </div>
     </>
@@ -281,6 +286,45 @@ function SalesTable({ lines, currency, picked, onFocus }: { lines: SalesLine[]; 
                 <div className="px-1.5 text-right tabular-nums">{l.qty ?? "–"}</div>
                 <div className="px-1.5 text-right tabular-nums">{money(l.amount, currency)}</div>
                 <div className="px-1.5 text-right tabular-nums text-mute">{l.cost === null ? "–" : money(l.cost, currency)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ExpensesTable({ lines, currency, picked, onFocus }: { lines: ExpenseLine[]; currency: string; picked: SortedViewProps["picked"]; onFocus: (f: Focus | null) => void }) {
+  const { ref, start, end, scrollTo } = useWindow(lines.length, SROW);
+  const idx = picked?.row !== undefined ? lines.findIndex((l) => l.src?.sheet === picked.sheet && l.src?.row === picked.row) : -1;
+  useEffect(() => { if (idx >= 0) scrollTo(idx, 30); }, [idx, scrollTo]);
+  const months = useMemo(() => salesMonths(lines), [lines]);
+  const total = lines.reduce((s, l) => s + l.amount, 0);
+  const cols = "grid grid-cols-[86px_110px_minmax(130px,1.3fr)_minmax(130px,1.3fr)_minmax(120px,1.2fr)_minmax(110px,1fr)_100px]";
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line bg-band/60 px-3 py-1.5 text-[11.5px]" data-testid="expense-months">
+        {months.map((m) => <span key={m.period}><b>{mlabel(m.period)}</b> {money(m.amount, currency, true)}</span>)}
+        <span className="ml-auto font-medium" data-testid="sorted-expenses-total">Total {money(total, currency)}</span>
+      </div>
+      <div ref={ref} className="relative flex-1 overflow-auto" data-testid="sorted-expenses">
+        <div style={{ height: lines.length * SROW + 30, minWidth: 860 }} className="relative text-[12px]">
+          <div className={cn(cols, "sticky top-0 z-10 h-[30px] items-center border-b border-line bg-white text-[11px] font-medium text-mute")}>
+            {["Date", "Bill", "Supplier", "Expense type", "Type in iReport", "Description", "Amount"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i === 6 && "text-right")}>{h}</div>)}
+          </div>
+          {lines.slice(start, end).map((l, k) => {
+            const i = start + k;
+            return (
+              <div key={i} onClick={() => l.src && onFocus({ sheet: l.src.sheet, rows: [l.src.row] })} style={{ top: 30 + i * SROW, height: SROW }} data-testid="expense-line"
+                className={cn(cols, "absolute left-0 right-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
+                <div className="truncate px-1.5">{l.day ?? mlabel(l.period)}</div>
+                <div className="truncate px-1.5">{l.doc}</div>
+                <div className="truncate px-1.5" title={l.supplier}>{l.supplier}</div>
+                <div className="truncate px-1.5" title={l.category}>{l.category}</div>
+                <div className="truncate px-1.5 text-mute">{l.cls ? CLASS_LABEL[l.cls] : "–"}</div>
+                <div className="truncate px-1.5 text-mute" title={l.label}>{l.label}</div>
+                <div className="px-1.5 text-right tabular-nums">{money(l.amount, currency)}</div>
               </div>
             );
           })}

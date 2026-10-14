@@ -6,8 +6,8 @@ import { mlabel, money, type ClassKey } from "@/lib/engine";
 import { extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
 import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
-import { financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
-import { financialsFill, salesCsv } from "@/lib/templates/fill";
+import { expenseIssues, financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
+import { expensesCsv, financialsFill, salesCsv } from "@/lib/templates/fill";
 import { RawSheets, ROLE, type RawSheetData } from "@/components/upload/raw-sheet";
 import { SortedView, type Focus, type SortedViewProps } from "@/components/upload/sorted-view";
 import { TwoBox } from "@/components/upload/two-box";
@@ -22,28 +22,36 @@ import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
+import { isPL } from "@/lib/company/build";
 import { readSalesGrid, salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
+import { expensePeriods, expensesFromLedger, readExpenseGrid, type ExpenseOverride } from "@/lib/ingest/expenses";
+import { saveExpenses } from "@/lib/company/save-expenses";
+import { EXPENSE_FIELD_LABEL, ExpensesPreview, readExpenses } from "./expenses-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
 import { PdfRead, type PdfSummary } from "./pdf-read";
 import { TemplateButton } from "@/components/setup/readiness-view";
+
+type Kind = "accounts" | "sales" | "expenses";
+const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses" };
 
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
 /**
  * Upload, one step at a time: what you are uploading → where to get the file → upload → check (your file beside what
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
- * salesLoaded: months that already have sales from an uploaded file (to warn about duplicates).
+ * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales"; salesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<"accounts" | "sales" | null>(setupStep === "sales" ? "sales" : setupStep === "financials" ? "accounts" : null);
+  const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "financials" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<"add" | "replace" | null>(null);
+  const [expMode, setExpMode] = useState<"add" | "replace" | null>(null);
   const [done, setDone] = useState<{ what: string } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [grids, setGrids] = useState<Grid[] | null>(null);
@@ -64,6 +72,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [salesGrids, setSalesGrids] = useState<Grid[] | null>(null);
   const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
   const salesRead = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
+  // Purchases (vendor bills, the expenses template) uploaded alongside, or instead of, the accounting files.
+  const [expGrids, setExpGrids] = useState<Grid[] | null>(null);
+  const [expOv, setExpOv] = useState<Record<string, ExpenseOverride>>({});
+  const expRead = useMemo(() => (expGrids ? readExpenses(expGrids, expOv) : null), [expGrids, expOv]);
   // PDFs and scanned images are read page by page and checked by the person before joining the spreadsheets.
   const [pdfJob, setPdfJob] = useState<{ files: File[]; sheets: Grid[] } | null>(null);
   const [pdfSummary, setPdfSummary] = useState<PdfSummary | null>(null);
@@ -74,22 +86,24 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   /** Sheets from the files (spreadsheets, or tables read from PDF pages) go to the sales reader or the accounting reader. */
   const takeSheets = useCallback((fs: File[], grids: Grid[]) => {
     // iReport templates' mistakes are shown on the sheet and fixed in the box beside it, like any other file's.
-    const sales = grids.filter((g) => readSalesGrid(g));
-    const accounting = grids.filter((g) => !sales.includes(g));
+    const expenses = grids.filter((g) => readExpenseGrid(g));
+    const sales = grids.filter((g) => !expenses.includes(g) && readSalesGrid(g));
+    const accounting = grids.filter((g) => !sales.includes(g) && !expenses.includes(g));
     if (sales.length) setSalesGrids(sales);
+    if (expenses.length) setExpGrids(expenses);
     if (!accounting.length) { setGrids(null); setScreen("check"); return; }
     const { raw: lines, issues } = extractAll(accounting);
     setDiag(diagnostic(fs, accounting, issues));
     const broken = issues.layouts.some((l) => l.cellErrors?.length);
-    // A sales file's other sheets (help text, notes) hold no figures: the sales alone are read.
-    if (!lines.length && !broken && sales.length) { setGrids(null); setScreen("check"); return; }
+    // A sales or expenses file's other sheets (help text, notes) hold no figures: the lines alone are read.
+    if (!lines.length && !broken && (sales.length || expenses.length)) { setGrids(null); setScreen("check"); return; }
     if (!lines.length && !broken) throw new Error(issues.warnings[0] ?? "No usable rows found. See the tips on the right for the export formats that work best.");
     setOverrides({}); setGrids(accounting); setFocus(null); setPicked(null); setScreen("check");
   }, []);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setSalesGrids(null); setSalesOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null);
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setSalesGrids(null); setSalesOv({}); setExpGrids(null); setExpOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null); setExpMode(null);
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -139,12 +153,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [downloading, setDownloading] = useState(false);
   const [showFile, setShowFile] = useState(0);
   const sorted = useMemo(() => (res ? sortedFinancials(res, raw) : null), [res, raw]);
-  const issues = useMemo(() => [...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : [])], [res, fileChecks, salesRead]);
+  const issues = useMemo(() => [...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : [])], [res, fileChecks, salesRead, expRead]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const isSalesSheet = (sheet: string) => !!salesGrids?.some((g) => g.name === sheet);
+  const isExpenseSheet = (sheet: string) => !!expGrids?.some((g) => g.name === sheet);
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
     if (isSalesSheet(sheet)) setSalesOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
+    else if (isExpenseSheet(sheet)) setExpOv((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
     else setOverrides((o) => ({ ...o, [sheet]: { ...o[sheet], ...f(o[sheet] ?? {}) } }));
   };
   const onCell = (sheet: string, row: number, col: number, value: number | string | null) => fixAt(sheet, (o) => ({ cells: { ...o.cells, [`${row}:${col}`]: value } }));
@@ -167,8 +183,15 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       for (const c of l.columns) { if (c.period) heads[c.col] = c.period; else if (c.field) heads[c.col] = FIELD_LABEL[c.field]; }
       out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
     }
+    for (const l of expRead?.layouts ?? []) {
+      const g = expGrids?.find((x) => x.name === l.sheet);
+      if (!g) continue;
+      const heads: Record<number, string> = {};
+      for (const c of l.columns) if (c.field) heads[c.col] = EXPENSE_FIELD_LABEL[c.field];
+      out.push({ name: l.sheet, rows: g.rows, origin: g.origin, trace: l.trace, errors: l.errors, heads });
+    }
     return out;
-  }, [res, grids, salesRead, salesGrids]);
+  }, [res, grids, salesRead, salesGrids, expRead, expGrids]);
   /** A row clicked on the left: the line it became on the right, or why it was not used. */
   const onRow = (sheet: string, row: number) => {
     const s = rawSheets.find((x) => x.name === sheet);
@@ -183,6 +206,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const fixes = (): FixRecord[] => [
     ...Object.entries(overrides).flatMap(([sheet, o]) => fixRecords(sheet, grids?.find((g) => g.name === sheet)?.rows ?? [], o)),
     ...Object.entries(salesOv).flatMap(([sheet, o]) => fixRecords(sheet, salesGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
+    ...Object.entries(expOv).flatMap(([sheet, o]) => fixRecords(sheet, expGrids?.find((g) => g.name === sheet)?.rows ?? [], o)),
   ].slice(0, 500);
   /** The sorted reading as iReport's own template: the financials as a filled workbook, sales lines as the sales template (CSV). */
   async function download() {
@@ -195,6 +219,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         save(await r.blob(), "ireport-financials-filled.xlsx");
       }
       if (salesRead?.lines.length) save(new Blob([salesCsv(salesRead.lines, currency)], { type: "text/csv;charset=utf-8" }), "ireport-sales-filled.csv");
+      if (expRead?.lines.length) save(new Blob([expensesCsv(expRead.lines, currency)], { type: "text/csv;charset=utf-8" }), "ireport-expenses-filled.csv");
     } catch (e) { setErr((e as Error).message); } finally { setDownloading(false); }
   }
   const box = (
@@ -202,7 +227,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       leftSub={`${rawSheets.length} sheet${rawSheets.length === 1 ? "" : "s"} · click a row to see what it became`}
       rightTone={errorCount ? "bad" : "ok"} showFile={showFile}
       left={<RawSheets sheets={rawSheets} focus={focus} onRow={onRow} />}
-      right={<SortedView fin={sorted} sales={salesRead?.lines ?? null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
+      right={<SortedView fin={sorted} sales={salesRead?.lines ?? null} expenses={expRead?.lines ?? null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
         picked={picked} onFocus={(f, o) => { setFocus(f); if (f && !o?.stay) setShowFile((n) => n + 1); }} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} onDownload={download} downloading={downloading} />}
     />
   );
@@ -263,6 +288,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           const saved = await saveSales(companyId, source, [...ls], filename);
           if (!saved.ok) { setErr(`The figures were saved, but the sales could not be: ${saved.error}`); return; }
         }
+        // The ledger's cost lines become expense lines (who was paid, for what); a purchases file is saved too.
+        const loadedExp = new Set(expensesLoaded);
+        const ledgerExp = expensesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
+        const fileExp = (expRead?.lines ?? []).filter((l) => mode !== "add" || !loadedExp.has(l.period));
+        for (const [source, ls] of [["ledger", ledgerExp], ["file", fileExp]] as const) {
+          const saved = await saveExpenses(companyId, source, [...ls], filename);
+          if (!saved.ok) { setErr(`The figures were saved, but the expense lines could not be: ${saved.error}`); return; }
+        }
         const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
         setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved` });
         setScreen("done");
@@ -282,8 +315,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const choose = (m: ImportMode) => { setMode(m); setModeChosen(true); runPreview(m); };
   const salesOverlap = salesRead ? salesPeriods(salesRead.lines).filter((p) => salesLoaded.includes(p)) : [];
   const salesToSave = (salesRead?.lines ?? []).filter((l) => salesMode !== "add" || !salesLoaded.includes(l.period));
-  const reset = (k: "accounts" | "sales" | null) => { setGrids(null); setSalesGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
-  const wrongKind = kind === "accounts" && !res && salesRead?.lines.length ? "sales" : kind === "sales" && res && !salesRead ? "accounts" : null;
+  const expOverlap = expRead ? expensePeriods(expRead.lines).filter((p) => expensesLoaded.includes(p)) : [];
+  const expToSave = (expRead?.lines ?? []).filter((l) => expMode !== "add" || !expensesLoaded.includes(l.period));
+  const reset = (k: Kind | null) => { setGrids(null); setSalesGrids(null); setExpGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
+  // The file holds another kind of data than the one picked: say so, and offer to switch.
+  const found: Record<Kind, boolean> = { accounts: !!res, sales: !!salesRead?.lines.length, expenses: !!expRead?.lines.length };
+  const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses"] as Kind[]).find((k) => found[k]) ?? null : null;
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
 
@@ -293,9 +330,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div data-testid="wiz-what">
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
-        <div className="grid max-w-3xl gap-3 sm:grid-cols-2">
+        <div className="grid max-w-4xl gap-3 sm:grid-cols-3">
           <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
           <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
+          <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
         </div>
       </div>
     );
@@ -303,24 +341,32 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   // 2 · Get your file
   if (screen === "get") {
-    const sales = kind === "sales";
-    const steps = sales
+    const steps = kind === "sales"
       ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Select all lines. Click Export."]
-      : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
+      : kind === "expenses"
+        ? ["Open Odoo: Accounting → Reporting → Invoice Analysis.", "Filter: Vendor Bills. Switch to the list view.", "Select all lines. Click Export."]
+        : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
     return (
       <div data-testid="wiz-get">
         <WizardSteps at="get" />
-        <WizardTitle title={sales ? "Get your sales file" : "Get your accounts file"} hint="Use Odoo, or our template." />
+        <WizardTitle title={kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint="Use Odoo, or our template." />
+        {kind === "expenses" && (
+          <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg bg-green-bg px-4 py-3 text-[15px] text-green-d" data-testid="expenses-in-ledger">
+            Your General Ledger already has your expenses.
+            <button onClick={() => reset("accounts")} className="rounded bg-green-d px-3 py-1 text-sm text-white" data-testid="expenses-use-ledger">Upload my General Ledger</button>
+            <span className="text-[13px] text-ink/70">Bills below add more detail.</span>
+          </p>
+        )}
         <div className="grid max-w-4xl gap-4 md:grid-cols-2">
           <section className="rounded-xl border border-line p-5" data-testid="get-odoo">
-            <h3 className="mb-3 text-lg font-medium">From Odoo</h3>
+            <h3 className="mb-3 text-lg font-medium">{kind === "expenses" ? "Vendor bills from Odoo" : "From Odoo"}</h3>
             <ol className="space-y-2.5 text-[15px]">
               {steps.map((t, k) => <li key={k} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-bg text-[12px] font-semibold text-brand-d">{k + 1}</span>{t}</li>)}
             </ol>
           </section>
           <section className="rounded-xl border border-line p-5" data-testid="get-template">
             <h3 className="mb-3 text-lg font-medium">No Odoo? Use our template</h3>
-            <TemplateButton kind={sales ? "sales" : "financials"} />
+            <TemplateButton kind={kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : "financials"} />
             <ul className="mt-3 space-y-1.5 text-[15px] text-mute"><li>Fill it in. Save it.</li><li>One number in each box.</li></ul>
           </section>
         </div>
@@ -331,11 +377,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   }
 
   // 3 · Upload
-  if (screen === "upload" || (!res && !salesRead && screen !== "done")) {
+  if (screen === "upload" || (!res && !salesRead && !expRead && screen !== "done")) {
     return (
       <div data-testid="wiz-upload">
         <WizardSteps at="upload" />
-        <WizardTitle title="Upload your file" hint={kind === "sales" ? "Your sales file." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
+        <WizardTitle title="Upload your file" hint={kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
@@ -364,12 +410,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           <CheckCircle2 className="h-12 w-12 shrink-0" />
           <div><div className="text-2xl font-medium">Saved!</div><div className="text-[15px]">{done.what}.</div></div>
         </div>
-        {kind !== "sales" && <ImportReadiness />}
+        {kind === "accounts" && <ImportReadiness />}
         <div className="flex flex-wrap gap-3">
           {kind === "sales"
             ? <a href={`${company.basePath}/sales`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my sales</a>
-            : <a href={`${company.basePath}/summary`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my reports</a>}
-          <button onClick={() => reset(kind === "sales" ? "accounts" : "sales")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "sales" ? "Upload accounts next" : "Upload sales next"}</button>
+            : kind === "expenses"
+              ? <a href={`${company.basePath}/expenses`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my expenses</a>
+              : <a href={`${company.basePath}/summary`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my reports</a>}
+          <button onClick={() => reset(kind === "accounts" ? "sales" : "accounts")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "accounts" ? "Upload sales next" : "Upload accounts next"}</button>
         </div>
       </div>
     );
@@ -377,7 +425,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   const wrong = wrongKind && (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border-2 border-amber bg-amber/10 px-4 py-3 text-[15px]" data-testid="upload-notice">
-      <span>{wrongKind === "sales" ? "This looks like a sales file." : "This looks like an accounts file."}</span>
+      <span>This looks like {KIND_WORD[wrongKind]} file.</span>
       <button onClick={() => setKind(wrongKind)} className="rounded bg-ink px-3 py-1.5 text-sm text-white" data-testid="switch-kind">Switch to {wrongKind}</button>
     </div>
   );
@@ -385,7 +433,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
       <FileSpreadsheet className="h-4 w-4 text-brand-d" />
       <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-      <button onClick={() => { setGrids(null); setSalesGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
+      <button onClick={() => { setGrids(null); setSalesGrids(null); setExpGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
     </div>
   );
   const more = (children: React.ReactNode) => (
@@ -394,6 +442,53 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div className="space-y-4 border-t border-line px-4 py-3">{children}</div>
     </details>
   );
+
+  // 4 · Check (expenses only)
+  if (!res && expRead && !salesRead) {
+    const ps = expensePeriods(expRead.lines);
+    if (screen === "save") {
+      return (
+        <div data-testid="expenses-save">
+          <WizardSteps at="save" />
+          <WizardTitle title="Save your expenses" hint={`${expToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
+          {expOverlap.length > 0 ? (
+            <Duplicates months={expOverlap} same={false} newMonths={ps.filter((p) => !expensesLoaded.includes(p))} chosen={expMode === null ? null : expMode === "add" ? "add" : "merge"}
+              onAdd={() => setExpMode("add")} onReplace={() => setExpMode("replace")} />
+          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+          <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save expenses"} nextTestId="save-expenses"
+            disabled={saving || !expToSave.length || (expOverlap.length > 0 && expMode === null)}
+            hint={expOverlap.length > 0 && expMode === null ? "Choose one first." : !expToSave.length ? "Nothing new to save." : undefined}
+            onNext={() => start(async () => {
+              setErr(null);
+              const out = await saveExpenses(companyId, "file", expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes(), mode: expMode ?? "new" });
+              if (!out.ok) { setErr(out.error); return; }
+              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines saved` }); setScreen("done"); router.refresh();
+            })} />
+        </div>
+      );
+    }
+    const total = expRead.lines.reduce((a, l) => a + l.amount, 0);
+    return (
+      <div data-testid="expenses-only">
+        <WizardSteps at="check" />
+        <WizardTitle title="Check your expenses" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
+        {wrong}
+        {fileLine}
+        <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="expenses-preview">
+          <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
+          <Stat label="Total costs" value={money(total, currency)} testId="expenses-total" />
+          <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} />
+        </div>
+        {box}
+        {more(<ExpensesPreview read={expRead} currency={currency} overrides={expOv} onChange={setExpOv} />)}
+        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {demo
+          ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : undefined} />}
+      </div>
+    );
+  }
 
   // 4 · Check (sales only)
   if (!res && salesRead) {
@@ -509,6 +604,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         </div>
         {salesRead && salesRead.lines.length > 0 && <p className="text-[13px]" data-testid="sales-alongside">Also in this upload: {salesRead.lines.length.toLocaleString("en-US")} sales lines. They are saved too.</p>}
         {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="text-[13px] text-mute" data-testid="ledger-sales-note">Invoice lines on revenue accounts also become your sales.</p>}
+        {res.lines.some((l) => l.entries?.length && l.cls && !l.excluded && isPL(l.cls) && l.cls !== "revenue") && <p className="text-[13px] text-mute" data-testid="ledger-expenses-note">Lines on cost accounts also become your expenses (who you pay).</p>}
+        {expRead && expRead.lines.length > 0 && <p className="text-[13px]" data-testid="expenses-alongside">Also in this upload: {expRead.lines.length.toLocaleString("en-US")} expense lines. They are saved too.</p>}
         {fileChecks.length > 0 && <CheckList checks={fileChecks} />}
         {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals in the file ({controlCount} checked).</p>}
         {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (

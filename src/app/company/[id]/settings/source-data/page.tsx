@@ -12,14 +12,16 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const { tab = "upload", step } = await searchParams;
   const { supabase } = await getUser();
   const { role } = await loadCompanyBundle(id);
-  const [{ data: c }, { data: imports }, { data: odoo }, { data: batches }] = await Promise.all([
+  const [{ data: c }, { data: imports }, { data: odoo }, { data: batches }, { data: expBatches }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
     supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, version, status, last_error, last_sync_at").eq("company_id", id).maybeSingle(),
     supabase.from("sales_batches").select("periods").eq("company_id", id).eq("source", "file"),
+    supabase.from("expense_batches").select("periods").eq("company_id", id).eq("source", "file"),
   ]);
   // Months that already have sales from a file: a new sales file asks before replacing them.
   const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
+  const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const lastUpload = imports?.find((i) => i.kind === "upload");
   const savedMapping = ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};
   const tabs = [{ k: "upload", l: "Upload a file" }, { k: "odoo", l: "Connect Odoo (live)" }];
@@ -36,7 +38,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
-      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" ? step : undefined} salesLoaded={salesLoaded} />}
+      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" || step === "expenses" ? step : undefined} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} />}
       {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
       </>}
     </div>

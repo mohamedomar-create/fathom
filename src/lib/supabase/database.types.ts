@@ -33,6 +33,8 @@ export type ReportRow = {
   published_at: string | null; created_by: string | null; created_at: string; updated_at: string;
 }
 export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null }
+export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
+export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 
 export type Database = {
@@ -51,6 +53,8 @@ export type Database = {
       reports: Table<ReportRow, "company_id" | "period_end">;
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
+      expense_batches: Table<ExpenseBatchRow, "company_id" | "source">;
+      expense_lines: Table<ExpenseLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -68,6 +72,10 @@ export type Database = {
       add_sales_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       sales_summary: { Args: { p_company: string }; Returns: Json };
       get_published_sales: { Args: { p_token: string }; Returns: Json };
+      begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json }; Returns: string };
+      add_expense_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
+      expense_summary: { Args: { p_company: string }; Returns: Json };
+      get_published_expenses: { Args: { p_token: string }; Returns: Json };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

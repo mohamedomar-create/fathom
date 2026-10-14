@@ -4,6 +4,7 @@ import path from "node:path";
 import { runChecks } from "@/lib/company/checks";
 import { readWorkbooks } from "@/lib/ingest/read";
 import { ingest, toAccountInputs } from "@/lib/ingest/pipeline";
+import { EXPENSE_CLASSES, expensesFromLedger } from "@/lib/ingest/expenses";
 
 // Real exports are never committed (this repository is public). Point GOLDEN_REAL_DIR at a folder holding an Odoo
 // General Ledger, Trial Balance and Profit and Loss for the same dates to run this locally.
@@ -23,5 +24,13 @@ describe.skipIf(!dir)("real Odoo exports (local only)", () => {
     expect(checks.filter((c) => ["control_total", "cross_check", "account_rollforward", "tb_zero"].includes(c.id))).toEqual([]);
     expect(checks.filter((c) => c.severity === "block")).toEqual([]);
     expect(checks.filter((c) => c.id === "re_rollforward")).toEqual([]);
+    // Expense lines from the ledger add up to every cost account's amount, month by month, to the pound.
+    const exp = expensesFromLedger(res.lines);
+    expect(exp.length).toBeGreaterThan(1000);
+    const got = new Map<string, number>();
+    for (const e of exp) got.set(`${e.account}|${e.period}`, (got.get(`${e.account}|${e.period}`) ?? 0) + e.amount);
+    for (const l of res.lines) if (!l.excluded && !l.system && l.cls && EXPENSE_CLASSES.has(l.cls) && l.entries?.length) {
+      for (const [p, v] of Object.entries(l.values)) expect(Math.round((got.get(`${[l.code, l.name].filter(Boolean).join(" ")}|${p}`) ?? 0) - v), `${l.label} ${p}`).toBe(0);
+    }
   }, 120_000);
 });

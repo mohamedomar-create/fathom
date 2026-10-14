@@ -1,5 +1,5 @@
 import { isPL } from "@/lib/company/build";
-import { classFromChoice, FIN_HEAD, MARK, MARK_PREFIX, SALES_COLS, type SheetMark } from "@/lib/templates/spec";
+import { classFromChoice, EXPENSE_COLS, FIN_HEAD, MARK, MARK_PREFIX, SALES_COLS, type SheetMark } from "@/lib/templates/spec";
 import { cleanNum, parseDay, parsePeriod, type Cell } from "./parse";
 import type { Grid, RawLine } from "./extract";
 import { shown, type Marks } from "./trace";
@@ -97,31 +97,33 @@ export function readFinancialTemplate(g: Grid): { lines: RawLine[]; periods: str
   return done(lines, cols.map((c) => c.p), hi);
 }
 
-/** Checks a filled-in sales template row by row; the sales reader then reads it. */
-export function checkSalesTemplate(g: Grid): TemplateProblem[] {
+/** Checks a filled-in lines template (sales or expenses) row by row; the list reader then reads it. */
+function checkListTemplate(g: Grid, cols: { key: string; head: string; required: boolean }[], what: string, numbers: string[]): TemplateProblem[] {
   const sheet = sheetName(g);
   const problems: TemplateProblem[] = [];
-  const hi = g.rows.findIndex((r) => text(r?.[0]).replace(/\s*\*$/, "").toLowerCase() === SALES_COLS[0].head.toLowerCase());
-  if (hi < 0) return [{ sheet, row: 1, message: "The heading row (Invoice date, Invoice number, Customer, …) is missing. Download a fresh template and copy your lines into it." }];
+  const hi = g.rows.findIndex((r) => text(r?.[0]).replace(/\s*\*$/, "").toLowerCase() === cols[0].head.toLowerCase());
+  if (hi < 0) return [{ sheet, row: 1, message: `The heading row (${cols.slice(0, 3).map((c) => c.head).join(", ")}, …) is missing. Download a fresh template and copy your lines into it.` }];
   let rows = 0;
   for (let r = hi + 1; r < g.rows.length; r++) {
     const row = g.rows[r] ?? [];
-    if (!SALES_COLS.some((_, i) => text(row[i]) !== "")) continue;
+    if (!cols.some((_, i) => text(row[i]) !== "")) continue;
     rows++;
-    SALES_COLS.forEach((c, i) => {
+    cols.forEach((c, i) => {
       const v = row[i], t = text(v);
       if (!t) { if (c.required) problems.push({ sheet, row: r + 1, col: colName(i), message: `${c.head} is required.` }); return; }
       if (c.key === "date" && !(v instanceof Date) && !(typeof v === "number" && v > 20000 && v < 80000) && !parseDay(t, "dmy")) problems.push({ sheet, row: r + 1, col: colName(i), message: `"${t}" is not a date. Use a date cell or write it day first, e.g. 15/01/2026.` });
-      if ((c.key === "qty" || c.key === "amount" || c.key === "cost") && (typeof v === "number" ? false : cleanNum(v) === null)) problems.push({ sheet, row: r + 1, col: colName(i), message: `"${t}" is not a number.` });
+      if (numbers.includes(c.key) && (typeof v === "number" ? false : cleanNum(v) === null)) problems.push({ sheet, row: r + 1, col: colName(i), message: `"${t}" is not a number.` });
     });
     if (problems.length > 200) break;
   }
-  if (!rows) problems.push({ sheet, row: hi + 2, message: "The sheet has no sales lines yet." });
+  if (!rows) problems.push({ sheet, row: hi + 2, message: `The sheet has no ${what} yet.` });
   return problems.map((p) => {
     const c = p.col ? p.col.split("").reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1 : undefined;
     return { ...p, grid: g.name, r: p.row - 1, ...(c !== undefined ? { c, text: shown(g.rows[p.row - 1]?.[c]) } : {}) };
   });
 }
+export const checkSalesTemplate = (g: Grid) => checkListTemplate(g, SALES_COLS, "sales lines", ["qty", "amount", "cost"]);
+export const checkExpenseTemplate = (g: Grid) => checkListTemplate(g, EXPENSE_COLS, "expense lines", ["amount"]);
 
 /** Every problem in the iReport templates among these sheets (other files are not checked here). */
 export function templateProblems(grids: Grid[]): TemplateProblem[] {
@@ -129,6 +131,7 @@ export function templateProblems(grids: Grid[]): TemplateProblem[] {
     const m = templateMarkOf(g);
     if (m === "pl" || m === "bs") return readFinancialTemplate(g).problems;
     if (m === "sales") return checkSalesTemplate(g);
+    if (m === "expenses") return checkExpenseTemplate(g);
     return [];
   });
 }

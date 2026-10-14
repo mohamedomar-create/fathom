@@ -53,6 +53,17 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
     if (!ls || ls.length < 1000) break;
   }
 
+  const expenses: NonNullable<CompanyExport["expenses"]> = [];
+  for (let from = 0; from < 200_000; from += 1000) {
+    const { data: ls, error: e4 } = await supabase.from("expense_lines")
+      .select("day, period, doc, series, supplier, account, cls, category, label, amount, source")
+      .eq("company_id", c.id).order("period").order("id").range(from, from + 999);
+    // A database without the expenses update has no such table: the export goes on without the sheet.
+    if (e4) { if (e4.code === "42P01" || e4.code === "PGRST205") break; return NextResponse.json({ error: dbError(e4, "export:expenses") }, { status: 500 }); }
+    expenses.push(...(ls ?? []));
+    if (!ls || ls.length < 1000) break;
+  }
+
   const exportedAt = new Date().toISOString();
   const data: CompanyExport = {
     exportedAt,
@@ -63,6 +74,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
     commentary: commentary.data ?? [],
     reports: (reports.data ?? []).map(({ share_token, ...r }) => ({ ...r, shared: !!share_token })),
     sales,
+    expenses,
     odoo: odoo.data ?? null, // viewers cannot read the connection (RLS) and simply get no sheet
   };
   const file = await toXlsx(companySheets(data));

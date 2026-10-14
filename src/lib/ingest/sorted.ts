@@ -5,7 +5,8 @@ import type { Check } from "@/lib/company/checks";
 import { CLASS_LABEL, CLASS_OPTIONS } from "./classes";
 import { materialUnmapped, type IngestLine, type IngestResult } from "./pipeline";
 import type { RawLine, SheetLayout } from "./extract";
-import type { SalesLayout, SalesLine } from "./sales";
+import type { SalesLayout } from "./sales";
+import type { ExpenseLayout } from "./expenses";
 import type { Marks, TraceRow } from "./trace";
 
 /**
@@ -169,8 +170,17 @@ export function salesIssues(layouts: SalesLayout[]): UploadIssue[] {
   return out;
 }
 
-/** Sales lines in the template's order, with each month's total. */
-export function salesMonths(lines: SalesLine[]) {
+export function expenseIssues(layouts: ExpenseLayout[]): UploadIssue[] {
+  const out: UploadIssue[] = [];
+  for (const l of layouts) {
+    for (const e of l.errors) out.push({ id: `cell:${l.sheet}:${e.row}:${e.col}`, severity: "error", sheet: l.sheet, row: e.row, col: e.col, message: e.message, fix: "cell", text: e.text });
+    if (l.taxIncluded) out.push({ id: `tax:${l.sheet}`, severity: "check", sheet: l.sheet, message: `${l.sheet}: only a total including VAT was found, so costs would read about 14% high. Pick the "Untaxed" column if the file has one.`, fix: "settings" });
+  }
+  return out;
+}
+
+/** Lines (sales or expenses) by month, with each month's total. */
+export function salesMonths(lines: { period: string; amount: number }[]) {
   const by = new Map<string, { n: number; amount: number }>();
   for (const l of lines) { const m = by.get(l.period) ?? { n: 0, amount: 0 }; m.n++; m.amount += l.amount; by.set(l.period, m); }
   return [...by.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([period, m]) => ({ period, ...m }));

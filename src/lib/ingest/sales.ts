@@ -85,6 +85,17 @@ const fieldOf = (h: string): SalesField | null => {
 const TOTAL_ROW = arRx(/^(total|grand total|sum|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i);
 const MEASURE = arRx(/^(untaxed total|untaxed amount|total untaxed|price subtotal|subtotal|quantity|qty|margin|المبلغ قبل الضريبة|الصافي|الكمية)$/i);
 const ACCOUNT_HDR = arRx(/^(code|account|account code|account name|الحساب|اسم الحساب|كود الحساب|رقم الحساب)$/i);
+/** Headings that make a list a purchases / vendor bills file (the expenses reader), never sales. */
+export const VENDOR_HDR = arRx(/^(vendor|vendors|supplier|suppliers|vendor name|supplier name|vendor reference|bill date|bill number|bill reference|المورد|الموردين|اسم المورد|المورّد|تاريخ فاتورة المورد|فاتورة المورد)$/i);
+/** Vendor bills and refunds: "BILL/2026/0001", "RBILL/…". */
+export const isBillDoc = (doc: string) => /^R?BILL\b/i.test(seriesOf(doc)) || /^(R?BILL)[/\-]/i.test(doc);
+/** A list whose document numbers are mostly vendor bills: purchases, even under a generic "Partner" heading. */
+export function mostlyBills(rows: Cell[][], col: number) {
+  if (col < 0) return false;
+  let bills = 0, n = 0;
+  for (const r of rows) { const d = str(r?.[col]); if (!d) continue; n++; if (isBillDoc(d)) bills++; if (n >= 200) break; }
+  return n > 0 && bills / n >= 0.5;
+}
 
 export interface SalesLayout {
   sheet: string;
@@ -119,7 +130,10 @@ export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLi
   for (let r = 0; r < Math.min(rows.length, 25); r++) {
     const heads = rows[r].map((v) => str(v));
     if (heads.some((h) => ACCOUNT_HDR.test(normAr(h)))) return null;
+    // Purchases (vendor bills, the expenses template) are read by the expenses reader.
+    if (templateMarkOf(g) === "expenses" || heads.some((h) => VENDOR_HDR.test(normAr(h.replace(/\s*\*\s*$/, ""))))) return null;
     const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : fieldOf(h)));
+    if (mostlyBills(rows.slice(r + 1), fields.indexOf("doc"))) return null;
     const has = (f: SalesField) => fields.includes(f);
     const months = heads.map((h, c) => ({ c, p: headerPeriod(h) })).filter((x) => x.p && x.p.months === 1);
     const ctx: Ctx = { g, rows, rowNo, r, heads, marks: [], errors: [] };
