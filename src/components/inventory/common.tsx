@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Boxes, CheckCircle2, Info, TriangleAlert } from "lucide-react";
 import { hasPL, money } from "@/lib/engine";
-import { inventoryAnalysis, inventoryLedger, type InventoryBridge } from "@/lib/engine/inventory";
+import { inventoryAnalysis, inventoryLedger, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
 import { useCompany } from "@/lib/company/context";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -64,8 +64,8 @@ export function NoInventory() {
 export function TieBanner({ s, link }: { s: InventoryView; link?: string }) {
   const T = useT();
   const t = T.d.inv;
-  const off = s.tieouts.filter((x) => x.status === "off");
-  const ok = s.tieouts.filter((x) => x.status === "ok");
+  // Only checks against the accounts count as agreeing; rentals and quantities are checks inside Inventory.
+  const { off, agreed, checked } = tieSummary(s.tieouts);
   const more = link ? <Link href={link} className="ms-2 underline">{t.seeChecks}</Link> : null;
   return (
     <div className="mb-8 space-y-2" data-testid="inv-tieouts">
@@ -74,8 +74,8 @@ export function TieBanner({ s, link }: { s: InventoryView; link?: string }) {
           <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{t.someOff(off.length)}{more}</div>
           <ul className="ms-6 mt-1 list-disc">{off.slice(0, 6).map((x) => <li key={`${x.key}${x.period}`}>{T.ml(x.period)}: {t.checks[x.key]}</li>)}</ul>
         </div>
-      ) : ok.length > 0 ? (
-        <p className="flex items-start gap-2 rounded bg-green-bg px-4 py-2.5 text-[13px] text-green-d"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{t.allAgree(ok.length)}{more}</p>
+      ) : checked > 0 ? (
+        <p className="flex items-start gap-2 rounded bg-green-bg px-4 py-2.5 text-[13px] text-green-d"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{t.allAgree(agreed)}{more}</p>
       ) : (
         <p className="flex items-start gap-2 rounded bg-band px-4 py-2.5 text-[13px] text-mute"><Info className="mt-0.5 h-4 w-4 shrink-0" />{t.noLedger}</p>
       )}

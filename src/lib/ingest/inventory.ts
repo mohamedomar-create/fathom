@@ -143,13 +143,31 @@ function* dataRows(g: Grid, h: { r: number; col: Partial<Record<Field, number>> 
   }
 }
 
+/**
+ * Fingerprint keys for rows with no Odoo ID: identical rows in one export are separate records (two equal deliveries),
+ * so the nth copy gets "#n". The same file read again gives the same keys.
+ */
+function fingerprints() {
+  const seen = new Map<string, number>();
+  return (parts: (string | number)[]) => {
+    const fp = fingerprint(parts), n = (seen.get(fp) ?? 0) + 1;
+    seen.set(fp, n);
+    return n === 1 ? fp : `${fp}#${n}`;
+  };
+}
+
+/** Headings naming a customer or supplier: a sales or purchase list, never a valuation export (layers have no partner). */
+const PARTY_HEADING = /(customer|vendor|supplier|client|partner|عميل|العميل|مورد|المورد|شريك|الشريك)/i;
+
 export function readStockValuation(g: Grid): { layers: StockLayer[]; withIds: boolean } | null {
   const h = header(g);
   if (!h) return null;
   const c = h.col;
   if (c.product === undefined || c.qty === undefined || c.value === undefined || (c.ref === undefined && c.desc === undefined)) return null;
   if (c.from !== undefined || c.to !== undefined || c.location !== undefined) return null;
+  if ((g.rows[h.r] ?? []).some((v) => PARTY_HEADING.test(normAr(str(v))))) return null;
   const withIds = c.id !== undefined;
+  const fp = fingerprints();
   const layers: StockLayer[] = [];
   for (const { i, row, day } of dataRows(g, h)) {
     if (!day || !cell(row, c.product)) continue;
@@ -160,7 +178,7 @@ export function readStockValuation(g: Grid): { layers: StockLayer[]; withIds: bo
     const landedRef = kind === "landed_cost" ? (cell(row, c.landed) || (ref.match(/LC\/[^\s]+/i)?.[0] ?? desc.match(/LC\/[^\s]+/i)?.[0] ?? ref)) : "";
     const id = cell(row, c.id);
     layers.push({
-      key: withIds && id ? id : fingerprint([day, ref, code || product, lot, qty, value]),
+      key: withIds && id ? id : fp([day, ref, code || product, lot, qty, value]),
       day, period: day.slice(0, 7), ref, kind, product, code, category: cell(row, c.category), lot, qty,
       unitValue: c.unitValue === undefined ? (qty ? Math.round((value / qty) * 10000) / 10000 : 0) : num(row[c.unitValue]),
       value, partner: cell(row, c.partner), landedRef, src: { sheet: g.name, row: i },
@@ -175,6 +193,7 @@ export function readStockMoves(g: Grid, rentalLocation?: string | null): { moves
   const c = h.col;
   if (c.product === undefined || c.from === undefined || c.to === undefined || c.qty === undefined) return null;
   const withIds = c.id !== undefined;
+  const fp = fingerprints();
   const moves: StockMove[] = [];
   for (const { i, row, day } of dataRows(g, h)) {
     if (!day || !cell(row, c.product)) continue;
@@ -183,7 +202,7 @@ export function readStockMoves(g: Grid, rentalLocation?: string | null): { moves
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const id = cell(row, c.id);
     moves.push({
-      key: withIds && id ? id : fingerprint([day, ref, code || product, lot, from, to, qty]),
+      key: withIds && id ? id : fp([day, ref, code || product, lot, from, to, qty]),
       day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentalLocation), product, code, lot, from, to, qty,
       uom: cell(row, c.uom), partner: cell(row, c.partner), src: { sheet: g.name, row: i },
     });

@@ -108,4 +108,22 @@ describe("Odoo network guard", () => {
     const c = new OdooClient("https://x.odoo.com", "db", "me", "secret", (async () => new Response(null, { status: 302, headers: { location: "https://evil.example" } })) as typeof fetch);
     await expect(c.version()).rejects.toThrow(/redirected/);
   });
+
+  it("too many stock lines skip only the stock detail: sales and expense lines still sync", async () => {
+    const lines = [{ account_id: [1, "400000 Sales"], date: "2026-09-05", move_id: [9, "INV/2026/0001"], partner_id: [3, "Client A"], name: "Masks", balance: -500 }];
+    const fake = {
+      executeKw: async (_m: string, method: string, args: unknown[]) => {
+        const ids = ((args[0] as unknown[][]).find((x) => x[0] === "account_id")![2]) as number[];
+        if (method === "search_count") return ids.includes(2) ? MAX_SYNC_LINES + 1 : 1;
+        return ids.includes(1) ? lines : [];
+      },
+    };
+    const res = { periods: ["2026-09"], accounts: [
+      { code: "400000", name: "Sales", cls: "revenue", odoo_id: 1 }, { code: "123000", name: "Trading Inventory", cls: "inventory", odoo_id: 2 },
+    ] };
+    const ls = await syncLedgerLines(fake as never, { companyId: 1, includeBranches: false } as never, res as never);
+    expect(ls.sales.length).toBe(1);
+    expect(ls.stock).toEqual([]);
+    expect(ls.note).toMatch(/stock/i);
+  });
 });

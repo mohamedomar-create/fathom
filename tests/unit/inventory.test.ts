@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_INVENTORY, inventoryAnalysis, inventoryMonthly, monthBridge, receiptCost, type InventoryData, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
+import { EMPTY_INVENTORY, inventoryAnalysis, inventoryLedger, inventoryMonthly, monthBridge, receiptCost, tieSummary, type InventoryData, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
 
 // Made-up products and documents (the repo is public). FIFO values are worked by hand.
 const layer = (p: string, kind: LayerKind, code: string, q: number, v: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, category: "", q, v, n: 1 });
@@ -98,6 +98,33 @@ describe("Inventory engine", () => {
     expect(a.tieouts.find((x) => x.key === "stock_movement")!.status).toBe("no_ledger");
   });
 
+  it("does not check quantity on hand from moves alone: they may not start at the beginning", () => {
+    const d = data({ moves: [move("2026-09", "delivery", "P1", "WH/Stock", "Partners/Customers", 3)], onhand: [{ asOf: "2026-09-30", product: "Mask", code: "P1", location: "WH/Stock", lot: "", qty: 7, value: null }] });
+    expect(inventoryAnalysis(d, SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((t) => t.key === "qty_onhand")).toBeUndefined();
+  });
+
+  it("receipts are no_ledger in a month the ledger does not hold, even when other months have stock postings", () => {
+    const d = data({ layers: [layer("2026-07", "receipt", "P1", 10, 1000)], ledger: [{ p: "2026-06", ref: "WH/IN/00001", v: 500 }] });
+    const a = inventoryAnalysis(d, { type: "month", end: "2026-07" }, 1, { ledger: { stock: { "2026-06": 500 }, cogs: null } });
+    expect(a.tieouts.find((t) => t.key === "receipts")!.status).toBe("no_ledger");
+  });
+
+  it("cost of sales is checked against 0 in a ledger month with no stock cost postings, never hidden as no_ledger", () => {
+    const ledger = inventoryLedger([{ period: "2026-09", bs: { inventory: 1000 } }], { suppliers: [{ p: "2026-09", s: "Landlord", c: "exp_fixed", a: 500 }] });
+    expect(ledger.cogs).toEqual({ "2026-09": 0 });
+    const a = inventoryAnalysis(data({ layers: [layer("2026-09", "receipt", "P1", 10, 1400), layer("2026-09", "delivery", "P1", -4, -400)] }), SEP, 1, { ledger });
+    expect(a.tieouts.find((t) => t.key === "cogs")).toMatchObject({ status: "off", module: 400, ledger: 0 });
+  });
+
+  it("the banner counts only checks against the accounts: rental moves alone never read as agreeing", () => {
+    const d = data({ moves: [move("2026-09", "rental_out", "P1", "WH/Stock", "WH/Rental", 1)] });
+    const a = inventoryAnalysis(d, SEP, 1, { ledger: { stock: null, cogs: null } });
+    expect(a.tieouts.map((t) => [t.key, t.status])).toEqual([["rental_value", "ok"]]);
+    expect(tieSummary(a.tieouts)).toEqual({ off: [], agreed: 0, checked: 0 });
+    const both = inventoryAnalysis(fifo(), SEP, 1, { ledger: { stock: { "2026-09": 570 }, cogs: { "2026-09": 1440 } } });
+    expect(tieSummary(both.tieouts).checked).toBeGreaterThan(0);
+  });
+
   it("slowAndDeadByLastOut", () => {
     const d = data({
       layers: [layer("2026-01", "receipt", "P1", 5, 500), layer("2026-01", "receipt", "P2", 5, 700), layer("2026-01", "receipt", "P3", 5, 900)],
@@ -125,9 +152,11 @@ describe("Inventory engine", () => {
   it("onHandMatchesMoves", () => {
     const base = { moves: [move("2026-09", "receipt", "P1", "Partners/Vendors", "WH/Stock", 10), move("2026-09", "delivery", "P1", "WH/Stock", "Partners/Customers", 4), move("2026-09", "rental_out", "P1", "WH/Stock", "WH/Rental", 2)] };
     const onhand = (q: number) => [{ asOf: "2026-09-30", product: "Mask", code: "P1", location: "WH/Stock", lot: "", qty: q, value: null }];
-    const ok = inventoryAnalysis(data({ ...base, onhand: onhand(6) }), SEP, 1, { ledger: { stock: null, cogs: null } });
+    // The valuation history starts the same month as the moves, so the moves are the whole history.
+    const valued = { ...base, layers: [layer("2026-09", "receipt", "P1", 10, 1000), layer("2026-09", "delivery", "P1", -4, -400)] };
+    const ok = inventoryAnalysis(data({ ...valued, onhand: onhand(6) }), SEP, 1, { ledger: { stock: null, cogs: null } });
     expect(ok.tieouts.find((t) => t.key === "qty_onhand")).toMatchObject({ status: "ok", module: 6, ledger: 6 });
-    const off = inventoryAnalysis(data({ ...base, onhand: onhand(7) }), SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((t) => t.key === "qty_onhand")!;
+    const off = inventoryAnalysis(data({ ...valued, onhand: onhand(7) }), SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((t) => t.key === "qty_onhand")!;
     expect(off.status).toBe("off");
     expect(off.causes[0].ref).toBe("P1");
   });
@@ -147,6 +176,31 @@ describe("Inventory engine", () => {
     expect(/[؀-ۿ]/.test(ar.headline)).toBe(true);
     expect(ar.tiles).toEqual(en.tiles);
     expect(en.headline).toContain("670");
+  });
+});
+
+describe("a busy warehouse", () => {
+  it("1,000 products over 24 months: the analysis and the 12-month checks stay fast enough for the browser", async () => {
+    const { inventoryTieOuts } = await import("@/lib/engine/inventory");
+    const months = Array.from({ length: 24 }, (_, i) => `${2025 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`);
+    const layers: InventoryData["layers"] = [], byRef: InventoryData["byRef"] = [];
+    for (const p of months) for (let k = 0; k < 1000; k++) {
+      layers.push(layer(p, "receipt", `P${k}`, 10, 1000), layer(p, "delivery", `P${k}`, -9, -900));
+      byRef.push({ p, ref: `WH/IN/${p}/${k}`, kind: "receipt", v: 1000 }, { p, ref: `WH/OUT/${p}/${k}`, kind: "delivery", v: -900 });
+    }
+    const d = data({ layers, byRef, ledger: byRef.map((r) => ({ p: r.p, ref: r.ref, v: r.v })) });
+    const stock = Object.fromEntries(months.map((p, i) => [p, (i + 1) * 100_000]));
+    const ledger = { stock, cogs: Object.fromEntries(months.map((p) => [p, 900_000])) };
+    let t = performance.now();
+    const a = inventoryAnalysis(d, { type: "year", end: "2026-12" }, 1, { ledger });
+    const one = performance.now() - t;
+    expect(a.products).toHaveLength(1000);
+    t = performance.now();
+    const ties = inventoryTieOuts(d, ledger, 1);
+    const twelve = performance.now() - t;
+    expect(ties.filter((x) => x.status === "off")).toEqual([]);
+    expect(one, `analysis took ${Math.round(one)} ms`).toBeLessThan(1500);
+    expect(twelve, `12-month checks took ${Math.round(twelve)} ms`).toBeLessThan(1500);
   });
 });
 

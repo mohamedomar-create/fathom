@@ -184,31 +184,47 @@ export const MAX_SYNC_LINES = 100_000;
  */
 export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res: SyncResult, budgetMs = 30_000): Promise<SyncedLines> {
   const started = Date.now();
-  const none = (note: string | null): SyncedLines => ({ sales: [], expenses: [], stock: [], lines: 0, note });
-  const wanted = res.accounts.filter((a) => a.odoo_id !== null && (a.cls === "revenue" || a.cls === "inventory" || EXPENSE_CLASSES.has(a.cls)));
-  if (!wanted.length || !res.periods.length) return none(null);
+  const core = res.accounts.filter((a) => a.odoo_id !== null && (a.cls === "revenue" || EXPENSE_CLASSES.has(a.cls)));
+  const stockAccts = res.accounts.filter((a) => a.odoo_id !== null && a.cls === "inventory");
+  if ((!core.length && !stockAccts.length) || !res.periods.length) return { sales: [], expenses: [], stock: [], lines: 0, note: null };
   const cid = opts.companyId;
   const ctx = { allowed_company_ids: [cid], active_test: false };
   const first = res.periods[0], last = res.periods[res.periods.length - 1];
-  const domain = [["parent_state", "=", "posted"], opts.includeBranches ? ["company_id", "child_of", cid] : ["company_id", "=", cid],
-    ["date", ">=", `${first}-01`], ["date", "<=", `${last}-${String(daysIn(last)).padStart(2, "0")}`], ["account_id", "in", wanted.map((a) => a.odoo_id!)]];
-  const count = await client.executeKw<number>("account.move.line", "search_count", [domain], { context: ctx });
-  if (count > MAX_SYNC_LINES) return none(`Sales and expense detail were not synced: ${count.toLocaleString("en-US")} lines is more than a sync reads. Upload the General Ledger for customers and suppliers.`);
-  const entries = new Map<number, LedgerEntry[]>();
-  const pageSize = 5000;
-  for (let offset = 0; offset < count; offset += pageSize) {
-    if (Date.now() - started > budgetMs) return none("Sales and expense detail were not synced: Odoo took too long to send the lines. Upload the General Ledger for customers and suppliers.");
-    const page = await client.executeKw<{ account_id: [number, string] | false; date: string; move_id: [number, string] | false; partner_id: [number, string] | false; name: string | false; balance: number }[]>(
-      "account.move.line", "search_read", [domain], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit: pageSize, offset, order: "date, id", context: ctx },
-    );
-    for (const l of page) {
-      if (!l.account_id || !l.balance) continue;
-      const list = entries.get(l.account_id[0]) ?? [];
-      list.push({ day: l.date.slice(0, 10), period: l.date.slice(0, 7), ref: l.move_id ? l.move_id[1] : "", label: (l.name || "").trim(), partner: l.partner_id ? l.partner_id[1] : "", amount: l.balance });
-      entries.set(l.account_id[0], list);
+  type Line = { account_id: [number, string] | false; date: string; move_id: [number, string] | false; partner_id: [number, string] | false; name: string | false; balance: number };
+  // One group of accounts at a time, each with its own limit: stock postings never crowd out sales and expense detail.
+  const fetch = async (accts: typeof core): Promise<{ lines: { code: string; name: string; cls: (typeof core)[number]["cls"]; excluded: boolean; entries: LedgerEntry[] }[]; count: number } | "too_many" | "too_slow"> => {
+    const domain = [["parent_state", "=", "posted"], opts.includeBranches ? ["company_id", "child_of", cid] : ["company_id", "=", cid],
+      ["date", ">=", `${first}-01`], ["date", "<=", `${last}-${String(daysIn(last)).padStart(2, "0")}`], ["account_id", "in", accts.map((a) => a.odoo_id!)]];
+    const count = await client.executeKw<number>("account.move.line", "search_count", [domain], { context: ctx });
+    if (count > MAX_SYNC_LINES) return "too_many";
+    const entries = new Map<number, LedgerEntry[]>();
+    const pageSize = 5000;
+    for (let offset = 0; offset < count; offset += pageSize) {
+      if (Date.now() - started > budgetMs) return "too_slow";
+      const page = await client.executeKw<Line[]>("account.move.line", "search_read", [domain], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit: pageSize, offset, order: "date, id", context: ctx });
+      for (const l of page) {
+        if (!l.account_id || !l.balance) continue;
+        const list = entries.get(l.account_id[0]) ?? [];
+        list.push({ day: l.date.slice(0, 10), period: l.date.slice(0, 7), ref: l.move_id ? l.move_id[1] : "", label: (l.name || "").trim(), partner: l.partner_id ? l.partner_id[1] : "", amount: l.balance });
+        entries.set(l.account_id[0], list);
+      }
+      if (page.length < pageSize) break;
     }
-    if (page.length < pageSize) break;
+    return { lines: accts.map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id!) ?? [] })), count };
+  };
+  const notes: string[] = [];
+  const out: SyncedLines = { sales: [], expenses: [], stock: [], lines: 0, note: null };
+  if (core.length) {
+    const r = await fetch(core);
+    if (r === "too_many") notes.push("Sales and expense detail were not synced: there are more lines than a sync reads. Upload the General Ledger for customers and suppliers.");
+    else if (r === "too_slow") notes.push("Sales and expense detail were not synced: Odoo took too long to send the lines. Upload the General Ledger for customers and suppliers.");
+    else { out.sales = salesFromLedger(r.lines); out.expenses = expensesFromLedger(r.lines); out.lines += r.count; }
   }
-  const lines = wanted.map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id!) ?? [] }));
-  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), stock: stockFromLedger(lines), lines: count, note: null };
+  if (stockAccts.length) {
+    const r = await fetch(stockAccts);
+    if (r === "too_many" || r === "too_slow") notes.push("Stock postings were not synced, so the Inventory checks against the accounts need the General Ledger upload.");
+    else { out.stock = stockFromLedger(r.lines); out.lines += r.count; }
+  }
+  out.note = notes.length ? notes.join(" ") : null;
+  return out;
 }
