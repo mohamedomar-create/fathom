@@ -19,3 +19,4 @@ export * from "./sales";
 export * from "./expenses";
 export * from "./series";
 export * from "./tieout";
+export * from "./inventory";
