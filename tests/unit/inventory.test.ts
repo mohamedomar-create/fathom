@@ -3,7 +3,7 @@ import { EMPTY_INVENTORY, inventoryAnalysis, inventoryLedger, inventoryMonthly, 
 
 // Made-up products and documents (the repo is public). FIFO values are worked by hand.
 const layer = (p: string, kind: LayerKind, code: string, q: number, v: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, category: "", q, v, n: 1 });
-const move = (p: string, kind: MoveKind, code: string, from: string, to: string, q: number) => ({ p, kind, code, product: code, from, to, q, n: 1 });
+const move = (p: string, kind: MoveKind, code: string, from: string, to: string, q: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, from, to, q, n: 1 });
 const data = (over: Partial<InventoryData>): InventoryData => ({ ...EMPTY_INVENTORY, ...over, meta: { ...EMPTY_INVENTORY.meta, ...(over.meta ?? {}) } });
 const SEP = { type: "month" as const, end: "2026-09" };
 
@@ -22,7 +22,7 @@ function fifo(landed = 120): InventoryData {
       { p: "2026-09", ref: "LC/2026/0001", kind: "landed_cost", v: landed }, { p: "2026-09", ref: "WH/OUT/00001", kind: "delivery", v: -1550 },
       { p: "2026-09", ref: "WH/RET/00001", kind: "customer_return", v: 110 }, { p: "2026-09", ref: "SP/00001", kind: "scrap", v: -110 },
     ],
-    lastOut: { P1: "2026-09-20" },
+    lastOut: { "[P1] Mask": "2026-09-20" },
     meta: { withIds: true, kinds: ["valuation"], periods: ["2026-09"] },
   });
 }
@@ -128,7 +128,7 @@ describe("Inventory engine", () => {
   it("slowAndDeadByLastOut", () => {
     const d = data({
       layers: [layer("2026-01", "receipt", "P1", 5, 500), layer("2026-01", "receipt", "P2", 5, 700), layer("2026-01", "receipt", "P3", 5, 900)],
-      lastOut: { P1: "2026-06-22", P2: "2026-03-14", P3: "2026-09-25" },
+      lastOut: { "[P1] Mask": "2026-06-22", "[P2] Item P2": "2026-03-14", "[P3] Item P3": "2026-09-25" },
     });
     const a = inventoryAnalysis(d, SEP, 1, { ledger: { stock: null, cogs: null }, today: "2026-09-30" });
     const flag = (c: string) => a.products.find((p) => p.code === c)!.flag;
@@ -154,11 +154,12 @@ describe("Inventory engine", () => {
     const onhand = (q: number) => [{ asOf: "2026-09-30", product: "Mask", code: "P1", location: "WH/Stock", lot: "", qty: q, value: null }];
     // The valuation history starts the same month as the moves, so the moves are the whole history.
     const valued = { ...base, layers: [layer("2026-09", "receipt", "P1", 10, 1000), layer("2026-09", "delivery", "P1", -4, -400)] };
-    const ok = inventoryAnalysis(data({ ...valued, onhand: onhand(6) }), SEP, 1, { ledger: { stock: null, cogs: null } });
-    expect(ok.tieouts.find((t) => t.key === "qty_onhand")).toMatchObject({ status: "ok", module: 6, ledger: 6 });
-    const off = inventoryAnalysis(data({ ...valued, onhand: onhand(7) }), SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((t) => t.key === "qty_onhand")!;
+    // 10 received, 4 delivered, 2 out on rental: 4 left in the warehouse (Odoo's stock list does not count rented-out units).
+    const ok = inventoryAnalysis(data({ ...valued, onhand: onhand(4) }), SEP, 1, { ledger: { stock: null, cogs: null } });
+    expect(ok.tieouts.find((t) => t.key === "qty_onhand")).toMatchObject({ status: "ok", module: 4, ledger: 4 });
+    const off = inventoryAnalysis(data({ ...valued, onhand: onhand(5) }), SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((t) => t.key === "qty_onhand")!;
     expect(off.status).toBe("off");
-    expect(off.causes[0].ref).toBe("P1");
+    expect(off.causes[0]).toMatchObject({ ref: "[P1] Mask", module: 5, ledger: 4 });
   });
 
   it("flags negative stock and adjustments above 1% of cost of sales", () => {
@@ -253,7 +254,7 @@ describe("demo company stock", async () => {
   it("the demo's slow item has no deliveries after its last sale, so the pages show slow stock", () => {
     const d = demoInventory();
     expect(d.layers.filter((l) => l.code === "VNT-C" && l.p > "2026-04" && l.kind === "delivery")).toEqual([]);
-    expect(d.lastOut["VNT-C"]).toBe("2026-04-25");
+    expect(d.lastOut["[VNT-C] Ventilator Circuit"]).toBe("2026-04-25");
     const a = inventoryAnalysis(d, { type: "month", end: "2026-09" }, sample.fy_start_month, { ledger });
     expect(a.products.find((p) => p.code === "VNT-C")!.flag).toBe("slow");
     expect(a.tiles.slow).toBeGreaterThan(0);

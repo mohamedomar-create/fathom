@@ -2,66 +2,11 @@
 import { useMemo, useState, useTransition } from "react";
 import { AlertTriangle } from "lucide-react";
 import { money } from "@/lib/engine";
-import type { Grid } from "@/lib/ingest/extract";
-import { isInternalLocation, readProducts, readStockMoves, readStockOnHand, readStockValuation, type OnHand, type ProductRow, type StockLayer, type StockMove } from "@/lib/ingest/inventory";
-import type { SheetRole } from "@/lib/ingest/roles";
+import type { InventoryParts } from "@/lib/ingest/inventory-sheets";
 import { saveInventory } from "@/lib/company/save-inventory";
 import { saveInventorySettings } from "@/app/company/[id]/settings/actions";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
 import { cn } from "@/lib/cn";
-
-export interface InventoryParts {
-  layers: StockLayer[];
-  moves: StockMove[];
-  onhand: { asOf: string; rows: OnHand[] } | null;
-  products: ProductRow[];
-  /** Every valuation and moves row carries Odoo's record ID (duplicates are then refused exactly). */
-  withIds: boolean;
-  /** Per sheet: what it gave, for the sheet list. */
-  sheets: Record<string, string>;
-  /** The company's own locations in the moves, for the rental-location choice. */
-  locations: string[];
-}
-
-const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
-
-/** Reads every sheet the person marked as an Inventory sheet (each kind by its own reader). */
-export function readInventorySheets(grids: Grid[], roleOf: (sheet: string) => SheetRole, rentalLocation: string | null, currency: string, asOf = today()): InventoryParts | null {
-  const parts: InventoryParts = { layers: [], moves: [], onhand: null, products: [], withIds: true, sheets: {}, locations: [] };
-  let any = false;
-  const n = (k: number, w: string) => `${k.toLocaleString("en-US")} ${w}${k === 1 ? "" : "s"}`;
-  for (const g of grids) {
-    const role = roleOf(g.name);
-    if (role === "stock_valuation") {
-      const r = readStockValuation(g);
-      any = true;
-      if (!r) { parts.sheets[g.name] = "Could not be read as a stock valuation."; continue; }
-      parts.layers.push(...r.layers); parts.withIds &&= r.withIds;
-      parts.sheets[g.name] = `${n(r.layers.length, "valuation layer")}, net value ${money(r.layers.reduce((s, l) => s + l.value, 0), currency)}${r.withIds ? "" : " · no Odoo ID column"}`;
-    } else if (role === "stock_moves") {
-      const r = readStockMoves(g, rentalLocation);
-      any = true;
-      if (!r) { parts.sheets[g.name] = "Could not be read as a moves history."; continue; }
-      parts.moves.push(...r.moves); parts.withIds &&= r.withIds;
-      parts.sheets[g.name] = `${n(r.moves.length, "done move")}${r.withIds ? "" : " · no Odoo ID column"}`;
-    } else if (role === "stock_onhand") {
-      const rows = readStockOnHand(g, asOf);
-      any = true;
-      if (!rows) { parts.sheets[g.name] = "Could not be read as stock on hand."; continue; }
-      parts.onhand = { asOf, rows: [...(parts.onhand?.rows ?? []), ...rows] };
-      parts.sheets[g.name] = `${n(rows.length, "stock line")} on ${asOf}`;
-    } else if (role === "products") {
-      const rows = readProducts(g);
-      any = true;
-      if (!rows) { parts.sheets[g.name] = "Could not be read as a products list."; continue; }
-      parts.products.push(...rows);
-      parts.sheets[g.name] = n(rows.length, "product");
-    }
-  }
-  if (!any) return null;
-  parts.locations = [...new Set(parts.moves.flatMap((m) => [m.from, m.to]).filter(isInternalLocation))].sort();
-  return parts;
-}
 
 /** Check and save screens for Inventory sheets: what was read, the rental location, replace or add only new, then save. */
 export function InventoryStep({ parts, companyId, currency, demo, filename, rentalLocation, onRental, rolesPanel, fileLine, rolesBlock, onBack, onDone }: {
@@ -71,7 +16,7 @@ export function InventoryStep({ parts, companyId, currency, demo, filename, rent
   onBack: () => void; onDone: (what: string) => void;
 }) {
   const [screen, setScreen] = useState<"check" | "save">("check");
-  const [mode, setMode] = useState<"replace" | "add" | null>(null);
+  const [mode, setMode] = useState<"replace" | "add" | "all" | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [saving, start] = useTransition();
   const months = useMemo(() => [...new Set([...parts.layers, ...parts.moves].map((x) => x.period))].sort(), [parts]);
@@ -85,9 +30,10 @@ export function InventoryStep({ parts, companyId, currency, demo, filename, rent
       <div data-testid="inventory-save">
         <WizardSteps at="save" />
         <WizardTitle title="Save your stock" hint={`${count.toLocaleString("en-US")} records${span ? `, ${span}` : ""}.`} />
-        <div className="grid max-w-4xl gap-3 md:grid-cols-2" data-testid="inventory-mode">
-          {([["replace", "Replace these months", "Valuation and moves of these months are replaced by this file. The same file uploaded again replaces its earlier copy."],
-            ["add", "Add only new records", "Records already saved (same Odoo ID) are kept and counted. Nothing is removed."]] as const).map(([m, t, sub]) => (
+        <div className="grid max-w-4xl gap-3 md:grid-cols-3" data-testid="inventory-mode">
+          {([["all", "Replace all my stock records", "For a full export from Odoo (all dates). Everything saved before for valuation and moves is replaced by this file."],
+            ["replace", "Replace these months", `Valuation and moves from ${span || "the file's first month to its last"} are replaced by this file. Other months stay.`],
+            ["add", "Add only new records", "Records already saved are kept and counted. Nothing is removed."]] as const).map(([m, t, sub]) => (
             <button key={m} onClick={() => setMode(m)} data-testid={`inventory-mode-${m}`}
               className={cn("rounded-xl border-2 p-4 text-start", mode === m ? "border-brand-d bg-brand-bg" : "border-line hover:border-brand/60")}>
               <div className="text-[16px] font-medium">{t}</div><div className="mt-1 text-[13px] text-mute">{sub}</div>
@@ -123,7 +69,7 @@ export function InventoryStep({ parts, companyId, currency, demo, filename, rent
         <label className="mb-4 flex max-w-4xl flex-wrap items-center gap-2 text-[14px]" data-testid="rental-location">
           Rented items go to:
           <select value={rentalLocation ?? ""} onChange={(e) => onRental(e.target.value || null)} className="rounded border border-line px-2 py-1 text-[13px]" data-testid="rental-location-select">
-            <option value="">Found by its name (“Rental”, “تأجير”)</option>
+            <option value="">Found by Odoo’s rental location (“Virtual Locations/Rental”)</option>
             {parts.locations.map((l) => <option key={l} value={l}>{l}</option>)}
           </select>
           <span className="text-[13px] text-mute">Moves to and from it are rentals: they change where items are, not their value.</span>

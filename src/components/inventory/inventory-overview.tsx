@@ -52,6 +52,15 @@ export function InventoryOverview() {
                 { name: t.cogs, values: monthly.map((x) => x.cogs), color: C.s[1], dots: false },
               ]} />
           </>}
+          {s.position && <div className="mb-8" data-testid="inv-position">
+            <h3 className="mb-2 text-lg font-normal">{t.whereTitle}</h3>
+            <BarList items={[
+              { key: "warehouse", label: t.inWarehouses, value: s.position.warehouse, share: tl.value ? (s.position.warehouse / tl.value) * 100 : undefined },
+              { key: "rental", label: t.onRental, value: s.position.rental, share: tl.value ? (s.position.rental / tl.value) * 100 : undefined },
+              { key: "transit", label: t.inTransit, value: s.position.transit, share: tl.value ? (s.position.transit / tl.value) * 100 : undefined },
+            ].filter((x) => x.value)} cur={cur} max={3} testId="inv-position-bars" />
+            <p className="mt-1 text-xs text-mute">{t.whereNote}</p>
+          </div>}
           {s.products.length > 0 && <>
             <h3 className="mb-2 mt-8 text-lg font-normal">{t.largest}</h3>
             <BarList items={s.products.filter((p) => p.value > 0).map((p) => ({ key: p.code || p.product, label: p.product, value: p.value, share: tl.value ? (p.value / tl.value) * 100 : undefined }))} cur={cur} max={8} testId="inv-top-products" />

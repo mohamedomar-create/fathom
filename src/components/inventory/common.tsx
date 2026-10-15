@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Boxes, CheckCircle2, Info, TriangleAlert } from "lucide-react";
 import { hasPL, money } from "@/lib/engine";
-import { inventoryAnalysis, inventoryLedger, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
+import { inventoryAnalysis, inventoryLedger, isInsideCheck, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
 import { useCompany } from "@/lib/company/context";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -65,10 +65,18 @@ export function TieBanner({ s, link }: { s: InventoryView; link?: string }) {
   const T = useT();
   const t = T.d.inv;
   // Only checks against the accounts count as agreeing; rentals and quantities are checks inside Inventory.
-  const { off, agreed, checked } = tieSummary(s.tieouts);
+  const { off: all, agreed, checked } = tieSummary(s.tieouts);
+  // Red only for differences with the accounts; a disagreement between Odoo's own exports is a note to check in Odoo.
+  const off = all.filter((x) => !isInsideCheck(x.key)), inside = all.filter((x) => isInsideCheck(x.key));
   const more = link ? <Link href={link} className="ms-2 underline">{t.seeChecks}</Link> : null;
   return (
     <div className="mb-8 space-y-2" data-testid="inv-tieouts">
+      {inside.length > 0 && (
+        <div className="rounded bg-amber/10 px-4 py-2.5 text-[13px]" data-testid="inv-odoo-notes">
+          <div className="flex items-start gap-2 font-medium"><Info className="mt-0.5 h-4 w-4 shrink-0 text-amber" />{t.insideOff(inside.length)}{more}</div>
+          <ul className="ms-6 mt-1 list-disc">{inside.map((x) => <li key={`${x.key}${x.period}`}>{t.checks[x.key]}</li>)}</ul>
+        </div>
+      )}
       {off.length > 0 ? (
         <div className="rounded bg-red-bg px-4 py-2.5 text-[13px] text-red">
           <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{t.someOff(off.length)}{more}</div>
@@ -84,11 +92,12 @@ export function TieBanner({ s, link }: { s: InventoryView; link?: string }) {
   );
 }
 
-export function TieChip({ status }: { status: TieOut["status"] }) {
+export function TieChip({ status, inside = false }: { status: TieOut["status"]; inside?: boolean }) {
   const t = useT().d.inv;
+  const note = status === "off" && inside;
   return (
-    <span data-testid={`tie-${status}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", status === "ok" ? "bg-green-bg text-green-d" : status === "off" ? "bg-red-bg text-red" : "bg-band text-mute")}>
-      {status === "ok" ? t.ok : status === "off" ? t.off : t.noLedgerChip}
+    <span data-testid={note ? "tie-odoo" : `tie-${status}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", status === "ok" ? "bg-green-bg text-green-d" : note ? "bg-amber/15 text-[#9a6b00]" : status === "off" ? "bg-red-bg text-red" : "bg-band text-mute")}>
+      {status === "ok" ? t.ok : note ? t.odooCheck : status === "off" ? t.off : t.noLedgerChip}
     </span>
   );
 }
@@ -118,7 +127,7 @@ export function TieTable({ tieouts, cur }: { tieouts: TieOut[]; cur: string }) {
               <td className="num">{f(x, x.module)}</td>
               <td className="num">{f(x, x.ledger)}</td>
               <td className={cn("num", x.status === "off" && "text-red")}>{f(x, x.diff)}</td>
-              <td className="!text-start"><TieChip status={x.status} /></td>
+              <td className="!text-start"><TieChip status={x.status} inside={isInsideCheck(x.key)} /></td>
             </tr>
           ))}
         </tbody>

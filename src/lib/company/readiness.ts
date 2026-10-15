@@ -219,7 +219,8 @@ const STOCK_EXPORT = "Odoo: Inventory → Reporting → Valuation (and Moves His
 const TIE_NAMES: [TieOut["key"], string, string][] = [
   ["stock_value", "Stock value", "Stock value equals the stock accounts"], ["stock_movement", "Stock change", "Each month's change in stock equals the accounts"],
   ["cogs", "Cost of sales", "Cost of goods delivered equals cost of sales in the accounts"], ["receipts", "Receipts", "Goods received and landed costs equal the stock postings"],
-  ["rental_value", "Rentals", "Rental moves carry no value"], ["qty_onhand", "Quantities", "Stock on hand equals the moves"],
+  ["rental_value", "Rentals", "Rental moves carry no value"], ["qty_onhand", "Warehouse units", "Odoo’s stock list equals the moves into the warehouses"],
+  ["qty_valued", "Units valued", "Units valued equal the units the moves hold"], ["onhand_value", "Value by location", "Stock value equals warehouses + on rental + in transit"],
 ];
 
 /** Stock: what is loaded (valuation, moves, on hand, with Odoo IDs) and, per check, how many months agree with the accounts (last 12 months with stock records). */

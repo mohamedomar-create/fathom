@@ -118,6 +118,37 @@ select pg_temp.check('summary ledger refs', (select string_agg((x ->> 'ref') || 
 select pg_temp.check('summary rental documents', (select string_agg((x ->> 'p') || ' ' || (x ->> 'ref'), ',') from s, jsonb_array_elements(j -> 'rental') x), '2026-09 WH/INT/00007');
 select pg_temp.check('summary knows the IDs', (select j -> 'meta' ->> 'withIds' from s), 'true');
 
+-- 0013: products sharing an internal reference ("[Device] …") stay apart; a layer takes its kind from its move by product.
+create temp table c2 as select public.begin_inventory_batch((select co from ids), 'moves', array['2026-12'], 'm2.xlsx', 'replace', '{}'::jsonb) as id;
+select public.add_stock_moves((select id from c2), '[
+  {"odoo_key":"fp:m1","day":"2026-12-02","period":"2026-12","ref":"INV:Cairo Adj","kind":"adjustment","product":"Alpha","code":"Device","from_loc":"Virtual Locations/My Company: Inventory adjustment","to_loc":"Cairo/Stock","qty":1},
+  {"odoo_key":"fp:m2","day":"2026-12-03","period":"2026-12","ref":"New C/OUT/9","kind":"supplier_return","product":"Beta","code":"Device","from_loc":"Cairo/Stock","to_loc":"Partner Locations/Vendors","qty":1}
+]'::jsonb);
+select public.finish_inventory_batch((select id from c2));
+create temp table c1 as select public.begin_inventory_batch((select co from ids), 'valuation', array['2026-12'], 'v2.xlsx', 'replace', '{}'::jsonb) as id;
+select public.add_stock_layers((select id from c1), '[
+  {"odoo_key":"fp:a","day":"2026-12-02","period":"2026-12","ref":"INV:Cairo Adj","kind":"other","product":"Alpha","code":"Device","qty":1,"unit_value":100,"value":100},
+  {"odoo_key":"fp:b","day":"2026-12-03","period":"2026-12","ref":"New C/OUT/9","kind":"delivery","product":"Beta","code":"Device","qty":-1,"unit_value":200,"value":-200},
+  {"odoo_key":"fp:c","day":"2026-12-03","period":"2026-12","ref":"New C/OUT/9","kind":"landed_cost","product":"Beta","code":"Device","qty":0,"unit_value":0,"value":5}
+]'::jsonb);
+select public.finish_inventory_batch((select id from c1));
+select pg_temp.check('a layer follows its own product''s move', (select string_agg(product || ' ' || kind, ',' order by odoo_key) from public.stock_layers where batch_id = (select id from c1)), 'Alpha adjustment,Beta supplier_return,Beta landed_cost');
+create temp table s2 as select public.inventory_summary((select co from ids)) j;
+select pg_temp.check('summary keeps products of one group apart', (select string_agg(x ->> 'product', ',' order by x ->> 'product') from s2, jsonb_array_elements(j -> 'layers') x where x ->> 'p' = '2026-12'), 'Alpha,Beta,Beta');
+select pg_temp.check('last delivery keyed by the full product', (select j -> 'last_out' ? '[P1] Mask' from s2)::text, 'true');
+
+-- Replace clears every month between the file's first and last, not only the months it holds rows for.
+create temp table c3 as select public.begin_inventory_batch((select co from ids), 'valuation', array['2026-08', '2026-12'], 'span.xlsx', 'replace', '{}'::jsonb) as id;
+select public.add_stock_layers((select id from c3), '[{"odoo_key":"fp:s","day":"2026-08-02","period":"2026-08","ref":"WH/IN/7","kind":"receipt","product":"Mask","code":"P1","qty":1,"unit_value":1,"value":1}]'::jsonb);
+select public.finish_inventory_batch((select id from c3));
+select pg_temp.check('the months in between were cleared too', (select string_agg(distinct period, ',' order by period) from public.stock_layers where company_id = (select co from ids) and live), '2026-08');
+
+-- Replace all: the file becomes the whole valuation history.
+create temp table c4 as select public.begin_inventory_batch((select co from ids), 'valuation', array['2027-01'], 'full.xlsx', 'all', '{}'::jsonb) as id;
+select public.add_stock_layers((select id from c4), '[{"odoo_key":"fp:f","day":"2027-01-02","period":"2027-01","ref":"WH/IN/8","kind":"receipt","product":"Mask","code":"P1","qty":1,"unit_value":1,"value":1}]'::jsonb);
+select pg_temp.check('replace all', public.finish_inventory_batch((select id from c4))::text, '{"added": 1, "already": 0}');
+select pg_temp.check('only the new file is left', pg_temp.live_keys(), 'fp:f');
+
 reset role;
 
 -- Ivo belongs to another organisation: he reads nothing and cannot save.
