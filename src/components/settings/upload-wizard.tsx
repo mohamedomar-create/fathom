@@ -46,7 +46,8 @@ import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
 import { stockFromLedger } from "@/lib/ingest/inventory";
 import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
-import { InventoryStep, readInventorySheets } from "./inventory-upload";
+import { InventoryStep } from "./inventory-upload";
+import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };

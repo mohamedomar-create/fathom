@@ -113,7 +113,7 @@ test("inventory save is all-or-nothing and duplicates are refused", async ({ pag
   test.slow();
   await signUp(page, { name: "Stock Owner", org: "Stock Advisory", email: newEmail("stock") });
   const id = await createCompany(page, "Stock Co");
-  const save = async (mode: "replace" | "add") => {
+  const save = async (mode: "replace" | "add" | "all") => {
     await startUpload(page, id, "inventory", "inventory");
     await page.getByTestId("file-input").setInputFiles({ ...STOCK_FILE, buffer: await stockWorkbook() });
     await expect(page.getByTestId("inventory-only")).toBeVisible({ timeout: 15_000 });
@@ -128,6 +128,8 @@ test("inventory save is all-or-nothing and duplicates are refused", async ({ pag
   await expect(await save("add")).toContainText("0 added · 7 already here", { timeout: 30_000 });
   // The same file under Replace: its earlier copy is replaced, not doubled.
   await expect(await save("replace")).toContainText("7 added · 0 already here", { timeout: 30_000 });
+  // Replace all: the file becomes the whole history (nothing from earlier uploads stays behind).
+  await expect(await save("all")).toContainText("7 added · 0 already here", { timeout: 30_000 });
 
   // Stored once: closing value 1,000 − 400 + 100, and 15 units received.
   await page.goto(`/company/${id}/inventory/valuation`);

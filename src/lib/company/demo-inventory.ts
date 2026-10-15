@@ -1,7 +1,7 @@
 import sample from "../../../reference/sample.json";
 import type { MonthData } from "@/lib/engine";
 import type { InventoryData, LayerRow, MoveRow } from "@/lib/engine/inventory";
-import type { OnHand } from "@/lib/ingest/inventory";
+import { productKey, type OnHand } from "@/lib/ingest/inventory";
 import { spreadAccounts } from "./demo";
 
 /**
@@ -88,7 +88,7 @@ export function demoInventory(): InventoryData {
       // Never more units out than are in stock.
       const q = Math.min(Math.max(1, Math.round(v / prod.unit)), qtyOf[prod.code] ?? 0);
       add(f.p, "delivery", prod, -v, -q, ref("WH/OUT"), "WH/Stock", "Partners/Customers", "delivery");
-      lastOut[prod.code] = `${f.p}-25`;
+      lastOut[productKey(prod.code, prod.name)] = `${f.p}-25`;
     });
     // Two concentrators go out on rental and come back within the month: moves between the company's own locations, no value.
     const out = ref("WH/INT"), back = ref("WH/INT");

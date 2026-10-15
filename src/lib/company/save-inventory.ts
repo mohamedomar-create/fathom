@@ -17,7 +17,7 @@ const moveRow = (m: StockMove) => ({
 
 type Out = { ok: true; added: number; already: number } | { ok: false; error: string };
 
-async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Record<string, unknown>[], periods: string[], filename: string, mode: "replace" | "add"): Promise<Out> {
+async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Record<string, unknown>[], periods: string[], filename: string, mode: "replace" | "add" | "all"): Promise<Out> {
   const start = await startInventoryBatch({ companyId, kind, periods, filename: cut(filename, 300), mode });
   if (!start.ok) return start;
   // Chunks are staged; the upload is finished in one step, so the pages show all of it or none of it.
@@ -37,7 +37,7 @@ async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Re
  * accepts, finished in one step (records already stored under the same Odoo ID are counted, not added), the stock-on-hand
  * snapshot, the products.
  */
-export async function saveInventory(companyId: string, parts: { layers?: StockLayer[]; moves?: StockMove[]; onhand?: { asOf: string; rows: OnHand[] }; products?: ProductRow[] }, filename: string, mode: "replace" | "add"): Promise<Out> {
+export async function saveInventory(companyId: string, parts: { layers?: StockLayer[]; moves?: StockMove[]; onhand?: { asOf: string; rows: OnHand[] }; products?: ProductRow[] }, filename: string, mode: "replace" | "add" | "all"): Promise<Out> {
   let added = 0, already = 0;
   for (const [kind, list, toRow] of [["valuation", parts.layers, layerRow], ["moves", parts.moves, moveRow]] as const) {
     if (!list?.length) continue;

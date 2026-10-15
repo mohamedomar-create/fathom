@@ -24,7 +24,7 @@ const FIELDS: [Field, RegExp][] = [
   ["id", arRx(/^(id|external id|المعرف|المعرّف|المعرف الخارجي|معرف خارجي)$/i)],
   ["date", arRx(/^(date|date done|create date|create_date|created on|date_done|accounting date|التاريخ|تاريخ|تاريخ الإنشاء)$/i)],
   ["ref", arRx(/^(reference|ref|stock move|stock_move_id|move|picking_id|transfer|المرجع|مرجع|حركة المخزون|التحويل)$/i)],
-  ["product", arRx(/^(product|product_id|المنتج|الصنف)$/i)],
+  ["product", arRx(/^(product|product_id|display name|display_name|المنتج|الصنف|اسم العرض)$/i)],
   ["code", arRx(/^(internal reference|default_code|product\/internal reference|المرجع الداخلي|كود الصنف)$/i)],
   ["name", arRx(/^(name|product name|الاسم|اسم المنتج|اسم الصنف)$/i)],
   ["category", arRx(/^(product category|category|categ_id|فئة المنتج|الفئة)$/i)],
@@ -65,6 +65,12 @@ export function splitProduct(label: string, code = ""): { code: string; product:
   return m ? { code: code || m[1].trim(), product: m[2].trim() } : { code, product: first };
 }
 
+/**
+ * One product, as Odoo shows it: "[internal reference] name". Many companies put a product group in the internal reference
+ * ("[Device] …", shared by hundreds of products), so a product is never identified by its reference alone.
+ */
+export const productKey = (code: string, product: string) => (code ? `[${code}] ${product}` : product);
+
 /** A short, stable key from the fields that identify a row (FNV-1a, two 32-bit halves). */
 export function fingerprint(parts: (string | number)[]): string {
   const s = parts.map((p) => (typeof p === "number" ? String(Math.round(p * 10000) / 10000) : p.trim())).join("|");
@@ -84,16 +90,45 @@ const ADJUST = arRx(/inventory adjustment|inventory loss|تسوية المخزو
 const SCRAP = arRx(/scrap|خردة|هالك|تالف/i);
 const PRODUCTION = arRx(/production|إنتاج|انتاج|التصنيع/i);
 
-/** A location of the company's own (a warehouse, shelf or the rental pool), not a partner or virtual one: stock held there is the company's. */
-export const isInternalLocation = (loc: string) => {
-  const l = normAr(loc);
-  return !!l && !VENDOR.test(l) && !CUSTOMER.test(l) && !ADJUST.test(l) && !SCRAP.test(l) && !PRODUCTION.test(l) && !/^(virtual|partner)/i.test(l);
-};
+const TRANSIT = arRx(/transit|عبور|ترانزيت/i);
 
-const isRental = (loc: string, rental?: string | null) => (rental ? normAr(loc).toLowerCase() === normAr(rental).toLowerCase() : RENTAL.test(normAr(loc)));
+/**
+ * Where a location stands:
+ *  - warehouse: the company's own stock (shelves, branches, the rental fleet's warehouse) — what Odoo counts as on hand;
+ *  - rental_out: with customers on rental (Odoo's "Virtual Locations/Rental"): still the company's, still valued;
+ *  - transit: between the company's own warehouses: still the company's, still valued, not on hand;
+ *  - partner: suppliers and customers; virtual: adjustments, scrap, production.
+ * rentalLocations are the locations goods go to when rented out (see rentalLocationsOf).
+ */
+export type LocationClass = "warehouse" | "rental_out" | "transit" | "partner" | "virtual";
+export function locationClass(loc: string, rentalLocations: readonly string[] = []): LocationClass {
+  const l = normAr(loc);
+  if (!l) return "virtual";
+  if (rentalLocations.some((r) => normAr(r).toLowerCase() === l.toLowerCase())) return "rental_out";
+  if (VENDOR.test(l) || CUSTOMER.test(l) || /^partner/i.test(l)) return "partner";
+  if (/^virtual/i.test(l) || ADJUST.test(l) || SCRAP.test(l) || PRODUCTION.test(l)) return "virtual";
+  if (TRANSIT.test(l)) return "transit";
+  return "warehouse";
+}
+
+/** A location of the company's own (a warehouse, the rental fleet's warehouse, or in transit between them). */
+export const isInternalLocation = (loc: string) => { const c = locationClass(loc); return c === "warehouse" || c === "transit"; };
+
+/**
+ * The locations rented goods go out to, from the locations the moves use: the person's choice when made; otherwise Odoo's
+ * virtual rental location ("Virtual Locations/Rental"); only when there is none, any location named for rental.
+ * A warehouse named for rental ("Cai/Rental/Cairo rental") holds the rental fleet: moving stock into it is not renting out.
+ */
+export function rentalLocationsOf(locations: Iterable<string>, chosen?: string | null): string[] {
+  if (chosen) return [chosen];
+  const all = [...new Set(locations)].filter((l) => RENTAL.test(normAr(l)));
+  const virtual = all.filter((l) => /^virtual/i.test(normAr(l)));
+  return virtual.length ? virtual : all;
+}
 
 /** What a move did, from its source and destination locations (Odoo's partner and virtual locations). */
-export function moveKind(from: string, to: string, rentalLocation?: string | null): MoveKind {
+export function moveKind(from: string, to: string, rentalLocations: string | readonly string[] | null = null): MoveKind {
+  const rentals = rentalLocations === null ? rentalLocationsOf([from, to]) : typeof rentalLocations === "string" ? [rentalLocations] : rentalLocations;
   const f = normAr(from), t = normAr(to);
   if (VENDOR.test(f)) return "receipt";
   if (VENDOR.test(t)) return "supplier_return";
@@ -102,7 +137,7 @@ export function moveKind(from: string, to: string, rentalLocation?: string | nul
   if (ADJUST.test(f) || ADJUST.test(t)) return "adjustment";
   if (SCRAP.test(f) || SCRAP.test(t)) return "scrap";
   if (PRODUCTION.test(f) || PRODUCTION.test(t)) return "manufacturing";
-  const rf = isRental(from, rentalLocation), rt = isRental(to, rentalLocation);
+  const rf = locationClass(from, rentals) === "rental_out", rt = locationClass(to, rentals) === "rental_out";
   if (rt && !rf) return "rental_out";
   if (rf && !rt) return "rental_back";
   return "internal";
@@ -123,8 +158,32 @@ export function layerKind(ref: string, description: string, qty: number, move?: 
   if (/\/OUT\//.test(R)) return qty <= 0 ? "delivery" : "customer_return";
   if (/\/RET|RETURN/.test(R)) return qty > 0 ? "customer_return" : "supplier_return";
   if (/(^|\/)SP\//.test(R) || SCRAP.test(normAr(description))) return "scrap";
-  if (ADJ_DESC.test(normAr(description)) || ADJ_DESC.test(ref)) return "adjustment";
+  if (ADJ_DESC.test(normAr(description)) || ADJ_DESC.test(ref) || /^INV:/i.test(ref)) return "adjustment";
   return "other";
+}
+
+/** The kinds a move can give its valuation row (a rental or internal move carries no value of its own). */
+const VALUED_MOVE: MoveKind[] = ["adjustment", "scrap", "supplier_return", "customer_return", "receipt", "delivery"];
+
+/**
+ * Each valuation row takes its kind from its move (same reference and product): where the goods really went decides
+ * whether it is a receipt, a delivery, a return to a supplier or an adjustment, whatever its reference is called.
+ * Landed costs and revaluations keep their kind; a row with no move keeps the kind read from its reference.
+ */
+export function classifyLayers<T extends { ref: string; code: string; product: string; kind: LayerKind }>(layers: T[], moves: { ref: string; code: string; product: string; kind: MoveKind }[]): T[] {
+  const byDoc = new Map<string, Set<MoveKind>>();
+  for (const m of moves) {
+    if (!m.ref) continue;
+    const k = `${m.ref}\u0001${productKey(m.code, m.product)}`;
+    const set = byDoc.get(k) ?? new Set<MoveKind>();
+    set.add(m.kind); byDoc.set(k, set);
+  }
+  return layers.map((l) => {
+    if (l.kind === "landed_cost" || l.kind === "revaluation" || !l.ref) return l;
+    const kinds = byDoc.get(`${l.ref}\u0001${productKey(l.code, l.product)}`);
+    const k = kinds && VALUED_MOVE.find((x) => kinds.has(x));
+    return k ? { ...l, kind: FROM_MOVE[k]! } : l;
+  });
 }
 
 const num = (v: Cell) => cleanNum(v) ?? 0;
@@ -169,12 +228,17 @@ export function readStockValuation(g: Grid): { layers: StockLayer[]; withIds: bo
   const withIds = c.id !== undefined;
   const fp = fingerprints();
   const layers: StockLayer[] = [];
-  for (const { i, row, day } of dataRows(g, h)) {
+  for (const { i, row, day: rowDay } of dataRows(g, h)) {
+    let day = rowDay;
     if (!day || !cell(row, c.product)) continue;
     const ref = cell(row, c.ref), desc = cell(row, c.desc), qty = num(row[c.qty]), value = num(row[c.value]);
+    // Odoo marks a back-dated row "[Accounted on 2026-01-17]": its journal entry, and so the accounts, carry that date.
+    const accounted = ref.match(/\[Accounted on (\d{4}-\d{2}-\d{2})\]/i)?.[1];
+    if (accounted) day = accounted;
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const lot = cell(row, c.lot);
-    const kind = layerKind(ref, desc + " " + cell(row, c.landed), qty);
+    // A value with no quantity changes what goods cost, not how many: on a receipt it is a landed cost, otherwise a revaluation.
+    const kind = !qty && value ? (/\/IN\//i.test(ref) || LANDED.test(ref + " " + desc) ? "landed_cost" : "revaluation") : layerKind(ref, desc + " " + cell(row, c.landed), qty);
     const landedRef = kind === "landed_cost" ? (cell(row, c.landed) || (ref.match(/LC\/[^\s]+/i)?.[0] ?? desc.match(/LC\/[^\s]+/i)?.[0] ?? ref)) : "";
     const id = cell(row, c.id);
     layers.push({
@@ -194,27 +258,38 @@ export function readStockMoves(g: Grid, rentalLocation?: string | null): { moves
   if (c.product === undefined || c.from === undefined || c.to === undefined || c.qty === undefined) return null;
   const withIds = c.id !== undefined;
   const fp = fingerprints();
-  const moves: StockMove[] = [];
+  const done: { i: number; row: Cell[]; day: string }[] = [];
   for (const { i, row, day } of dataRows(g, h)) {
     if (!day || !cell(row, c.product)) continue;
     if (c.status !== undefined && !DONE.test(normAr(cell(row, c.status)))) continue;
-    const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), qty = num(row[c.qty]), lot = cell(row, c.lot);
+    done.push({ i, row, day });
+  }
+  // Which locations are "out on rental" is decided from every location the export uses, before any move is classified.
+  const rentals = rentalLocationsOf(done.flatMap(({ row }) => [cell(row, c.from), cell(row, c.to)]), rentalLocation);
+  const moves: StockMove[] = done.map(({ i, row, day }) => {
+    const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), qty = num(row[c.qty!]), lot = cell(row, c.lot);
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const id = cell(row, c.id);
-    moves.push({
+    return {
       key: withIds && id ? id : fp([day, ref, code || product, lot, from, to, qty]),
-      day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentalLocation), product, code, lot, from, to, qty,
+      day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentals), product, code, lot, from, to, qty,
       uom: cell(row, c.uom), partner: cell(row, c.partner), src: { sheet: g.name, row: i },
-    });
-  }
+    };
+  });
   return moves.length ? { moves, withIds } : null;
 }
+
+/** Headings of Odoo's product list that give what is on hand in the warehouses (product.product: "Quantity On Hand"). */
+const ON_HAND_HEADING = arRx(/^(quantity on hand|qty_available|on hand quantity|الكمية في اليد|الكمية المتاحة)$/i);
 
 export function readStockOnHand(g: Grid, asOf: string): OnHand[] | null {
   const h = header(g);
   if (!h) return null;
   const c = h.col;
-  if (c.location === undefined || c.product === undefined || c.qty === undefined || c.date !== undefined) return null;
+  if (c.product === undefined || c.qty === undefined || c.date !== undefined) return null;
+  // Without a location column, only Odoo's product list counts: its "Quantity On Hand" is the total in the warehouses
+  // (location "" = all of them), and its "Total Value" what that stock is worth.
+  if (c.location === undefined && !(g.rows[h.r] ?? []).some((v) => ON_HAND_HEADING.test(normAr(str(v))))) return null;
   const out: OnHand[] = [];
   for (const { row } of dataRows(g, h)) {
     if (!cell(row, c.product)) continue;

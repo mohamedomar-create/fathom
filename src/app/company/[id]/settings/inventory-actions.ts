@@ -32,7 +32,7 @@ const Start = z.object({
   kind: z.enum(["valuation", "moves", "onhand", "products"]),
   periods: z.array(Period).max(240),
   filename: z.string().max(300).optional(),
-  mode: z.enum(["replace", "add"]),
+  mode: z.enum(["replace", "add", "all"]),
   report: z.record(z.string(), z.unknown()).optional(),
 });
 

@@ -1,5 +1,5 @@
 import type { LayerKind, MoveKind, OnHand, ProductRow } from "@/lib/ingest/inventory";
-import { layerKind, isInternalLocation } from "@/lib/ingest/inventory";
+import { layerKind, isInternalLocation, locationClass, productKey } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
 import { tieOut, type TieOut } from "./tieout";
@@ -55,6 +55,8 @@ export interface InventoryAnalysis {
   movements: { p: string; kind: MoveKind; q: number }[];
   locations: { loc: string; inQ: number; outQ: number }[];
   tieouts: TieOut[];
+  /** Where the valued stock is: warehouses, out with customers on rental, in transit (adds up to the stock value). */
+  position: StockPosition | null;
   findings: InventoryFinding[];
   headline: string;
 }
@@ -149,23 +151,62 @@ function monthTieOuts(d: InventoryData, ix: StockIndex, periods: string[], ledge
   return out;
 }
 
-/** Quantity on hand against the moves: only when the moves are the whole history (they start no later than a complete valuation history). */
-function onHandTieOut(d: InventoryData, ix: StockIndex, stock: Record<string, number> | null): TieOut | null {
-  if (!d.onhand.length || !ix.firstMove || !ix.firstLayer || isPartial(ix, stock) || ix.firstMove > ix.firstLayer) return null;
-  const asOf = d.onhand[0].asOf, pa = asOf.slice(0, 7);
-  const snap: Record<string, number> = {}, net: Record<string, number> = {};
-  for (const o of d.onhand) snap[o.code || o.product] = (snap[o.code || o.product] ?? 0) + o.qty;
+export interface StockPosition { warehouse: number; rental: number; transit: number }
+
+/**
+ * Where the valued stock is, and three checks between Odoo's own exports, product by product, at the stock-on-hand date
+ * (or the latest month): the units in the warehouses (Odoo's stock list against the moves), the units valued (the
+ * valuation against the moves into warehouses, out on rental and in transit), and the valuation against the warehouse value
+ * plus what is out on rental and in transit at each product's unit cost. Only when the moves are the whole history.
+ */
+function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, number> | null): { tieouts: TieOut[]; position: StockPosition | null } {
+  const none = { tieouts: [], position: null };
+  if (!ix.firstMove || !ix.firstLayer || isPartial(ix, stock) || ix.firstMove > ix.firstLayer) return none;
+  const asOf = d.onhand[0]?.asOf.slice(0, 7);
+  const pa = asOf ?? [ix.months.at(-1)!, ...d.moves.map((m) => m.p)].sort().at(-1)!;
+  const rentals = [...new Set(d.moves.flatMap((m) => (m.kind === "rental_out" ? [m.to] : m.kind === "rental_back" ? [m.from] : [])))];
+  const add = (o: Record<string, number>, k: string, v: number) => { o[k] = (o[k] ?? 0) + v; };
+  const wh: Record<string, number> = {}, rent: Record<string, number> = {}, trans: Record<string, number> = {};
+  const into: Record<string, Record<string, number>> = { warehouse: wh, rental_out: rent, transit: trans };
   for (const m of d.moves) {
     if (m.p > pa) continue;
-    const k = m.code || m.product;
-    net[k] = (net[k] ?? 0) + (isInternalLocation(m.to) ? m.q : 0) - (isInternalLocation(m.from) ? m.q : 0);
+    const k = productKey(m.code, m.product);
+    const to = into[locationClass(m.to, rentals)], from = into[locationClass(m.from, rentals)];
+    if (to) add(to, k, m.q);
+    if (from) add(from, k, -m.q);
   }
-  const total = (o: Record<string, number>) => Object.values(o).reduce((s, v) => s + v, 0);
-  return tieOut("qty_onhand", pa, total(snap), total(net), { module: snap, ledger: net }, 0);
+  const lq: Record<string, number> = {}, lv: Record<string, number> = {};
+  for (const l of d.layers) if (l.p <= pa) { const k = productKey(l.code, l.product); add(lq, k, l.q); add(lv, k, l.v); }
+  const keys = new Set([...Object.keys(lq), ...Object.keys(wh), ...Object.keys(rent), ...Object.keys(trans)]);
+  const owned: Record<string, number> = {}, unit = (k: string) => (lq[k] ? lv[k] / lq[k] : 0);
+  let rental = 0, transit = 0;
+  for (const k of keys) {
+    owned[k] = (wh[k] ?? 0) + (rent[k] ?? 0) + (trans[k] ?? 0);
+    rental += (rent[k] ?? 0) * unit(k); transit += (trans[k] ?? 0) * unit(k);
+  }
+  const total = (o: Record<string, number>) => Object.values(o).reduce((x, v) => x + v, 0);
+  const round = (o: Record<string, number>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, Math.round(v * 10000) / 10000]));
+  const books = total(lv);
+  const tieouts: TieOut[] = [tieOut("qty_valued", pa, total(lq), total(owned), { module: round(lq), ledger: round(owned) }, 0)];
+  if (d.onhand.length) {
+    const sq: Record<string, number> = {}, sv: Record<string, number> = {};
+    for (const o of d.onhand) { const k = productKey(o.code, o.product); add(sq, k, o.qty); if (o.value !== null) add(sv, k, o.value); }
+    // Odoo's stock list counts the warehouses only; the moves into them must give the same units.
+    const whOnly = Object.fromEntries(Object.entries(wh).filter(([k, v]) => v || k in sq));
+    tieouts.push(tieOut("qty_onhand", pa, total(sq), total(whOnly), { module: round(sq), ledger: round(whOnly) }, 0));
+    if (d.onhand.some((o) => o.value !== null)) {
+      const expected: Record<string, number> = {};
+      for (const k of new Set([...Object.keys(lv), ...Object.keys(sv)])) expected[k] = r2((sv[k] ?? 0) + ((rent[k] ?? 0) + (trans[k] ?? 0)) * unit(k));
+      tieouts.push(tieOut("onhand_value", pa, books, total(expected), { module: Object.fromEntries(Object.entries(lv).map(([k, v]) => [k, r2(v)])), ledger: expected }));
+    }
+  }
+  return { tieouts, position: { warehouse: r2(books - rental - transit), rental: r2(rental), transit: r2(transit) } };
 }
 
 /** Checks against the accounts (the internal ones, rentals and quantities, are not counted as "agreeing with the accounts"). */
 const ACCOUNT_CHECKS = new Set(["stock_value", "stock_movement", "cogs", "receipts"]);
+/** A check between Odoo's own exports (units, value by location, rentals), not against the accounts. */
+export const isInsideCheck = (key: string) => !ACCOUNT_CHECKS.has(key);
 export function tieSummary(tieouts: TieOut[]): { off: TieOut[]; agreed: number; checked: number } {
   const acc = tieouts.filter((t) => ACCOUNT_CHECKS.has(t.key) && t.status !== "no_ledger");
   return { off: tieouts.filter((t) => t.status === "off"), agreed: acc.filter((t) => t.status === "ok").length, checked: acc.length };
@@ -214,7 +255,7 @@ export function inventoryAnalysis(
   const acc = new Map<string, { code: string; product: string; category: string; v: number; q: number; c: number; firstIn?: string }>();
   for (const l of d.layers) {
     if (l.p > end) continue;
-    const k = l.code || l.product;
+    const k = productKey(l.code, l.product);
     const x = acc.get(k) ?? { code: l.code, product: l.product, category: l.category, v: 0, q: 0, c: 0 };
     x.v += l.v; x.q += l.q; x.product = l.product; x.category = l.category;
     if (inWin.has(l.p) && OUT_KINDS.has(l.kind)) x.c -= l.v;
@@ -256,21 +297,39 @@ export function inventoryAnalysis(
   // ---- tie-outs, month by month
   const partialValuation = hasValue && isPartial(ix, opts.ledger.stock);
   const tieouts = monthTieOuts(d, ix, periods, opts.ledger);
-  const qty = onHandTieOut(d, ix, opts.ledger.stock);
-  if (qty) tieouts.push(qty);
+  const pos = hasValue && hasMoves ? positionChecks(d, ix, opts.ledger.stock) : { tieouts: [], position: null };
+  tieouts.push(...pos.tieouts);
 
   // ---- findings
   const findings: InventoryFinding[] = [];
   const NAME: Record<string, [string, string]> = {
     stock_value: ["Stock value", "قيمة المخزون"], stock_movement: ["Stock movement", "حركة المخزون"], cogs: ["Cost of sales from deliveries", "تكلفة المبيعات من التسليمات"],
-    receipts: ["Receipts and landed costs", "الاستلامات والتكاليف الواصلة"], rental_value: ["Rental moves", "حركات التأجير"], qty_onhand: ["Quantity on hand", "الكمية المتاحة"],
+    receipts: ["Receipts and landed costs", "الاستلامات والتكاليف الواصلة"], rental_value: ["Rental moves", "حركات التأجير"], qty_onhand: ["Units in the warehouses", "الوحدات في المخازن"],
+    qty_valued: ["Units valued", "الوحدات المقيّمة"], onhand_value: ["Stock value by location", "قيمة المخزون حسب الموقع"],
+  };
+  // What each check inside Odoo's own exports means when it differs, and where to look.
+  const INSIDE: Record<string, { title: [string, string]; a: [string, string]; b: [string, string]; why: [string, string] }> = {
+    qty_valued: { title: ["Odoo's valuation and its moves disagree on units", "تقييم Odoo وحركاته مختلفان في عدد الوحدات"], a: ["the valuation holds", "التقييم يحمل"], b: ["the moves", "الحركات"],
+      why: ["Usually moves done while a product was not tracked in stock, or receipts posted without value. The stock value uses the valuation.", "غالبًا حركات تمت والصنف غير متتبع في المخزون، أو استلامات سُجّلت بلا قيمة. قيمة المخزون تعتمد على التقييم."] },
+    qty_onhand: { title: ["Odoo's stock list and its moves disagree on units", "قائمة مخزون Odoo وحركاته مختلفتان في عدد الوحدات"], a: ["the stock list shows", "قائمة المخزون تُظهر"], b: ["the moves into the warehouses", "الحركات إلى المخازن"],
+      why: ["Usually moves done while a product was not tracked in stock. Check these products' history in Odoo.", "غالبًا حركات تمت والصنف غير متتبع في المخزون. راجع تاريخ هذه الأصناف في Odoo."] },
+    onhand_value: { title: ["Stock value and Odoo's product list differ", "قيمة المخزون وقائمة أصناف Odoo مختلفتان"], a: ["the valuation is", "التقييم"], b: ["warehouses + on rental + in transit", "المخازن + التأجير + النقل"],
+      why: ["Usually a product missing from the list (archived) or a negative value left in the valuation.", "غالبًا صنف غير موجود في القائمة (مؤرشف) أو قيمة سالبة متبقية في التقييم."] },
+    rental_value: { title: ["Rental moves carry value", "حركات التأجير تحمل قيمة"], a: ["rental documents carry", "مستندات التأجير تحمل"], b: ["expected", "المتوقع"],
+      why: ["Renting out should move goods, not their value: check these documents in Odoo.", "التأجير يجب أن ينقل البضاعة لا قيمتها: راجع هذه المستندات في Odoo."] },
   };
   for (const t of tieouts.filter((x) => x.status === "off")) {
     const [en, a] = NAME[t.key];
-    const units = t.key === "qty_onhand";
+    const units = t.key === "qty_onhand" || t.key === "qty_valued";
     const f = (v: number) => (units ? String(r2(v)) : fmt(v));
     const causes = t.causes.slice(0, 3).map((c) => `${c.ref} (${f(c.module - c.ledger)})`).join(", ");
-    findings.push({
+    const inside = INSIDE[t.key];
+    findings.push(inside ? {
+      kind: "watch",
+      title: L(inside.title[0], inside.title[1]),
+      text: L(`${inside.a[0][0].toUpperCase()}${inside.a[0].slice(1)} ${f(t.module)}, ${inside.b[0]} ${f(t.ledger ?? 0)}.${causes ? ` Largest: ${causes}.` : ""} ${inside.why[0]}`,
+        `${inside.a[1]} ${f(t.module)}، ${inside.b[1]} ${f(t.ledger ?? 0)}.${causes ? ` الأكبر: ${causes}.` : ""} ${inside.why[1]}`),
+    } : {
       kind: "risk",
       title: L(`${en} differs from the accounts in ${ml(t.period)}`, `${a} يختلف عن الحسابات في ${ml(t.period)}`),
       text: L(`Inventory shows ${f(t.module)}, the accounts ${f(t.ledger ?? 0)}: a difference of ${f(t.diff ?? 0)}.${causes ? ` Largest: ${causes}.` : ""}`,
@@ -319,7 +378,7 @@ export function inventoryAnalysis(
     : L("No stock records loaded yet.", "لا توجد سجلات مخزون بعد.");
 
   return {
-    hasValue, hasMoves, partialValuation, label,
+    hasValue, hasMoves, partialValuation, label, position: pos.position,
     tiles: { value, days: value !== null && cogs && cogs > 0 ? Math.round(value / (cogs / daysWin)) : null, cogs, slow, dead },
     bridge, products, movements: [...mv.values()].map((m) => ({ ...m, q: Math.round(m.q * 10000) / 10000 })), locations: [...locs.values()],
     tieouts, findings, headline,
@@ -383,7 +442,6 @@ export function inventoryTieOuts(d: InventoryData, ledger: Ledger, fyStart: numb
   const ix = indexStock(d);
   const months = [...new Set([...ix.months, ...d.moves.map((m) => m.p)])].sort().slice(-n);
   const out = monthTieOuts(d, ix, months, ledger);
-  const qty = onHandTieOut(d, ix, ledger.stock);
-  if (qty) out.push(qty);
+  if (d.layers.length && d.moves.length) out.push(...positionChecks(d, ix, ledger.stock).tieouts);
   return out.sort((a, b) => a.period.localeCompare(b.period));
 }
