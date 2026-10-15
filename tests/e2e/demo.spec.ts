@@ -493,3 +493,26 @@ test("inventory upload: each sheet goes to Inventory only", async ({ page }) => 
   await expect(page.getByTestId("rental-location-select")).toBeVisible();
   await expect(page.getByTestId("commit-import")).toHaveText(/Create a free account to save/);
 });
+
+test("inventory pages show the demo stock and every tie-out green", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.goto("/demo/inventory");
+  await expect(page.getByTestId("inv-headline")).toBeVisible();
+  await expect(page.getByTestId("inv-tiles")).toBeVisible();
+  await expect(page.getByTestId("inv-bridge")).toBeVisible();
+  await expect(page.getByTestId("inv-tieouts")).toContainText("All checks agree with the accounts");
+  await page.goto("/demo/inventory/products");
+  const rows = page.getByTestId("inv-products").getByTestId("inv-product-row");
+  expect(await rows.count()).toBeGreaterThanOrEqual(6);
+  await expect(page.getByTestId("inv-products").getByTestId("abc-A").first()).toBeVisible();
+  await page.goto("/demo/inventory/movements");
+  await expect(page.getByTestId("inv-movements")).toBeVisible();
+  await expect(page.getByTestId("inv-locations")).toContainText("WH/Rental");
+  await page.goto("/demo/inventory/valuation");
+  await expect(page.getByTestId("inv-layers")).toBeVisible();
+  const table = page.getByTestId("inv-tieout-table");
+  await expect(table.getByTestId("tie-ok").first()).toBeVisible();
+  await expect(table.getByTestId("tie-off")).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

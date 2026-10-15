@@ -6,6 +6,7 @@ import { fin } from "./areas/fin";
 import { ana } from "./areas/ana";
 import { sales } from "./areas/sales";
 import { exp } from "./areas/exp";
+import { inv } from "./areas/inv";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -31,7 +32,7 @@ export const ar: Dict = {
     people: "إدارة المستخدمين",
     logout: "تسجيل الخروج",
   },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", banking: "البنوك" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", banking: "البنوك" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -52,6 +53,10 @@ export const ar: Dict = {
     "expenses/accounts": ["الحسابات", "المصروفات حسب الحساب"],
     "expenses/suppliers": ["الموردون", "الموردون"],
     "expenses/trend": ["الاتجاه", "اتجاه المصروفات"],
+    inventory: ["نظرة عامة", "نظرة عامة على المخزون"],
+    "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
+    "inventory/movements": ["الحركات", "حركات المخزون"],
+    "inventory/valuation": ["التقييم", "التقييم والمطابقة"],
     banking: ["الجاهزية البنكية", "الجاهزية للتمويل البنكي"],
   },
   settingsNav: {
@@ -97,6 +102,7 @@ export const ar: Dict = {
   ana: ana.ar,
   sales: sales.ar,
   exp: exp.ar,
+  inv: inv.ar,
   bank: bank.ar,
   rp: rp.ar,
   plan: plan.ar,

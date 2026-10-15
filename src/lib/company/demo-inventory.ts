@@ -44,12 +44,14 @@ export function demoStockFlows(): StockFlow[] {
   return (flowsCache = out);
 }
 
-/** Splits an amount over weights in whole cents; the last share takes the remainder, so the parts add up exactly. */
+/** Splits an amount over weights in whole cents; the last share with a weight takes the remainder, so the parts add up exactly and a zero weight gets nothing. */
 function split(total: number, ws: number[]): number[] {
   const sw = ws.reduce((s, w) => s + w, 0);
+  const last = ws.reduce((k, w, i) => (w ? i : k), -1);
   let used = 0;
   return ws.map((w, i) => {
-    const v = i === ws.length - 1 ? r2(total - used) : r2((total * w) / sw);
+    if (!w) return 0;
+    const v = i === last ? r2(total - used) : r2((total * w) / sw);
     used = r2(used + v);
     return v;
   });

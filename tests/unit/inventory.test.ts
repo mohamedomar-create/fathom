@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_INVENTORY, inventoryAnalysis, type InventoryData, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
+import { EMPTY_INVENTORY, inventoryAnalysis, inventoryMonthly, monthBridge, receiptCost, type InventoryData, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
 
 // Made-up products and documents (the repo is public). FIFO values are worked by hand.
 const layer = (p: string, kind: LayerKind, code: string, q: number, v: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, category: "", q, v, n: 1 });
@@ -150,6 +150,31 @@ describe("Inventory engine", () => {
   });
 });
 
+describe("Inventory page series", () => {
+  const two = data({ layers: [
+    layer("2026-08", "receipt", "P1", 10, 1000), layer("2026-08", "delivery", "P1", -4, -400),
+    layer("2026-09", "receipt", "P1", 5, 600), layer("2026-09", "landed_cost", "P1", 0, 30), layer("2026-09", "delivery", "P1", -6, -620), layer("2026-09", "scrap", "P1", -1, -100),
+  ] });
+
+  it("monthBridge opens where last month closed and adds up to the closing value", () => {
+    expect(monthBridge(two, "2026-08")).toEqual({ opening: 0, receipts: 1000, landed: 0, deliveries: -400, returns: 0, adjustments: 0, revaluation: 0, closing: 600 });
+    expect(monthBridge(two, "2026-09")).toEqual({ opening: 600, receipts: 600, landed: 30, deliveries: -620, returns: 0, adjustments: -100, revaluation: 0, closing: 510 });
+  });
+
+  it("inventoryMonthly gives closing value, cost of sales and goods received per month up to the end", () => {
+    expect(inventoryMonthly(two, "2026-09", 3)).toEqual([
+      { p: "2026-07", closing: 0, cogs: 0, received: 0 },
+      { p: "2026-08", closing: 600, cogs: 400, received: 1000 },
+      { p: "2026-09", closing: 510, cogs: 620, received: 630 },
+    ]);
+  });
+
+  it("receiptCost is the average unit cost of goods received each month, landed costs excluded, a month without receipts empty", () => {
+    const d = data({ layers: [...two.layers, layer("2026-09", "receipt", "P1", 5, 650)] });
+    expect(receiptCost(d, ["P1"], ["2026-07", "2026-08", "2026-09"])).toEqual([{ code: "P1", product: "Mask", points: [null, 100, 125] }]);
+  });
+});
+
 describe("demo company stock", async () => {
   const sample = (await import("../../reference/sample.json")).default;
   const { demoInventory } = await import("@/lib/company/demo-inventory");
@@ -169,6 +194,15 @@ describe("demo company stock", async () => {
     const year = inventoryAnalysis(d, { type: "year", end: "2026-09" }, sample.fy_start_month, { ledger, today: "2026-09-30" });
     expect(year.tieouts.some((t) => t.key === "qty_onhand" && t.status === "ok")).toBe(true);
     expect(year.products.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("the demo's slow item has no deliveries after its last sale, so the pages show slow stock", () => {
+    const d = demoInventory();
+    expect(d.layers.filter((l) => l.code === "VNT-C" && l.p > "2026-04" && l.kind === "delivery")).toEqual([]);
+    expect(d.lastOut["VNT-C"]).toBe("2026-04-25");
+    const a = inventoryAnalysis(d, { type: "month", end: "2026-09" }, sample.fy_start_month, { ledger });
+    expect(a.products.find((p) => p.code === "VNT-C")!.flag).toBe("slow");
+    expect(a.tiles.slow).toBeGreaterThan(0);
   });
 
   it("the demo's cost of sales from stock is the cost-of-goods account in its accounts", () => {

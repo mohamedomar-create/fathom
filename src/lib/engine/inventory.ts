@@ -262,3 +262,40 @@ export function inventoryLedger(months: { period: string; bs: Partial<Record<str
   for (const r of expenses.suppliers) if (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed")) cogs[r.p] = r2((cogs[r.p] ?? 0) + r.a);
   return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
 }
+
+const sumV = (rows: LayerRow[]) => rows.reduce((s, l) => s + l.v, 0);
+
+/** One month's stock value: where it opened, what each kind of layer added or took, and where it closed (adds up exactly). */
+export function monthBridge(d: InventoryData, p: string): InventoryBridge {
+  const rows = d.layers.filter((l) => l.p === p);
+  const k = (ks: LayerKind[]) => r2(sumV(rows.filter((l) => ks.includes(l.kind))));
+  return {
+    opening: r2(sumV(d.layers.filter((l) => l.p < p))),
+    receipts: k(["receipt"]), landed: k(["landed_cost"]), deliveries: k(["delivery"]), returns: k(["customer_return", "supplier_return"]),
+    adjustments: k(["adjustment", "scrap", "other"]), revaluation: k(["revaluation"]),
+    closing: r2(sumV(d.layers.filter((l) => l.p <= p))),
+  };
+}
+
+/** The n months up to the end: closing stock value, cost of goods delivered (net of customer returns) and goods received (landed costs and supplier returns included). */
+export function inventoryMonthly(d: InventoryData, end: string, n = 12): { p: string; closing: number; cogs: number; received: number }[] {
+  return Array.from({ length: n }, (_, i) => addMonths(end, i - n + 1)).map((p) => {
+    const rows = d.layers.filter((l) => l.p === p);
+    return {
+      p, closing: r2(sumV(d.layers.filter((l) => l.p <= p))),
+      cogs: r2(-sumV(rows.filter((l) => OUT_KINDS.has(l.kind)))) || 0,
+      received: r2(sumV(rows.filter((l) => IN_KINDS.has(l.kind)))),
+    };
+  });
+}
+
+/** What one unit cost when received, per product and month (value ÷ quantity of receipt layers); null in a month with no receipts. */
+export function receiptCost(d: InventoryData, codes: string[], periods: string[]): { code: string; product: string; points: (number | null)[] }[] {
+  return codes.map((code) => {
+    const rows = d.layers.filter((l) => l.code === code && l.kind === "receipt" && l.q > 0);
+    return {
+      code, product: rows[rows.length - 1]?.product ?? code,
+      points: periods.map((p) => { const m = rows.filter((l) => l.p === p); const q = m.reduce((s, l) => s + l.q, 0); return q > 0 ? r2(sumV(m) / q) : null; }),
+    };
+  });
+}
