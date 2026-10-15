@@ -318,6 +318,32 @@ describe("banks are lenders, not suppliers", () => {
     expect(a.findings.find((f) => f.title.startsWith("Banks take"))).toMatchObject({ kind: "risk", title: "Banks take 7.5% of sales" });
   });
 
+  it("groups government payments through CPS and company-card spending through VISA, apart from suppliers", () => {
+    const gl2 = [
+      { code: "512100", name: "Customs Duties", cls: "cos_variable" as const, excluded: false, entries: [entry("2026-10-10", "CPS/2026/0012", "Customs release", "", 8000)] },
+      { code: "522030", name: "IT Subscriptions", cls: "exp_fixed" as const, excluded: false, entries: [
+        entry("2026-10-11", "VISA/2026/0031", "Microsoft 365", "", 1200),
+        entry("2026-10-12", "VISA/2026/0032", "Zoom", "Zoom Video", 300),
+      ] },
+      { code: "522015", name: "Bank Charges & Fees Exp.", cls: "exp_variable" as const, excluded: false, entries: [
+        entry("2026-10-13", "CPS/2026/0013", "Gateway fee", "", 25),
+        entry("2026-10-14", "VISA/2026/0033", "Card fee", "", 50),
+      ] },
+    ];
+    const l2 = expensesFromLedger(gl2);
+    const by = (label: string) => l2.find((l) => l.label === label)!.supplier;
+    expect(by("Customs release")).toBe("Government payments (CPS)");
+    expect(by("Microsoft 365")).toBe("Company card spending (VISA)");
+    expect(by("Zoom")).toBe("Zoom Video");
+    expect(by("Gateway fee")).toBe("Bank: CPS (government payments)");
+    expect(by("Card fee")).toBe("Bank: Company cards (VISA)");
+    const accts: ExpenseAccount[] = gl2.map((l) => ({ id: l.code, code: l.code, name: l.name, cls: l.cls, amounts: { "2026-10": l.entries.reduce((s, e) => s + e.amount, 0) } }));
+    const a = expensesAnalysis(accts, summariseExpenses(l2), { type: "month", end: "2026-10" }, 1, { revenue: { "2026-10": 500000 } });
+    // Only Zoom is a supplier; the government and the card are not ranked as suppliers.
+    expect(a.concentration.suppliers).toBe(1);
+    expect(a.byLender.map((r) => r.name).sort()).toEqual(["CPS (government payments)", "Company cards (VISA)"]);
+  });
+
   it("the demo company pays its loan interest and bank charges to CIB", () => {
     const accts = spreadAccounts(sample.months as MonthData[]).filter((x) => ["740100", "610300"].includes(x.code)) as ExpenseAccount[];
     const a = expensesAnalysis(accts, demoExpenses(), { type: "month", end: "2026-09" }, 1);
