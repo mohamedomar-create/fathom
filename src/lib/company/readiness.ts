@@ -1,4 +1,6 @@
 import { addMonths, bsCalc, cashFlowByMonth, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, isCostLine, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
+import { inventoryLedger, inventoryTieOuts, type InventoryData } from "@/lib/engine/inventory";
+import type { TieOut } from "@/lib/engine/tieout";
 import type { TemplateKind } from "@/lib/templates/spec";
 import type { Check } from "./checks";
 
@@ -6,7 +8,7 @@ import type { Check } from "./checks";
  * How ready each sector's data is: what is loaded (completion) and how much of it passes the accounting checks
  * (accuracy), item by item, each with exactly what to upload or enter and how.
  */
-export type ReadinessSector = "financials" | "sales" | "expenses" | "banking" | "forecast";
+export type ReadinessSector = "financials" | "sales" | "expenses" | "inventory" | "banking" | "forecast";
 export type ItemStatus = "done" | "partial" | "missing";
 
 export interface ReadinessFix {
@@ -41,6 +43,7 @@ export interface ReadinessInput {
   fyStart: number;
   sales?: SalesData | null;
   expenses?: ExpensesData | null;
+  inventory?: InventoryData | null;
   assumptions?: Assumptions;
   forecast?: ForecastDrivers;
   today?: string;
@@ -212,6 +215,42 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   return { key: "expenses", label: "Expenses", ...summarise(items), items };
 }
 
+const STOCK_EXPORT = "Odoo: Inventory → Reporting → Valuation (and Moves History, Stock) → list view → select all → Export, with “I want to update data (import-compatible export)” ticked.";
+const TIE_NAMES: [TieOut["key"], string, string][] = [
+  ["stock_value", "Stock value", "Stock value equals the stock accounts"], ["stock_movement", "Stock change", "Each month's change in stock equals the accounts"],
+  ["cogs", "Cost of sales", "Cost of goods delivered equals cost of sales in the accounts"], ["receipts", "Receipts", "Goods received and landed costs equal the stock postings"],
+  ["rental_value", "Rentals", "Rental moves carry no value"], ["qty_onhand", "Quantities", "Stock on hand equals the moves"],
+];
+
+/** Stock: what is loaded (valuation, moves, on hand, with Odoo IDs) and, per check, how many months agree with the accounts (last 12 months with stock records). */
+export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
+  const d = x.inventory;
+  const FIX: ReadinessFix = { what: "Upload the stock valuation", how: STOCK_EXPORT, href: "settings/source-data?step=inventory" };
+  const items: ReadinessItem[] = [];
+  if (!d || (!d.layers.length && !d.moves.length && !d.onhand.length)) {
+    items.push(item({ id: "valuation", axis: "Valuation", title: "Stock records (optional)", completion: 0, accuracy: null, detail: "No stock records yet. Inventory pages need Odoo's stock valuation.", fix: FIX }));
+    return { key: "inventory", label: "Inventory", ...summarise(items), items };
+  }
+  const loaded = (id: string, axis: string, title: string, has: boolean, what: string) =>
+    items.push(item({ id, axis, title, completion: has ? 100 : 0, accuracy: null, detail: has ? "Loaded." : "Not loaded.", fix: has ? undefined : { ...FIX, what } }));
+  loaded("valuation", "Valuation", "Stock valuation (the money)", d.layers.length > 0, "Upload the stock valuation");
+  loaded("moves", "Moves", "Moves history (quantities and locations)", d.moves.length > 0, "Upload the moves history");
+  loaded("onhand", "On hand", "Stock on hand (the closing count)", d.onhand.length > 0, "Upload stock on hand");
+  items.push(item({ id: "ids", axis: "Odoo IDs", title: "Exported with Odoo's record IDs", completion: d.meta.withIds ? 100 : 0, accuracy: null,
+    detail: d.meta.withIds ? "Every record carries its Odoo ID: duplicates are refused exactly." : "Records are matched by date, document, product and amounts instead of Odoo's ID.",
+    fix: d.meta.withIds ? undefined : { what: "Export with Odoo IDs", how: "When exporting from Odoo, tick “I want to update data (import-compatible export)”.", href: "settings/source-data?step=inventory" } }));
+  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }), x.fyStart, 12, x.today);
+  for (const [key, axis, title] of TIE_NAMES) {
+    const all = ties.filter((t) => t.key === key);
+    if (!all.length) continue;
+    const checked = all.filter((t) => t.status !== "no_ledger"), ok = checked.filter((t) => t.status === "ok");
+    items.push(item({ id: `tie_${key}`, axis, title, completion: checked.length ? 100 : 0, accuracy: checked.length ? pct(ok.length / checked.length) : null,
+      detail: checked.length ? `${ok.length} of ${checked.length} month${checked.length === 1 ? "" : "s"} agree.` : "Nothing in the accounts to check against yet.",
+      fix: !checked.length ? { ...GL_FIX, what: "Upload your General Ledger for the same months" } : ok.length < checked.length ? { what: "Find the documents behind each difference", how: "On the Valuation page, each difference lists its documents.", href: "inventory/valuation" } : undefined }));
+  }
+  return { key: "inventory", label: "Inventory", ...summarise(items), items };
+}
+
 export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const pl = plMonths(x.months);
   const a = x.assumptions ?? {};
@@ -259,5 +298,5 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
 }
 
 export function readiness(x: ReadinessInput): SectorReadiness[] {
-  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), bankingReadiness(x), forecastReadiness(x)];
+  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), bankingReadiness(x), forecastReadiness(x)];
 }

@@ -2,6 +2,9 @@ import { DataHealth } from "@/components/settings/data-health";
 import { coverageOf, runChecks } from "@/lib/company/checks";
 import { demoCompany } from "@/lib/company/demo";
 import { statementOf } from "@/lib/company/import-plan";
+import { demoInventory } from "@/lib/company/demo-inventory";
+import { demoExpenses } from "@/lib/company/demo-expenses";
+import { StockChecks } from "@/components/inventory/stock-checks";
 
 export default function DemoDataHealth() {
   const c = demoCompany();
@@ -15,6 +18,7 @@ export default function DemoDataHealth() {
       <p className="mb-6 text-mute">Which months are loaded, where each one came from, and whether the accounting checks pass.</p>
       <DataHealth companyId="demo" readOnly justImported={false} coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}
         checks={runChecks({ accounts: c.accounts, months: c.months })} accepted={[]} sources={sources} history={[]} />
+      <StockChecks inventory={demoInventory()} expenses={demoExpenses()} />
     </div>
   );
 }

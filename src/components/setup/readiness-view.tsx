@@ -5,9 +5,11 @@ import { useMemo, useSyncExternalStore } from "react";
 import { useCompany } from "@/lib/company/context";
 import { useSales } from "@/lib/company/sales-context";
 import { useExpenses } from "@/lib/company/expenses-context";
+import { useInventory } from "@/lib/company/inventory-context";
 import { runChecks } from "@/lib/company/checks";
 import { readiness, type ReadinessItem, type ReadinessSector, type SectorReadiness } from "@/lib/company/readiness";
 import type { ExpensesData, SalesData } from "@/lib/engine";
+import type { InventoryData } from "@/lib/engine/inventory";
 import type { TemplateKind } from "@/lib/templates/spec";
 import { RadarChart, RadarLegend } from "@/components/charts/radar-chart";
 import { cn } from "@/lib/cn";
@@ -29,13 +31,13 @@ export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; 
   );
 }
 
-/** All sectors' readiness for the company (checks, sales and expense lines included when available). */
-export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null): SectorReadiness[] {
+/** All sectors' readiness for the company (checks, sales and expense lines, and stock included when available). */
+export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null, inventory?: InventoryData | null): SectorReadiness[] {
   const c = useCompany();
   return useMemo(() => readiness({
     months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
-    sales, expenses, assumptions: c.assumptions, forecast: c.forecast,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, sales, expenses]);
+    sales, expenses, inventory, assumptions: c.assumptions, forecast: c.forecast,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, sales, expenses, inventory]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
@@ -112,7 +114,9 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
   const c = useCompany();
   const sales = useSales();
   const expenses = useExpenses();
-  const all = useReadiness(sector === "sales" ? sales : null, sector === "expenses" ? expenses : null);
+  const inventory = useInventory();
+  // The stock checks compare against the cost of goods sold in the expense lines, so Inventory reads them too.
+  const all = useReadiness(sector === "sales" ? sales : null, sector === "expenses" || sector === "inventory" ? expenses : null, sector === "inventory" ? inventory : null);
   const r = all.find((x) => x.key === sector)!;
   const open = useSyncExternalStore(subscribe, () => readOpen(sector), () => true);
   const toggle = () => { try { localStorage.setItem(`${KEY}:${sector}`, open ? "closed" : "open"); } catch { /* storage unavailable */ } listeners.forEach((l) => l()); };

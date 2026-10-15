@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
-import { createCompany, importFiles, newEmail, requireLocalStack, signIn, signOut, signUp, PASSWORD } from "./helpers";
+import { createCompany, importFiles, newEmail, requireLocalStack, signIn, signOut, signUp, startUpload, PASSWORD } from "./helpers";
+import { STOCK_FILE, stockWorkbook } from "../fixtures/stock-workbook";
 
 requireLocalStack();
 
@@ -106,4 +107,33 @@ test("Arabic: a signed-in user's companies, account and menu read in Arabic", as
   await expect(page.getByTestId("delete-account")).toHaveText("حذف حسابي");
   await page.goto("/dashboard");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("لوحة المؤشرات");
+});
+
+test("inventory save is all-or-nothing and duplicates are refused", async ({ page }) => {
+  test.slow();
+  await signUp(page, { name: "Stock Owner", org: "Stock Advisory", email: newEmail("stock") });
+  const id = await createCompany(page, "Stock Co");
+  const save = async (mode: "replace" | "add") => {
+    await startUpload(page, id, "inventory", "inventory");
+    await page.getByTestId("file-input").setInputFiles({ ...STOCK_FILE, buffer: await stockWorkbook() });
+    await expect(page.getByTestId("inventory-only")).toBeVisible({ timeout: 15_000 });
+    await page.getByTestId("inventory-next").click();
+    await page.getByTestId(`inventory-mode-${mode}`).click();
+    await page.getByTestId("save-inventory").click();
+    return page.getByTestId("done-step");
+  };
+  // 3 valuation layers and 4 moves.
+  await expect(await save("replace")).toContainText("7 added · 0 already here", { timeout: 30_000 });
+  // The same file again, adding only new records: every record is already here.
+  await expect(await save("add")).toContainText("0 added · 7 already here", { timeout: 30_000 });
+  // The same file under Replace: its earlier copy is replaced, not doubled.
+  await expect(await save("replace")).toContainText("7 added · 0 already here", { timeout: 30_000 });
+
+  // Stored once: closing value 1,000 − 400 + 100, and 15 units received.
+  await page.goto(`/company/${id}/inventory/valuation`);
+  await expect(page.getByTestId("inv-layers")).toContainText("EGP 700");
+  await page.goto(`/company/${id}/inventory/movements`);
+  await expect(page.getByTestId("inv-movements")).toContainText("15");
+  await page.goto(`/company/${id}/inventory/products`);
+  await expect(page.getByTestId("inv-products")).toContainText("[P1]");
 });

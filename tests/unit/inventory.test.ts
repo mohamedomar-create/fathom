@@ -205,6 +205,16 @@ describe("demo company stock", async () => {
     expect(a.tiles.slow).toBeGreaterThan(0);
   });
 
+  it("inventoryTieOuts lists each check once per month over the last 12 months with stock records", async () => {
+    const { inventoryTieOuts } = await import("@/lib/engine/inventory");
+    const t = inventoryTieOuts(demoInventory(), ledger, sample.fy_start_month);
+    const months = [...new Set(t.map((x) => x.period))];
+    expect(months).toHaveLength(12);
+    expect(new Set(t.map((x) => `${x.key}|${x.period}`)).size).toBe(t.length);
+    expect(t.filter((x) => x.key === "qty_onhand")).toHaveLength(1);
+    expect(t.every((x) => x.status !== "off")).toBe(true);
+  });
+
   it("the demo's cost of sales from stock is the cost-of-goods account in its accounts", () => {
     for (const m of months) expect(ledger.cogs![m.period]).toBeGreaterThan(0);
     expect(ledger.stock!["2026-09"]).toBe(months.find((m) => m.period === "2026-09")!.bs.inventory);

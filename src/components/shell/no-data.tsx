@@ -10,8 +10,8 @@ export function NoDataGate({ children }: { children: React.ReactNode }) {
   const c = useCompany();
   const d = useDict();
   const path = usePathname();
-  // The Sales and Expenses pages explain for themselves what to upload.
-  if (c.months.length || path.includes("/settings") || path.includes("/reports") || /\/(sales|expenses)(\/|$)/.test(path)) return <>{children}</>;
+  // The Sales, Expenses and Inventory pages explain for themselves what to upload.
+  if (c.months.length || path.includes("/settings") || path.includes("/reports") || /\/(sales|expenses|inventory)(\/|$)/.test(path)) return <>{children}</>;
   return (
     <div className="mx-auto max-w-lg py-24 text-center">
       <DatabaseZap className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

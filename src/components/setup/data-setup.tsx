@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CheckCircle2, CircleDashed, AlertTriangle } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
 import { mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
+import type { InventoryData } from "@/lib/engine/inventory";
 import type { ItemStatus, SectorReadiness } from "@/lib/company/readiness";
 import { SectorPanel, TemplateButton, useReadiness } from "./readiness-view";
 import { DataMap } from "./data-map";
@@ -19,9 +20,9 @@ const sectorStatus = (r: SectorReadiness | undefined): ItemStatus => (!r ? "miss
  * The guided way in: each step says what to provide, why, and how (an Odoo export or iReport's template),
  * with its status from the data already loaded. Below, every sector's readiness radar.
  */
-export function DataSetup({ sales, expenses = null }: { sales: SalesData | null; expenses?: ExpensesData | null }) {
+export function DataSetup({ sales, expenses = null, inventory = null }: { sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryData | null }) {
   const c = useCompany();
-  const all = useReadiness(sales, expenses);
+  const all = useReadiness(sales, expenses, inventory);
   const by = (k: SectorReadiness["key"]) => all.find((r) => r.key === k);
   const fin = by("financials");
   const upload = (step: string) => `${c.basePath}/settings/source-data?step=${step}`;
@@ -56,7 +57,7 @@ export function DataSetup({ sales, expenses = null }: { sales: SalesData | null;
       actions: <><Link href={upload("expenses")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-expenses">Upload</Link><TemplateButton kind="expenses" compact /></>,
     },
     {
-      n: 6, title: "Your stock (optional)", status: sectorStatus(by("inventory" as SectorReadiness["key"])), testId: "step-inventory",
+      n: 6, title: "Your stock (optional)", status: sectorStatus(by("inventory")), testId: "step-inventory",
       why: "Stock value, movements and what sits unsold, checked against your accounts.",
       how: <>From Odoo: Inventory → Reporting → Valuation, Moves History and Stock → list view → Export, with “I want to update data (import-compatible export)” ticked. Upload one or all three together.</>,
       actions: <Link href={upload("inventory")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-inventory">Upload</Link>,

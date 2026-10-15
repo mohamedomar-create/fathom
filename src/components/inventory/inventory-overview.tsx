@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
+import { ReadinessCard } from "@/components/setup/readiness-view";
 import { useT } from "@/lib/i18n/use-t";
 import { Findings, InventoryPicker, NoInventory, StockBridge, TieBanner, Tile, useInventoryAnalysis } from "./common";
 
@@ -18,12 +19,13 @@ export function InventoryOverview() {
   const t = T.d.inv;
   const title = T.d.nav.inventory[1];
   const cur = c.settings.currency;
-  if (!s) return <><PageHeader title={title} /><NoInventory /></>;
+  if (!s) return <><PageHeader title={title} /><ReadinessCard sector="inventory" /><NoInventory /></>;
   const tl = s.tiles;
   const monthly = s.hasValue ? inventoryMonthly(d, s.end, 12) : [];
   return (
     <>
       <PageHeader title={title} right={<InventoryPicker s={s} />} />
+      <ReadinessCard sector="inventory" />
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="inv-headline">{s.headline}</p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4" data-testid="inv-tiles">
         <Tile label={t.value} value={tl.value === null ? "–" : money(tl.value, cur)} sub={<span className="text-mute">{tl.value === null ? t.needsValuation : s.label}</span>} testId="tile-stock-value" />
