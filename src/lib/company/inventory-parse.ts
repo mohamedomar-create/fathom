@@ -10,7 +10,7 @@ type Rows = Record<string, unknown>[];
 
 export function parseInventorySummary(raw: unknown): InventoryData {
   if (!raw || typeof raw !== "object") return EMPTY_INVENTORY;
-  const o = raw as { layers?: Rows; moves?: Rows; last_out?: Record<string, unknown>; onhand?: Rows; products?: Rows; byRef?: Rows; ledger?: Rows; meta?: Record<string, unknown> };
+  const o = raw as { layers?: Rows; moves?: Rows; last_out?: Record<string, unknown>; onhand?: Rows; products?: Rows; byRef?: Rows; ledger?: Rows; rental?: Rows; meta?: Record<string, unknown> };
   const meta = o.meta ?? {};
   return {
     layers: (o.layers ?? []).map((r) => ({ p: s(r.p), kind: layerKind(r.kind), code: s(r.code), product: s(r.product), category: s(r.category), q: n(r.q), v: n(r.v), n: n(r.n) })),
@@ -20,6 +20,7 @@ export function parseInventorySummary(raw: unknown): InventoryData {
     products: (o.products ?? []).map((r) => ({ code: s(r.code), name: s(r.name), category: s(r.category), cost: nOrNull(r.cost), type: s(r.type) })),
     byRef: (o.byRef ?? []).map((r) => ({ p: s(r.p), ref: s(r.ref), kind: layerKind(r.kind), v: n(r.v) })),
     ledger: (o.ledger ?? []).map((r) => ({ p: s(r.p), ref: s(r.ref), v: n(r.v) })),
+    rental: (o.rental ?? []).map((r) => ({ p: s(r.p), ref: s(r.ref) })),
     meta: { withIds: meta.withIds === true, kinds: Array.isArray(meta.kinds) ? meta.kinds.map(String) : [], periods: Array.isArray(meta.periods) ? meta.periods.map(String) : [] },
   };
 }

@@ -77,6 +77,7 @@ create temp table s as select public.inventory_summary((select co from ids)) j;
 select pg_temp.check('summary layers', (select string_agg((x ->> 'p') || ' ' || (x ->> 'kind') || ' ' || (x ->> 'v'), ',') from s, jsonb_array_elements(j -> 'layers') x), '2026-08 receipt 1000.00');
 select pg_temp.check('summary moves', (select string_agg((x ->> 'kind') || ' ' || (x ->> 'q'), ',') from s, jsonb_array_elements(j -> 'moves') x), 'rental_out 1.0000');
 select pg_temp.check('summary ledger refs', (select string_agg((x ->> 'ref') || ' ' || (x ->> 'v'), ',') from s, jsonb_array_elements(j -> 'ledger') x), 'WH/IN/00001 1000.00');
+select pg_temp.check('summary rental documents', (select string_agg((x ->> 'p') || ' ' || (x ->> 'ref'), ',') from s, jsonb_array_elements(j -> 'rental') x), '2026-09 WH/INT/00007');
 select pg_temp.check('summary knows the IDs', (select j -> 'meta' ->> 'withIds' from s), 'true');
 
 -- The same file uploaded again under Replace removes its earlier copy, even in months the new upload does not cover.

@@ -35,3 +35,11 @@ describe("the Inventory summary from the database", () => {
     expect(d.layers[0].kind).toBe("other");
   });
 });
+
+describe("rental move references", () => {
+  it("keeps the documents of rental moves, by month", () => {
+    const d = parseInventorySummary({ rental: [{ p: "2026-09", ref: "WH/INT/00007" }] });
+    expect(d.rental).toEqual([{ p: "2026-09", ref: "WH/INT/00007" }]);
+    expect(parseInventorySummary({}).rental).toEqual([]);
+  });
+});

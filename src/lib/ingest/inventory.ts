@@ -84,6 +84,12 @@ const ADJUST = arRx(/inventory adjustment|inventory loss|تسوية المخزو
 const SCRAP = arRx(/scrap|خردة|هالك|تالف/i);
 const PRODUCTION = arRx(/production|إنتاج|انتاج|التصنيع/i);
 
+/** A location of the company's own (a warehouse, shelf or the rental pool), not a partner or virtual one: stock held there is the company's. */
+export const isInternalLocation = (loc: string) => {
+  const l = normAr(loc);
+  return !!l && !VENDOR.test(l) && !CUSTOMER.test(l) && !ADJUST.test(l) && !SCRAP.test(l) && !PRODUCTION.test(l) && !/^(virtual|partner)/i.test(l);
+};
+
 const isRental = (loc: string, rental?: string | null) => (rental ? normAr(loc).toLowerCase() === normAr(rental).toLowerCase() : RENTAL.test(normAr(loc)));
 
 /** What a move did, from its source and destination locations (Odoo's partner and virtual locations). */

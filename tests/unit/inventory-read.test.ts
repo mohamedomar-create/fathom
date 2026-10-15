@@ -125,3 +125,16 @@ describe("stock postings from the General Ledger", async () => {
     ]);
   });
 });
+
+describe("company locations", async () => {
+  const { isInternalLocation } = await import("@/lib/ingest/inventory");
+  it("tells the company's own locations from partner and virtual ones", () => {
+    expect(isInternalLocation("WH/Stock")).toBe(true);
+    expect(isInternalLocation("WH/Rental")).toBe(true);
+    expect(isInternalLocation("Partners/Vendors")).toBe(false);
+    expect(isInternalLocation("Partners/Customers")).toBe(false);
+    expect(isInternalLocation("Virtual Locations/Inventory adjustment")).toBe(false);
+    expect(isInternalLocation("Virtual Locations/Scrap")).toBe(false);
+    expect(isInternalLocation("Virtual Locations/Production")).toBe(false);
+  });
+});

@@ -13,24 +13,25 @@ const MAX_CAUSES = 20;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
 /** The references whose amounts differ, largest gap first. */
-function causesOf(byRef: { module: Record<string, number>; ledger: Record<string, number> }): TieCause[] {
+function causesOf(byRef: { module: Record<string, number>; ledger: Record<string, number> }, tolerance: number): TieCause[] {
   const refs = new Set([...Object.keys(byRef.module), ...Object.keys(byRef.ledger)]);
   const out: TieCause[] = [];
   for (const ref of refs) {
     const inM = ref in byRef.module, inL = ref in byRef.ledger;
     const m = r2(byRef.module[ref] ?? 0), l = r2(byRef.ledger[ref] ?? 0);
-    if (Math.abs(m - l) <= TIE_TOLERANCE) continue;
+    if (Math.abs(m - l) <= tolerance) continue;
     out.push({ ref, module: m, ledger: l, why: !inL ? "module_only" : !inM ? "ledger_only" : "amount_differs" });
   }
   return out.sort((a, b) => Math.abs(b.module - b.ledger) - Math.abs(a.module - a.ledger)).slice(0, MAX_CAUSES);
 }
 
-export function tieOut(key: string, period: string, module: number, ledger: number | null, byRef?: { module: Record<string, number>; ledger: Record<string, number> }): TieOut {
+/** tolerance: one pound for money; 0 for quantities, which must match exactly. */
+export function tieOut(key: string, period: string, module: number, ledger: number | null, byRef?: { module: Record<string, number>; ledger: Record<string, number> }, tolerance = TIE_TOLERANCE): TieOut {
   const m = r2(module);
   if (ledger === null) return { key, period, module: m, ledger: null, diff: null, status: "no_ledger", causes: [] };
   const diff = r2(m - ledger);
-  const off = Math.abs(diff) > TIE_TOLERANCE;
-  return { key, period, module: m, ledger: r2(ledger), diff, status: off ? "off" : "ok", causes: off && byRef ? causesOf(byRef) : [] };
+  const off = Math.abs(diff) > tolerance;
+  return { key, period, module: m, ledger: r2(ledger), diff, status: off ? "off" : "ok", causes: off && byRef ? causesOf(byRef, tolerance) : [] };
 }
 
 /** The same check for each month; a month the ledger does not hold is "no_ledger". */
