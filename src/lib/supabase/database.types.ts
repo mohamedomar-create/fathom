@@ -36,9 +36,9 @@ export type SalesLineRow = { id: number; company_id: string; batch_id: string; s
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
-export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add"; report: Json; created_by: string | null; created_at: string }
-export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string }
-export type StockMoveRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; lot: string; from_loc: string; to_loc: string; qty: number; uom: string; partner: string }
+export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add"; status: "open" | "done"; report: Json; created_by: string | null; created_at: string }
+export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string; live: boolean }
+export type StockMoveRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; lot: string; from_loc: string; to_loc: string; qty: number; uom: string; partner: string; live: boolean }
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
 
@@ -90,6 +90,7 @@ export type Database = {
       begin_inventory_batch: { Args: { p_company: string; p_kind: string; p_periods: string[]; p_filename?: string; p_mode?: string; p_report?: Json }; Returns: string };
       add_stock_layers: { Args: { p_batch: string; p_rows: Json }; Returns: Json };
       add_stock_moves: { Args: { p_batch: string; p_rows: Json }; Returns: Json };
+      finish_inventory_batch: { Args: { p_batch: string }; Returns: Json };
       set_stock_onhand: { Args: { p_batch: string; p_as_of: string; p_rows: Json }; Returns: number };
       set_inventory_products: { Args: { p_company: string; p_rows: Json }; Returns: number };
       inventory_summary: { Args: { p_company: string }; Returns: Json };

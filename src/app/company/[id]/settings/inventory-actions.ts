@@ -37,8 +37,8 @@ const Start = z.object({
 });
 
 /**
- * Opens an upload of one kind of Inventory sheet. Under "replace" the database removes this kind's records for these months
- * and every earlier upload of the same file; under "add" it removes nothing.
+ * Opens an upload of one kind of Inventory sheet. Valuation and moves rows are then staged and the upload finished in one
+ * step: "replace" replaces this kind's records for these months, "add" keeps what is stored and adds only new records.
  */
 export async function startInventoryBatch(input: z.input<typeof Start>): Promise<{ ok: true; batch: string } | { ok: false; error: string }> {
   const v = Start.safeParse(input);
@@ -57,8 +57,8 @@ export async function startInventoryBatch(input: z.input<typeof Start>): Promise
   }
 }
 
-/** Adds up to 3,000 valuation layers or move lines to an open upload; rows already stored (same Odoo ID) are counted, not added. */
-export async function addInventoryRows(companyId: string, batch: string, kind: "valuation" | "moves", rows: unknown[], last = false): Promise<{ ok: true; added: number; already: number } | { ok: false; error: string }> {
+/** Stages up to 3,000 valuation layers or move lines in an open upload (nothing shows until it is finished). */
+export async function addInventoryRows(companyId: string, batch: string, kind: "valuation" | "moves", rows: unknown[]): Promise<{ ok: true; repeated: number } | { ok: false; error: string }> {
   const ids = Ids.safeParse({ companyId, batch });
   const rs = (kind === "valuation" ? z.array(Layer) : z.array(Move)).min(1).max(3000).safeParse(rows);
   if (!ids.success || !rs.success || (kind !== "valuation" && kind !== "moves")) return { ok: false, error: "The stock rows are not valid." };
@@ -67,11 +67,29 @@ export async function addInventoryRows(companyId: string, batch: string, kind: "
   try {
     const { data, error } = await supabase.rpc(kind === "valuation" ? "add_stock_layers" : "add_stock_moves", { p_batch: batch, p_rows: rs.data as unknown as Json });
     if (error) return { ok: false, error: missing(error) ? NOT_READY : dbError(error, kind === "valuation" ? "add_stock_layers" : "add_stock_moves") };
-    const out = data as { added: number; already: number };
-    if (last) revalidatePath(`/company/${companyId}`, "layout");
-    return { ok: true, added: Number(out.added), already: Number(out.already) };
+    return { ok: true, repeated: Number((data as { repeated: number }).repeated) };
   } catch (e) {
     return { ok: false, error: safeError(e, "addInventoryRows") };
+  }
+}
+
+/** Shown when "add only new" would mix records keyed by Odoo ID with records matched by their content. */
+const KEY_MIX = "These months were saved from an export with a different kind of record key (with or without Odoo's ID column), so adding would count records twice. Choose “Replace these months”, or export again the same way as before.";
+
+/** Finishes an upload in one step: replaces or adds, then shows it. Returns what was added and what was already here. */
+export async function finishInventoryBatch(companyId: string, batch: string): Promise<{ ok: true; added: number; already: number } | { ok: false; error: string }> {
+  const ids = Ids.safeParse({ companyId, batch });
+  if (!ids.success) return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const { data, error } = await supabase.rpc("finish_inventory_batch", { p_batch: batch });
+    if (error) return { ok: false, error: missing(error) ? NOT_READY : /KEY_MIX/.test(error.message ?? "") ? KEY_MIX : dbError(error, "finish_inventory_batch") };
+    revalidatePath(`/company/${companyId}`, "layout");
+    const out = data as { added: number; already: number };
+    return { ok: true, added: Number(out.added), already: Number(out.already) };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "finishInventoryBatch") };
   }
 }
 

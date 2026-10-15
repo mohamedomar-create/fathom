@@ -65,6 +65,112 @@ const dayDiff = (a: string, b: string) => Math.round((Date.parse(`${a}T00:00:00Z
 const OUT_KINDS = new Set<LayerKind>(["delivery", "customer_return"]);
 const IN_KINDS = new Set<LayerKind>(["receipt", "landed_cost", "supplier_return"]);
 
+type Ledger = { stock: Record<string, number> | null; cogs: Record<string, number> | null };
+type Refs = { module: Record<string, number>; ledger: Record<string, number> };
+
+/** The stock records indexed once, so a page or the 12-month checks never scan every row per month or per product. */
+interface StockIndex {
+  /** Months with layers, oldest first, and each one's value by kind. */
+  months: string[];
+  byMonth: Map<string, Map<LayerKind, number>>;
+  refs: Map<string, InventoryData["byRef"]>;
+  led: Map<string, { ref: string; v: number; kind: LayerKind }[]>;
+  rental: Map<string, Set<string>>;
+  firstLayer?: string;
+  firstMove?: string;
+}
+
+const group = <T, K>(xs: T[], key: (x: T) => K) => { const m = new Map<K, T[]>(); for (const x of xs) { const k = key(x); const a = m.get(k); if (a) a.push(x); else m.set(k, [x]); } return m; };
+
+function indexStock(d: InventoryData): StockIndex {
+  const byMonth = new Map<string, Map<LayerKind, number>>();
+  for (const l of d.layers) {
+    const m = byMonth.get(l.p) ?? new Map<LayerKind, number>();
+    m.set(l.kind, (m.get(l.kind) ?? 0) + l.v); byMonth.set(l.p, m);
+  }
+  const rental = new Map<string, Set<string>>();
+  for (const r of d.rental) { const x = rental.get(r.p) ?? new Set<string>(); x.add(r.ref); rental.set(r.p, x); }
+  const months = [...byMonth.keys()].sort();
+  return {
+    months, byMonth, rental,
+    refs: group(d.byRef, (r) => r.p),
+    led: group(d.ledger.map((r) => ({ p: r.p, ref: r.ref, v: r.v, kind: layerKind(r.ref, "", r.v) })), (r) => r.p),
+    firstLayer: months[0],
+    firstMove: d.moves.reduce<string | undefined>((a, m) => (!a || m.p < a ? m.p : a), undefined),
+  };
+}
+
+const kindSum = (ix: StockIndex, p: string, kinds?: Set<LayerKind>) => { let v = 0; for (const [k, x] of ix.byMonth.get(p) ?? []) if (!kinds || kinds.has(k)) v += x; return v; };
+const closingOf = (ix: StockIndex, p: string) => { let v = 0; for (const m of ix.months) { if (m > p) break; v += kindSum(ix, m); } return v; };
+
+/** The valuation export starts after the first month the accounts hold stock: closing value cannot be checked against them. */
+function isPartial(ix: StockIndex, stock: Record<string, number> | null) {
+  const firstStock = stock ? Object.keys(stock).filter((p) => Math.abs(stock[p]) > 0.005).sort()[0] : undefined;
+  return !!ix.firstLayer && !!firstStock && ix.firstLayer > firstStock;
+}
+
+/**
+ * The checks against the General Ledger for these months. The documents behind a difference are gathered only when a
+ * check is off. A month the ledger does not hold is no_ledger, never off.
+ */
+function monthTieOuts(d: InventoryData, ix: StockIndex, periods: string[], ledger: Ledger): TieOut[] {
+  const out: TieOut[] = [];
+  const stock = ledger.stock, hasLedgerRefs = d.ledger.length > 0, partial = isPartial(ix, stock);
+  const refsOf = <R extends { ref: string; v: number }>(rows: R[] | undefined, keep: (r: R) => boolean, sign: number, o: Record<string, number> = {}) => {
+    for (const r of rows ?? []) if (keep(r)) o[r.ref] = (o[r.ref] ?? 0) + sign * r.v;
+    return o;
+  };
+  const upTo = (p: string): Refs => {
+    const mod: Record<string, number> = {}, led: Record<string, number> = {};
+    for (const [m, rows] of ix.refs) if (m <= p) refsOf(rows, () => true, 1, mod);
+    for (const [m, rows] of ix.led) if (m <= p) refsOf(rows, () => true, 1, led);
+    return { module: mod, ledger: led };
+  };
+  const inMonth = (p: string, kinds?: Set<LayerKind>, sign = 1): Refs => ({
+    module: refsOf(ix.refs.get(p), (r) => !kinds || kinds.has(r.kind), sign),
+    ledger: refsOf(ix.led.get(p), (r) => !kinds || kinds.has(r.kind), sign),
+  });
+  if (d.layers.length) for (const p of periods) {
+    if (!partial) out.push(tieOut("stock_value", p, closingOf(ix, p), stock && p in stock ? stock[p] : null, hasLedgerRefs ? () => upTo(p) : undefined));
+    const prev = addMonths(p, -1);
+    out.push(tieOut("stock_movement", p, kindSum(ix, p), stock && p in stock && prev in stock ? stock[p] - stock[prev] : null, hasLedgerRefs ? () => inMonth(p) : undefined));
+    out.push(tieOut("cogs", p, -kindSum(ix, p, OUT_KINDS), ledger.cogs && p in ledger.cogs ? ledger.cogs[p] : null, hasLedgerRefs ? () => inMonth(p, OUT_KINDS, -1) : undefined));
+    // The ledger holds the month when it has stock postings in it or the month's balance sheet is loaded.
+    const holds = hasLedgerRefs && (ix.led.has(p) || (!!stock && p in stock));
+    out.push(tieOut("receipts", p, kindSum(ix, p, IN_KINDS), holds ? (ix.led.get(p) ?? []).filter((r) => IN_KINDS.has(r.kind)).reduce((s, r) => s + r.v, 0) : null,
+      hasLedgerRefs ? () => inMonth(p, IN_KINDS) : undefined));
+  }
+  if (d.moves.length) for (const p of periods) {
+    const refs = ix.rental.get(p) ?? new Set<string>();
+    const valued: Record<string, number> = {};
+    for (const r of ix.refs.get(p) ?? []) if (refs.has(r.ref)) valued[r.ref] = (valued[r.ref] ?? 0) + Math.abs(r.v);
+    out.push(tieOut("rental_value", p, Object.values(valued).reduce((s, v) => s + v, 0), 0, { module: valued, ledger: {} }));
+  }
+  return out;
+}
+
+/** Quantity on hand against the moves: only when the moves are the whole history (they start no later than a complete valuation history). */
+function onHandTieOut(d: InventoryData, ix: StockIndex, stock: Record<string, number> | null): TieOut | null {
+  if (!d.onhand.length || !ix.firstMove || !ix.firstLayer || isPartial(ix, stock) || ix.firstMove > ix.firstLayer) return null;
+  const asOf = d.onhand[0].asOf, pa = asOf.slice(0, 7);
+  const snap: Record<string, number> = {}, net: Record<string, number> = {};
+  for (const o of d.onhand) snap[o.code || o.product] = (snap[o.code || o.product] ?? 0) + o.qty;
+  for (const m of d.moves) {
+    if (m.p > pa) continue;
+    const k = m.code || m.product;
+    net[k] = (net[k] ?? 0) + (isInternalLocation(m.to) ? m.q : 0) - (isInternalLocation(m.from) ? m.q : 0);
+  }
+  const total = (o: Record<string, number>) => Object.values(o).reduce((s, v) => s + v, 0);
+  return tieOut("qty_onhand", pa, total(snap), total(net), { module: snap, ledger: net }, 0);
+}
+
+/** Checks against the accounts (the internal ones, rentals and quantities, are not counted as "agreeing with the accounts"). */
+const ACCOUNT_CHECKS = new Set(["stock_value", "stock_movement", "cogs", "receipts"]);
+export function tieSummary(tieouts: TieOut[]): { off: TieOut[]; agreed: number; checked: number } {
+  const acc = tieouts.filter((t) => ACCOUNT_CHECKS.has(t.key) && t.status !== "no_ledger");
+  return { off: tieouts.filter((t) => t.status === "off"), agreed: acc.filter((t) => t.status === "ok").length, checked: acc.length };
+}
+
 /**
  * The Inventory pages for a period: stock value and how it moved, products, movements, findings, and the tie-outs that
  * check every month against the General Ledger.
@@ -88,7 +194,8 @@ export function inventoryAnalysis(
   const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
 
   // ---- value: closing is every layer up to the month end; the bridge splits the period's layers by kind
-  const closingAt = (p: string) => sum(d.layers.filter((l) => l.p <= p), (l) => l.v);
+  const ix = indexStock(d);
+  const closingAt = (p: string) => closingOf(ix, p);
   const win = d.layers.filter((l) => inWin.has(l.p));
   const byKind = (ks: LayerKind[], rows = win) => sum(rows.filter((l) => ks.includes(l.kind)), (l) => l.v);
   const bridge: InventoryBridge | null = hasValue ? {
@@ -103,17 +210,23 @@ export function inventoryAnalysis(
 
   // ---- products
   const today = opts.today ?? `${end}-${String(daysIn(end)).padStart(2, "0")}`;
-  const codes = [...new Set(d.layers.filter((l) => l.p <= end).map((l) => l.code))];
-  const stats = codes.map((code) => {
-    const rows = d.layers.filter((l) => l.code === code && l.p <= end);
-    const last = rows[rows.length - 1];
-    const v = r2(sum(rows, (l) => l.v)), q = Math.round(sum(rows, (l) => l.q) * 10000) / 10000;
-    const c = r2(-sum(rows.filter((l) => inWin.has(l.p) && OUT_KINDS.has(l.kind)), (l) => l.v));
-    const lastOut = d.lastOut[code] ?? null;
-    const firstIn = rows.filter((l) => l.kind === "receipt").map((l) => l.p).sort()[0];
-    const idle = lastOut ? dayDiff(today, lastOut) : firstIn ? dayDiff(today, `${firstIn}-01`) : 0;
+  // Each product's layers added up in one pass (a product with no internal reference is keyed by its name).
+  const acc = new Map<string, { code: string; product: string; category: string; v: number; q: number; c: number; firstIn?: string }>();
+  for (const l of d.layers) {
+    if (l.p > end) continue;
+    const k = l.code || l.product;
+    const x = acc.get(k) ?? { code: l.code, product: l.product, category: l.category, v: 0, q: 0, c: 0 };
+    x.v += l.v; x.q += l.q; x.product = l.product; x.category = l.category;
+    if (inWin.has(l.p) && OUT_KINDS.has(l.kind)) x.c -= l.v;
+    if (l.kind === "receipt" && (!x.firstIn || l.p < x.firstIn)) x.firstIn = l.p;
+    acc.set(k, x);
+  }
+  const stats = [...acc.entries()].map(([k, x]) => {
+    const v = r2(x.v), q = Math.round(x.q * 10000) / 10000, c = r2(x.c);
+    const lastOut = d.lastOut[k] ?? null;
+    const idle = lastOut ? dayDiff(today, lastOut) : x.firstIn ? dayDiff(today, `${x.firstIn}-01`) : 0;
     const flag: ProductStat["flag"] = v > 0 ? (idle >= DEAD_DAYS ? "dead" : idle >= SLOW_DAYS ? "slow" : null) : null;
-    return { code, product: last.product, category: last.category, value: v, qty: q, cogs: c, days: c > 0 ? Math.round(v / (c / daysWin)) : null,
+    return { code: x.code, product: x.product, category: x.category, value: v, qty: q, cogs: c, days: c > 0 ? Math.round(v / (c / daysWin)) : null,
       turnover: v > 0 && c > 0 ? r2((c * 365 / daysWin) / v) : null, abc: "C" as ProductStat["abc"], lastOut, flag };
   });
   const totalCogs = sum(stats.filter((s) => s.cogs > 0), (s) => s.cogs);
@@ -141,47 +254,10 @@ export function inventoryAnalysis(
   }
 
   // ---- tie-outs, month by month
-  const tieouts: TieOut[] = [];
-  const refsTo = <R extends { p: string; ref: string; v: number }>(rows: R[], keep: (r: R) => boolean, sign = 1) => {
-    const o: Record<string, number> = {};
-    for (const r of rows) if (keep(r)) o[r.ref] = (o[r.ref] ?? 0) + sign * r.v;
-    return o;
-  };
-  const ledgerKind = (r: { ref: string; v: number }) => layerKind(r.ref, "", r.v);
-  const hasLedgerRefs = d.ledger.length > 0;
-  const stock = opts.ledger.stock;
-  const firstLayer = d.layers.map((l) => l.p).sort()[0];
-  const firstStock = stock ? Object.keys(stock).filter((p) => Math.abs(stock[p]) > 0.005).sort()[0] : undefined;
-  const partialValuation = hasValue && !!firstStock && firstLayer > firstStock;
-  if (hasValue) for (const p of periods) {
-    if (!partialValuation) tieouts.push(tieOut("stock_value", p, closingAt(p), stock && p in stock ? stock[p] : null,
-      hasLedgerRefs ? { module: refsTo(d.byRef, (r) => r.p <= p), ledger: refsTo(d.ledger, (r) => r.p <= p) } : undefined));
-    const prev = addMonths(p, -1);
-    tieouts.push(tieOut("stock_movement", p, sum(d.layers.filter((l) => l.p === p), (l) => l.v), stock && p in stock && prev in stock ? stock[p] - stock[prev] : null,
-      hasLedgerRefs ? { module: refsTo(d.byRef, (r) => r.p === p), ledger: refsTo(d.ledger, (r) => r.p === p) } : undefined));
-    tieouts.push(tieOut("cogs", p, -byKind(["delivery", "customer_return"], d.layers.filter((l) => l.p === p)), opts.ledger.cogs && p in opts.ledger.cogs ? opts.ledger.cogs[p] : null,
-      hasLedgerRefs ? { module: refsTo(d.byRef, (r) => r.p === p && OUT_KINDS.has(r.kind), -1), ledger: refsTo(d.ledger, (r) => r.p === p && OUT_KINDS.has(ledgerKind(r)), -1) } : undefined));
-    tieouts.push(tieOut("receipts", p, byKind(["receipt", "landed_cost", "supplier_return"], d.layers.filter((l) => l.p === p)),
-      hasLedgerRefs ? sum(d.ledger.filter((r) => r.p === p && IN_KINDS.has(ledgerKind(r))), (r) => r.v) : null,
-      hasLedgerRefs ? { module: refsTo(d.byRef, (r) => r.p === p && IN_KINDS.has(r.kind)), ledger: refsTo(d.ledger, (r) => r.p === p && IN_KINDS.has(ledgerKind(r))) } : undefined));
-  }
-  if (hasMoves) for (const p of periods) {
-    const refs = new Set(d.rental.filter((r) => r.p === p).map((r) => r.ref));
-    const valued: Record<string, number> = {};
-    for (const r of d.byRef) if (r.p === p && refs.has(r.ref)) valued[r.ref] = (valued[r.ref] ?? 0) + Math.abs(r.v);
-    tieouts.push(tieOut("rental_value", p, sum(Object.values(valued), (v) => v), 0, { module: valued, ledger: {} }));
-  }
-  const firstMove = d.moves.map((m) => m.p).sort()[0];
-  if (d.onhand.length && hasMoves && (!firstLayer || firstMove <= firstLayer)) {
-    const asOf = d.onhand[0].asOf, pa = asOf.slice(0, 7);
-    const snap: Record<string, number> = {}, net: Record<string, number> = {};
-    for (const o of d.onhand) snap[o.code || o.product] = (snap[o.code || o.product] ?? 0) + o.qty;
-    for (const m of d.moves.filter((x) => x.p <= pa)) {
-      const k = m.code || m.product;
-      net[k] = (net[k] ?? 0) + (isInternalLocation(m.to) ? m.q : 0) - (isInternalLocation(m.from) ? m.q : 0);
-    }
-    tieouts.push(tieOut("qty_onhand", pa, sum(Object.values(snap), (v) => v), sum(Object.values(net), (v) => v), { module: snap, ledger: net }, 0));
-  }
+  const partialValuation = hasValue && isPartial(ix, opts.ledger.stock);
+  const tieouts = monthTieOuts(d, ix, periods, opts.ledger);
+  const qty = onHandTieOut(d, ix, opts.ledger.stock);
+  if (qty) tieouts.push(qty);
 
   // ---- findings
   const findings: InventoryFinding[] = [];
@@ -258,8 +334,9 @@ export function inventoryAnalysis(
 export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[] }): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
   const stock: Record<string, number> = {};
   for (const m of months) if (Object.keys(m.bs).length) stock[m.period] = Number(m.bs.inventory ?? 0);
+  // A month with expense lines is in the ledger: its cost of sales from stock is what was posted there, 0 when nothing was.
   const cogs: Record<string, number> = {};
-  for (const r of expenses.suppliers) if (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed")) cogs[r.p] = r2((cogs[r.p] ?? 0) + r.a);
+  for (const r of expenses.suppliers) cogs[r.p] = r2((cogs[r.p] ?? 0) + (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed") ? r.a : 0));
   return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
 }
 
@@ -301,9 +378,12 @@ export function receiptCost(d: InventoryData, codes: string[], periods: string[]
 }
 
 /** Every tie-out, once per check and month, over the last n months with stock records (for readiness and Data health). */
-export function inventoryTieOuts(d: InventoryData, ledger: { stock: Record<string, number> | null; cogs: Record<string, number> | null }, fyStart: number, n = 12, today?: string): TieOut[] {
-  const months = [...new Set([...d.layers.map((l) => l.p), ...d.moves.map((m) => m.p)])].sort().slice(-n);
-  const ties = new Map<string, TieOut>();
-  for (const p of months) for (const t of inventoryAnalysis(d, { type: "month", end: p }, fyStart, { ledger, today }).tieouts) ties.set(`${t.key}|${t.period}`, t);
-  return [...ties.values()].sort((a, b) => a.period.localeCompare(b.period));
+export function inventoryTieOuts(d: InventoryData, ledger: Ledger, fyStart: number, n = 12): TieOut[] {
+  void fyStart;
+  const ix = indexStock(d);
+  const months = [...new Set([...ix.months, ...d.moves.map((m) => m.p)])].sort().slice(-n);
+  const out = monthTieOuts(d, ix, months, ledger);
+  const qty = onHandTieOut(d, ix, ledger.stock);
+  if (qty) out.push(qty);
+  return out.sort((a, b) => a.period.localeCompare(b.period));
 }

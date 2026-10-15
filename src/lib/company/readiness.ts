@@ -239,7 +239,7 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   items.push(item({ id: "ids", axis: "Odoo IDs", title: "Exported with Odoo's record IDs", completion: d.meta.withIds ? 100 : 0, accuracy: null,
     detail: d.meta.withIds ? "Every record carries its Odoo ID: duplicates are refused exactly." : "Records are matched by date, document, product and amounts instead of Odoo's ID.",
     fix: d.meta.withIds ? undefined : { what: "Export with Odoo IDs", how: "When exporting from Odoo, tick “I want to update data (import-compatible export)”.", href: "settings/source-data?step=inventory" } }));
-  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }), x.fyStart, 12, x.today);
+  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }), x.fyStart, 12);
   for (const [key, axis, title] of TIE_NAMES) {
     const all = ties.filter((t) => t.key === key);
     if (!all.length) continue;

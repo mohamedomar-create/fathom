@@ -10,6 +10,8 @@ create table if not exists public.inventory_batches (
   filename text,
   periods text[] not null default '{}',
   mode text not null default 'replace' check (mode in ('replace', 'add')),
+  -- Valuation and moves uploads stay open while their rows are sent, and are finished in one step (see finish_inventory_batch).
+  status text not null default 'open' check (status in ('open', 'done')),
   report jsonb not null default '{}'::jsonb,
   created_by uuid references auth.users (id) on delete set null,
   created_at timestamptz not null default now()
@@ -35,8 +37,12 @@ create table if not exists public.stock_layers (
   value numeric(18, 2) not null default 0,
   partner text not null default '',
   landed_ref text not null default '',
-  unique (company_id, odoo_key)
+  -- false while its upload is open: the pages read live rows only, so an upload shows all at once or not at all.
+  live boolean not null default false,
+  unique (batch_id, odoo_key)
 );
+-- One live copy of each Odoo record per company.
+create unique index if not exists stock_layers_live_key on public.stock_layers (company_id, odoo_key) where live;
 create index if not exists stock_layers_company_period_idx on public.stock_layers (company_id, period);
 create index if not exists stock_layers_batch_idx on public.stock_layers (batch_id);
 
@@ -58,8 +64,10 @@ create table if not exists public.stock_moves (
   qty numeric(18, 4) not null default 0,
   uom text not null default '',
   partner text not null default '',
-  unique (company_id, odoo_key)
+  live boolean not null default false,
+  unique (batch_id, odoo_key)
 );
+create unique index if not exists stock_moves_live_key on public.stock_moves (company_id, odoo_key) where live;
 create index if not exists stock_moves_company_period_idx on public.stock_moves (company_id, period);
 create index if not exists stock_moves_batch_idx on public.stock_moves (batch_id);
 
@@ -75,7 +83,7 @@ create table if not exists public.stock_onhand (
   lot text not null default '',
   qty numeric(18, 4) not null default 0,
   value numeric(18, 2),
-  unique (company_id, as_of, product, location, lot)
+  unique (company_id, as_of, code, product, location, lot)
 );
 
 -- The latest products list: category and cost per product code.
@@ -128,10 +136,10 @@ begin
   end loop;
 end $$;
 
--- Start an upload of one kind of sheet.
---  replace: this kind's records for these months are removed first, and so is every earlier upload of the same file
---           (a file uploaded again never leaves its old copy behind);
---  add:     nothing is removed; records already stored (same Odoo ID) are counted, not added again.
+-- Start an upload of one kind of sheet. Valuation and moves rows are then sent in chunks and finished in one step:
+--  replace: on finishing, this kind's records for these months are replaced by the upload;
+--  add:     on finishing, records already stored (same Odoo ID) are counted, not added again.
+-- An earlier upload of the same kind that was never finished is dropped (it never showed).
 create or replace function public.begin_inventory_batch(p_company uuid, p_kind text, p_periods text[], p_filename text default null, p_mode text default 'replace', p_report jsonb default '{}'::jsonb)
 returns uuid
 language plpgsql
@@ -140,7 +148,6 @@ set search_path = ''
 as $$
 declare
   v_batch uuid;
-  v_file text := left(p_filename, 300);
 begin
   if not private.is_member(private.company_org(p_company), 'editor') then
     raise exception 'not allowed' using errcode = '42501';
@@ -148,26 +155,15 @@ begin
   if p_kind not in ('valuation', 'moves', 'onhand', 'products') then raise exception 'unknown kind'; end if;
   if p_mode not in ('replace', 'add') then raise exception 'unknown mode'; end if;
   if p_kind <> 'products' and (coalesce(array_length(p_periods, 1), 0) = 0 or array_length(p_periods, 1) > 240) then raise exception 'periods required'; end if;
-  if p_mode = 'replace' then
-    if p_kind = 'valuation' then
-      delete from public.stock_layers where company_id = p_company and (period = any (p_periods)
-        or (v_file is not null and batch_id in (select id from public.inventory_batches where company_id = p_company and kind = 'valuation' and filename = v_file)));
-    elsif p_kind = 'moves' then
-      delete from public.stock_moves where company_id = p_company and (period = any (p_periods)
-        or (v_file is not null and batch_id in (select id from public.inventory_batches where company_id = p_company and kind = 'moves' and filename = v_file)));
-    end if;
-    -- Uploads left with no records are dropped (snapshots and products keep their batch: they are replaced by date or code).
-    delete from public.inventory_batches b where b.company_id = p_company and b.kind = p_kind and p_kind in ('valuation', 'moves')
-      and not exists (select 1 from public.stock_layers l where l.batch_id = b.id)
-      and not exists (select 1 from public.stock_moves m where m.batch_id = b.id);
-  end if;
-  insert into public.inventory_batches (company_id, kind, filename, periods, mode, report, created_by)
-  values (p_company, p_kind, v_file, coalesce(p_periods, '{}'), p_mode, coalesce(p_report, '{}'::jsonb), (select auth.uid()))
+  delete from public.inventory_batches where company_id = p_company and kind = p_kind and status = 'open';
+  insert into public.inventory_batches (company_id, kind, filename, periods, mode, status, report, created_by)
+  values (p_company, p_kind, left(p_filename, 300), coalesce(p_periods, '{}'), p_mode,
+          case when p_kind in ('valuation', 'moves') then 'open' else 'done' end, coalesce(p_report, '{}'::jsonb), (select auth.uid()))
   returning id into v_batch;
   return v_batch;
 end $$;
 
--- Add up to 5,000 layers to a valuation upload. Rows outside its months are refused; rows already stored are counted.
+-- Stage up to 5,000 layers in an open valuation upload. Rows outside its months are refused; a row sent twice is counted once.
 create or replace function public.add_stock_layers(p_batch uuid, p_rows jsonb)
 returns jsonb
 language plpgsql
@@ -183,7 +179,7 @@ begin
   if not found or not private.is_member(private.company_org(b.company_id), 'editor') then
     raise exception 'not allowed' using errcode = '42501';
   end if;
-  if b.kind <> 'valuation' then raise exception 'not a valuation upload'; end if;
+  if b.kind <> 'valuation' or b.status <> 'open' then raise exception 'not an open valuation upload'; end if;
   if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) > 5000 then raise exception 'send 1 to 5000 rows'; end if;
   select count(*) into v_in from jsonb_array_elements(p_rows) r where r ->> 'period' = any (b.periods) and coalesce(r ->> 'odoo_key', '') <> '';
   insert into public.stock_layers (company_id, batch_id, odoo_key, day, period, ref, kind, product, code, category, lot, qty, unit_value, value, partner, landed_ref)
@@ -194,12 +190,12 @@ begin
          left(coalesce(r ->> 'partner', ''), 200), left(coalesce(r ->> 'landed_ref', ''), 120)
   from jsonb_array_elements(p_rows) r
   where r ->> 'period' = any (b.periods) and coalesce(r ->> 'odoo_key', '') <> ''
-  on conflict (company_id, odoo_key) do nothing;
+  on conflict (batch_id, odoo_key) do nothing;
   get diagnostics v_added = row_count;
-  return jsonb_build_object('added', v_added, 'already', v_in - v_added);
+  return jsonb_build_object('staged', v_added, 'repeated', v_in - v_added);
 end $$;
 
--- Add up to 5,000 done move lines to a moves upload, the same way.
+-- Stage up to 5,000 done move lines in an open moves upload, the same way.
 create or replace function public.add_stock_moves(p_batch uuid, p_rows jsonb)
 returns jsonb
 language plpgsql
@@ -215,7 +211,7 @@ begin
   if not found or not private.is_member(private.company_org(b.company_id), 'editor') then
     raise exception 'not allowed' using errcode = '42501';
   end if;
-  if b.kind <> 'moves' then raise exception 'not a moves upload'; end if;
+  if b.kind <> 'moves' or b.status <> 'open' then raise exception 'not an open moves upload'; end if;
   if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) > 5000 then raise exception 'send 1 to 5000 rows'; end if;
   select count(*) into v_in from jsonb_array_elements(p_rows) r where r ->> 'period' = any (b.periods) and coalesce(r ->> 'odoo_key', '') <> '';
   insert into public.stock_moves (company_id, batch_id, odoo_key, day, period, ref, kind, product, code, lot, from_loc, to_loc, qty, uom, partner)
@@ -226,12 +222,65 @@ begin
          left(coalesce(r ->> 'partner', ''), 200)
   from jsonb_array_elements(p_rows) r
   where r ->> 'period' = any (b.periods) and coalesce(r ->> 'odoo_key', '') <> ''
-  on conflict (company_id, odoo_key) do nothing;
+  on conflict (batch_id, odoo_key) do nothing;
   get diagnostics v_added = row_count;
-  return jsonb_build_object('added', v_added, 'already', v_in - v_added);
+  return jsonb_build_object('staged', v_added, 'repeated', v_in - v_added);
 end $$;
 
--- Replace the stock-on-hand snapshot of one date (rows for the same product, location and lot are added together).
+-- Finish a valuation or moves upload in one step, so the pages never see half an upload:
+--  replace: live records of this kind in its months (and older copies of its records) are removed;
+--  add:     staged records already live are counted as already here and dropped; mixing rows keyed by Odoo ID with
+--           fingerprinted rows (an export without the ID column) for the same months is refused, as it would double them.
+-- Then its rows go live, and each valuation layer takes its kind from its move (a WH/OUT return to a supplier is a
+-- supplier return, not a delivery).
+create or replace function public.finish_inventory_batch(p_batch uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  b public.inventory_batches;
+  t text;
+  v_mixed boolean;
+  v_added integer;
+  v_already integer := 0;
+begin
+  select * into b from public.inventory_batches where id = p_batch for update;
+  if not found or not private.is_member(private.company_org(b.company_id), 'editor') then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+  if b.kind not in ('valuation', 'moves') or b.status <> 'open' then raise exception 'not an open upload'; end if;
+  t := case b.kind when 'valuation' then 'stock_layers' else 'stock_moves' end;
+  if b.mode = 'add' then
+    execute format($q$select exists (select 1 from public.%1$I s join public.%1$I l on l.company_id = s.company_id and l.live and l.period = any ($2)
+                        and (l.odoo_key like 'fp:%%') <> (s.odoo_key like 'fp:%%') where s.batch_id = $1)$q$, t)
+      into v_mixed using b.id, b.periods;
+    if v_mixed then raise exception 'KEY_MIX: these months were saved with a different kind of record key'; end if;
+    execute format('delete from public.%1$I s where s.batch_id = $1 and exists (select 1 from public.%1$I l where l.company_id = s.company_id and l.live and l.odoo_key = s.odoo_key)', t)
+      using b.id;
+    get diagnostics v_already = row_count;
+  else
+    execute format('delete from public.%1$I l where l.company_id = $2 and l.live and (l.period = any ($3) or l.odoo_key in (select s.odoo_key from public.%1$I s where s.batch_id = $1))', t)
+      using b.id, b.company_id, b.periods;
+  end if;
+  execute format('update public.%1$I set live = true where batch_id = $1', t) using b.id;
+  get diagnostics v_added = row_count;
+  update public.inventory_batches set status = 'done' where id = b.id;
+  update public.stock_layers l set kind = m.kind
+    from (select distinct on (ref, code) ref, code, kind from public.stock_moves
+           where company_id = b.company_id and live and ref <> '' and kind in ('receipt', 'delivery', 'customer_return', 'supplier_return')
+           order by ref, code, id) m
+   where l.company_id = b.company_id and l.live and l.ref = m.ref and l.code = m.code
+     and l.kind in ('receipt', 'delivery', 'customer_return', 'supplier_return') and l.kind <> m.kind;
+  -- Earlier uploads left with no records are dropped.
+  delete from public.inventory_batches x where x.company_id = b.company_id and x.kind = b.kind and x.status = 'done' and x.id <> b.id
+    and not exists (select 1 from public.stock_layers l where l.batch_id = x.id)
+    and not exists (select 1 from public.stock_moves m where m.batch_id = x.id);
+  return jsonb_build_object('added', v_added, 'already', v_already);
+end $$;
+
+-- Replace the stock-on-hand snapshot of one date (rows for the same product, code, location and lot are added together).
 create or replace function public.set_stock_onhand(p_batch uuid, p_as_of date, p_rows jsonb)
 returns integer
 language plpgsql
@@ -250,11 +299,11 @@ begin
   if jsonb_typeof(p_rows) <> 'array' or jsonb_array_length(p_rows) > 20000 then raise exception 'send 1 to 20000 rows'; end if;
   delete from public.stock_onhand where company_id = b.company_id and as_of = p_as_of;
   insert into public.stock_onhand (company_id, batch_id, as_of, product, code, location, lot, qty, value)
-  select b.company_id, b.id, p_as_of, product, max(code), location, lot, sum(qty), sum(value)
+  select b.company_id, b.id, p_as_of, product, code, location, lot, sum(qty), sum(value)
   from (select left(coalesce(r ->> 'product', ''), 300) product, left(coalesce(r ->> 'code', ''), 120) code, left(coalesce(r ->> 'location', ''), 200) location,
                left(coalesce(r ->> 'lot', ''), 120) lot, coalesce(nullif(r ->> 'qty', '')::numeric, 0) qty, nullif(r ->> 'value', '')::numeric value
           from jsonb_array_elements(p_rows) r) x
-  group by product, location, lot;
+  group by product, code, location, lot;
   get diagnostics v_count = row_count;
   return v_count;
 end $$;
@@ -337,38 +386,39 @@ set search_path = ''
 as $$
   select jsonb_build_object(
     'layers', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'kind', kind, 'code', code, 'product', product, 'category', category, 'q', q, 'v', v, 'n', n)) from (
-      select period, kind, code, max(product) product, max(category) category, sum(qty) q, sum(value) v, count(*) n
-        from public.stock_layers where company_id = p_company group by period, kind, code) x), '[]'::jsonb),
+      select period, kind, max(code) code, max(product) product, max(category) category, sum(qty) q, sum(value) v, count(*) n
+        from public.stock_layers where company_id = p_company and live group by period, kind, coalesce(nullif(code, ''), product)) x), '[]'::jsonb),
     'moves', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'kind', kind, 'code', code, 'product', product, 'from', from_loc, 'to', to_loc, 'q', q, 'n', n)) from (
-      select period, kind, code, max(product) product, from_loc, to_loc, sum(qty) q, count(*) n
-        from public.stock_moves where company_id = p_company group by period, kind, code, from_loc, to_loc) y), '[]'::jsonb),
-    'last_out', coalesce((select jsonb_object_agg(code, d) from (
-      select code, max(day)::text d from (
-        select code, day from public.stock_moves where company_id = p_company and kind = 'delivery'
-        union all select code, day from public.stock_layers where company_id = p_company and kind = 'delivery') u group by code) z), '{}'::jsonb),
+      select period, kind, max(code) code, max(product) product, from_loc, to_loc, sum(qty) q, count(*) n
+        from public.stock_moves where company_id = p_company and live group by period, kind, coalesce(nullif(code, ''), product), from_loc, to_loc) y), '[]'::jsonb),
+    'last_out', coalesce((select jsonb_object_agg(k, d) from (
+      select k, max(day)::text d from (
+        select coalesce(nullif(code, ''), product) k, day from public.stock_moves where company_id = p_company and live and kind = 'delivery'
+        union all select coalesce(nullif(code, ''), product), day from public.stock_layers where company_id = p_company and live and kind = 'delivery') u group by k) z), '{}'::jsonb),
     'onhand', coalesce((select jsonb_agg(jsonb_build_object('asOf', as_of::text, 'product', product, 'code', code, 'location', location, 'lot', lot, 'qty', qty, 'value', value))
       from public.stock_onhand where company_id = p_company and as_of = (select max(as_of) from public.stock_onhand where company_id = p_company)), '[]'::jsonb),
     'products', coalesce((select jsonb_agg(jsonb_build_object('code', code, 'name', name, 'category', category, 'cost', cost, 'type', type))
       from public.inventory_products where company_id = p_company), '[]'::jsonb),
     'byRef', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref, 'kind', kind, 'v', v)) from (
-      select period, ref, kind, sum(value) v from public.stock_layers where company_id = p_company and ref <> '' group by period, ref, kind) r), '[]'::jsonb),
+      select period, ref, kind, sum(value) v from public.stock_layers where company_id = p_company and live and ref <> '' group by period, ref, kind) r), '[]'::jsonb),
     'rental', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref)) from (
-      select distinct period, ref from public.stock_moves where company_id = p_company and kind in ('rental_out', 'rental_back') and ref <> '') rr), '[]'::jsonb),
+      select distinct period, ref from public.stock_moves where company_id = p_company and live and kind in ('rental_out', 'rental_back') and ref <> '') rr), '[]'::jsonb),
     'ledger', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref, 'v', v)) from (
       select period, ref, sum(amount) v from public.stock_ledger_lines where company_id = p_company group by period, ref) g), '[]'::jsonb),
     'meta', jsonb_build_object(
-      'withIds', (exists (select 1 from public.stock_layers where company_id = p_company) or exists (select 1 from public.stock_moves where company_id = p_company))
-        and not exists (select 1 from public.stock_layers where company_id = p_company and odoo_key like 'fp:%')
-        and not exists (select 1 from public.stock_moves where company_id = p_company and odoo_key like 'fp:%'),
-      'kinds', coalesce((select jsonb_agg(distinct kind) from public.inventory_batches where company_id = p_company), '[]'::jsonb),
-      'periods', coalesce((select jsonb_agg(p order by p) from (select distinct period p from public.stock_layers where company_id = p_company
-        union select distinct period from public.stock_moves where company_id = p_company) q), '[]'::jsonb))
+      'withIds', (exists (select 1 from public.stock_layers where company_id = p_company and live) or exists (select 1 from public.stock_moves where company_id = p_company and live))
+        and not exists (select 1 from public.stock_layers where company_id = p_company and live and odoo_key like 'fp:%')
+        and not exists (select 1 from public.stock_moves where company_id = p_company and live and odoo_key like 'fp:%'),
+      'kinds', coalesce((select jsonb_agg(distinct kind) from public.inventory_batches where company_id = p_company and status = 'done'), '[]'::jsonb),
+      'periods', coalesce((select jsonb_agg(p order by p) from (select distinct period p from public.stock_layers where company_id = p_company and live
+        union select distinct period from public.stock_moves where company_id = p_company and live) q), '[]'::jsonb))
   );
 $$;
 
 revoke execute on function public.begin_inventory_batch(uuid, text, text[], text, text, jsonb) from public, anon;
 revoke execute on function public.add_stock_layers(uuid, jsonb) from public, anon;
 revoke execute on function public.add_stock_moves(uuid, jsonb) from public, anon;
+revoke execute on function public.finish_inventory_batch(uuid) from public, anon;
 revoke execute on function public.set_stock_onhand(uuid, date, jsonb) from public, anon;
 revoke execute on function public.set_inventory_products(uuid, jsonb) from public, anon;
 revoke execute on function public.inventory_summary(uuid) from public, anon;
@@ -377,6 +427,7 @@ revoke execute on function public.add_stock_ledger_lines(uuid, jsonb) from publi
 grant execute on function public.begin_inventory_batch(uuid, text, text[], text, text, jsonb) to authenticated;
 grant execute on function public.add_stock_layers(uuid, jsonb) to authenticated;
 grant execute on function public.add_stock_moves(uuid, jsonb) to authenticated;
+grant execute on function public.finish_inventory_batch(uuid) to authenticated;
 grant execute on function public.set_stock_onhand(uuid, date, jsonb) to authenticated;
 grant execute on function public.set_inventory_products(uuid, jsonb) to authenticated;
 grant execute on function public.inventory_summary(uuid) to authenticated;

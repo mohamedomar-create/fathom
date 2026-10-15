@@ -25,13 +25,15 @@ function causesOf(byRef: { module: Record<string, number>; ledger: Record<string
   return out.sort((a, b) => Math.abs(b.module - b.ledger) - Math.abs(a.module - a.ledger)).slice(0, MAX_CAUSES);
 }
 
-/** tolerance: one pound for money; 0 for quantities, which must match exactly. */
-export function tieOut(key: string, period: string, module: number, ledger: number | null, byRef?: { module: Record<string, number>; ledger: Record<string, number> }, tolerance = TIE_TOLERANCE): TieOut {
+type ByRef = { module: Record<string, number>; ledger: Record<string, number> };
+
+/** tolerance: one pound for money; 0 for quantities, which must match exactly. byRef may be a function: it is called only when the check is off. */
+export function tieOut(key: string, period: string, module: number, ledger: number | null, byRef?: ByRef | (() => ByRef), tolerance = TIE_TOLERANCE): TieOut {
   const m = r2(module);
   if (ledger === null) return { key, period, module: m, ledger: null, diff: null, status: "no_ledger", causes: [] };
   const diff = r2(m - ledger);
   const off = Math.abs(diff) > tolerance;
-  return { key, period, module: m, ledger: r2(ledger), diff, status: off ? "off" : "ok", causes: off && byRef ? causesOf(byRef, tolerance) : [] };
+  return { key, period, module: m, ledger: r2(ledger), diff, status: off ? "off" : "ok", causes: off && byRef ? causesOf(typeof byRef === "function" ? byRef() : byRef, tolerance) : [] };
 }
 
 /** The same check for each month; a month the ledger does not hold is "no_ledger". */

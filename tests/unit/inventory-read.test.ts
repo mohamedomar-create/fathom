@@ -28,9 +28,24 @@ describe("Odoo stock valuation sheet", () => {
     const r = readStockValuation(grid("Valuation", [head, ...rows, rows[0]]))!;
     expect(r.withIds).toBe(false);
     expect(r.layers.every((l) => l.key.startsWith("fp:"))).toBe(true);
-    // The same row read twice gets the same key, so the database refuses the second copy.
-    expect(r.layers[3].key).toBe(r.layers[0].key);
-    expect(new Set(r.layers.slice(0, 3).map((l) => l.key)).size).toBe(3);
+    // Two identical rows in one export are two records (two equal deliveries): each keeps its own key.
+    expect(new Set(r.layers.map((l) => l.key)).size).toBe(4);
+    // The same file read again gives the same keys, so the database refuses the second copy.
+    const again = readStockValuation(grid("Valuation", [head, ...rows, rows[0]]))!;
+    expect(again.layers.map((l) => l.key)).toEqual(r.layers.map((l) => l.key));
+  });
+
+  it("keeps identical move lines apart without Odoo IDs", () => {
+    const head = ["Date", "Reference", "Product", "From", "To", "Quantity", "Status"];
+    const row = ["2026-09-05", "WH/OUT/00001", "[P1] Mask", "WH/Stock", "Partners/Customers", 4, "Done"];
+    const r = readStockMoves(grid("Moves", [head, row, row, ["2026-09-06", "WH/IN/00002", "[P2] Tube", "Partners/Vendors", "WH/Stock", 5, "Done"]]))!;
+    expect(new Set(r.moves.map((m) => m.key)).size).toBe(3);
+  });
+
+  it("leaves a sales list with customers to Sales, not stock valuation", () => {
+    const sales = grid("Sales", [["Date", "Reference", "Customer", "Product", "Quantity", "Value"],
+      ["2026-09-01", "INV/2026/0001", "Client A", "[P1] Mask", 2, 500], ["2026-09-02", "INV/2026/0002", "Client B", "[P2] Tube", 1, 300], ["2026-09-03", "INV/2026/0003", "Client C", "[P1] Mask", 3, 750]]);
+    expect(readStockValuation(sales)).toBeNull();
   });
 
   it("reads Odoo's technical field names (import-compatible export)", () => {

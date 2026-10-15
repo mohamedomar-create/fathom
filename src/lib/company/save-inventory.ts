@@ -1,6 +1,6 @@
 "use client";
 import { inventoryPeriods, type OnHand, type ProductRow, type StockLayer, type StockLedgerLine, type StockMove } from "@/lib/ingest/inventory";
-import { addInventoryRows, addStockLedgerLines, setOnHand, setProducts, startInventoryBatch, startStockLedgerBatch } from "@/app/company/[id]/settings/inventory-actions";
+import { addInventoryRows, addStockLedgerLines, finishInventoryBatch, setOnHand, setProducts, startInventoryBatch, startStockLedgerBatch } from "@/app/company/[id]/settings/inventory-actions";
 
 const CHUNK = 3000;
 const cut = (s: string, n: number) => (s ?? "").slice(0, n);
@@ -20,19 +20,22 @@ type Out = { ok: true; added: number; already: number } | { ok: false; error: st
 async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Record<string, unknown>[], periods: string[], filename: string, mode: "replace" | "add"): Promise<Out> {
   const start = await startInventoryBatch({ companyId, kind, periods, filename: cut(filename, 300), mode });
   if (!start.ok) return start;
-  let added = 0, already = 0;
+  // Chunks are staged; the upload is finished in one step, so the pages show all of it or none of it.
+  let repeated = 0;
   for (let i = 0; i < rows.length; i += CHUNK) {
-    const r = await addInventoryRows(companyId, start.batch, kind, rows.slice(i, i + CHUNK), i + CHUNK >= rows.length);
+    const r = await addInventoryRows(companyId, start.batch, kind, rows.slice(i, i + CHUNK));
     if (!r.ok) return r;
-    added += r.added;
-    already += r.already;
+    repeated += r.repeated;
   }
-  return { ok: true, added, already };
+  const done = await finishInventoryBatch(companyId, start.batch);
+  if (!done.ok) return done;
+  return { ok: true, added: done.added, already: done.already + repeated };
 }
 
 /**
  * Saves what was read from Inventory sheets, each kind as its own upload: valuation layers and moves in chunks the server
- * accepts (records already stored under the same Odoo ID are counted, not added), the stock-on-hand snapshot, the products.
+ * accepts, finished in one step (records already stored under the same Odoo ID are counted, not added), the stock-on-hand
+ * snapshot, the products.
  */
 export async function saveInventory(companyId: string, parts: { layers?: StockLayer[]; moves?: StockMove[]; onhand?: { asOf: string; rows: OnHand[] }; products?: ProductRow[] }, filename: string, mode: "replace" | "add"): Promise<Out> {
   let added = 0, already = 0;
