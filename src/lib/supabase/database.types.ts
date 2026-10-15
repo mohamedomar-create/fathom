@@ -36,9 +36,14 @@ export type SalesLineRow = { id: number; company_id: string; batch_id: string; s
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
-export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add"; status: "open" | "done"; report: Json; created_by: string | null; created_at: string }
+export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add" | "all" | "update"; status: "open" | "done"; report: Json; created_by: string | null; created_at: string }
 export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string; live: boolean }
 export type StockMoveRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; lot: string; from_loc: string; to_loc: string; qty: number; uom: string; partner: string; live: boolean }
+export type ImportJobStatus = "preparing" | "queued" | "checking" | "needs_review" | "saving" | "done" | "failed" | "cancelled";
+export type ImportJobRow = { id: string; company_id: string; kind: "inventory"; mode: "replace" | "add" | "all" | "update"; status: ImportJobStatus; accept_invalid: boolean; options: Json; counts: Json; message: string | null; created_by: string | null; created_at: string; updated_at: string; queued_at: string | null; started_at: string | null; finished_at: string | null }
+export type ImportFileRow = { id: string; job_id: string; company_id: string; filename: string; size: number; export_key: string; kind: "valuation" | "moves" | "onhand" | "products"; storage_path: string; stored: boolean; rows_declared: number | null; counts: Json; created_at: string }
+export type ImportRowRow = { file_id: string; n: number; job_id: string; line: number | null; data: Json; error: string | null }
+export type ImportTemplateRow = { company_id: string; export_key: string; mapping: Json; updated_by: string | null; updated_at: string }
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
 
@@ -65,6 +70,10 @@ export type Database = {
       stock_moves: Table<StockMoveRow, "company_id" | "batch_id" | "odoo_key" | "period">;
       stock_ledger_batches: Table<StockLedgerBatchRow, "company_id">;
       stock_ledger_lines: Table<StockLedgerLineRow, "company_id" | "batch_id" | "period" | "amount">;
+      import_jobs: Table<ImportJobRow, "company_id" | "kind" | "mode">;
+      import_files: Table<ImportFileRow, "job_id" | "company_id" | "filename" | "export_key" | "kind" | "storage_path">;
+      import_rows: Table<ImportRowRow, "file_id" | "n" | "job_id">;
+      import_templates: Table<ImportTemplateRow, "company_id" | "export_key">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -96,6 +105,13 @@ export type Database = {
       inventory_summary: { Args: { p_company: string }; Returns: Json };
       begin_stock_ledger_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string }; Returns: string };
       add_stock_ledger_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
+      create_import_job: { Args: { p_company: string; p_kind: string; p_mode: string; p_files: Json; p_options?: Json }; Returns: Json };
+      stage_import_rows: { Args: { p_file: string; p_rows: Json }; Returns: number };
+      import_staged: { Args: { p_job: string }; Returns: Json };
+      mark_import_file_stored: { Args: { p_file: string }; Returns: undefined };
+      queue_import_job: { Args: { p_job: string; p_totals: Json }; Returns: undefined };
+      act_on_import_job: { Args: { p_job: string; p_action: string }; Returns: undefined };
+      save_import_template: { Args: { p_company: string; p_export: string; p_mapping: Json }; Returns: undefined };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };

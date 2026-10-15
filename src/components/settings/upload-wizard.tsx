@@ -16,7 +16,7 @@ import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
-import { readWorkbooks } from "@/lib/ingest/read";
+import { readInWorker } from "@/lib/imports/worker-client";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
 import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
@@ -48,6 +48,7 @@ import { stockFromLedger } from "@/lib/ingest/inventory";
 import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
+import { OdooImport } from "@/components/imports/odoo-import";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
@@ -156,7 +157,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       if (pdfs.length && demo) throw new Error("Reading PDFs and scanned pages needs a free account: each page is read by Claude. In the demo, upload an Excel or CSV export.");
       let grids: Grid[] = [];
       if (sheets.length) {
-        try { grids = await readWorkbooks(await Promise.all(sheets.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
+        try { grids = await readInWorker(await Promise.all(sheets.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
         catch { throw new Error(`${sheets.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
       }
       setPdfSummary(null);
@@ -432,7 +433,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   // 2 · Get your file
   if (screen === "get") {
     const steps = kind === "inventory"
-      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Select all lines. Click Export.", "Tick “I want to update data (import-compatible export)”, then Export.", "Upload one sheet, or all three together."]
+      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Select all lines. Click Export.", "Tick “I want to update data (import-compatible export)”, then Export.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
       ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Select all lines. Click Export."]
       : kind === "expenses"
@@ -474,6 +475,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       </div>
     );
   }
+
+  // 3 · Odoo Inventory exports: uploaded, read and saved as a background job (never read on this page's main thread).
+  if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} onBack={() => setScreen("get")} />;
 
   // 3 · Upload
   if (screen === "upload" || (!allGrids && screen !== "done")) {
