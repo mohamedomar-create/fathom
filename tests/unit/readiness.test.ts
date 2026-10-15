@@ -3,7 +3,9 @@ import { buildMonths } from "@/lib/company/build";
 import { runChecks } from "@/lib/company/checks";
 import { demoCompany } from "@/lib/company/demo";
 import { demoSales } from "@/lib/company/demo-sales";
-import { bankingReadiness, expensesReadiness, financialsReadiness, forecastReadiness, readiness, salesReadiness } from "@/lib/company/readiness";
+import { bankingReadiness, expensesReadiness, financialsReadiness, forecastReadiness, inventoryReadiness, readiness, salesReadiness } from "@/lib/company/readiness";
+import { EMPTY_INVENTORY } from "@/lib/engine/inventory";
+import { demoInventory } from "@/lib/company/demo-inventory";
 import { demoExpenses } from "@/lib/company/demo-expenses";
 import type { AccountLine } from "@/lib/company/types";
 
@@ -81,7 +83,7 @@ describe("data readiness", () => {
     const f = forecastReadiness(company(ps("2026-01", 12)));
     expect(f.items.find((i) => i.id === "run")!.completion).toBe(100);
     expect(f.items.find((i) => i.id === "drivers")!.status).toBe("missing");
-    expect(readiness(company(ps("2026-01", 3))).map((r) => r.key)).toEqual(["financials", "sales", "expenses", "banking", "forecast"]);
+    expect(readiness(company(ps("2026-01", 3))).map((r) => r.key)).toEqual(["financials", "sales", "expenses", "inventory", "banking", "forecast"]);
   });
 
   it("expenses: the demo's lines tie to its P&L costs; with no lines, the next step is the General Ledger", () => {
@@ -93,5 +95,31 @@ describe("data readiness", () => {
     const none = expensesReadiness({ months: d.months, checks: [], fyStart: 1, expenses: null });
     expect(none.items).toHaveLength(1);
     expect(none.items[0].fix?.what).toBe("Upload your General Ledger");
+  });
+
+  it("inventoryReadinessCountsTieOuts", () => {
+    // Valuation and moves loaded without Odoo IDs; stock value agrees with the balance sheet, cost of sales does not (400 delivered, 500 in the accounts).
+    const inventory = { ...EMPTY_INVENTORY,
+      layers: [{ p: "2026-09", kind: "receipt" as const, code: "P1", product: "Mask", category: "", q: 10, v: 1000, n: 1 }, { p: "2026-09", kind: "delivery" as const, code: "P1", product: "Mask", category: "", q: -4, v: -400, n: 1 }],
+      moves: [{ p: "2026-09", kind: "delivery" as const, code: "P1", product: "Mask", from: "WH/Stock", to: "Partners/Customers", q: 4, n: 1 }],
+      meta: { withIds: false, kinds: ["valuation", "moves"], periods: ["2026-09"] } };
+    const months = [{ period: "2026-09", pl: { revenue: 1000 }, bs: { inventory: 600 } }] as unknown as import("@/lib/engine").MonthData[];
+    const expenses = { accounts: [], suppliers: [{ p: "2026-09", s: "Cost of goods sold (stock)", c: "cos_variable", a: 500, n: 1 }], large: [], doubles: [] } as unknown as import("@/lib/engine").ExpensesData;
+    const r = inventoryReadiness({ months, checks: [], fyStart: 1, expenses, inventory });
+    expect(r.completion).toBeLessThan(100);
+    expect(r.accuracy).toBeLessThan(100);
+    expect(r.items.find((i) => i.id === "ids")!.fix?.what).toBe("Export with Odoo IDs");
+    expect(r.items.find((i) => i.id === "tie_cogs")).toMatchObject({ completion: 100, accuracy: 0 });
+    expect(r.items.find((i) => i.id === "tie_stock_value")).toMatchObject({ completion: 100, accuracy: 100 });
+    expect(r.items.find((i) => i.id === "onhand")!.completion).toBe(0);
+  });
+
+  it("inventory: the demo's stock is complete and every check agrees; with nothing loaded, the next step is the valuation export", () => {
+    const d = demoCompany();
+    const r = inventoryReadiness({ months: d.months, checks: [], fyStart: 1, expenses: demoExpenses(), inventory: demoInventory() });
+    expect(r).toMatchObject({ completion: 100, accuracy: 100 });
+    const none = inventoryReadiness({ months: d.months, checks: [], fyStart: 1, inventory: null });
+    expect(none.completion).toBe(0);
+    expect(none.items[0].fix?.what).toBe("Upload the stock valuation");
   });
 });

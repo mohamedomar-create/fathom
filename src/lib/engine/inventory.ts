@@ -299,3 +299,11 @@ export function receiptCost(d: InventoryData, codes: string[], periods: string[]
     };
   });
 }
+
+/** Every tie-out, once per check and month, over the last n months with stock records (for readiness and Data health). */
+export function inventoryTieOuts(d: InventoryData, ledger: { stock: Record<string, number> | null; cogs: Record<string, number> | null }, fyStart: number, n = 12, today?: string): TieOut[] {
+  const months = [...new Set([...d.layers.map((l) => l.p), ...d.moves.map((m) => m.p)])].sort().slice(-n);
+  const ties = new Map<string, TieOut>();
+  for (const p of months) for (const t of inventoryAnalysis(d, { type: "month", end: p }, fyStart, { ledger, today }).tieouts) ties.set(`${t.key}|${t.period}`, t);
+  return [...ties.values()].sort((a, b) => a.period.localeCompare(b.period));
+}

@@ -8,17 +8,21 @@ import type { FixRecord } from "@/lib/ingest/trace";
 import type { AcceptedItem } from "../actions";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { LineUploads, type LineUpload } from "@/components/settings/line-uploads";
+import { StockChecks } from "@/components/inventory/stock-checks";
+import { loadInventory } from "@/lib/company/inventory-load";
+import { loadExpenses } from "@/lib/company/expenses-load";
 
 export default async function DataHealthPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ imported?: string }> }) {
   const { id } = await params;
   const { imported } = await searchParams;
   const { supabase } = await getUser();
   const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }] = await Promise.all([
+  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses] = await Promise.all([
     loadVersion(supabase, id, bundle.dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
+    loadInventory(id), loadExpenses(id),
   ]);
   // Sales and expenses files uploaded on their own (lines from a General Ledger belong to its import above).
   const lineUploads: LineUpload[] = [
@@ -85,6 +89,7 @@ export default async function DataHealthPage({ params, searchParams }: { params:
         <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
         <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />
       </section>
+      <StockChecks inventory={inventory} expenses={expenses} />
     </div>
   );
 }
