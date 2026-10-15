@@ -1,5 +1,6 @@
 import { arRx, cleanNum, detectDateOrder, normAr, parseDay, type Cell, type DateOrder } from "./parse";
 import { str, type Grid, type LedgerEntry } from "./extract";
+import { findHeader, type ColumnMap, type SavedMapping } from "./odoo-templates";
 
 /**
  * The Inventory module's sheets, as Odoo 18 exports them (list view, Export; English or Arabic headings, field labels or the
@@ -14,49 +15,18 @@ import { str, type Grid, type LedgerEntry } from "./extract";
 export type MoveKind = "receipt" | "delivery" | "customer_return" | "supplier_return" | "internal" | "rental_out" | "rental_back" | "adjustment" | "scrap" | "manufacturing";
 export type LayerKind = "receipt" | "delivery" | "customer_return" | "supplier_return" | "landed_cost" | "adjustment" | "scrap" | "revaluation" | "other";
 
-export interface StockLayer { key: string; day: string; period: string; ref: string; kind: LayerKind; product: string; code: string; category: string; lot: string; qty: number; unitValue: number; value: number; partner: string; landedRef: string; src?: { sheet: string; row: number } }
-export interface StockMove { key: string; day: string; period: string; ref: string; kind: MoveKind; product: string; code: string; lot: string; from: string; to: string; qty: number; uom: string; partner: string; src?: { sheet: string; row: number } }
+export interface StockLayer { key: string; updated?: string; day: string; period: string; ref: string; kind: LayerKind; product: string; code: string; category: string; lot: string; qty: number; unitValue: number; value: number; partner: string; landedRef: string; src?: { sheet: string; row: number } }
+export interface StockMove { key: string; updated?: string; day: string; period: string; ref: string; kind: MoveKind; product: string; code: string; lot: string; from: string; to: string; qty: number; uom: string; partner: string; src?: { sheet: string; row: number } }
 export interface OnHand { asOf: string; product: string; code: string; location: string; lot: string; qty: number; value: number | null }
 export interface ProductRow { code: string; name: string; category: string; cost: number | null; type: string }
 
-type Field = "id" | "date" | "ref" | "product" | "code" | "name" | "category" | "lot" | "qty" | "unitValue" | "value" | "desc" | "landed" | "from" | "to" | "location" | "status" | "partner" | "uom" | "cost" | "type";
-const FIELDS: [Field, RegExp][] = [
-  ["id", arRx(/^(id|external id|المعرف|المعرّف|المعرف الخارجي|معرف خارجي)$/i)],
-  ["date", arRx(/^(date|date done|create date|create_date|created on|date_done|accounting date|التاريخ|تاريخ|تاريخ الإنشاء)$/i)],
-  ["ref", arRx(/^(reference|ref|stock move|stock_move_id|move|picking_id|transfer|المرجع|مرجع|حركة المخزون|التحويل)$/i)],
-  ["product", arRx(/^(product|product_id|display name|display_name|المنتج|الصنف|اسم العرض)$/i)],
-  ["code", arRx(/^(internal reference|default_code|product\/internal reference|المرجع الداخلي|كود الصنف)$/i)],
-  ["name", arRx(/^(name|product name|الاسم|اسم المنتج|اسم الصنف)$/i)],
-  ["category", arRx(/^(product category|category|categ_id|فئة المنتج|الفئة)$/i)],
-  ["lot", arRx(/^(lot\/serial number|lot\/serial numbers|lot|lot_id|lot_ids|serial number|رقم الدفعة\/الرقم التسلسلي|رقم التشغيلة|الرقم التسلسلي|الدفعة)$/i)],
-  ["qty", arRx(/^(quantity|qty|quantity done|qty_done|product_qty|on hand quantity|quantity on hand|inventory_quantity|الكمية|الكمية المنتهية|الكمية في اليد|الكمية الفعلية|الكمية المتاحة)$/i)],
-  ["unitValue", arRx(/^(unit value|unit cost|unit_cost|قيمة الوحدة|تكلفة الوحدة)$/i)],
-  ["value", arRx(/^(total value|value|القيمة الإجمالية|القيمة)$/i)],
-  ["desc", arRx(/^(description|الوصف)$/i)],
-  ["landed", arRx(/^(landed cost|landed costs|stock_landed_cost_id|التكلفة الواصلة|التكاليف الواصلة)$/i)],
-  ["from", arRx(/^(from|source location|location_id|من|الموقع المصدر|من موقع)$/i)],
-  ["to", arRx(/^(to|destination location|location_dest_id|إلى|الى|الموقع الوجهة|إلى موقع)$/i)],
-  ["location", arRx(/^(location|الموقع)$/i)],
-  ["status", arRx(/^(status|state|الحالة)$/i)],
-  ["partner", arRx(/^(partner|contact|partner_id|الشريك|جهة الاتصال)$/i)],
-  ["uom", arRx(/^(unit of measure|uom|product_uom_id|وحدة القياس)$/i)],
-  ["cost", arRx(/^(cost|standard price|standard_price|التكلفة)$/i)],
-  ["type", arRx(/^(product type|type|detailed_type|نوع المنتج)$/i)],
-];
-const fieldOf = (h: string): Field | null => {
-  const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s+/g, " ").trim());
-  return FIELDS.find(([, rx]) => rx.test(t))?.[0] ?? null;
-};
+/** A row that holds data but cannot be saved as it is: its row in the sheet, and why. */
+export interface RowIssue { line: number; message: string }
+/** What a reader found: the records, the rows it could not read, and lines that are not records (blank, totals, not done). */
+export interface ReadNotes { issues: RowIssue[]; skipped: number }
 
-/** The heading row (first 15 rows) and the column of each field it names. */
-function header(g: Grid): { r: number; col: Partial<Record<Field, number>> } | null {
-  for (let r = 0; r < Math.min(g.rows.length, 15); r++) {
-    const col: Partial<Record<Field, number>> = {};
-    (g.rows[r] ?? []).forEach((v, c) => { const f = fieldOf(str(v)); if (f && col[f] === undefined) col[f] = c; });
-    if (col.product !== undefined || col.name !== undefined) return { r, col };
-  }
-  return null;
-}
+const header = (g: Grid, saved?: SavedMapping | null) => findHeader(g, saved);
+const lineOf = (g: Grid, i: number) => i + 1 + (g.origin?.r ?? 0);
 
 /** "[P1] Mask" → code P1, product Mask (Odoo shows the internal reference in brackets). */
 export function splitProduct(label: string, code = ""): { code: string; product: string } {
@@ -186,12 +156,11 @@ export function classifyLayers<T extends { ref: string; code: string; product: s
   });
 }
 
-const num = (v: Cell) => cleanNum(v) ?? 0;
 const cell = (row: Cell[], c: number | undefined) => (c === undefined ? "" : str(row[c]));
 const DONE = arRx(/^(done|منتهي|منتهية|تم|مكتمل)$/i);
 
 /** Data rows under the heading, with a readable day; the date order (dd/mm or mm/dd) is taken from the column itself. */
-function* dataRows(g: Grid, h: { r: number; col: Partial<Record<Field, number>> }) {
+function* dataRows(g: Grid, h: { r: number; col: ColumnMap }) {
   const dc = h.col.date;
   const order: DateOrder = (dc === undefined ? null : detectDateOrder(g.rows.slice(h.r + 1).map((x) => x?.[dc])).order) ?? "dmy";
   for (let i = h.r + 1; i < g.rows.length; i++) {
@@ -218,20 +187,52 @@ function fingerprints() {
 /** Headings naming a customer or supplier: a sales or purchase list, never a valuation export (layers have no partner). */
 const PARTY_HEADING = /(customer|vendor|supplier|client|partner|عميل|العميل|مورد|المورد|شريك|الشريك)/i;
 
-export function readStockValuation(g: Grid): { layers: StockLayer[]; withIds: boolean } | null {
-  const h = header(g);
+/** A number cell: empty is 0; text that is not a number is a problem (never read as 0). */
+const numOf = (v: Cell): number | null => (v === null || v === undefined || (typeof v === "string" && !v.trim()) ? 0 : cleanNum(v));
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Odoo's "Last Updated on" as "YYYY-MM-DD HH:MM:SS" (as exported, the person's time zone); "" when empty, null when unreadable. */
+export function parseStamp(v: Cell): string | null {
+  if (v === null || v === undefined || v === "") return "";
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())} ${pad(v.getHours())}:${pad(v.getMinutes())}:${pad(v.getSeconds())}`;
+  const m = String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?$/);
+  return m ? `${m[1]}-${m[2]}-${m[3]} ${m[4] ?? "00"}:${m[5] ?? "00"}:${m[6] ?? "00"}` : null;
+}
+
+/** The problems that stop a row from being saved: an unreadable date, no product, a number that is not a number. */
+function rowProblems(row: Cell[], c: ColumnMap, day: string | null, need: ("qty" | "value")[]): { problems: string[]; nums: Record<string, number>; updated: string } {
+  const problems: string[] = [];
+  if (!day) problems.push(c.date !== undefined && str(row[c.date]) ? `Date is not readable: "${str(row[c.date])}"` : "No date");
+  if (!cell(row, c.product)) problems.push("No product");
+  const nums: Record<string, number> = {};
+  for (const k of need) {
+    const n = numOf(row[c[k]!] ?? null);
+    if (n === null) problems.push(`${k === "qty" ? "Quantity" : "Value"} is not a number: "${str(row[c[k]!])}"`);
+    else nums[k] = n;
+  }
+  const updated = c.updated === undefined ? "" : parseStamp(row[c.updated] ?? null);
+  if (updated === null) problems.push(`Last updated on is not readable: "${str(row[c.updated!])}"`);
+  return { problems, nums, updated: updated ?? "" };
+}
+
+export function readStockValuation(g: Grid, saved?: SavedMapping | null): ({ layers: StockLayer[]; withIds: boolean } & ReadNotes) | null {
+  const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
-  if (c.product === undefined || c.qty === undefined || c.value === undefined || (c.ref === undefined && c.desc === undefined)) return null;
+  if (c.product === undefined || c.qty === undefined || c.value === undefined || c.date === undefined || (c.ref === undefined && c.desc === undefined)) return null;
   if (c.from !== undefined || c.to !== undefined || c.location !== undefined) return null;
   if ((g.rows[h.r] ?? []).some((v) => PARTY_HEADING.test(normAr(str(v))))) return null;
   const withIds = c.id !== undefined;
   const fp = fingerprints();
   const layers: StockLayer[] = [];
+  const issues: RowIssue[] = [];
+  let skipped = 0;
   for (const { i, row, day: rowDay } of dataRows(g, h)) {
-    let day = rowDay;
-    if (!day || !cell(row, c.product)) continue;
-    const ref = cell(row, c.ref), desc = cell(row, c.desc), qty = num(row[c.qty]), value = num(row[c.value]);
+    // A line with neither a date nor a product is a group heading or a total, not a record.
+    if (!rowDay && !cell(row, c.product)) { skipped++; continue; }
+    const { problems, nums, updated } = rowProblems(row, c, rowDay, ["qty", "value"]);
+    if (problems.length) { issues.push({ line: lineOf(g, i), message: problems.join("; ") }); continue; }
+    let day = rowDay!;
+    const ref = cell(row, c.ref), desc = cell(row, c.desc), qty = nums.qty, value = nums.value;
     // Odoo marks a back-dated row "[Accounted on 2026-01-17]": its journal entry, and so the accounts, carry that date.
     const accounted = ref.match(/\[Accounted on (\d{4}-\d{2}-\d{2})\]/i)?.[1];
     if (accounted) day = accounted;
@@ -241,49 +242,62 @@ export function readStockValuation(g: Grid): { layers: StockLayer[]; withIds: bo
     const kind = !qty && value ? (/\/IN\//i.test(ref) || LANDED.test(ref + " " + desc) ? "landed_cost" : "revaluation") : layerKind(ref, desc + " " + cell(row, c.landed), qty);
     const landedRef = kind === "landed_cost" ? (cell(row, c.landed) || (ref.match(/LC\/[^\s]+/i)?.[0] ?? desc.match(/LC\/[^\s]+/i)?.[0] ?? ref)) : "";
     const id = cell(row, c.id);
+    const unitValue = c.unitValue === undefined ? null : numOf(row[c.unitValue] ?? null);
     layers.push({
-      key: withIds && id ? id : fp([day, ref, code || product, lot, qty, value]),
+      key: withIds && id ? id : fp([day, ref, code || product, lot, qty, value]), ...(updated ? { updated } : {}),
       day, period: day.slice(0, 7), ref, kind, product, code, category: cell(row, c.category), lot, qty,
-      unitValue: c.unitValue === undefined ? (qty ? Math.round((value / qty) * 10000) / 10000 : 0) : num(row[c.unitValue]),
+      unitValue: unitValue ?? (qty ? Math.round((value / qty) * 10000) / 10000 : 0),
       value, partner: cell(row, c.partner), landedRef, src: { sheet: g.name, row: i },
     });
   }
-  return layers.length ? { layers, withIds } : null;
+  return layers.length || issues.length ? { layers, withIds, issues, skipped } : null;
 }
 
-export function readStockMoves(g: Grid, rentalLocation?: string | null): { moves: StockMove[]; withIds: boolean } | null {
-  const h = header(g);
+export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: SavedMapping | null): ({ moves: StockMove[]; withIds: boolean } & ReadNotes) | null {
+  const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
-  if (c.product === undefined || c.from === undefined || c.to === undefined || c.qty === undefined) return null;
+  if (c.product === undefined || c.from === undefined || c.to === undefined || c.qty === undefined || c.date === undefined) return null;
   const withIds = c.id !== undefined;
   const fp = fingerprints();
-  const done: { i: number; row: Cell[]; day: string }[] = [];
+  const issues: RowIssue[] = [];
+  let skipped = 0;
+  const done: { i: number; row: Cell[]; day: string; qty: number; updated: string }[] = [];
   for (const { i, row, day } of dataRows(g, h)) {
-    if (!day || !cell(row, c.product)) continue;
-    if (c.status !== undefined && !DONE.test(normAr(cell(row, c.status)))) continue;
-    done.push({ i, row, day });
+    if (!day && !cell(row, c.product)) { skipped++; continue; }
+    // Only done moves moved goods; draft, waiting and cancelled ones are left out.
+    if (c.status !== undefined && !DONE.test(normAr(cell(row, c.status)))) { skipped++; continue; }
+    const { problems, nums, updated } = rowProblems(row, c, day, ["qty"]);
+    if (!cell(row, c.from) || !cell(row, c.to)) problems.push("No source or destination location");
+    if (problems.length) { issues.push({ line: lineOf(g, i), message: problems.join("; ") }); continue; }
+    done.push({ i, row, day: day!, qty: nums.qty, updated });
   }
   // Which locations are "out on rental" is decided from every location the export uses, before any move is classified.
   const rentals = rentalLocationsOf(done.flatMap(({ row }) => [cell(row, c.from), cell(row, c.to)]), rentalLocation);
-  const moves: StockMove[] = done.map(({ i, row, day }) => {
-    const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), qty = num(row[c.qty!]), lot = cell(row, c.lot);
+  const moves: StockMove[] = done.map(({ i, row, day, qty, updated }) => {
+    const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), lot = cell(row, c.lot);
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const id = cell(row, c.id);
     return {
-      key: withIds && id ? id : fp([day, ref, code || product, lot, from, to, qty]),
+      key: withIds && id ? id : fp([day, ref, code || product, lot, from, to, qty]), ...(updated ? { updated } : {}),
       day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentals), product, code, lot, from, to, qty,
       uom: cell(row, c.uom), partner: cell(row, c.partner), src: { sheet: g.name, row: i },
     };
   });
-  return moves.length ? { moves, withIds } : null;
+  return moves.length || issues.length ? { moves, withIds, issues, skipped } : null;
 }
 
 /** Headings of Odoo's product list that give what is on hand in the warehouses (product.product: "Quantity On Hand"). */
 const ON_HAND_HEADING = arRx(/^(quantity on hand|qty_available|on hand quantity|الكمية في اليد|الكمية المتاحة)$/i);
 
-export function readStockOnHand(g: Grid, asOf: string): OnHand[] | null {
-  const h = header(g);
+export function readStockOnHand(g: Grid, asOf: string, saved?: SavedMapping | null): OnHand[] | null {
+  const r = readOnHandSheet(g, asOf, saved);
+  return r?.rows.length ? r.rows : null;
+}
+
+/** Stock on hand with the rows that could not be read. */
+export function readOnHandSheet(g: Grid, asOf: string, saved?: SavedMapping | null): ({ rows: OnHand[] } & ReadNotes) | null {
+  const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
   if (c.product === undefined || c.qty === undefined || c.date !== undefined) return null;
@@ -291,19 +305,26 @@ export function readStockOnHand(g: Grid, asOf: string): OnHand[] | null {
   // (location "" = all of them), and its "Total Value" what that stock is worth.
   if (c.location === undefined && !(g.rows[h.r] ?? []).some((v) => ON_HAND_HEADING.test(normAr(str(v))))) return null;
   const out: OnHand[] = [];
-  for (const { row } of dataRows(g, h)) {
-    if (!cell(row, c.product)) continue;
+  const issues: RowIssue[] = [];
+  let skipped = 0;
+  for (const { i, row } of dataRows(g, h)) {
+    if (!cell(row, c.product)) { skipped++; continue; }
+    const qty = numOf(row[c.qty] ?? null), value = c.value === undefined ? null : numOf(row[c.value] ?? null);
+    if (qty === null || (c.value !== undefined && value === null)) {
+      issues.push({ line: lineOf(g, i), message: qty === null ? `Quantity is not a number: "${str(row[c.qty])}"` : `Value is not a number: "${str(row[c.value!])}"` });
+      continue;
+    }
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
-    out.push({ asOf, product, code, location: cell(row, c.location), lot: cell(row, c.lot), qty: num(row[c.qty]), value: c.value === undefined ? null : cleanNum(row[c.value] ?? null) });
+    out.push({ asOf, product, code, location: cell(row, c.location), lot: cell(row, c.lot), qty, value: c.value === undefined || str(row[c.value]) === "" ? null : value });
   }
-  return out.length ? out : null;
+  return out.length || issues.length ? { rows: out, issues, skipped } : null;
 }
 
 /** Headings of a document list (invoices, bills, orders, journal items), never of a products list. */
 const DOCUMENT_HEADING = /(date|تاريخ|number|^ref(erence)?$|رقم|vendor|customer|partner|supplier|مورد|عميل|شريك|account|حساب|total|amount|untaxed|balance|debit|credit|الإجمالي|المبلغ|مدين|دائن)/i;
 
-export function readProducts(g: Grid): ProductRow[] | null {
-  const h = header(g);
+export function readProducts(g: Grid, saved?: SavedMapping | null): ProductRow[] | null {
+  const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
   const nameCol = c.name ?? c.product;

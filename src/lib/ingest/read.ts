@@ -63,12 +63,14 @@ export function fillMerges(rows: Cell[][], merges: Merge[] = []): Cell[][] {
 }
 
 /** Read an .xlsx / .xls / .csv file into grids (one per sheet). Runs in the browser or Node. */
-export async function readWorkbook(data: ArrayBuffer, filename: string): Promise<Grid[]> {
+export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { sheetRows?: number } = {}): Promise<Grid[]> {
   const XLSX = await import("@e965/xlsx");
   const isCsv = /\.(csv|txt|tsv)$/i.test(filename);
+  // sheetRows: read only the first rows (a quick sample); the sheet's full size is kept in "!fullref".
+  const rows = opts.sheetRows ? { sheetRows: opts.sheetRows } : {};
   const wb = isCsv
-    ? XLSX.read(decodeText(data), { type: "string", raw: true })
-    : XLSX.read(new Uint8Array(data), { type: "array", cellDates: true });
+    ? XLSX.read(decodeText(data), { type: "string", raw: true, ...rows })
+    : XLSX.read(new Uint8Array(data), { type: "array", cellDates: true, ...rows });
   return wb.SheetNames.map((name): Grid => {
     const ws = wb.Sheets[name];
     if (isCsv) return { name: filename.replace(/\.[^.]+$/, ""), rows: csvCells(XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })) };
@@ -96,8 +98,9 @@ export async function readWorkbook(data: ArrayBuffer, filename: string): Promise
       if (cell.f) formulas[`${i}:${j}`] = String(cell.f);
     }
     const merges = ((ws["!merges"] ?? []) as Merge[]).map((m) => ({ s: { r: m.s.r - at.r, c: m.s.c - at.c }, e: { r: m.e.r - at.r, c: m.e.c - at.c } }));
+    const full = ws["!fullref"] ? XLSX.utils.decode_range(ws["!fullref"]) : null;
     return {
-      name, rows: fillMerges(rows, merges), origin: at,
+      name, rows: fillMerges(rows, merges), origin: at, ...(full && opts.sheetRows ? { totalRows: full.e.r - full.s.r + 1 } : {}),
       ...(Object.keys(formulas).length ? { formulas } : {}), ...(cut.length ? { cut } : {}), ...(broken ? { broken } : {}),
     };
   });

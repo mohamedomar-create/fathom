@@ -10,6 +10,8 @@ export interface Grid {
   name: string;
   rows: Cell[][];
   origin?: { r: number; c: number };
+  /** When only a sample was read: how many rows the whole sheet has. */
+  totalRows?: number;
   /** Formulas by cell ("row:col" in this grid), as written in the spreadsheet ("SUM(L21:L82)"). */
   formulas?: Record<string, string>;
   /** Cells far away from the table (past a wide gap of empty columns or rows), left out: where they were and how many. */

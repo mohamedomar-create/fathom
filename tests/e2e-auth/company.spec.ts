@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createCompany, importFiles, newEmail, requireLocalStack, signIn, signOut, signUp, startUpload, PASSWORD } from "./helpers";
-import { STOCK_FILE, stockWorkbook } from "../fixtures/stock-workbook";
+import { stockFiles } from "../fixtures/stock-workbook";
 
 requireLocalStack();
 
@@ -109,33 +109,53 @@ test("Arabic: a signed-in user's companies, account and menu read in Arabic", as
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("لوحة المؤشرات");
 });
 
-test("inventory save is all-or-nothing and duplicates are refused", async ({ page }) => {
+test("stock imports run as background jobs: sample first, then checked and saved once, with problems shown by row", async ({ page }) => {
   test.slow();
   await signUp(page, { name: "Stock Owner", org: "Stock Advisory", email: newEmail("stock") });
   const id = await createCompany(page, "Stock Co");
-  const save = async (mode: "replace" | "add" | "all") => {
+  const job = () => page.getByTestId("import-job").first();
+  const run = async (mode: "replace" | "add" | "all" | "update", files: Awaited<ReturnType<typeof stockFiles>>) => {
     await startUpload(page, id, "inventory", "inventory");
-    await page.getByTestId("file-input").setInputFiles({ ...STOCK_FILE, buffer: await stockWorkbook() });
-    await expect(page.getByTestId("inventory-only")).toBeVisible({ timeout: 15_000 });
-    await page.getByTestId("inventory-next").click();
-    await page.getByTestId(`inventory-mode-${mode}`).click();
-    await page.getByTestId("save-inventory").click();
-    return page.getByTestId("done-step");
+    await page.getByTestId("file-input").setInputFiles(files);
+    // A sample of each file, before the whole file is read: which export it is, its columns, its first rows.
+    await expect(page.getByTestId("import-sample")).toHaveCount(2, { timeout: 15_000 });
+    await expect(page.getByTestId("import-preview").first()).toContainText("[P1] Mask");
+    await page.getByTestId("import-next").click();
+    await page.getByTestId(`import-mode-${mode}`).click();
+    await page.getByTestId("import-start").click();
+    await expect(page.getByTestId("import-running")).toBeVisible();
+    return job();
   };
-  // 3 valuation layers and 4 moves.
-  await expect(await save("replace")).toContainText("7 added · 0 already here", { timeout: 30_000 });
-  // The same file again, adding only new records: every record is already here.
-  await expect(await save("add")).toContainText("0 added · 7 already here", { timeout: 30_000 });
-  // The same file under Replace: its earlier copy is replaced, not doubled.
-  await expect(await save("replace")).toContainText("7 added · 0 already here", { timeout: 30_000 });
-  // Replace all: the file becomes the whole history (nothing from earlier uploads stays behind).
-  await expect(await save("all")).toContainText("7 added · 0 already here", { timeout: 30_000 });
+  // 3 valuation layers and 4 moves, saved by the background worker.
+  let j = await run("replace", await stockFiles());
+  await expect(j).toHaveAttribute("data-status", "done", { timeout: 30_000 });
+  await expect(j.getByTestId("import-job-counts")).toContainText("7 added · 0 changed · 0 already saved");
+  // The same files again, adding only new records: every record is already here.
+  j = await run("add", await stockFiles());
+  await expect(j).toHaveAttribute("data-status", "done", { timeout: 30_000 });
+  await expect(j.getByTestId("import-job-counts")).toContainText("0 added · 0 changed · 7 already saved");
+  // Changed in Odoo (later "Last updated on"): only that record is replaced.
+  j = await run("update", await stockFiles({ value3: 120, updated3: "2026-10-01 09:00:00" }));
+  await expect(j).toHaveAttribute("data-status", "done", { timeout: 30_000 });
+  await expect(j.getByTestId("import-job-counts")).toContainText("0 added · 1 changed · 6 already saved");
+  // A row that cannot be read stops the job before anything is saved; the person sees it by row and chooses.
+  j = await run("add", await stockFiles({ value3: 120, updated3: "2026-10-01 09:00:00", badRow: true }));
+  await expect(j).toHaveAttribute("data-status", "needs_review", { timeout: 30_000 });
+  await j.getByTestId("import-show-errors").click();
+  await expect(j.getByTestId("import-errors")).toContainText('Quantity is not a number: "five"');
+  await expect(j.getByTestId("import-errors")).toContainText("5");
+  await j.getByTestId("import-accept").click();
+  await expect(j).toHaveAttribute("data-status", "done", { timeout: 30_000 });
+  await expect(j.getByTestId("import-job-counts")).toContainText("1 row left out");
 
-  // Stored once: closing value 1,000 − 400 + 100, and 15 units received.
+  // Stored once: closing value 1,000 − 400 + 120, and 15 units received.
   await page.goto(`/company/${id}/inventory/valuation`);
-  await expect(page.getByTestId("inv-layers")).toContainText("EGP 700");
+  await expect(page.getByTestId("inv-layers")).toContainText("EGP 720");
   await page.goto(`/company/${id}/inventory/movements`);
   await expect(page.getByTestId("inv-movements")).toContainText("15");
   await page.goto(`/company/${id}/inventory/products`);
   await expect(page.getByTestId("inv-products")).toContainText("[P1]");
+  // Data health lists the imports.
+  await page.goto(`/company/${id}/settings/data-health`);
+  await expect(page.getByTestId("import-job")).toHaveCount(4);
 });

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# A local Supabase without Docker: Postgres + GoTrue (auth) + PostgREST (API) behind a small gateway.
+# A local Supabase without Docker: Postgres + GoTrue (auth) + PostgREST (API) behind a small gateway (which also stands in
+# for Storage's resumable uploads), and a loop that runs the import worker every 2 seconds (pg_cron does it in Supabase).
 # Used by the signed-in browser tests locally and in CI. Writes the URL and keys to .local-supabase/env.
 #   scripts/local-supabase/start.sh   # start (fresh database every time)
 #   scripts/local-supabase/stop.sh    # stop
@@ -52,7 +53,9 @@ nohup "$ROOT/bin/auth" serve > "$ROOT/logs/auth.log" 2>&1 & echo $! > "$ROOT/aut
 PGRST_DB_URI="postgres://authenticator:local-authenticator@127.0.0.1:$PG_PORT/postgres" PGRST_DB_SCHEMAS=public PGRST_DB_ANON_ROLE=anon \
   PGRST_JWT_SECRET="$JWT_SECRET" PGRST_SERVER_PORT=$REST_PORT PGRST_SERVER_HOST=127.0.0.1 PGRST_DB_POOL=10 \
   nohup "$ROOT/bin/postgrest" > "$ROOT/logs/postgrest.log" 2>&1 & echo $! > "$ROOT/postgrest.pid"
-nohup node scripts/local-supabase/gateway.mjs $GW_PORT $AUTH_PORT $REST_PORT > "$ROOT/logs/gateway.log" 2>&1 & echo $! > "$ROOT/gateway.pid"
+rm -rf "$ROOT/storage"; mkdir -p "$ROOT/storage"
+nohup node scripts/local-supabase/gateway.mjs $GW_PORT $AUTH_PORT $REST_PORT "$ROOT/storage" > "$ROOT/logs/gateway.log" 2>&1 & echo $! > "$ROOT/gateway.pid"
+nohup sh -c "while true; do psql '$DB' -q -c 'call private.run_import_jobs()' >/dev/null 2>>'$ROOT/logs/imports.log'; sleep 2; done" > /dev/null 2>&1 & echo $! > "$ROOT/imports.pid"
 
 for i in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:$GW_PORT/auth/v1/health" >/dev/null 2>&1 && curl -fsS -o /dev/null "http://127.0.0.1:$REST_PORT/" 2>/dev/null; then break; fi

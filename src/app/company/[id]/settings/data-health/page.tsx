@@ -9,6 +9,7 @@ import type { AcceptedItem } from "../actions";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { LineUploads, type LineUpload } from "@/components/settings/line-uploads";
 import { StockChecks } from "@/components/inventory/stock-checks";
+import { ImportJobs } from "@/components/imports/import-jobs";
 import { loadInventory } from "@/lib/company/inventory-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
 
@@ -89,6 +90,7 @@ export default async function DataHealthPage({ params, searchParams }: { params:
         <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
         <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />
       </section>
+      <section className="mt-10"><ImportJobs companyId={id} /></section>
       <StockChecks inventory={inventory} expenses={expenses} />
     </div>
   );
