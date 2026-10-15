@@ -149,3 +149,30 @@ describe("Inventory engine", () => {
     expect(en.headline).toContain("670");
   });
 });
+
+describe("demo company stock", async () => {
+  const sample = (await import("../../reference/sample.json")).default;
+  const { demoInventory } = await import("@/lib/company/demo-inventory");
+  const { demoExpenses } = await import("@/lib/company/demo-expenses");
+  const { inventoryLedger } = await import("@/lib/engine/inventory");
+  const months = sample.months as import("@/lib/engine").MonthData[];
+  const ledger = inventoryLedger(months, demoExpenses());
+
+  it("demoTiesOutEveryMonth", () => {
+    const d = demoInventory();
+    // Every month after the first (the first has no month before it to measure movement against).
+    for (const m of months.slice(1)) {
+      const a = inventoryAnalysis(d, { type: "month", end: m.period }, sample.fy_start_month, { ledger, today: "2026-09-30" });
+      expect(a.tieouts.length).toBeGreaterThanOrEqual(5);
+      for (const t of a.tieouts) expect(t.status, `${t.key} ${t.period}: module ${t.module}, ledger ${t.ledger}`).toBe("ok");
+    }
+    const year = inventoryAnalysis(d, { type: "year", end: "2026-09" }, sample.fy_start_month, { ledger, today: "2026-09-30" });
+    expect(year.tieouts.some((t) => t.key === "qty_onhand" && t.status === "ok")).toBe(true);
+    expect(year.products.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("the demo's cost of sales from stock is the cost-of-goods account in its accounts", () => {
+    for (const m of months) expect(ledger.cogs![m.period]).toBeGreaterThan(0);
+    expect(ledger.stock!["2026-09"]).toBe(months.find((m) => m.period === "2026-09")!.bs.inventory);
+  });
+});

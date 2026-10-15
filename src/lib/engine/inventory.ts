@@ -3,6 +3,7 @@ import { layerKind, isInternalLocation } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
 import { tieOut, type TieOut } from "./tieout";
+import { COGS_SUPPLIER } from "./expenses";
 import { monthLabel, periodLabel } from "@/lib/i18n";
 
 /**
@@ -247,4 +248,17 @@ export function inventoryAnalysis(
     bridge, products, movements: [...mv.values()].map((m) => ({ ...m, q: Math.round(m.q * 10000) / 10000 })), locations: [...locs.values()],
     tieouts, findings, headline,
   };
+}
+
+/**
+ * The ledger side of the tie-outs, from data every company already has: the closing balance of the accounts mapped to
+ * Inventory (balance sheet, per month) and the cost of sales posted by stock moves or with customer invoices (the expense
+ * lines grouped as "Cost of goods sold (stock)").
+ */
+export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[] }): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
+  const stock: Record<string, number> = {};
+  for (const m of months) if (Object.keys(m.bs).length) stock[m.period] = Number(m.bs.inventory ?? 0);
+  const cogs: Record<string, number> = {};
+  for (const r of expenses.suppliers) if (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed")) cogs[r.p] = r2((cogs[r.p] ?? 0) + r.a);
+  return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
 }
