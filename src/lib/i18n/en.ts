@@ -6,6 +6,7 @@ import { fin } from "./areas/fin";
 import { ana } from "./areas/ana";
 import { sales } from "./areas/sales";
 import { exp } from "./areas/exp";
+import { inv } from "./areas/inv";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -33,7 +34,7 @@ export const en = {
     people: "User management",
     logout: "Logout",
   },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", banking: "Banking" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", banking: "Banking" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -55,6 +56,10 @@ export const en = {
     "expenses/accounts": ["Accounts", "Expenses by Account"],
     "expenses/suppliers": ["Suppliers", "Suppliers"],
     "expenses/trend": ["Trend", "Expenses Trend"],
+    inventory: ["Overview", "Inventory Overview"],
+    "inventory/products": ["Products", "Stock by Product"],
+    "inventory/movements": ["Movements", "Stock Movements"],
+    "inventory/valuation": ["Valuation", "Valuation and Checks"],
     banking: ["Bank Readiness", "Bank Readiness"],
   } as Record<string, readonly [string, string]>,
   settingsNav: {
@@ -100,6 +105,7 @@ export const en = {
   ana: ana.en,
   sales: sales.en,
   exp: exp.en,
+  inv: inv.en,
   bank: bank.en,
   rp: rp.en,
   plan: plan.en,
