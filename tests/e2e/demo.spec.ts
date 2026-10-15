@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import ExcelJS from "exceljs";
 
 const PAGES = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend"];
 
@@ -454,4 +455,41 @@ test("Arabic: Bank readiness, Real profit, Forecast and Goalseek read in Arabic"
   await expect(page.getByTestId("lever-price")).toContainText("السعر");
   await expect(page.getByText("حساسية عالية", { exact: false })).toBeVisible();
   expect(errors).toEqual([]);
+});
+
+/** A made-up two-sheet Odoo Inventory export (valuation and moves history), as an import-compatible export. */
+async function stockWorkbook(): Promise<Buffer> {
+  const wb = new ExcelJS.Workbook();
+  const v = wb.addWorksheet("Valuation");
+  v.addRows([
+    ["ID", "Date", "Reference", "Product", "Quantity", "Unit Value", "Total Value"],
+    ["__export__.svl_1", "2026-09-02", "WH/IN/00001", "[P1] Mask", 10, 100, 1000],
+    ["__export__.svl_2", "2026-09-05", "WH/OUT/00001", "[P1] Mask", -4, 100, -400],
+    ["__export__.svl_3", "2026-09-06", "WH/IN/00002", "[P2] Tube", 5, 20, 100],
+  ]);
+  const m = wb.addWorksheet("Moves");
+  m.addRows([
+    ["ID", "Date", "Reference", "Product", "From", "To", "Quantity", "Status"],
+    ["__export__.sml_1", "2026-09-02", "WH/IN/00001", "[P1] Mask", "Partners/Vendors", "WH/Stock", 10, "Done"],
+    ["__export__.sml_2", "2026-09-05", "WH/OUT/00001", "[P1] Mask", "WH/Stock", "Partners/Customers", 4, "Done"],
+    ["__export__.sml_3", "2026-09-06", "WH/IN/00002", "[P2] Tube", "Partners/Vendors", "WH/Stock", 5, "Done"],
+    ["__export__.sml_4", "2026-09-10", "WH/INT/00007", "[P1] Mask", "WH/Stock", "WH/Rental", 1, "Done"],
+  ]);
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+test("inventory upload: each sheet goes to Inventory only", async ({ page }) => {
+  await page.goto("/demo/settings/source-data");
+  await page.getByTestId("pick-inventory").click();
+  await expect(page.getByTestId("get-odoo")).toContainText("import-compatible export");
+  await page.getByTestId("wiz-next").click();
+  await page.getByTestId("file-input").setInputFiles({ name: "stock.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: await stockWorkbook() });
+  await expect(page.getByTestId("inventory-only")).toBeVisible();
+  // Both sheets are read as Inventory sheets, and nothing goes to sales, expenses or the accounts.
+  const roles = page.getByTestId("sheet-roles");
+  await expect(roles).toContainText("3 valuation layers, net value EGP 700");
+  await expect(roles).toContainText("4 done moves");
+  await expect(page.getByTestId("inventory-preview")).toContainText("1 rental");
+  await expect(page.getByTestId("rental-location-select")).toBeVisible();
+  await expect(page.getByTestId("commit-import")).toHaveText(/Create a free account to save/);
 });
