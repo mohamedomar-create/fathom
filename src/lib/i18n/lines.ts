@@ -61,7 +61,7 @@ export const LINES_AR: Record<string, string> = {
   // Fixed names in Sales and Expenses
   "No customer": "بدون عميل", Other: "أخرى", "No category": "بدون فئة", "No supplier": "بدون مورد", "Journal entries": "قيود يومية",
   "Depreciation (no payment)": "إهلاك (بدون دفع)", "Cost of goods sold (stock)": "تكلفة البضاعة المباعة (مخزون)", "Customer invoices (no supplier)": "فواتير عملاء (بدون مورد)",
-  "Bank not named": "بنك غير محدد", "Vendor bills": "فواتير الموردين", "Supplier refunds": "مرتجعات الموردين", "Expense reports": "تقارير المصروفات", "Stock moves": "حركات المخزون",
+  "Bank not named": "بنك غير محدد", "Government payments (CPS)": "مدفوعات حكومية (CPS)", "Company card spending (VISA)": "مشتريات ببطاقات الشركة (VISA)", "Company cards (VISA)": "بطاقات الشركة (VISA)", "CPS (government payments)": "CPS (المدفوعات الحكومية)", "Vendor bills": "فواتير الموردين", "Supplier refunds": "مرتجعات الموردين", "Expense reports": "تقارير المصروفات", "Stock moves": "حركات المخزون",
   Depreciation: "الإهلاك", Payroll: "الرواتب", "Bank payments": "مدفوعات بنكية", "Cost of sales": "تكلفة المبيعات", "Running costs (fixed)": "تكاليف التشغيل (ثابتة)",
   "Selling costs (variable)": "تكاليف البيع (متغيرة)", "Interest and tax": "الفوائد والضرائب", "Other costs": "تكاليف أخرى",
 };

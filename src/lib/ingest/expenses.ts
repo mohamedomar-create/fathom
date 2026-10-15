@@ -5,7 +5,7 @@ import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type
 import { checkExpenseTemplate, templateMarkOf } from "./template";
 import { classify } from "./classify";
 import { mostlyBills, VENDOR_HDR } from "./sales";
-import { COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, EXPENSE_JOURNAL, LENDER_TAG, NO_SUPPLIER, UNNAMED_LENDER } from "@/lib/engine/expenses";
+import { CARD_SPEND, COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, GOV_PAYMENTS, EXPENSE_JOURNAL, LENDER_TAG, NO_SUPPLIER, UNNAMED_LENDER } from "@/lib/engine/expenses";
 import { docKind, isBillDoc, seriesOf } from "@/lib/engine/series";
 
 /**
@@ -50,7 +50,12 @@ const BANKS: Record<string, string> = {
   ADIB: "ADIB", ALEX: "Bank of Alexandria", BOA: "Bank of Alexandria", BDC: "Banque du Caire", SAIB: "SAIB", FAB: "First Abu Dhabi Bank", ENBD: "Emirates NBD",
   AUB: "Ahli United Bank", CAE: "Crédit Agricole Egypt", MASHREQ: "Mashreq", EGB: "EG Bank", HDB: "Housing & Development Bank", AIB: "Arab International Bank",
   ABK: "Al Ahli Bank of Kuwait", NBK: "NBK", UB: "The United Bank", ABC: "Bank ABC", CITI: "Citibank", AB: "Arab Bank", FAISAL: "Faisal Islamic Bank",
+  // Not banks, but paid through one: the government payment gateway and the company credit cards. Their fees and card
+  // interest sit with the banks; what they paid for keeps its own group (CHANNELS).
+  CPS: "CPS (government payments)", VISA: "Company cards (VISA)",
 };
+/** Journals that are a way of paying, not a supplier: lines in them without a partner go to the group they stand for. */
+const CHANNELS: Record<string, string> = { CPS: GOV_PAYMENTS, VISA: CARD_SPEND };
 
 /**
  * The bank behind an interest or bank-charge line: the partner of a bill, else the bank journal the entry was booked in, else
@@ -75,6 +80,8 @@ export function supplierOf(e: Pick<LedgerEntry, "ref" | "label" | "partner">, cl
   if (lender) return lender;
   const kind = docKind(e.ref);
   if (kind === "purchase") return e.partner || NO_SUPPLIER;
+  const channel = CHANNELS[seriesOf(e.ref)];
+  if (channel) return e.partner || channel;
   if (kind === "stock" || (kind === "customer" && COST_OF_SALES.has(cls))) return COGS_SUPPLIER;
   if (kind === "customer") return CUSTOMER_DOCS;
   const journal = !e.label || e.label === e.ref || e.label === `Entry ${e.ref}` || /^MISC\b/i.test(seriesOf(e.ref));

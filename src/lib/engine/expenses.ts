@@ -28,8 +28,12 @@ export const DEPRECIATION_SUPPLIER = "Depreciation (no payment)";
 export const COGS_SUPPLIER = "Cost of goods sold (stock)";
 /** Other cost lines on customer invoices (penalties, collection fees): their partner is a customer too. */
 export const CUSTOMER_DOCS = "Customer invoices (no supplier)";
+/** Paid through CPS, the government payment gateway (customs duties, VAT, taxes): owed to the state, not to a supplier. */
+export const GOV_PAYMENTS = "Government payments (CPS)";
+/** Paid by company credit card (IT subscriptions, business meals and travel): the books do not name the merchant. */
+export const CARD_SPEND = "Company card spending (VISA)";
 /** Names that are not a supplier one pays (left out of supplier concentration and of double-payment checks). */
-export const NOT_SUPPLIERS = new Set(["", NO_SUPPLIER, EXPENSE_JOURNAL, DEPRECIATION_SUPPLIER, COGS_SUPPLIER, CUSTOMER_DOCS]);
+export const NOT_SUPPLIERS = new Set(["", NO_SUPPLIER, EXPENSE_JOURNAL, DEPRECIATION_SUPPLIER, COGS_SUPPLIER, CUSTOMER_DOCS, GOV_PAYMENTS, CARD_SPEND]);
 /**
  * Interest and bank charges are owed to a bank that lends to the company or keeps its accounts, never to a supplier: their
  * lines carry the bank ("Bank: CIB"), and the Expenses pages list banks apart from suppliers.
@@ -121,7 +125,7 @@ const VARIABLE = new Set<string>(["cos_variable", "exp_variable"]), FIXED = new 
 export function sourceName(series: string) {
   const s = series.toUpperCase();
   return s === "BILL" ? "Vendor bills" : s === "RBILL" ? "Supplier refunds" : s === "EXP" ? "Expense reports" : s === "STJ" ? "Stock moves" : s === "MISC" ? "Journal entries"
-    : s === "ASSTE" ? "Depreciation" : s === "SAL" || s === "SLIP" ? "Payroll" : s ? `${series} journal` : "Other";
+    : s === "ASSTE" ? "Depreciation" : s === "SAL" || s === "SLIP" ? "Payroll" : s === "CPS" ? GOV_PAYMENTS : s === "VISA" ? "Company cards (VISA)" : s ? `${series} journal` : "Other";
 }
 
 /** An account as the company holds it: monthly amounts in natural sign (costs positive). */
