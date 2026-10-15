@@ -5,6 +5,7 @@ import type { Json } from "@/lib/supabase/database.types";
 import type { createClient } from "@/lib/supabase/server";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
+import type { StockLedgerLine } from "@/lib/ingest/inventory";
 
 /**
  * Sales and expense lines taken from a General Ledger (source "ledger") mirror the accounts loaded: when months of the
@@ -13,13 +14,16 @@ import type { ExpenseLine } from "@/lib/ingest/expenses";
  */
 type Supa = Awaited<ReturnType<typeof createClient>>;
 export type { LineKind };
-const TABLES: Record<LineKind, { lines: "sales_lines" | "expense_lines"; batches: "sales_batches" | "expense_batches" }> = {
+/** What a General Ledger leaves behind besides the accounts: sales and expense lines, and its stock postings (Inventory tie-outs). */
+export type LedgerKind = LineKind | "stock";
+const TABLES: Record<LedgerKind, { lines: "sales_lines" | "expense_lines" | "stock_ledger_lines"; batches: "sales_batches" | "expense_batches" | "stock_ledger_batches" }> = {
   sales: { lines: "sales_lines", batches: "sales_batches" },
   expenses: { lines: "expense_lines", batches: "expense_batches" },
+  stock: { lines: "stock_ledger_lines", batches: "stock_ledger_batches" },
 };
 
 /** Removes the ledger lines of these months (or all of them), and the ledger batches left with no months. */
-export async function clearLedger(supabase: Supa, companyId: string, periods: string[] | "all", kinds: LineKind[] = ["sales", "expenses"]): Promise<void> {
+export async function clearLedger(supabase: Supa, companyId: string, periods: string[] | "all", kinds: LedgerKind[] = ["sales", "expenses", "stock"]): Promise<void> {
   if (periods !== "all" && !periods.length) return;
   for (const kind of kinds) {
     const t = TABLES[kind];
@@ -78,9 +82,10 @@ export async function keepLedgerInStep(supabase: Supa, companyId: string, accoun
 
 const CHUNK = 4000;
 /** Saves ledger lines on the server (the Odoo sync): a batch per kind replaces those months, then the lines in chunks. */
-export async function saveLedgerLines(supabase: Supa, companyId: string, userId: string, kind: LineKind, lines: (SalesLine | ExpenseLine)[], filename: string): Promise<number> {
+export async function saveLedgerLines(supabase: Supa, companyId: string, userId: string, kind: LedgerKind, lines: (SalesLine | ExpenseLine | StockLedgerLine)[], filename: string): Promise<number> {
   if (!lines.length) return 0;
-  const t = TABLES[kind];
+  if (kind === "stock") return saveStockLines(supabase, companyId, lines as StockLedgerLine[], filename);
+  const t = TABLES[kind] as { lines: "sales_lines" | "expense_lines"; batches: "sales_batches" | "expense_batches" };
   const periods = [...new Set(lines.map((l) => l.period))].sort();
   const begin = kind === "sales" ? "begin_sales_batch" : "begin_expense_batch";
   const add = kind === "sales" ? "add_sales_lines" : "add_expense_lines";
@@ -95,13 +100,27 @@ export async function saveLedgerLines(supabase: Supa, companyId: string, userId:
   } else throw new Error(b.error.message);
   let saved = 0;
   for (let i = 0; i < lines.length; i += CHUNK) {
-    const part = lines.slice(i, i + CHUNK).map((x) => { const { src, ...l } = x; void src; return l; });
+    const part = (lines as (SalesLine | ExpenseLine)[]).slice(i, i + CHUNK).map((x) => { const { src, ...l } = x; void src; return l; });
     const r = await supabase.rpc(add, { p_batch: batch, p_lines: part as unknown as Json });
     if (!r.error) { saved += r.data as number; continue; }
     if (!missing(r.error)) throw new Error(r.error.message);
     const ins = await supabase.from(t.lines).insert(part.map((l) => ({ ...l, company_id: companyId, batch_id: batch, source: "ledger" as const })) as never);
     if (ins.error) throw new Error(ins.error.message);
     saved += part.length;
+  }
+  return saved;
+}
+
+/** The ledger's stock postings (the Odoo sync): a batch replaces those months, then the lines. Skipped before the Inventory update. */
+async function saveStockLines(supabase: Supa, companyId: string, lines: StockLedgerLine[], filename: string): Promise<number> {
+  const periods = [...new Set(lines.map((l) => l.period))].sort();
+  const b = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: periods, p_filename: filename });
+  if (b.error) { if (missing(b.error)) return 0; throw new Error(b.error.message); }
+  let saved = 0;
+  for (let i = 0; i < lines.length; i += CHUNK) {
+    const r = await supabase.rpc("add_stock_ledger_lines", { p_batch: b.data as string, p_lines: lines.slice(i, i + CHUNK) as unknown as Json });
+    if (r.error) throw new Error(r.error.message);
+    saved += r.data as number;
   }
   return saved;
 }

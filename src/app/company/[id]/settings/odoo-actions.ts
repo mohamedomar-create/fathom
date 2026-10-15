@@ -108,6 +108,7 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
       const name = `${conn.odoo_company_name ?? "Odoo"} (sync)`;
       await saveLedgerLines(supabase, companyId, user.id, "sales", ls.sales, name);
       await saveLedgerLines(supabase, companyId, user.id, "expenses", ls.expenses, name);
+      await saveLedgerLines(supabase, companyId, user.id, "stock", ls.stock, name);
       detail = ls.note;
     } catch (e) { detail = `Sales and expense detail could not be synced (${safeError(e, "syncOdoo:lines")}). The figures were synced.`; }
     await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version }).eq("company_id", companyId);

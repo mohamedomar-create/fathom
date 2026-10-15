@@ -282,6 +282,51 @@ begin
   return v_count;
 end $$;
 
+-- The ledger's stock postings, saved like its sales and expense lines: a batch replaces those months, then the lines.
+create or replace function public.begin_stock_ledger_batch(p_company uuid, p_periods text[], p_filename text default null)
+returns uuid
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_batch uuid;
+begin
+  if not private.is_member(private.company_org(p_company), 'editor') then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+  if coalesce(array_length(p_periods, 1), 0) = 0 or array_length(p_periods, 1) > 600 then raise exception 'periods required'; end if;
+  delete from public.stock_ledger_lines where company_id = p_company and period = any (p_periods);
+  delete from public.stock_ledger_batches b where b.company_id = p_company and not exists (select 1 from public.stock_ledger_lines l where l.batch_id = b.id);
+  insert into public.stock_ledger_batches (company_id, filename, periods, created_by)
+  values (p_company, left(p_filename, 300), p_periods, (select auth.uid()))
+  returning id into v_batch;
+  return v_batch;
+end $$;
+
+create or replace function public.add_stock_ledger_lines(p_batch uuid, p_lines jsonb)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  b public.stock_ledger_batches;
+  v_count integer;
+begin
+  select * into b from public.stock_ledger_batches where id = p_batch;
+  if not found or not private.is_member(private.company_org(b.company_id), 'editor') then
+    raise exception 'not allowed' using errcode = '42501';
+  end if;
+  if jsonb_typeof(p_lines) <> 'array' or jsonb_array_length(p_lines) > 5000 then raise exception 'send 1 to 5000 lines'; end if;
+  insert into public.stock_ledger_lines (company_id, batch_id, day, period, ref, account, amount)
+  select b.company_id, b.id, nullif(l ->> 'day', '')::date, l ->> 'period', left(coalesce(l ->> 'ref', ''), 120), left(coalesce(l ->> 'account', ''), 200), (l ->> 'amount')::numeric
+  from jsonb_array_elements(p_lines) l
+  where l ->> 'period' = any (b.periods) and l ->> 'amount' is not null;
+  get diagnostics v_count = row_count;
+  return v_count;
+end $$;
+
 -- What the Inventory pages read: monthly totals (row-level security applies), never every row.
 create or replace function public.inventory_summary(p_company uuid)
 returns jsonb
@@ -325,9 +370,13 @@ revoke execute on function public.add_stock_moves(uuid, jsonb) from public, anon
 revoke execute on function public.set_stock_onhand(uuid, date, jsonb) from public, anon;
 revoke execute on function public.set_inventory_products(uuid, jsonb) from public, anon;
 revoke execute on function public.inventory_summary(uuid) from public, anon;
+revoke execute on function public.begin_stock_ledger_batch(uuid, text[], text) from public, anon;
+revoke execute on function public.add_stock_ledger_lines(uuid, jsonb) from public, anon;
 grant execute on function public.begin_inventory_batch(uuid, text, text[], text, text, jsonb) to authenticated;
 grant execute on function public.add_stock_layers(uuid, jsonb) to authenticated;
 grant execute on function public.add_stock_moves(uuid, jsonb) to authenticated;
 grant execute on function public.set_stock_onhand(uuid, date, jsonb) to authenticated;
 grant execute on function public.set_inventory_products(uuid, jsonb) to authenticated;
 grant execute on function public.inventory_summary(uuid) to authenticated;
+grant execute on function public.begin_stock_ledger_batch(uuid, text[], text) to authenticated;
+grant execute on function public.add_stock_ledger_lines(uuid, jsonb) to authenticated;
