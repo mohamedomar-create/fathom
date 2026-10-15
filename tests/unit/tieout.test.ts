@@ -40,3 +40,12 @@ describe("tie-outs: a module against the ledger", () => {
     expect(tieOutSeries("cogs", ["2026-09"], { "2026-09": 20 }, null)[0].status).toBe("no_ledger");
   });
 });
+
+describe("tie-outs on quantities", () => {
+  it("can require an exact match (quantities, not pounds)", () => {
+    expect(tieOut("qty_onhand", "2026-09", 7, 6, undefined, 0).status).toBe("off");
+    expect(tieOut("qty_onhand", "2026-09", 6, 6, undefined, 0).status).toBe("ok");
+    const t = tieOut("qty_onhand", "2026-09", 7, 6, { module: { P1: 7 }, ledger: { P1: 6 } }, 0);
+    expect(t.causes).toEqual([{ ref: "P1", module: 7, ledger: 6, why: "amount_differs" }]);
+  });
+});

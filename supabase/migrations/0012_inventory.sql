@@ -352,6 +352,8 @@ as $$
       from public.inventory_products where company_id = p_company), '[]'::jsonb),
     'byRef', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref, 'kind', kind, 'v', v)) from (
       select period, ref, kind, sum(value) v from public.stock_layers where company_id = p_company and ref <> '' group by period, ref, kind) r), '[]'::jsonb),
+    'rental', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref)) from (
+      select distinct period, ref from public.stock_moves where company_id = p_company and kind in ('rental_out', 'rental_back') and ref <> '') rr), '[]'::jsonb),
     'ledger', coalesce((select jsonb_agg(jsonb_build_object('p', period, 'ref', ref, 'v', v)) from (
       select period, ref, sum(amount) v from public.stock_ledger_lines where company_id = p_company group by period, ref) g), '[]'::jsonb),
     'meta', jsonb_build_object(
