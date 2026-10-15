@@ -9,7 +9,7 @@ import { planImport, unresolved, type MonthDiff, type Overlap, type TimelineCell
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
 import { getUser } from "@/lib/supabase/server";
-import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/load";
+import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
@@ -238,6 +238,23 @@ export async function saveAssumptions(companyId: string, input: z.input<typeof A
   const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [ECONOMY_KEY]: clean };
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveAssumptions") };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}
+
+/** Inventory settings: the location rented items go to (null: found by its name, "Rental" or "تأجير"). */
+export async function saveInventorySettings(companyId: string, input: { rentalLocation: string | null }): Promise<{ ok: boolean; error?: string }> {
+  const v = z.object({ rentalLocation: z.string().trim().max(200).nullable() }).safeParse(input);
+  if (!v.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+  if (e1) return { ok: false, error: dbError(e1, "saveInventorySettings") };
+  if (!row) return { ok: false, error: "You do not have permission to change this." };
+  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [INVENTORY_KEY]: { rentalLocation: v.data.rentalLocation || null } };
+  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
+  if (error) return { ok: false, error: dbError(error, "saveInventorySettings") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };

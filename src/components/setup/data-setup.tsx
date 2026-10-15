@@ -56,17 +56,23 @@ export function DataSetup({ sales, expenses = null }: { sales: SalesData | null;
       actions: <><Link href={upload("expenses")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-expenses">Upload</Link><TemplateButton kind="expenses" compact /></>,
     },
     {
-      n: 6, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
+      n: 6, title: "Your stock (optional)", status: sectorStatus(by("inventory" as SectorReadiness["key"])), testId: "step-inventory",
+      why: "Stock value, movements and what sits unsold, checked against your accounts.",
+      how: <>From Odoo: Inventory → Reporting → Valuation, Moves History and Stock → list view → Export, with “I want to update data (import-compatible export)” ticked. Upload one or all three together.</>,
+      actions: <Link href={upload("inventory")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-inventory">Upload</Link>,
+    },
+    {
+      n: 7, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
       why: "Your loans, your rate, and what you want to borrow.",
       actions: <Link href={`${c.basePath}/banking`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 7, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
+      n: 8, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
       why: "Check the numbers we guessed, then press Save.",
       actions: <Link href={`${c.basePath}/analysis/forecast`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 8, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
+      n: 9, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
       why: "Pick 3 to 5 goals, like sales or profit.",
       actions: <Link href={`${c.basePath}/settings/targets`} className="text-sm text-brand-d underline">Set</Link>,
     },

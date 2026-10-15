@@ -36,6 +36,8 @@ export interface CompanyBundle {
   asOf?: string;
   /** Economic assumptions (inflation, exchange rates, borrowing) for the bank and real-profit views. */
   assumptions?: Assumptions;
+  /** Inventory settings: the location rented items go to (null: found by its name). */
+  inventorySettings?: { rentalLocation: string | null };
   /** Forecast drivers the company has saved. */
   forecast?: ForecastDrivers;
 }

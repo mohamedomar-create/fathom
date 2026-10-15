@@ -44,9 +44,12 @@ import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
 import { SheetRoles } from "@/components/upload/sheet-roles";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
+import { stockFromLedger } from "@/lib/ingest/inventory";
+import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
+import { InventoryStep, readInventorySheets } from "./inventory-upload";
 
-type Kind = "accounts" | "sales" | "expenses";
-const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses" };
+type Kind = "accounts" | "sales" | "expenses" | "inventory";
+const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
 
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
@@ -55,10 +58,10 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "financials" ? "accounts" : null);
+  const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<"add" | "replace" | null>(null);
@@ -124,6 +127,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   // The row or line the person is looking at in the two boxes.
   const [focus, setFocus] = useState<Focus | null>(null);
   const [picked, setPicked] = useState<SortedViewProps["picked"]>(null);
+  // Inventory sheets (valuation, moves, stock on hand, products): read together, saved to Inventory only.
+  const [rentalLoc, setRentalLoc] = useState<string | null>(company.inventorySettings?.rentalLocation ?? null);
+  const invParts = useMemo(() => (allGrids ? readInventorySheets(allGrids, roleOf, rentalLoc, currency) : null), [allGrids, roleOf, rentalLoc, currency]);
 
   /**
    * Sheets from the files (spreadsheets, or tables read from PDF pages): iReport decides what each one is (accounts, a
@@ -369,6 +375,15 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
           const saved = await saveExpenses(companyId, source, [...ls], filename);
           if (!saved.ok) { setErr(`The figures were saved, but the expense lines could not be: ${saved.error}`); return; }
         }
+        // The ledger's entries on the stock accounts: the accounts' side of the Inventory checks.
+        const stockLines = stockFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
+        const st = await saveStockLedger(companyId, stockLines, filename);
+        if (!st.ok) { setErr(`The figures were saved, but the ledger's stock entries could not be: ${st.error}`); return; }
+        // Inventory sheets in the same upload go to Inventory.
+        if (invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length)) {
+          const inv = await saveInventory(companyId, { layers: invParts.layers, moves: invParts.moves, onhand: invParts.onhand ?? undefined, products: invParts.products }, filename, mode === "add" ? "add" : "replace");
+          if (!inv.ok) { setErr(`The figures were saved, but the stock sheets could not be: ${inv.error}`); return; }
+        }
         const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
         setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved` });
         setScreen("done");
@@ -392,8 +407,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const expToSave = allExp.filter((l) => expMode !== "add" || !expensesLoaded.includes(l.period));
   const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
-  const found: Record<Kind, boolean> = { accounts: !!res, sales: allSales.length > 0, expenses: allExp.length > 0 };
-  const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses"] as Kind[]).find((k) => found[k]) ?? null : null;
+  const found: Record<Kind, boolean> = { accounts: !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts };
+  const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses", "inventory"] as Kind[]).find((k) => found[k]) ?? null : null;
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
 
@@ -403,10 +418,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       <div data-testid="wiz-what">
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
-        <div className="grid max-w-4xl gap-3 sm:grid-cols-3">
+        <div className="grid max-w-5xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
           <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
           <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
+          <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => { setKind("inventory"); setScreen("get"); }} testId="pick-inventory" />
         </div>
       </div>
     );
@@ -414,7 +430,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
 
   // 2 · Get your file
   if (screen === "get") {
-    const steps = kind === "sales"
+    const steps = kind === "inventory"
+      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Select all lines. Click Export.", "Tick “I want to update data (import-compatible export)”, then Export.", "Upload one sheet, or all three together."]
+      : kind === "sales"
       ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Select all lines. Click Export."]
       : kind === "expenses"
         ? ["Open Odoo: Accounting → Reporting → Invoice Analysis.", "Filter: Vendor Bills. Switch to the list view.", "Select all lines. Click Export."]
@@ -422,7 +440,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     return (
       <div data-testid="wiz-get">
         <WizardSteps at="get" />
-        <WizardTitle title={kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint="Use Odoo, or our template." />
+        <WizardTitle title={kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
         {kind === "expenses" && (
           <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg bg-green-bg px-4 py-3 text-[15px] text-green-d" data-testid="expenses-in-ledger">
             Your General Ledger already has your expenses.
@@ -437,11 +455,18 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
               {steps.map((t, k) => <li key={k} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-bg text-[12px] font-semibold text-brand-d">{k + 1}</span>{t}</li>)}
             </ol>
           </section>
+          {kind === "inventory" ? (
+            <section className="rounded-xl border border-line p-5" data-testid="get-inventory-why">
+              <h3 className="mb-3 text-lg font-medium">Why the Odoo ID box matters</h3>
+              <ul className="space-y-1.5 text-[15px] text-mute"><li>Each record keeps Odoo’s own ID.</li><li>Upload the same records again: nothing is added twice.</li><li>Stock and cost of sales are checked against your accounts, month by month.</li></ul>
+            </section>
+          ) : (
           <section className="rounded-xl border border-line p-5" data-testid="get-template">
             <h3 className="mb-3 text-lg font-medium">No Odoo? Use our template</h3>
             <TemplateButton kind={kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : "financials"} />
             <ul className="mt-3 space-y-1.5 text-[15px] text-mute"><li>Fill it in. Save it.</li><li>One number in each box.</li></ul>
           </section>
+          )}
         </div>
         <p className="mt-3 text-[13px] text-mute">Only have a PDF? That works too.</p>
         <WizardNav onBack={setupStep ? undefined : () => setScreen("what")} next="Next: upload my file" onNext={() => setScreen("upload")} />
@@ -454,7 +479,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     return (
       <div data-testid="wiz-upload">
         <WizardSteps at="upload" />
-        <WizardTitle title="Upload your file" hint={kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
+        <WizardTitle title="Upload your file" hint={kind === "inventory" ? "Your Odoo Inventory exports: one sheet, or several together." : kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
@@ -485,7 +510,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
         </div>
         {kind === "accounts" && <ImportReadiness />}
         <div className="flex flex-wrap gap-3">
-          {kind === "sales"
+          {kind === "inventory"
+            ? <a href={`${company.basePath}/inventory`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my stock</a>
+            : kind === "sales"
             ? <a href={`${company.basePath}/sales`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my sales</a>
             : kind === "expenses"
               ? <a href={`${company.basePath}/expenses`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my expenses</a>
@@ -531,7 +558,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     } else if (r === "bank") {
       const l = bankRead.layouts.find((x) => x.sheet === g.sheet);
       gives[g.sheet] = l ? `${lines(l.moneyOut.lines, "payment")} ${money(l.moneyOut.total, currency)} · ${lines(l.moneyIn.lines, "receipt")} ${money(l.moneyIn.total, currency)} · balance follows on ${l.balanced} line${l.balanced === 1 ? "" : "s"}` : "Could not be read as a bank statement.";
-    } else gives[g.sheet] = r === "notes" ? "No figures: left out." : "Left out on purpose: not entries.";
+    } else if (invParts?.sheets[g.sheet]) gives[g.sheet] = invParts.sheets[g.sheet];
+    else gives[g.sheet] = r === "notes" ? "No figures: left out." : "Left out on purpose: not entries.";
   }
   const rolesPanel = allGrids && (allGrids.length > 1 || rolesNeed) ? (
     <SheetRoles guesses={guesses} roles={roles} gives={gives} need={rolesNeed} confirmed={rolesOk}
@@ -548,6 +576,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const fromCashBook = company.accounts.some((a) => a.name === "Sales (cash book)");
   const plWanted = cashRead.layouts.length > 0 && !demo && (plOn ?? (company.accounts.length === 0 || fromCashBook));
   const plMonths = plWanted ? [...new Set([...cashRead.sales, ...cashRead.expenses].map((l) => l.period))].sort() : [];
+
+  // 4 · Check (Inventory sheets only)
+  if (!res && !hasBooks && !salesRead && !expRead && invParts) {
+    return <InventoryStep parts={invParts} companyId={companyId} currency={currency} demo={demo} filename={files.map((f) => f.name).join(" + ")}
+      rentalLocation={rentalLoc} onRental={setRentalLoc} rolesPanel={rolesPanel} fileLine={fileLine} rolesBlock={rolesBlock}
+      onBack={() => setScreen("upload")} onDone={(what) => { setDone({ what }); setScreen("done"); router.refresh(); }} />;
+  }
 
   // 4 · Check (money in and out: cash books, bank statements, or a sales list with a bills list)
   if (!res && (hasBooks || (salesRead && expRead))) {

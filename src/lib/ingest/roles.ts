@@ -5,25 +5,32 @@ import { readSalesGrid } from "./sales";
 import { bankShape } from "./bank";
 import { readCashBook } from "./cashbook";
 import { templateMarkOf } from "./template";
+import { readProducts, readStockMoves, readStockOnHand, readStockValuation } from "./inventory";
 
 /**
  * What each sheet of an upload is, decided before anything is read into the figures. iReport guesses, says why, and
  * the person can change it; sheets that are not data (price lists, summaries, notes) are named and left out on purpose.
  */
-export type SheetRole = "statement" | "sales" | "bills" | "cashbook" | "bank" | "pricelist" | "summary" | "notes";
+export type SheetRole = "statement" | "sales" | "bills" | "cashbook" | "bank" | "stock_valuation" | "stock_moves" | "stock_onhand" | "products" | "pricelist" | "summary" | "notes";
 export const ROLE_LABEL: Record<SheetRole, string> = {
   statement: "Accounts (P&L, balance sheet, trial balance or ledger)",
   sales: "Sales list",
   bills: "Bills / expenses list",
   cashbook: "Cash book (money in and out)",
   bank: "Bank statement",
+  stock_valuation: "Stock valuation (Odoo Inventory)",
+  stock_moves: "Stock moves history (Odoo Inventory)",
+  stock_onhand: "Stock on hand (Odoo Inventory)",
+  products: "Products list (Odoo Inventory)",
   pricelist: "Price list (not imported)",
   summary: "Summary or notes (not imported)",
   notes: "No figures (not imported)",
 };
-export const ROLE_ORDER: SheetRole[] = ["statement", "sales", "bills", "cashbook", "bank", "pricelist", "summary", "notes"];
+export const ROLE_ORDER: SheetRole[] = ["statement", "sales", "bills", "cashbook", "bank", "stock_valuation", "stock_moves", "stock_onhand", "products", "pricelist", "summary", "notes"];
 /** Roles whose figures go into iReport. */
-export const IMPORTED = new Set<SheetRole>(["statement", "sales", "bills", "cashbook", "bank"]);
+export const IMPORTED = new Set<SheetRole>(["statement", "sales", "bills", "cashbook", "bank", "stock_valuation", "stock_moves", "stock_onhand", "products"]);
+/** The sheets the Inventory module reads (and only it). */
+export const INVENTORY_ROLES = new Set<SheetRole>(["stock_valuation", "stock_moves", "stock_onhand", "products"]);
 
 export interface RoleGuess {
   sheet: string;
@@ -53,6 +60,11 @@ export function guessRole(g: Grid): RoleGuess {
   if (mark === "expenses") return { ...base, role: "bills", sure: true, why: "iReport's expenses template." };
   if (mark === "sales") return { ...base, role: "sales", sure: true, why: "iReport's sales template." };
   if (mark === "pl" || mark === "bs") return { ...base, role: "statement", sure: true, why: "iReport's financials template." };
+  // Odoo Inventory exports: read before the sales and bills lists (a valuation list also has dates, products and amounts).
+  if (readStockValuation(g)) return { ...base, role: "stock_valuation", sure: true, why: "Odoo's stock valuation: product, quantity and value per layer." };
+  if (readStockMoves(g)) return { ...base, role: "stock_moves", sure: true, why: "Odoo's moves history: product, from, to and quantity per move." };
+  if (readStockOnHand(g, "2000-01-01")) return { ...base, role: "stock_onhand", sure: true, why: "Odoo's stock on hand: location, product and quantity, no dates." };
+  if (readProducts(g)) return { ...base, role: "products", sure: false, why: "A products list with categories (it could also be a price list: please check)." };
   if (readExpenseGrid(g)) return { ...base, role: "bills", sure: true, why: "A list of bills: date, supplier and amount columns." };
   if (readSalesGrid(g)) return { ...base, role: "sales", sure: true, why: "A sales list: date or month, customer or product, and amount columns." };
   if (bankShape(g.rows)) return { ...base, role: "bank", sure: true, why: "Date, description, money out and in, and a balance after each line." };

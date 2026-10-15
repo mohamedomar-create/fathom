@@ -205,12 +205,17 @@ export function readStockOnHand(g: Grid, asOf: string): OnHand[] | null {
   return out.length ? out : null;
 }
 
+/** Headings of a document list (invoices, bills, orders, journal items), never of a products list. */
+const DOCUMENT_HEADING = /(date|تاريخ|number|^ref(erence)?$|رقم|vendor|customer|partner|supplier|مورد|عميل|شريك|account|حساب|total|amount|untaxed|balance|debit|credit|الإجمالي|المبلغ|مدين|دائن)/i;
+
 export function readProducts(g: Grid): ProductRow[] | null {
   const h = header(g);
   if (!h) return null;
   const c = h.col;
   const nameCol = c.name ?? c.product;
   if (nameCol === undefined || c.category === undefined || c.qty !== undefined || c.date !== undefined) return null;
+  // "Internal Reference" is a products-list heading; any other document heading means this is a list of transactions.
+  if ((g.rows[h.r] ?? []).some((v, i) => i !== c.code && DOCUMENT_HEADING.test(normAr(str(v))))) return null;
   const out: ProductRow[] = [];
   for (const { row } of dataRows(g, h)) {
     const label = cell(row, nameCol);
