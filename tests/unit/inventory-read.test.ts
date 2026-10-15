@@ -124,6 +124,19 @@ describe("stock postings from the General Ledger", async () => {
       { day: "2026-09-06", period: "2026-09", ref: "LC/2026/0001", account: "110500 Stock Valuation", amount: 120 },
     ]);
   });
+
+  it("takes the document from the label when the entry is a stock journal entry, as Odoo names it from the valuation layer", () => {
+    // Odoo posts each valuation layer as a stock journal entry (STJ/…) whose label starts with the layer's reference.
+    const x = (ref: string, label: string, amount: number) => ({ day: "2026-09-05", period: "2026-09", ref, label, partner: "", amount });
+    const lines = stockFromLedger([{ code: "123000", name: "Trading Inventory", cls: "inventory", excluded: false, entries: [
+      x("STJ/2026/0011", "Main WH/OUT/00012 - Oxygen Mask - Main WH/OUT/00012 - Oxygen Mask", -400),
+      x("STJ/2026/0012", "LC/2026/0004 - Freight - Landed cost", 120),
+      x("STJ/2026/0013", "Quantity Updated-2026-09-05 - Oxygen Mask - Quantity Updated-2026-09-05", -50),
+      x("MISC/2026/0001", "Year-end correction", 10),
+    ] }]);
+    expect(lines.map((l) => l.ref)).toEqual(["Main WH/OUT/00012", "LC/2026/0004", "Quantity Updated-2026-09-05", "MISC/2026/0001"]);
+    expect(lines.map((l) => layerKind(l.ref, "", l.amount))).toEqual(["delivery", "landed_cost", "adjustment", "other"]);
+  });
 });
 
 describe("company locations", async () => {

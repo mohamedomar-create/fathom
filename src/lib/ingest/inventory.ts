@@ -123,7 +123,7 @@ export function layerKind(ref: string, description: string, qty: number, move?: 
   if (/\/OUT\//.test(R)) return qty <= 0 ? "delivery" : "customer_return";
   if (/\/RET|RETURN/.test(R)) return qty > 0 ? "customer_return" : "supplier_return";
   if (/(^|\/)SP\//.test(R) || SCRAP.test(normAr(description))) return "scrap";
-  if (ADJ_DESC.test(normAr(description))) return "adjustment";
+  if (ADJ_DESC.test(normAr(description)) || ADJ_DESC.test(ref)) return "adjustment";
   return "other";
 }
 
@@ -232,13 +232,23 @@ export const inventoryPeriods = (rows: { period: string }[]) => [...new Set(rows
 /** A General Ledger entry on a stock account (debit positive): the ledger side of the Inventory tie-outs, by reference. */
 export interface StockLedgerLine { day: string; period: string; ref: string; account: string; amount: number }
 
+/**
+ * The document a stock entry belongs to. Odoo posts each valuation layer as a stock journal entry (STJ/…) labelled
+ * "<layer reference> - <product>", so the label's first part is the reference the valuation export carries (WH/OUT/…,
+ * LC/…, "Quantity Updated-…"). Other entries keep their own reference.
+ */
+const ledgerDoc = (ref: string, label: string) => {
+  const first = label.split(" - ")[0].trim();
+  return first && first !== ref && (first.includes("/") || ADJ_DESC.test(normAr(first))) ? first : ref;
+};
+
 /** Every entry on the accounts mapped to Inventory, from a General Ledger upload or the Odoo connection. */
 export function stockFromLedger(lines: { code: string; name: string; cls: string | null; excluded: boolean; system?: boolean; entries?: LedgerEntry[] }[]): StockLedgerLine[] {
   const out: StockLedgerLine[] = [];
   for (const l of lines) {
     if (l.excluded || l.system || l.cls !== "inventory" || !l.entries) continue;
     const account = [l.code, l.name].filter(Boolean).join(" ");
-    for (const e of l.entries) if (e.amount) out.push({ day: e.day, period: e.period, ref: e.ref, account, amount: Math.round(e.amount * 100) / 100 });
+    for (const e of l.entries) if (e.amount) out.push({ day: e.day, period: e.period, ref: ledgerDoc(e.ref, e.label ?? ""), account, amount: Math.round(e.amount * 100) / 100 });
   }
   return out;
 }
