@@ -65,10 +65,18 @@ select pg_temp.check('one snapshot row', (select string_agg(qty::text, ',') from
 
 select pg_temp.check('products upserted', public.set_inventory_products((select co from ids), '[{"code":"P1","name":"Mask","category":"Masks","cost":100,"type":"Goods"}]'::jsonb)::text, '1');
 
+-- The ledger's stock postings: a new upload of the same months replaces them.
+create temp table g1 as select public.begin_stock_ledger_batch((select co from ids), array['2026-08'], 'gl.xlsx') as id;
+select pg_temp.check('ledger stock lines saved', public.add_stock_ledger_lines((select id from g1), '[{"day":"2026-08-03","period":"2026-08","ref":"WH/IN/00001","account":"110500 Stock","amount":1000}]'::jsonb)::text, '1');
+create temp table g2 as select public.begin_stock_ledger_batch((select co from ids), array['2026-08'], 'gl-2.xlsx') as id;
+select pg_temp.check('ledger stock lines replaced', public.add_stock_ledger_lines((select id from g2), '[{"day":"2026-08-03","period":"2026-08","ref":"WH/IN/00001","account":"110500 Stock","amount":1000}]'::jsonb)::text, '1');
+select pg_temp.check('one ledger stock line', (select count(*)::text from public.stock_ledger_lines where company_id = (select co from ids)), '1');
+
 -- The summary: monthly totals only.
 create temp table s as select public.inventory_summary((select co from ids)) j;
 select pg_temp.check('summary layers', (select string_agg((x ->> 'p') || ' ' || (x ->> 'kind') || ' ' || (x ->> 'v'), ',') from s, jsonb_array_elements(j -> 'layers') x), '2026-08 receipt 1000.00');
 select pg_temp.check('summary moves', (select string_agg((x ->> 'kind') || ' ' || (x ->> 'q'), ',') from s, jsonb_array_elements(j -> 'moves') x), 'rental_out 1.0000');
+select pg_temp.check('summary ledger refs', (select string_agg((x ->> 'ref') || ' ' || (x ->> 'v'), ',') from s, jsonb_array_elements(j -> 'ledger') x), 'WH/IN/00001 1000.00');
 select pg_temp.check('summary knows the IDs', (select j -> 'meta' ->> 'withIds' from s), 'true');
 
 -- The same file uploaded again under Replace removes its earlier copy, even in months the new upload does not cover.
@@ -80,6 +88,8 @@ reset role;
 -- Ivo belongs to another organisation: he reads nothing and cannot save.
 select pg_temp.login('ib@x.test');
 select pg_temp.check('outsider reads no layers', (select count(*)::text from public.stock_layers), '0');
+do $$ begin perform public.begin_stock_ledger_batch((select co from ids), array['2026-08'], 'x.xlsx'); raise exception 'FAIL outsider could clear ledger stock';
+exception when insufficient_privilege then raise notice 'ok  outsider cannot touch ledger stock lines'; end $$;
 select pg_temp.check('outsider summary empty', (select jsonb_array_length(public.inventory_summary((select co from ids)) -> 'layers')::text), '0');
 do $$ begin perform public.begin_inventory_batch((select co from ids), 'valuation', array['2026-09'], 'x.xlsx', 'replace', '{}'::jsonb); raise exception 'FAIL outsider could start a batch';
 exception when insufficient_privilege then raise notice 'ok  outsider cannot start a batch'; end $$;

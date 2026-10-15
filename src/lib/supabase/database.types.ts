@@ -36,6 +36,11 @@ export type SalesLineRow = { id: number; company_id: string; batch_id: string; s
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add"; report: Json; created_by: string | null; created_at: string }
+export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string }
+export type StockMoveRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; lot: string; from_loc: string; to_loc: string; qty: number; uom: string; partner: string }
+export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
 
 export type Database = {
   public: {
@@ -55,6 +60,11 @@ export type Database = {
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
       expense_batches: Table<ExpenseBatchRow, "company_id" | "source">;
       expense_lines: Table<ExpenseLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
+      inventory_batches: Table<InventoryBatchRow, "company_id" | "kind">;
+      stock_layers: Table<StockLayerRow, "company_id" | "batch_id" | "odoo_key" | "period">;
+      stock_moves: Table<StockMoveRow, "company_id" | "batch_id" | "odoo_key" | "period">;
+      stock_ledger_batches: Table<StockLedgerBatchRow, "company_id">;
+      stock_ledger_lines: Table<StockLedgerLineRow, "company_id" | "batch_id" | "period" | "amount">;
     };
     Views: { [_ in never]: never };
     Functions: {
@@ -77,6 +87,14 @@ export type Database = {
       expense_summary: { Args: { p_company: string }; Returns: Json };
       get_published_expenses: { Args: { p_token: string }; Returns: Json };
       ledger_line_totals: { Args: { p_company: string }; Returns: Json };
+      begin_inventory_batch: { Args: { p_company: string; p_kind: string; p_periods: string[]; p_filename?: string; p_mode?: string; p_report?: Json }; Returns: string };
+      add_stock_layers: { Args: { p_batch: string; p_rows: Json }; Returns: Json };
+      add_stock_moves: { Args: { p_batch: string; p_rows: Json }; Returns: Json };
+      set_stock_onhand: { Args: { p_batch: string; p_as_of: string; p_rows: Json }; Returns: number };
+      set_inventory_products: { Args: { p_company: string; p_rows: Json }; Returns: number };
+      inventory_summary: { Args: { p_company: string }; Returns: Json };
+      begin_stock_ledger_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string }; Returns: string };
+      add_stock_ledger_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
     };
     Enums: { member_role: MemberRole };
     CompositeTypes: { [_ in never]: never };
