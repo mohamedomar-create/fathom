@@ -1,5 +1,5 @@
 import { arRx, cleanNum, detectDateOrder, normAr, parseDay, type Cell, type DateOrder } from "./parse";
-import { str, type Grid } from "./extract";
+import { str, type Grid, type LedgerEntry } from "./extract";
 
 /**
  * The Inventory module's sheets, as Odoo 18 exports them (list view, Export; English or Arabic headings, field labels or the
@@ -217,3 +217,17 @@ export function readProducts(g: Grid): ProductRow[] | null {
 
 /** The months a set of rows covers, in order. */
 export const inventoryPeriods = (rows: { period: string }[]) => [...new Set(rows.map((r) => r.period))].sort();
+
+/** A General Ledger entry on a stock account (debit positive): the ledger side of the Inventory tie-outs, by reference. */
+export interface StockLedgerLine { day: string; period: string; ref: string; account: string; amount: number }
+
+/** Every entry on the accounts mapped to Inventory, from a General Ledger upload or the Odoo connection. */
+export function stockFromLedger(lines: { code: string; name: string; cls: string | null; excluded: boolean; system?: boolean; entries?: LedgerEntry[] }[]): StockLedgerLine[] {
+  const out: StockLedgerLine[] = [];
+  for (const l of lines) {
+    if (l.excluded || l.system || l.cls !== "inventory" || !l.entries) continue;
+    const account = [l.code, l.name].filter(Boolean).join(" ");
+    for (const e of l.entries) if (e.amount) out.push({ day: e.day, period: e.period, ref: e.ref, account, amount: Math.round(e.amount * 100) / 100 });
+  }
+  return out;
+}

@@ -107,3 +107,21 @@ describe("Odoo stock on hand and products sheets", () => {
     expect(readStockMoves(grid("Valuation", [VAL_HEAD, ...VAL_ROWS]))).toBeNull();
   });
 });
+
+describe("stock postings from the General Ledger", async () => {
+  const { stockFromLedger } = await import("@/lib/ingest/inventory");
+  const e = (day: string, ref: string, amount: number) => ({ day, period: day.slice(0, 7), ref, label: ref, partner: "", amount });
+
+  it("stockLedgerKeepsInventoryAccountsOnly", () => {
+    const lines = stockFromLedger([
+      { code: "110500", name: "Stock Valuation", cls: "inventory", excluded: false, entries: [e("2026-09-02", "WH/IN/00001", 1000), e("2026-09-05", "WH/OUT/00001", -400), e("2026-09-06", "LC/2026/0001", 120)] },
+      { code: "522006", name: "Office Rent", cls: "exp_fixed", excluded: false, entries: [e("2026-09-02", "BILL/2026/0001", 500)] },
+      { code: "110600", name: "Old Stock", cls: "inventory", excluded: true, entries: [e("2026-09-02", "WH/IN/00002", 50)] },
+    ]);
+    expect(lines).toEqual([
+      { day: "2026-09-02", period: "2026-09", ref: "WH/IN/00001", account: "110500 Stock Valuation", amount: 1000 },
+      { day: "2026-09-05", period: "2026-09", ref: "WH/OUT/00001", account: "110500 Stock Valuation", amount: -400 },
+      { day: "2026-09-06", period: "2026-09", ref: "LC/2026/0001", account: "110500 Stock Valuation", amount: 120 },
+    ]);
+  });
+});

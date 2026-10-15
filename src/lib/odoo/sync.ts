@@ -5,6 +5,7 @@ import { majorVersion, OdooClient, OdooError } from "./client";
 import type { LedgerEntry } from "@/lib/ingest/extract";
 import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
 import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
+import { stockFromLedger, type StockLedgerLine } from "@/lib/ingest/inventory";
 
 export interface OdooCompany { id: number; name: string; currency: string | null }
 export interface OdooProbe { version: string; major: number; uid: number; companies: OdooCompany[] }
@@ -172,7 +173,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped } };
 }
 
-export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; lines: number; note: string | null }
+export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[]; lines: number; note: string | null }
 /** Most move lines a sync reads for sales and expenses (beyond it, the General Ledger upload gives the detail). */
 export const MAX_SYNC_LINES = 100_000;
 
@@ -183,8 +184,8 @@ export const MAX_SYNC_LINES = 100_000;
  */
 export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res: SyncResult, budgetMs = 30_000): Promise<SyncedLines> {
   const started = Date.now();
-  const none = (note: string | null): SyncedLines => ({ sales: [], expenses: [], lines: 0, note });
-  const wanted = res.accounts.filter((a) => a.odoo_id !== null && (a.cls === "revenue" || EXPENSE_CLASSES.has(a.cls)));
+  const none = (note: string | null): SyncedLines => ({ sales: [], expenses: [], stock: [], lines: 0, note });
+  const wanted = res.accounts.filter((a) => a.odoo_id !== null && (a.cls === "revenue" || a.cls === "inventory" || EXPENSE_CLASSES.has(a.cls)));
   if (!wanted.length || !res.periods.length) return none(null);
   const cid = opts.companyId;
   const ctx = { allowed_company_ids: [cid], active_test: false };
@@ -209,5 +210,5 @@ export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res
     if (page.length < pageSize) break;
   }
   const lines = wanted.map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id!) ?? [] }));
-  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), lines: count, note: null };
+  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), stock: stockFromLedger(lines), lines: count, note: null };
 }
