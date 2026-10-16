@@ -153,3 +153,23 @@ export function trialBalanceSinglePeriod(index = 1): Grid[] {
   rows.push(["Total", 0, 0, 0, 0, 0, 0]);
   return [{ name: "Trial Balance", rows }];
 }
+
+/** An Odoo Trial Balance whose one column covers several months (from the first day of month `from` to the end of month `to`). */
+export function trialBalanceRange(from: number, to: number): Grid[] {
+  const p0 = months[from].period, p = months[to].period, prev = months[from - 1].period;
+  const last = new Date(+p.slice(0, 4), +p.slice(5), 0).getDate();
+  const range = `From 01/${p0.slice(5)}/${p0.slice(0, 4)} to ${last}/${p.slice(5)}/${p.slice(0, 4)}`;
+  const rows: Cell[][] = [["My Company"], ["Trial Balance"], ["", "Initial Balance", null, range, null, "End Balance", null], ["", "Debit", "Credit", "Debit", "Credit", "Debit", "Credit"]];
+  const dc = (v: number): [number, number] => [v > 0 ? v : 0, v < 0 ? -v : 0];
+  const re0 = toRaw("retained_earnings", months[from - 1].bs.retained_earnings ?? 0);
+  rows.push(["999999 Undistributed Profits/Losses", ...dc(re0), 0, 0, ...dc(re0)]);
+  const win = months.slice(from, to + 1).map((m) => m.period);
+  for (const a of accounts) {
+    if (a.cls === "retained_earnings") continue;
+    const open = isPL(a.cls) ? 0 : toRaw(a.cls, a.amounts[prev] ?? 0);
+    const mv = toRaw(a.cls, isPL(a.cls) ? win.reduce((s, q) => s + (a.amounts[q] ?? 0), 0) : (a.amounts[p] ?? 0) - (a.amounts[prev] ?? 0));
+    rows.push([`${a.code} ${a.name}`, ...dc(open), ...dc(mv), ...dc(open + mv)]);
+  }
+  rows.push(["Total", 0, 0, 0, 0, 0, 0]);
+  return [{ name: "Trial Balance", rows }];
+}

@@ -36,6 +36,15 @@ describe("reading sales from an Odoo General Ledger", () => {
 });
 
 describe("reading a sales export", () => {
+  it("an Odoo invoice list reads \"Tax Excluded\", never the VAT-inclusive Total or the foreign-currency total", () => {
+    const r = readSalesGrid({ name: "Invoices", rows: [
+      ["Invoice Date", "Number", "Customer", "Tax Excluded", "Total", "Total in Currency"],
+      ["15/01/2026", "INV/2026/0001", "Clinic A", 10000, 11400, 600],
+    ] });
+    expect(r?.layout.taxIncluded).toBe(false);
+    expect(r?.lines.map((l) => l.amount)).toEqual([10000]);
+  });
+
   it("an Odoo Invoice Analysis list, untaxed amounts preferred, cost from margin", () => {
     const r = readSalesGrid({ name: "Invoice Analysis", rows: [
       ["Invoice Date", "Number", "Partner", "Product", "Product Category", "Salesperson", "Quantity", "Untaxed Total", "Total", "Margin"],

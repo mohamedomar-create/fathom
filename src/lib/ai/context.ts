@@ -5,7 +5,7 @@ import {
 } from "@/lib/engine";
 
 /** Compact, numbers-only context for the commentary model (every figure comes from the engine). */
-export function buildContext(a: Analysis, months: MonthData[], company: { name: string; currency: string; industry?: string | null; aiContext?: Record<string, string>; notes?: string[]; assumptions?: Assumptions; accounts?: LoanAccount[] }, sections?: readonly string[]) {
+export function buildContext(a: Analysis, months: MonthData[], company: { name: string; currency: string; asOf?: string | null; industry?: string | null; aiContext?: Record<string, string>; notes?: string[]; assumptions?: Assumptions; accounts?: LoanAccount[] }, sections?: readonly string[]) {
   // The bank and real-profit blocks are large: send them only when those sections are being written.
   const want = (s: string) => !sections || sections.includes(s);
   const cur = company.currency;
@@ -48,19 +48,19 @@ export function buildContext(a: Analysis, months: MonthData[], company: { name: 
     monthly_trend_last_12: last(12),
     growth_quadrant_since_start_of_window: quadrant,
     goalseek_to_profitability_target: goalseekTable(P, "profit_ratio", a.targets.profit_ratio ?? 10).map((g) => `${g.name}: ${g.needed === null ? "n/a" : pct(g.needed)}`),
-    ...(want("bank") ? { bank: bankContext(months, window.end, a.settings, company.assumptions ?? {}, company.name, company.accounts) } : {}),
-    ...(want("realprofit") ? { real_profit: realProfitContext(months, window.end, a.settings, company.assumptions ?? {}) } : {}),
+    ...(want("bank") ? { bank: bankContext(months, window.end, a.settings, company.assumptions ?? {}, company.name, company.accounts, company.asOf) } : {}),
+    ...(want("realprofit") ? { real_profit: realProfitContext(months, window.end, a.settings, company.assumptions ?? {}, company.asOf) } : {}),
     data_limits: company.notes ?? [],
     business_context_from_management: company.aiContext ?? {},
   };
 }
 
 /** The bank view for the twelve months to the period end: ratios, questions, room to borrow, the request, stress and trend. */
-export function bankContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, name: string, accounts?: LoanAccount[]) {
+export function bankContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, name: string, accounts?: LoanAccount[], asOf?: string | null) {
   const cur = settings.currency;
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, cur));
   const x = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : `${v.toFixed(2)}x`);
-  const p = bankPack(months, end, settings, as, name, accounts);
+  const p = bankPack(months, end, settings, as, name, accounts, "en", asOf);
   const { assessment: a, stress, pf, trend, basis } = p;
   return {
     basis: basis.label + (basis.annualColumn ? " (audited annual statements)" : basis.covered < 12 ? " (scaled to a year)" : ""),
@@ -82,10 +82,10 @@ export function bankContext(months: MonthData[], end: string, settings: CompanyS
 }
 
 /** Reported against real profit for the twelve months to the period end, using the rates the company entered. */
-export function realProfitContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions) {
+export function realProfitContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, asOf?: string | null) {
   const cur = settings.currency;
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, cur));
-  const r = realProfit(twelveMonths(months, end, settings.fyStartMonth), as, cur, settings.targets?.ar_days ?? 45);
+  const r = realProfit(twelveMonths(months, end, settings.fyStartMonth, asOf), as, cur, settings.targets?.ar_days ?? 45);
   return {
     reported_net_profit: m(r.reported), operating_cash_flow: m(r.cashProfit),
     collection: { collection_rate: r.collection.rate === null ? "n/a" : pct(r.collection.rate, 1), customer_days: r.collection.dso === null ? "n/a" : Math.round(r.collection.dso), cost_of_customer_credit: m(r.collection.creditCost), cash_released_at_target_days: m(r.collection.release) },

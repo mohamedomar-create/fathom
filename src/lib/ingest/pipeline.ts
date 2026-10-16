@@ -254,7 +254,10 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
   // The opening balances of a ledger or trial balance are the balance sheet at the end of the month before it starts:
   // stored as that month, the first month (and a quarter or year starting on it) has a cash flow.
-  const openingMonth = mov.some((l) => l.r.opening) && periods.length && movP[0] === periods[0] && !bsP.includes(addMonths(periods[0], -1)) ? addMonths(periods[0], -1) : null;
+  // A first column covering several months ("From 01/01 to 10/10") starts that many months before its last month.
+  const firstSpan = Math.max(1, ...mov.map((l) => l.r.spans?.[periods[0]] ?? 1));
+  const opensAt = periods.length ? addMonths(periods[0], -firstSpan) : "";
+  const openingMonth = mov.some((l) => l.r.opening) && periods.length && movP[0] === periods[0] && !bsP.includes(opensAt) ? opensAt : null;
   // movement lines → natural (P&L: monthly movement; BS: opening + cumulative movement)
   for (const l of mov) {
     const cls = l.cls!;

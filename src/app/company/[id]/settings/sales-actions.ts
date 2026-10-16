@@ -34,7 +34,7 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
   if (!v.success) return { ok: false, error: "The sales data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, `sales:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "sales", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const periods = [...new Set(v.data.periods)].sort();
     const { data, error } = await supabase.rpc("begin_sales_batch", {

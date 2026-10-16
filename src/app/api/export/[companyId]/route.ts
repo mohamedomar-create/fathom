@@ -14,7 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
   if (!z.string().uuid().safeParse(companyId).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { supabase, user } = await getUser();
   if (!user) return NextResponse.json({ error: "Please sign in" }, { status: 401 });
-  if (await limited(supabase, `export:user:${user.id}`, 3600, 20)) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
+  if (await limited(supabase, "export", user.id)) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
 
   const { data: c, error } = await supabase.from("companies").select("*").eq("id", companyId).maybeSingle();
   if (error) return NextResponse.json({ error: dbError(error, "export:company") }, { status: 500 });

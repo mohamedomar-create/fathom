@@ -73,7 +73,8 @@ export function analyze(
   const W = B0 ? cashWaterfall(P, B, B0) : null;
   const CF = B0 ? cashFlowStatement(P, B, B0) : null;
   const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: view.prior?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
-  const targets = scaleTargets(resolveTargets(settings), view.window.periods.length);
+  // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
+  const targets = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length);
   const comparison = opts.comparison ?? "target";
   let compareK: Record<string, number | null> | null = null;
   if (comparison !== "target") {
@@ -122,10 +123,13 @@ function shiftEnd(end: string, type: "month" | "quarter" | "year") {
 }
 
 /** Monthly KPI values for the n months ending at `end` (used for KPI detail charts and rolling averages). */
-export function kpiHistory(months: MonthData[], settings: CompanySettings, end: string, n = 12): { period: string; K: Record<string, number | null> }[] {
+/** asOf: the last day the books cover; a part month is measured on its days covered, as the headline figures are. */
+export function kpiHistory(months: MonthData[], settings: CompanySettings, end: string, n = 12, asOf?: string | null): { period: string; K: Record<string, number | null> }[] {
   const ps = months.filter(hasPL).map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
   return ps.map((p) => {
     const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth);
+    const day = asOf && asOf.slice(0, 7) === p ? Number(asOf.slice(8)) : 0;
+    if (day > 0 && day < daysIn(p)) v.days -= daysIn(p) - day;
     const W = v.B0 && !v.missing.endBS ? cashWaterfall(v.P, v.B, v.B0) : null;
     return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
   });

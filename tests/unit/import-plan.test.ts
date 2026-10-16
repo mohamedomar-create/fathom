@@ -192,3 +192,23 @@ describe("uploading months that are already loaded", () => {
     expect(plan.overlap.every((o) => o.same)).toBe(true);
   });
 });
+
+describe("an account that changes statement", () => {
+  it("does not carry its old balance-sheet months into the P&L when a new file classes it as an expense", () => {
+    const cur = [acct("130500", "Advances", "other_ca", { "2025-01": 100, "2025-02": 150, "2025-03": 200 }, { sources: { "2025-01": "i", "2025-02": "i", "2025-03": "i" } })];
+    const plan = planImport(cur, [inc("130500", "Advances", "exp_fixed", { "2025-04": 40 })], { mode: "merge", slices: { PL: ["2025-04"], BS: ["2025-04"] } });
+    const a = plan.accounts.find((x) => x.code === "130500")!;
+    expect(a.cls).toBe("exp_fixed");
+    expect(a.amounts).toEqual({ "2025-04": 40 });
+  });
+});
+
+describe("changing an account's class in the chart of accounts", () => {
+  it("lists the changes that would move an account between the P&L and the balance sheet", async () => {
+    const { statementMoves } = await import("@/lib/company/import-plan");
+    const cur = [{ id: "a", class: "other_ca" }, { id: "b", class: "exp_fixed" }, { id: "c", class: "revenue" }];
+    expect(statementMoves(cur, { a: "exp_fixed", b: "exp_variable", c: "other_income" })).toEqual(["a"]);
+    expect(statementMoves(cur, { b: "cash" })).toEqual(["b"]);
+    expect(statementMoves(cur, {})).toEqual([]);
+  });
+});

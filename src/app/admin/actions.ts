@@ -42,7 +42,7 @@ export async function invite(orgId: string, email: string, role: "admin" | "edit
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "Enter a valid email address." };
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, `invite:${v.data.orgId}`, 86400, 30)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "invite", v.data.orgId)) return { ok: false, error: TOO_MANY };
   const { error } = await supabase.from("invites").upsert({ org_id: v.data.orgId, email: v.data.email, role: v.data.role, invited_by: user.id, accepted_at: null }, { onConflict: "org_id,email" });
   if (error) return { ok: false, error: dbError(error, "invite") };
   revalidatePath("/admin/people");
