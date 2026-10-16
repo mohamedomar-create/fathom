@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { EMPTY_INVENTORY, inventoryAnalysis, inventoryLedger, inventoryMonthly, monthBridge, receiptCost, tieSummary, type InventoryData, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
+import { EMPTY_RECORDS, summarizeInventory, inventoryAnalysis, inventoryLedger, inventoryMonthly, monthBridge, receiptCost, tieSummary, type InventoryData, type InventoryRecords, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
 
 // Made-up products and documents (the repo is public). FIFO values are worked by hand.
 const layer = (p: string, kind: LayerKind, code: string, q: number, v: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, category: "", q, v, n: 1 });
 const move = (p: string, kind: MoveKind, code: string, from: string, to: string, q: number) => ({ p, kind, code, product: code === "P1" ? "Mask" : `Item ${code}`, from, to, q, n: 1 });
-const data = (over: Partial<InventoryData>): InventoryData => ({ ...EMPTY_INVENTORY, ...over, meta: { ...EMPTY_INVENTORY.meta, ...(over.meta ?? {}) } });
+const data = (over: Partial<InventoryRecords>): InventoryData => summarizeInventory({ ...EMPTY_RECORDS, ...over, meta: { ...EMPTY_RECORDS.meta, ...(over.meta ?? {}) } });
 const SEP = { type: "month" as const, end: "2026-09" };
 
 /** Two receipts at 100 and 110, a landed cost, 15 delivered (FIFO 10×100 + 5×110 = 1,550), one returned (110), one scrapped (110). */
@@ -63,10 +63,9 @@ describe("Inventory engine", () => {
   });
 
   it("rentalMovesCarryNoValue", () => {
-    const d = data({ moves: [move("2026-09", "rental_out", "D1", "WH/Stock", "WH/Rental", 1), move("2026-09", "rental_back", "D1", "WH/Rental", "WH/Stock", 1)], rental: [{ p: "2026-09", ref: "WH/INT/00007" }] });
-    expect(inventoryAnalysis(d, SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((x) => x.key === "rental_value")).toMatchObject({ status: "ok", module: 0 });
-    d.byRef = [{ p: "2026-09", ref: "WH/INT/00007", kind: "other", v: 50 }];
-    d.layers = [layer("2026-09", "other", "D1", 0, 50)];
+    const rec = { moves: [move("2026-09", "rental_out", "D1", "WH/Stock", "WH/Rental", 1), move("2026-09", "rental_back", "D1", "WH/Rental", "WH/Stock", 1)], rental: [{ p: "2026-09", ref: "WH/INT/00007" }] };
+    expect(inventoryAnalysis(data(rec), SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((x) => x.key === "rental_value")).toMatchObject({ status: "ok", module: 0 });
+    const d = data({ ...rec, byRef: [{ p: "2026-09", ref: "WH/INT/00007", kind: "other", v: 50 }], layers: [layer("2026-09", "other", "D1", 0, 50)] });
     const t = inventoryAnalysis(d, SEP, 1, { ledger: { stock: null, cogs: null } }).tieouts.find((x) => x.key === "rental_value")!;
     expect(t).toMatchObject({ status: "off", module: 50, ledger: 0 });
     expect(t.causes[0].ref).toBe("WH/INT/00007");
@@ -184,7 +183,7 @@ describe("a busy warehouse", () => {
   it("1,000 products over 24 months: the analysis and the 12-month checks stay fast enough for the browser", async () => {
     const { inventoryTieOuts } = await import("@/lib/engine/inventory");
     const months = Array.from({ length: 24 }, (_, i) => `${2025 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`);
-    const layers: InventoryData["layers"] = [], byRef: InventoryData["byRef"] = [];
+    const layers: InventoryRecords["layers"] = [], byRef: InventoryRecords["byRef"] = [];
     for (const p of months) for (let k = 0; k < 1000; k++) {
       layers.push(layer(p, "receipt", `P${k}`, 10, 1000), layer(p, "delivery", `P${k}`, -9, -900));
       byRef.push({ p, ref: `WH/IN/${p}/${k}`, kind: "receipt", v: 1000 }, { p, ref: `WH/OUT/${p}/${k}`, kind: "delivery", v: -900 });

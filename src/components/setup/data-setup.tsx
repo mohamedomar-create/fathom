@@ -3,7 +3,8 @@ import Link from "next/link";
 import { CheckCircle2, CircleDashed, AlertTriangle } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
 import { mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
-import type { InventoryData } from "@/lib/engine/inventory";
+import { useInventoryData } from "@/lib/company/inventory-context";
+import type { InventoryState } from "@/lib/company/inventory-wire";
 import type { ItemStatus, SectorReadiness } from "@/lib/company/readiness";
 import { SectorPanel, TemplateButton, useReadiness } from "./readiness-view";
 import { DataMap } from "./data-map";
@@ -20,7 +21,9 @@ const sectorStatus = (r: SectorReadiness | undefined): ItemStatus => (!r ? "miss
  * The guided way in: each step says what to provide, why, and how (an Odoo export or iReport's template),
  * with its status from the data already loaded. Below, every sector's readiness radar.
  */
-export function DataSetup({ sales, expenses = null, inventory = null }: { sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryData | null }) {
+export function DataSetup({ sales, expenses = null, inventory: state = null }: { sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryState | null }) {
+  const parsed = useInventoryData(state);
+  const inventory = state ? parsed : null;
   const c = useCompany();
   const all = useReadiness(sales, expenses, inventory);
   const by = (k: SectorReadiness["key"]) => all.find((r) => r.key === k);

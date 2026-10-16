@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Grid } from "@/lib/ingest/extract";
 import { classifyLayers, locationClass, productKey, readStockMoves, readStockOnHand, readStockValuation } from "@/lib/ingest/inventory";
 import { guessRole } from "@/lib/ingest/roles";
-import { EMPTY_INVENTORY, inventoryAnalysis, tieSummary, type InventoryData, type LayerRow, type MoveRow } from "@/lib/engine/inventory";
+import { EMPTY_RECORDS, summarizeInventory, inventoryAnalysis, tieSummary, type InventoryData, type LayerRow, type MoveRow } from "@/lib/engine/inventory";
 
 /**
  * Made-up exports shaped exactly like a real Odoo 18 company's (the repository is public): the internal reference holds a
@@ -46,7 +46,7 @@ function summary(): InventoryData {
   const L: LayerRow[] = layers.map((l) => ({ p: l.period, kind: l.kind, code: l.code, product: l.product, category: "", q: l.qty, v: l.value, n: 1 }));
   const M: MoveRow[] = m.moves.map((x) => ({ p: x.period, kind: x.kind, code: x.code, product: x.product, from: x.from, to: x.to, q: x.qty, n: 1 }));
   const onhand = readStockOnHand(VARIANT, "2026-08-31")!;
-  return { ...EMPTY_INVENTORY, layers: L, moves: M, onhand, byRef: layers.map((l) => ({ p: l.period, ref: l.ref, kind: l.kind, v: l.value })), meta: { withIds: false, kinds: ["valuation", "moves", "onhand"], periods: ["2026-07", "2026-08"] } };
+  return summarizeInventory({ ...EMPTY_RECORDS, layers: L, moves: M, onhand, byRef: layers.map((l) => ({ p: l.period, ref: l.ref, kind: l.kind, v: l.value })), meta: { withIds: false, kinds: ["valuation", "moves", "onhand"], periods: ["2026-07", "2026-08"] } });
 }
 
 describe("Odoo 18 exports as a real company makes them", () => {

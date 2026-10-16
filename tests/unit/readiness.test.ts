@@ -4,7 +4,7 @@ import { runChecks } from "@/lib/company/checks";
 import { demoCompany } from "@/lib/company/demo";
 import { demoSales } from "@/lib/company/demo-sales";
 import { bankingReadiness, expensesReadiness, financialsReadiness, forecastReadiness, inventoryReadiness, readiness, salesReadiness } from "@/lib/company/readiness";
-import { EMPTY_INVENTORY } from "@/lib/engine/inventory";
+import { EMPTY_RECORDS, summarizeInventory } from "@/lib/engine/inventory";
 import { demoInventory } from "@/lib/company/demo-inventory";
 import { demoExpenses } from "@/lib/company/demo-expenses";
 import type { AccountLine } from "@/lib/company/types";
@@ -99,10 +99,10 @@ describe("data readiness", () => {
 
   it("inventoryReadinessCountsTieOuts", () => {
     // Valuation and moves loaded without Odoo IDs; stock value agrees with the balance sheet, cost of sales does not (400 delivered, 500 in the accounts).
-    const inventory = { ...EMPTY_INVENTORY,
+    const inventory = summarizeInventory({ ...EMPTY_RECORDS,
       layers: [{ p: "2026-09", kind: "receipt" as const, code: "P1", product: "Mask", category: "", q: 10, v: 1000, n: 1 }, { p: "2026-09", kind: "delivery" as const, code: "P1", product: "Mask", category: "", q: -4, v: -400, n: 1 }],
       moves: [{ p: "2026-09", kind: "delivery" as const, code: "P1", product: "Mask", from: "WH/Stock", to: "Partners/Customers", q: 4, n: 1 }],
-      meta: { withIds: false, kinds: ["valuation", "moves"], periods: ["2026-09"] } };
+      meta: { withIds: false, kinds: ["valuation", "moves"], periods: ["2026-09"] } });
     const months = [{ period: "2026-09", pl: { revenue: 1000 }, bs: { inventory: 600 } }] as unknown as import("@/lib/engine").MonthData[];
     const expenses = { accounts: [], suppliers: [{ p: "2026-09", s: "Cost of goods sold (stock)", c: "cos_variable", a: 500, n: 1 }], large: [], doubles: [] } as unknown as import("@/lib/engine").ExpensesData;
     const r = inventoryReadiness({ months, checks: [], fyStart: 1, expenses, inventory });
