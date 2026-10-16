@@ -101,7 +101,7 @@ describe("Odoo 18 exports as a real company makes them", () => {
     expect(t("qty_onhand")).toMatchObject({ status: "ok", module: 2, ledger: 2 });
     expect(t("qty_valued")).toMatchObject({ status: "ok", module: 4, ledger: 4 });
     expect(t("onhand_value")).toMatchObject({ status: "ok", module: 1220, ledger: 1220 });
-    expect(a.position).toEqual({ warehouse: 610, rental: 110, transit: 500 });
+    expect(a.position).toEqual({ warehouse: 610, rental: 110, transit: 500, at: "2026-08" });
     // These are checks inside Inventory: they never read as "agree with the accounts".
     expect(tieSummary(a.tieouts).checked).toBe(0);
   });

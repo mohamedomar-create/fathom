@@ -24,27 +24,23 @@ export function useInventoryAnalysis() {
   const c = useCompany();
   const d = useInventory();
   const expenses = useExpenses();
-  const { sel } = usePeriod();
+  // Inventory's own months (its history may start long before the accounts loaded).
+  const months = useMemo(() => [...new Set([...d.layers.map((l) => l.p), ...d.moves.months])].sort(), [d]);
+  const { sel } = usePeriod(months);
   const lang = useLang();
   return useMemo(() => {
-    const months = [...new Set([...d.layers.map((l) => l.p), ...d.moves.months])].sort();
     if (!months.length) return null;
-    // The selected month when Inventory holds it; otherwise the latest month with stock records.
     const end = sel.end && months.includes(sel.end) ? sel.end : months[months.length - 1];
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
     const s = inventoryAnalysis(d, { type: sel.type, end }, c.settings.fyStartMonth, { ledger: inventoryLedger(c.months, expenses), revenue, lang, cur: c.settings.currency });
     return { ...s, end, months, own: end === sel.end };
-  }, [d, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, lang]);
+  }, [d, months, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, lang]);
 }
 export type InventoryView = NonNullable<ReturnType<typeof useInventoryAnalysis>>;
 
 /** The period picker; when the picked month has no stock records, says which month is shown instead. */
 export function InventoryPicker({ s }: { s: InventoryView }) {
-  const c = useCompany();
-  const T = useT();
-  const t = T.d.inv;
-  if (c.months.length && s.own) return <PeriodPicker />;
-  return <span className="text-[15px]" data-testid="inventory-period">{t.stockFor} <b>{s.label}</b> <span className="text-xs text-mute">({t.latest})</span></span>;
+  return <PeriodPicker own={s.months} />;
 }
 
 /** Why there is no summary to show yet: being prepared, not switched on, or it could not be built. */

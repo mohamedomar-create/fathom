@@ -7,18 +7,19 @@ import { useLang } from "@/lib/i18n/context";
 import { kpiName } from "@/lib/i18n/kpis";
 
 /** Period selection lives in the URL (?type=month&end=2026-09&cmp=target) so views are shareable. */
-export function usePeriod() {
+export function usePeriod(own?: string[]) {
   const company = useCompany();
   const sp = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   // Months that can end a period: those holding a P&L (an opening balance month alone is not a period of activity).
-  const periods = useMemo(() => indexMonths(company.months).sorted.filter(hasPL).map((m) => m.period), [company.months]);
+  // A module with its own history (Inventory) passes its months instead.
+  const periods = useMemo(() => own ?? indexMonths(company.months).sorted.filter(hasPL).map((m) => m.period), [company.months, own]);
   const latest = periods[periods.length - 1];
   const endRaw = sp.get("end");
   const end = endRaw && periods.includes(endRaw) ? endRaw : latest;
   // Audited annual columns are read as years; everything else opens on the latest month.
-  const annual = end ? isAnnualColumn(company.months, end, company.settings.fyStartMonth) : false;
+  const annual = end && !own ? isAnnualColumn(company.months, end, company.settings.fyStartMonth) : false;
   const type = (annual ? "year" : ["month", "quarter", "year"].includes(sp.get("type") ?? "") ? sp.get("type") : "month") as PeriodType;
   const cmp = (["target", "prior", "ly"].includes(sp.get("cmp") ?? "") ? sp.get("cmp") : "target") as Comparison;
   const sel: PeriodSel = { type, end };

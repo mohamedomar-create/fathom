@@ -138,7 +138,11 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
 
 /** Periods selectable in the picker for a given type. */
 export function selectableEnds(months: MonthData[], type: PeriodType, fyStart: number): { end: string; label: string }[] {
-  const ps = indexMonths(months).sorted.filter(hasPL).map((m) => m.period);
+  return selectableEndsOf(indexMonths(months).sorted.filter(hasPL).map((m) => m.period), type, fyStart);
+}
+
+/** The same, from a list of months (oldest first): a module with its own history, such as Inventory. */
+export function selectableEndsOf(ps: string[], type: PeriodType, fyStart: number): { end: string; label: string }[] {
   if (!ps.length) return [];
   const last = ps[ps.length - 1];
   if (type === "month") return ps.map((p) => ({ end: p, label: mlabel(p) }));
