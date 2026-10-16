@@ -16,10 +16,30 @@ export const MOVE_KINDS: readonly MoveKind[] = ["receipt", "delivery", "customer
 
 /** Per month, product and kind: q quantity, v value, n layers. */
 export interface LayerRow { p: string; kind: LayerKind; code: string; product: string; category: string; q: number; v: number; n: number }
-/** Per month, product, kind and route: q quantity, n move lines. */
+/** Per month, product, kind and route: q quantity, n move lines (the detailed records, before they are summarised). */
 export interface MoveRow { p: string; kind: MoveKind; code: string; product: string; from: string; to: string; q: number; n: number }
 
-export interface InventoryData {
+/**
+ * The moves as the pages use them, already added up (a busy company has tens of thousands of move lines; the pages need a
+ * few thousand numbers):
+ *  - months: the months with moves, oldest first;
+ *  - byKind: units per month and kind of move;
+ *  - flow: units into and out of each location per month;
+ *  - asOf: the month stock is placed at (the stock-on-hand date, otherwise the latest month with records);
+ *  - byProductLoc: each product's net units in each location up to asOf (moves in, less moves out);
+ *  - rentalLocs: the locations rented goods go out to (where rental moves go to, and come back from).
+ */
+export interface MoveSummary {
+  months: string[];
+  byKind: { p: string; kind: MoveKind; q: number; n: number }[];
+  flow: { p: string; loc: string; inQ: number; outQ: number }[];
+  asOf: string | null;
+  byProductLoc: { code: string; product: string; loc: string; q: number }[];
+  rentalLocs: string[];
+}
+
+/** The stock records as read (valuation by month and product, every move route): what the summary is made from. */
+export interface InventoryRecords {
   layers: LayerRow[];
   moves: MoveRow[];
   /** Product code → the last day it went out to a customer. */
@@ -35,7 +55,65 @@ export interface InventoryData {
   meta: { withIds: boolean; kinds: string[]; periods: string[] };
 }
 
-export const EMPTY_INVENTORY: InventoryData = { layers: [], moves: [], lastOut: {}, onhand: [], products: [], byRef: [], ledger: [], rental: [], meta: { withIds: false, kinds: [], periods: [] } };
+/** What the Inventory pages read: the records with the moves summarised and the value carried by rental documents worked out. */
+export interface InventoryData extends Omit<InventoryRecords, "moves" | "rental"> {
+  moves: MoveSummary;
+  /** Per month and rental document, the value its valuation rows carry (only documents that carry any). */
+  rentalValued: { p: string; ref: string; v: number }[];
+}
+
+export const EMPTY_MOVES: MoveSummary = { months: [], byKind: [], flow: [], asOf: null, byProductLoc: [], rentalLocs: [] };
+export const EMPTY_RECORDS: InventoryRecords = { layers: [], moves: [], lastOut: {}, onhand: [], products: [], byRef: [], ledger: [], rental: [], meta: { withIds: false, kinds: [], periods: [] } };
+export const EMPTY_INVENTORY: InventoryData = { layers: [], moves: EMPTY_MOVES, lastOut: {}, onhand: [], products: [], byRef: [], ledger: [], rentalValued: [], meta: { withIds: false, kinds: [], periods: [] } };
+
+/**
+ * The records summarised the way the database summarises them (supabase/migrations/0015: private.inventory_wire), for the
+ * demo and the tests.
+ */
+export function summarizeInventory(r: InventoryRecords): InventoryData {
+  const months = [...new Set(r.moves.map((m) => m.p))].sort();
+  const kinds = new Map<string, { p: string; kind: MoveKind; q: number; n: number }>();
+  const flow = new Map<string, { p: string; loc: string; inQ: number; outQ: number }>();
+  for (const m of r.moves) {
+    const k = `${m.p}|${m.kind}`;
+    const e = kinds.get(k) ?? { p: m.p, kind: m.kind, q: 0, n: 0 };
+    e.q += m.q; e.n += m.n; kinds.set(k, e);
+    for (const [loc, side] of [[m.to, "inQ"], [m.from, "outQ"]] as const) {
+      const fk = `${m.p}|${loc}`;
+      const f = flow.get(fk) ?? { p: m.p, loc, inQ: 0, outQ: 0 };
+      f[side] += m.q; flow.set(fk, f);
+    }
+  }
+  const lastLayer = r.layers.reduce<string | null>((a, l) => (!a || l.p > a ? l.p : a), null);
+  const lastMove = months.at(-1) ?? null;
+  const onhandAt = r.onhand.reduce<string | null>((a, o) => (!a || o.asOf > a ? o.asOf : a), null);
+  const asOf = onhandAt ? onhandAt.slice(0, 7) : [lastLayer, lastMove].filter((x): x is string => !!x).sort().at(-1) ?? null;
+  const net = new Map<string, { code: string; product: string; loc: string; q: number }>();
+  if (asOf) for (const m of r.moves) {
+    if (m.p > asOf) continue;
+    for (const [loc, q] of [[m.to, m.q], [m.from, -m.q]] as const) {
+      const k = `${m.code}|${m.product}|${loc}`;
+      const e = net.get(k) ?? { code: m.code, product: m.product, loc, q: 0 };
+      e.q += q; net.set(k, e);
+    }
+  }
+  const rentalLocs = [...new Set(r.moves.flatMap((m) => (m.kind === "rental_out" ? [m.to] : m.kind === "rental_back" ? [m.from] : [])))].sort();
+  const rentalDocs = new Set(r.rental.map((x) => `${x.p}|${x.ref}`));
+  const valued = new Map<string, { p: string; ref: string; v: number }>();
+  for (const b of r.byRef) {
+    if (!rentalDocs.has(`${b.p}|${b.ref}`)) continue;
+    const k = `${b.p}|${b.ref}`;
+    const e = valued.get(k) ?? { p: b.p, ref: b.ref, v: 0 };
+    e.v += Math.abs(b.v); valued.set(k, e);
+  }
+  const { moves: _m, rental: _r, ...rest } = r;
+  void _m; void _r;
+  return {
+    ...rest,
+    moves: { months, byKind: [...kinds.values()], flow: [...flow.values()], asOf: months.length ? asOf : null, byProductLoc: [...net.values()].filter((x) => Math.abs(x.q) > 1e-9), rentalLocs },
+    rentalValued: [...valued.values()].filter((x) => x.v !== 0),
+  };
+}
 
 // ---------------------------------------------------------------- analysis
 
@@ -77,7 +155,8 @@ interface StockIndex {
   byMonth: Map<string, Map<LayerKind, number>>;
   refs: Map<string, InventoryData["byRef"]>;
   led: Map<string, { ref: string; v: number; kind: LayerKind }[]>;
-  rental: Map<string, Set<string>>;
+  /** Per month, the value each rental document carries. */
+  rental: Map<string, Record<string, number>>;
   firstLayer?: string;
   firstMove?: string;
 }
@@ -90,15 +169,15 @@ function indexStock(d: InventoryData): StockIndex {
     const m = byMonth.get(l.p) ?? new Map<LayerKind, number>();
     m.set(l.kind, (m.get(l.kind) ?? 0) + l.v); byMonth.set(l.p, m);
   }
-  const rental = new Map<string, Set<string>>();
-  for (const r of d.rental) { const x = rental.get(r.p) ?? new Set<string>(); x.add(r.ref); rental.set(r.p, x); }
+  const rental = new Map<string, Record<string, number>>();
+  for (const r of d.rentalValued) { const x = rental.get(r.p) ?? {}; x[r.ref] = (x[r.ref] ?? 0) + r.v; rental.set(r.p, x); }
   const months = [...byMonth.keys()].sort();
   return {
     months, byMonth, rental,
     refs: group(d.byRef, (r) => r.p),
     led: group(d.ledger.map((r) => ({ p: r.p, ref: r.ref, v: r.v, kind: layerKind(r.ref, "", r.v) })), (r) => r.p),
     firstLayer: months[0],
-    firstMove: d.moves.reduce<string | undefined>((a, m) => (!a || m.p < a ? m.p : a), undefined),
+    firstMove: d.moves.months[0],
   };
 }
 
@@ -142,10 +221,8 @@ function monthTieOuts(d: InventoryData, ix: StockIndex, periods: string[], ledge
     out.push(tieOut("receipts", p, kindSum(ix, p, IN_KINDS), holds ? (ix.led.get(p) ?? []).filter((r) => IN_KINDS.has(r.kind)).reduce((s, r) => s + r.v, 0) : null,
       hasLedgerRefs ? () => inMonth(p, IN_KINDS) : undefined));
   }
-  if (d.moves.length) for (const p of periods) {
-    const refs = ix.rental.get(p) ?? new Set<string>();
-    const valued: Record<string, number> = {};
-    for (const r of ix.refs.get(p) ?? []) if (refs.has(r.ref)) valued[r.ref] = (valued[r.ref] ?? 0) + Math.abs(r.v);
+  if (d.moves.months.length) for (const p of periods) {
+    const valued = ix.rental.get(p) ?? {};
     out.push(tieOut("rental_value", p, Object.values(valued).reduce((s, v) => s + v, 0), 0, { module: valued, ledger: {} }));
   }
   return out;
@@ -162,18 +239,17 @@ export interface StockPosition { warehouse: number; rental: number; transit: num
 function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, number> | null): { tieouts: TieOut[]; position: StockPosition | null } {
   const none = { tieouts: [], position: null };
   if (!ix.firstMove || !ix.firstLayer || isPartial(ix, stock) || ix.firstMove > ix.firstLayer) return none;
-  const asOf = d.onhand[0]?.asOf.slice(0, 7);
-  const pa = asOf ?? [ix.months.at(-1)!, ...d.moves.map((m) => m.p)].sort().at(-1)!;
-  const rentals = [...new Set(d.moves.flatMap((m) => (m.kind === "rental_out" ? [m.to] : m.kind === "rental_back" ? [m.from] : [])))];
+  // The moves are summarised up to this month: each product's net units in each location.
+  const pa = d.moves.asOf ?? ix.months.at(-1)!;
+  const rentals = d.moves.rentalLocs;
   const add = (o: Record<string, number>, k: string, v: number) => { o[k] = (o[k] ?? 0) + v; };
   const wh: Record<string, number> = {}, rent: Record<string, number> = {}, trans: Record<string, number> = {};
   const into: Record<string, Record<string, number>> = { warehouse: wh, rental_out: rent, transit: trans };
-  for (const m of d.moves) {
-    if (m.p > pa) continue;
-    const k = productKey(m.code, m.product);
-    const to = into[locationClass(m.to, rentals)], from = into[locationClass(m.from, rentals)];
-    if (to) add(to, k, m.q);
-    if (from) add(from, k, -m.q);
+  const cls = new Map<string, Record<string, number> | undefined>();
+  for (const m of d.moves.byProductLoc) {
+    if (!cls.has(m.loc)) cls.set(m.loc, into[locationClass(m.loc, rentals)]);
+    const to = cls.get(m.loc);
+    if (to) add(to, productKey(m.code, m.product), m.q);
   }
   const lq: Record<string, number> = {}, lv: Record<string, number> = {};
   for (const l of d.layers) if (l.p <= pa) { const k = productKey(l.code, l.product); add(lq, k, l.q); add(lv, k, l.v); }
@@ -231,7 +307,7 @@ export function inventoryAnalysis(
   const periods = window.periods, start = periods[0], end = periods[periods.length - 1];
   const inWin = new Set(periods);
   const label = ar ? periodLabel(window.label, "ar") : window.label;
-  const hasValue = d.layers.length > 0, hasMoves = d.moves.length > 0;
+  const hasValue = d.layers.length > 0, hasMoves = d.moves.months.length > 0;
   const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
 
   // ---- value: closing is every layer up to the month end; the bridge splits the period's layers by kind
@@ -283,15 +359,19 @@ export function inventoryAnalysis(
   // ---- movements and locations (quantities)
   const mv = new Map<string, { p: string; kind: MoveKind; q: number }>();
   const locs = new Map<string, { loc: string; inQ: number; outQ: number }>();
-  for (const m of d.moves.filter((x) => inWin.has(x.p))) {
+  for (const m of d.moves.byKind) {
+    if (!inWin.has(m.p)) continue;
     const k = `${m.p}|${m.kind}`;
     const e = mv.get(k) ?? { p: m.p, kind: m.kind, q: 0 };
     e.q += m.q; mv.set(k, e);
-    for (const [loc, side] of [[m.to, "inQ"], [m.from, "outQ"]] as const) {
-      if (!isInternalLocation(loc)) continue;
-      const l = locs.get(loc) ?? { loc, inQ: 0, outQ: 0 };
-      l[side] += m.q; locs.set(loc, l);
-    }
+  }
+  const internal = new Map<string, boolean>();
+  for (const f of d.moves.flow) {
+    if (!inWin.has(f.p)) continue;
+    if (!internal.has(f.loc)) internal.set(f.loc, isInternalLocation(f.loc));
+    if (!internal.get(f.loc)) continue;
+    const l = locs.get(f.loc) ?? { loc: f.loc, inQ: 0, outQ: 0 };
+    l.inQ += f.inQ; l.outQ += f.outQ; locs.set(f.loc, l);
   }
 
   // ---- tie-outs, month by month
@@ -440,8 +520,8 @@ export function receiptCost(d: InventoryData, codes: string[], periods: string[]
 export function inventoryTieOuts(d: InventoryData, ledger: Ledger, fyStart: number, n = 12): TieOut[] {
   void fyStart;
   const ix = indexStock(d);
-  const months = [...new Set([...ix.months, ...d.moves.map((m) => m.p)])].sort().slice(-n);
+  const months = [...new Set([...ix.months, ...d.moves.months])].sort().slice(-n);
   const out = monthTieOuts(d, ix, months, ledger);
-  if (d.layers.length && d.moves.length) out.push(...positionChecks(d, ix, ledger.stock).tieouts);
+  if (d.layers.length && d.moves.months.length) out.push(...positionChecks(d, ix, ledger.stock).tieouts);
   return out.sort((a, b) => a.period.localeCompare(b.period));
 }

@@ -1,6 +1,7 @@
 import sample from "../../../reference/sample.json";
 import type { MonthData } from "@/lib/engine";
-import type { InventoryData, LayerRow, MoveRow } from "@/lib/engine/inventory";
+import { summarizeInventory, type InventoryData, type InventoryRecords, type LayerRow, type MoveRow } from "@/lib/engine/inventory";
+import { toWire, type InventoryState } from "./inventory-wire";
 import { productKey, type OnHand } from "@/lib/ingest/inventory";
 import { spreadAccounts } from "./demo";
 
@@ -60,7 +61,7 @@ function split(total: number, ws: number[]): number[] {
 let cache: InventoryData | null = null;
 export function demoInventory(): InventoryData {
   if (cache) return cache;
-  const layers: LayerRow[] = [], moves: MoveRow[] = [], byRef: InventoryData["byRef"] = [], rental: InventoryData["rental"] = [];
+  const layers: LayerRow[] = [], moves: MoveRow[] = [], byRef: InventoryRecords["byRef"] = [], rental: InventoryRecords["rental"] = [];
   const seq: Record<string, number> = {};
   const ref = (series: string, p?: string) => `${series}/${p ? `${p.slice(0, 4)}/` : ""}${String((seq[series] = (seq[series] ?? 0) + 1)).padStart(5, "0")}`;
   const qtyOf: Record<string, number> = {}, lastOut: Record<string, string> = {};
@@ -102,7 +103,7 @@ export function demoInventory(): InventoryData {
   const valueOf = (code: string) => r2(layers.filter((l) => l.code === code).reduce((s, l) => s + l.v, 0));
   const onhand: OnHand[] = PRODUCTS.map((x) => ({ asOf, product: x.name, code: x.code, location: "WH/Stock", lot: "", qty: qtyOf[x.code] ?? 0, value: valueOf(x.code) }));
   const periods = [...new Set(layers.map((l) => l.p))].sort();
-  cache = {
+  cache = summarizeInventory({
     layers, moves, lastOut, onhand,
     products: PRODUCTS.map((x) => ({ code: x.code, name: x.name, category: x.category, cost: x.unit, type: "Goods" })),
     byRef,
@@ -110,6 +111,9 @@ export function demoInventory(): InventoryData {
     ledger: byRef.map((r) => ({ p: r.p, ref: r.ref, v: r.v })),
     rental,
     meta: { withIds: true, kinds: ["valuation", "moves", "onhand", "products"], periods },
-  };
+  });
   return cache;
 }
+
+/** The demo's summary as a page receives it from the database. */
+export const demoInventoryState = (): InventoryState => ({ wire: toWire(demoInventory()), pending: false, error: null, builtAt: null });

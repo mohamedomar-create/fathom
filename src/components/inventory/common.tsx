@@ -1,13 +1,13 @@
 "use client";
 import Link from "next/link";
 import { useMemo } from "react";
-import { Boxes, CheckCircle2, Info, TriangleAlert } from "lucide-react";
+import { Boxes, CheckCircle2, Info, Loader2, TriangleAlert } from "lucide-react";
 import { hasPL, money } from "@/lib/engine";
 import { inventoryAnalysis, inventoryLedger, isInsideCheck, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
 import { useCompany } from "@/lib/company/context";
 import { useExpenses } from "@/lib/company/expenses-context";
-import { useInventory } from "@/lib/company/inventory-context";
+import { useInventory, useInventoryState } from "@/lib/company/inventory-context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { useLang } from "@/lib/i18n/context";
@@ -27,7 +27,7 @@ export function useInventoryAnalysis() {
   const { sel } = usePeriod();
   const lang = useLang();
   return useMemo(() => {
-    const months = [...new Set([...d.layers.map((l) => l.p), ...d.moves.map((m) => m.p)])].sort();
+    const months = [...new Set([...d.layers.map((l) => l.p), ...d.moves.months])].sort();
     if (!months.length) return null;
     // The selected month when Inventory holds it; otherwise the latest month with stock records.
     const end = sel.end && months.includes(sel.end) ? sel.end : months[months.length - 1];
@@ -47,9 +47,32 @@ export function InventoryPicker({ s }: { s: InventoryView }) {
   return <span className="text-[15px]" data-testid="inventory-period">{t.stockFor} <b>{s.label}</b> <span className="text-xs text-mute">({t.latest})</span></span>;
 }
 
+/** Why there is no summary to show yet: being prepared, not switched on, or it could not be built. */
+function InventoryNotReady({ kind }: { kind: "pending" | "update" | "failed" }) {
+  const ar = useLang() === "ar";
+  const L = (en: string, a: string) => (ar ? a : en);
+  return (
+    <div className="mx-auto max-w-xl py-16 text-center" data-testid={`inventory-${kind}`} role="status">
+      {kind === "pending" ? <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-brand" /> : <Info className="mx-auto mb-4 h-10 w-10 text-amber" />}
+      <h2 className="text-2xl font-light">
+        {kind === "pending" ? L("Preparing your stock figures", "جارٍ تجهيز أرقام المخزون") : kind === "update" ? L("Inventory is not switched on for this database yet", "المخزون غير مفعّل في قاعدة البيانات بعد") : L("Your stock figures could not be prepared", "تعذّر تجهيز أرقام المخزون")}
+      </h2>
+      <p className="mt-2 text-mute">
+        {kind === "pending" ? L("This takes a few seconds after an upload. The page updates by itself.", "يستغرق ذلك ثوانٍ بعد الرفع. تتحدث الصفحة تلقائيًا.")
+          : kind === "update" ? L("Ask your administrator to apply the Inventory update (migration 0015).", "اطلب من المسؤول تطبيق تحديث المخزون (0015).")
+          : L("Try again in a minute. If it keeps happening, upload the stock files again.", "حاول بعد دقيقة. إذا تكرر ذلك، ارفع ملفات المخزون مرة أخرى.")}
+      </p>
+    </div>
+  );
+}
+
 export function NoInventory() {
   const c = useCompany();
   const t = useT().d.inv;
+  const st = useInventoryState();
+  if (st.pending) return <InventoryNotReady kind="pending" />;
+  if (st.error === "UPDATE_NEEDED") return <InventoryNotReady kind="update" />;
+  if (st.error) return <InventoryNotReady kind="failed" />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-inventory">
       <Boxes className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

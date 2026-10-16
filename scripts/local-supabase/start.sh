@@ -55,7 +55,7 @@ PGRST_DB_URI="postgres://authenticator:local-authenticator@127.0.0.1:$PG_PORT/po
   nohup "$ROOT/bin/postgrest" > "$ROOT/logs/postgrest.log" 2>&1 & echo $! > "$ROOT/postgrest.pid"
 rm -rf "$ROOT/storage"; mkdir -p "$ROOT/storage"
 nohup node scripts/local-supabase/gateway.mjs $GW_PORT $AUTH_PORT $REST_PORT "$ROOT/storage" > "$ROOT/logs/gateway.log" 2>&1 & echo $! > "$ROOT/gateway.pid"
-nohup sh -c "while true; do psql '$DB' -q -c 'call private.run_import_jobs()' >/dev/null 2>>'$ROOT/logs/imports.log'; sleep 2; done" > /dev/null 2>&1 & echo $! > "$ROOT/imports.pid"
+nohup sh -c "while true; do psql '$DB' -q -c 'call private.run_import_jobs()' -c 'select private.refresh_inventory_rollups()' >/dev/null 2>>'$ROOT/logs/imports.log'; sleep 2; done" > /dev/null 2>&1 & echo $! > "$ROOT/imports.pid"
 
 for i in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:$GW_PORT/auth/v1/health" >/dev/null 2>&1 && curl -fsS -o /dev/null "http://127.0.0.1:$REST_PORT/" 2>/dev/null; then break; fi

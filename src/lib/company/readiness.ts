@@ -228,14 +228,14 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   const d = x.inventory;
   const FIX: ReadinessFix = { what: "Upload the stock valuation", how: STOCK_EXPORT, href: "settings/source-data?step=inventory" };
   const items: ReadinessItem[] = [];
-  if (!d || (!d.layers.length && !d.moves.length && !d.onhand.length)) {
+  if (!d || (!d.layers.length && !d.moves.months.length && !d.onhand.length)) {
     items.push(item({ id: "valuation", axis: "Valuation", title: "Stock records (optional)", completion: 0, accuracy: null, detail: "No stock records yet. Inventory pages need Odoo's stock valuation.", fix: FIX }));
     return { key: "inventory", label: "Inventory", ...summarise(items), items };
   }
   const loaded = (id: string, axis: string, title: string, has: boolean, what: string) =>
     items.push(item({ id, axis, title, completion: has ? 100 : 0, accuracy: null, detail: has ? "Loaded." : "Not loaded.", fix: has ? undefined : { ...FIX, what } }));
   loaded("valuation", "Valuation", "Stock valuation (the money)", d.layers.length > 0, "Upload the stock valuation");
-  loaded("moves", "Moves", "Moves history (quantities and locations)", d.moves.length > 0, "Upload the moves history");
+  loaded("moves", "Moves", "Moves history (quantities and locations)", d.moves.months.length > 0, "Upload the moves history");
   loaded("onhand", "On hand", "Stock on hand (the closing count)", d.onhand.length > 0, "Upload stock on hand");
   items.push(item({ id: "ids", axis: "Odoo IDs", title: "Exported with Odoo's record IDs", completion: d.meta.withIds ? 100 : 0, accuracy: null,
     detail: d.meta.withIds ? "Every record carries its Odoo ID: duplicates are refused exactly." : "Records are matched by date, document, product and amounts instead of Odoo's ID.",

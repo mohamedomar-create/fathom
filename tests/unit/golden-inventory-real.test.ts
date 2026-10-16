@@ -5,7 +5,7 @@ import { readWorkbook } from "@/lib/ingest/read";
 import { guessRole } from "@/lib/ingest/roles";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { productKey } from "@/lib/ingest/inventory";
-import { EMPTY_INVENTORY, inventoryAnalysis, type InventoryData } from "@/lib/engine/inventory";
+import { EMPTY_RECORDS, inventoryAnalysis, summarizeInventory, type InventoryRecords } from "@/lib/engine/inventory";
 
 // Real exports are never committed (this repository is public). Point REAL_INV_DIR at a folder holding a company's Odoo
 // Stock Valuation Layer, Product Moves (Stock Move Line) and Product Variant exports to run this locally. It checks
@@ -24,19 +24,19 @@ describe.skipIf(!dir)("real Odoo Inventory exports (local only)", () => {
     const parts = readInventorySheets(grids, (n) => roles[n] as never, null, "EGP")!;
 
     // The database summary: per month, kind and product (its reference and name).
-    const lay = new Map<string, InventoryData["layers"][number]>();
+    const lay = new Map<string, InventoryRecords["layers"][number]>();
     for (const l of parts.layers) {
       const k = [l.period, l.kind, l.code, l.product].join("|");
       const x = lay.get(k) ?? { p: l.period, kind: l.kind, code: l.code, product: l.product, category: "", q: 0, v: 0, n: 0 };
       x.q += l.qty; x.v += l.value; x.n++; lay.set(k, x);
     }
-    const mv = new Map<string, InventoryData["moves"][number]>();
+    const mv = new Map<string, InventoryRecords["moves"][number]>();
     for (const m of parts.moves) {
       const k = [m.period, m.kind, m.code, m.product, m.from, m.to].join("|");
       const x = mv.get(k) ?? { p: m.period, kind: m.kind, code: m.code, product: m.product, from: m.from, to: m.to, q: 0, n: 0 };
       x.q += m.qty; x.n++; mv.set(k, x);
     }
-    const d: InventoryData = { ...EMPTY_INVENTORY, layers: [...lay.values()], moves: [...mv.values()], onhand: parts.onhand!.rows, meta: { withIds: parts.withIds, kinds: [], periods: [] } };
+    const d = summarizeInventory({ ...EMPTY_RECORDS, layers: [...lay.values()], moves: [...mv.values()], onhand: parts.onhand!.rows, meta: { withIds: parts.withIds, kinds: [], periods: [] } });
     const end = parts.layers.map((l) => l.period).sort().at(-1)!;
     const a = inventoryAnalysis(d, { type: "month", end }, 1, { ledger: { stock: null, cogs: null } });
 

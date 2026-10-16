@@ -1,13 +1,16 @@
 "use client";
 import { useMemo } from "react";
 import type { ExpensesData } from "@/lib/engine";
-import { inventoryLedger, inventoryTieOuts, tieSummary, type InventoryData } from "@/lib/engine/inventory";
+import { inventoryLedger, inventoryTieOuts, tieSummary } from "@/lib/engine/inventory";
+import { useInventoryData } from "@/lib/company/inventory-context";
+import type { InventoryState } from "@/lib/company/inventory-wire";
 import { useCompany } from "@/lib/company/context";
 import { TieTable } from "./common";
 
 /** Data health: every stock check against the accounts over the last 12 months with stock records (the same checks as the Inventory pages). */
-export function StockChecks({ inventory, expenses }: { inventory: InventoryData; expenses: ExpensesData | null }) {
+export function StockChecks({ inventory: state, expenses }: { inventory: InventoryState; expenses: ExpensesData | null }) {
   const c = useCompany();
+  const inventory = useInventoryData(state);
   const ties = useMemo(() => inventoryTieOuts(inventory, inventoryLedger(c.months, expenses ?? { suppliers: [] }), c.settings.fyStartMonth), [inventory, expenses, c.months, c.settings.fyStartMonth]);
   if (!ties.length) return null;
   const sum = tieSummary(ties), off = sum.off.length, checked = sum.checked;
