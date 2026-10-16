@@ -53,7 +53,7 @@ export function InventoryOverview() {
               ]} />
           </>}
           {s.position && <div className="mb-8" data-testid="inv-position">
-            <h3 className="mb-2 text-lg font-normal">{t.whereTitle}</h3>
+            <h3 className="mb-2 text-lg font-normal">{t.whereTitle} <span className="text-sm text-mute" data-testid="inv-position-at">· {T.ml(s.position.at)}</span></h3>
             <BarList items={[
               { key: "warehouse", label: t.inWarehouses, value: s.position.warehouse, share: tl.value ? (s.position.warehouse / tl.value) * 100 : undefined },
               { key: "rental", label: t.onRental, value: s.position.rental, share: tl.value ? (s.position.rental / tl.value) * 100 : undefined },

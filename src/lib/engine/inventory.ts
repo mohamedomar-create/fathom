@@ -228,7 +228,8 @@ function monthTieOuts(d: InventoryData, ix: StockIndex, periods: string[], ledge
   return out;
 }
 
-export interface StockPosition { warehouse: number; rental: number; transit: number }
+/** at: the month stock is placed at (the stock-on-hand date, otherwise the latest month), whatever period is shown. */
+export interface StockPosition { warehouse: number; rental: number; transit: number; at: string }
 
 /**
  * Where the valued stock is, and three checks between Odoo's own exports, product by product, at the stock-on-hand date
@@ -276,7 +277,7 @@ function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, 
       tieouts.push(tieOut("onhand_value", pa, books, total(expected), { module: Object.fromEntries(Object.entries(lv).map(([k, v]) => [k, r2(v)])), ledger: expected }));
     }
   }
-  return { tieouts, position: { warehouse: r2(books - rental - transit), rental: r2(rental), transit: r2(transit) } };
+  return { tieouts, position: { warehouse: r2(books - rental - transit), rental: r2(rental), transit: r2(transit), at: pa } };
 }
 
 /** Checks against the accounts (the internal ones, rentals and quantities, are not counted as "agreeing with the accounts"). */

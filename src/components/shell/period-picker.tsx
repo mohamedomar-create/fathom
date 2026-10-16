@@ -1,7 +1,7 @@
 "use client";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
-import { MONTH_ABBR, selectableEnds, windowFor, type PeriodType } from "@/lib/engine";
+import { MONTH_ABBR, selectableEnds, selectableEndsOf, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { coverageOf } from "@/lib/company/checks";
 import { usePeriod } from "@/lib/company/use-period";
@@ -12,11 +12,11 @@ import { monthLabel, monthNames, periodLabel } from "@/lib/i18n";
 import { useDict, useLang } from "@/lib/i18n/context";
 
 /** "For the [Month ▾] of [Sep 2026 ▾]" — or "Up to the …" for cumulative views. */
-export function PeriodPicker({ mode = "for", allowTypes = true }: { mode?: "for" | "upto"; allowTypes?: boolean }) {
+export function PeriodPicker({ mode = "for", allowTypes = true, own }: { mode?: "for" | "upto"; allowTypes?: boolean; /** A module's own months (Inventory), instead of the accounts'. */ own?: string[] }) {
   const c = useCompany();
   const d = useDict();
   const lang = useLang();
-  const { sel, set, periods } = usePeriod();
+  const { sel, set, periods } = usePeriod(own);
   const fy = c.settings.fyStartMonth;
   const label = sel.end ? periodLabel(windowFor(sel, fy).label, lang) : "–";
   return (
@@ -27,7 +27,7 @@ export function PeriodPicker({ mode = "for", allowTypes = true }: { mode?: "for"
           testId="period-type"
           value={sel.type}
           onChange={(type) => {
-            const ends = selectableEnds(c.months, type, fy);
+            const ends = own ? selectableEndsOf(own, type, fy) : selectableEnds(c.months, type, fy);
             const match = ends.find((e) => windowFor({ type, end: e.end }, fy).periods.includes(sel.end));
             set({ type, end: match?.end ?? ends[ends.length - 1]?.end });
           }}
@@ -36,7 +36,7 @@ export function PeriodPicker({ mode = "for", allowTypes = true }: { mode?: "for"
       ) : (
         <b>{d.period.month}</b>
       )}{" "}
-      {d.period.of} <PeriodPopover label={sel.type === "month" ? monthLabel(sel.end, lang) : label} type={allowTypes ? sel.type : "month"} periods={periods} />
+      {d.period.of} <PeriodPopover label={sel.type === "month" ? monthLabel(sel.end, lang) : label} type={allowTypes ? sel.type : "month"} periods={periods} own={own} />
       {c.asOf && sel.end && windowFor(sel, fy).periods.includes(c.asOf.slice(0, 7)) && (
         <span className="ms-2 rounded bg-amber/20 px-1.5 py-0.5 text-xs text-[#9a6b00]" title={d.period.partTitle} data-testid="part-month">{d.period.part(Number(c.asOf.slice(8)), monthNames(lang)[Number(c.asOf.slice(5, 7))])}</span>
       )}
@@ -44,11 +44,11 @@ export function PeriodPicker({ mode = "for", allowTypes = true }: { mode?: "for"
   );
 }
 
-function PeriodPopover({ label, type, periods }: { label: string; type: PeriodType; periods: string[] }) {
+function PeriodPopover({ label, type, periods, own }: { label: string; type: PeriodType; periods: string[]; own?: string[] }) {
   const c = useCompany();
   const d = useDict();
   const lang = useLang();
-  const { sel, set } = usePeriod();
+  const { sel, set } = usePeriod(own);
   const [open, setOpen] = useState(false);
   const fy = c.settings.fyStartMonth;
   const years = useMemo(() => [...new Set(periods.map((p) => Number(p.slice(0, 4))))].sort(), [periods]);
@@ -56,8 +56,8 @@ function PeriodPopover({ label, type, periods }: { label: string; type: PeriodTy
   const has = new Set(periods);
   // Months inside the loaded range with no figures at all are gaps, not zero months.
   const cov = useMemo(() => coverageOf(c.accounts), [c.accounts]);
-  const gap = (p: string) => has.has(p) && c.accounts.length > 0 && !cov.pl.has(p) && !cov.bs.has(p);
-  const ends = useMemo(() => selectableEnds(c.months, type, fy), [c.months, type, fy]);
+  const gap = (p: string) => !own && has.has(p) && c.accounts.length > 0 && !cov.pl.has(p) && !cov.bs.has(p);
+  const ends = useMemo(() => (own ? selectableEndsOf(own, type, fy) : selectableEnds(c.months, type, fy)), [c.months, type, fy, own]);
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setYear(Number(sel.end.slice(0, 4))); }}>
       <PopoverTrigger className="sent-link" data-testid="period-end">
