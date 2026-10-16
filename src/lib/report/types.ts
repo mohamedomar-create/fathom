@@ -52,6 +52,8 @@ export interface ReportInput {
   accepted?: AcceptedIssue[];
   /** Inflation, exchange rates and loan terms for the bank and real-profit pages. */
   assumptions?: Assumptions;
+  /** The last day the books cover when the latest month is still in progress. */
+  asOf?: string | null;
   /** Saved forecast drivers. */
   forecast?: ForecastDrivers;
   /** Sales by customer and product per month, for the Sales page (left out when there are none). */

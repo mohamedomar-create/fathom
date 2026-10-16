@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 export async function GET() {
   const { supabase, user } = await getUser();
   if (!user) return NextResponse.json({ error: "Please sign in" }, { status: 401 });
-  if (await limited(supabase, `export:user:${user.id}`, 3600, 20)) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
+  if (await limited(supabase, "export", user.id)) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   const [profile, memberships, invites] = await Promise.all([
     supabase.from("profiles").select("email, full_name, created_at").eq("id", user.id).maybeSingle(),
     supabase.from("memberships").select("role, created_at, organizations(name)").eq("user_id", user.id).order("created_at"),

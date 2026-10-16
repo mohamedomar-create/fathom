@@ -17,3 +17,8 @@ create function auth.uid() returns uuid language sql stable as $$ select nullif(
 create function auth.email() returns text language sql stable as $$ select auth.jwt() ->> 'email' $$;
 grant usage on schema auth to anon, authenticated;
 grant execute on all functions in schema auth to anon, authenticated;
+-- Supabase grants every table in public to the API roles by default (row access is then decided by RLS); the same here,
+-- so a migration's REVOKE is tested against what production holds.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+grant usage on schema public to anon, authenticated, service_role;

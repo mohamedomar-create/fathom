@@ -108,7 +108,7 @@ function KpiModal({ row }: { row: KpiRow }) {
   const T = useT();
   const t = T.d.ana;
   const cur = c.settings.currency;
-  const hist = useMemo(() => kpiHistory(c.months, c.settings, a.view.window.end, 13), [c.months, c.settings, a.view.window.end]);
+  const hist = useMemo(() => kpiHistory(c.months, c.settings, a.view.window.end, 13, c.asOf), [c.months, c.settings, a.view.window.end, c.asOf]);
   const last12 = hist.slice(-12);
   const tgt = a.targets[row.def.key] ?? null;
   // The chart shows monthly values, so it is drawn against the monthly target.

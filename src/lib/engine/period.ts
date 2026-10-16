@@ -87,13 +87,26 @@ function windowLabel(w: Window, type: PeriodType, fyStart: number) {
   return windowFor({ type, end: w.end }, fyStart).label;
 }
 
-/** A year-end month with no other month of its financial year holding a P&L: an annual column from audited statements. */
+/** How big a month's P&L is: its revenue, or (with none) the sum of its lines. */
+const plSize = (m: MonthData) => Math.abs(m.pl.revenue ?? 0) || Object.values(m.pl).reduce((s, v) => s + Math.abs(v ?? 0), 0);
+
+/**
+ * A year-end month with no other month of its financial year holding a P&L: an annual column from audited statements.
+ * When monthly figures follow it, it is a whole year only if it is far larger than those months; otherwise it is simply
+ * the first month of monthly data (an Odoo sync or a ledger that happens to start on a year-end month).
+ */
 export function isAnnualColumn(months: MonthData[], p: string, fyStart: number) {
   if (parsePeriod(p).m !== ((fyStart + 10) % 12) + 1) return false;
-  const pl = new Set(months.filter(hasPL).map((m) => m.period));
-  if (!pl.has(p)) return false;
-  for (let i = 1; i <= 11; i++) if (pl.has(addMonths(p, -i))) return false;
-  return true;
+  const pls = months.filter(hasPL).sort((a, b) => a.period.localeCompare(b.period));
+  const at = pls.find((m) => m.period === p);
+  if (!at) return false;
+  const held = new Set(pls.map((m) => m.period));
+  for (let i = 1; i <= 11; i++) if (held.has(addMonths(p, -i))) return false;
+  // Only monthly figures in the following year count (another annual column a year later is not a month).
+  const after = pls.filter((m) => m.period > p && m.period < addMonths(p, 12)).slice(0, 6).map(plSize).sort((a, b) => a - b);
+  if (!after.length) return true;
+  const median = after[Math.floor(after.length / 2)];
+  return plSize(at) > 4 * median;
 }
 
 export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: number): PeriodView {
@@ -113,12 +126,15 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
   const opening = addMonths(window.start, -1);
   const open = byPeriod.get(opening);
   const B0 = open && hasBS(open) ? bsCalc(open.bs) : null;
-  const days = window.periods.reduce((s, p) => s + daysIn(p), 0);
+  // Days the figures cover: the whole year for an annual column, otherwise only the months holding a P&L (a year with
+  // three months loaded is measured on those three months).
+  const days = annual ? window.periods.reduce((s, p) => s + daysIn(p), 0) : got.reduce((s, m) => s + daysIn(m.period), 0);
   const points = annual ? [] : window.periods.map((p) => byPeriod.get(p)).filter((m): m is MonthData => !!m && hasBS(m)).map((m) => bsCalc(m.bs));
   const Bavg = averageBS([...(B0 ? [B0] : []), ...(points.length ? points : [B])]);
   const cmp = (shift: number) => {
     const w2 = shiftWindow(window, shift);
-    const ms = annual ? [plAt(w2.end)] : w2.periods.map(plAt);
+    // An annual year compares with the prior year's annual column, or with all twelve of its months.
+    const ms = annual && isAnnualColumn(sorted, w2.end, fyStart) ? [plAt(w2.end)] : w2.periods.map(plAt);
     if (ms.some((x) => !x)) return null;
     const b2 = bsAtOrBefore(w2.end);
     return { P: plCalc(sumPL(ms.map((m) => m!.pl))), B: bsCalc(b2?.bs ?? {}), label: windowLabel(w2, sel.type, fyStart) };

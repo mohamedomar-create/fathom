@@ -48,7 +48,7 @@ export async function testOdoo(input: z.input<typeof ConnSchema>): Promise<Resul
     const v = ConnSchema.parse(input);
     const { supabase, user } = await getUser();
     if (!user) throw new Error("Please sign in again.");
-    if (await limited(supabase, `odoo:${user.id}`, 3600, 20)) throw new Error(TOO_MANY);
+    if (await limited(supabase, "odoo", user.id)) throw new Error(TOO_MANY);
     const url = await assertPublicOdooUrl(v.url);
     const enc = v.apiKey ? null : await reusableKey(supabase, v.companyId, url, v.db, v.login);
     const key = v.apiKey || (enc ? decrypt(enc) : "");
@@ -70,7 +70,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
     const v = SaveSchema.parse(input);
     const { supabase, user } = await getUser();
     if (!user) throw new Error("Please sign in again.");
-    if (await limited(supabase, `odoo:${user.id}`, 3600, 20)) throw new Error(TOO_MANY);
+    if (await limited(supabase, "odoo", user.id)) throw new Error(TOO_MANY);
     const url = await assertPublicOdooUrl(v.url);
     const keyEnc = v.apiKey ? encrypt(v.apiKey) : await reusableKey(supabase, v.companyId, url, v.db, v.login);
     if (!keyEnc) throw new Error("Enter the API key.");
@@ -91,7 +91,9 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     z.string().uuid().parse(companyId);
     const { data: conn } = await supabase.from("odoo_connections").select("*").eq("company_id", companyId).maybeSingle();
     if (!conn || !conn.odoo_company_id) throw new Error("Save the Odoo connection first.");
-    if (await limited(supabase, `odoo:${user.id}`, 3600, 20)) throw new Error(TOO_MANY);
+    if (await limited(supabase, "odoo", user.id)) throw new Error(TOO_MANY);
+    // The key is cleared whenever the address, database or login changes (migration 0016).
+    if (!conn.api_key_enc) throw new Error("Enter the API key again in the Odoo connection, then save it.");
     const { client } = await connect(conn.url, conn.db, conn.login, decrypt(conn.api_key_enc));
     const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history });
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");

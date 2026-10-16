@@ -29,7 +29,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const bundle = await loadCompanyBundle(id);
   if (bundle.role === "viewer") return NextResponse.json({ error: "View-only access" }, { status: 403 });
   // AI calls cost money: 20 a day per company and 60 a day per person.
-  if ((await limited(supabase, `ai:company:${id}`, 86400, 20)) || (await limited(supabase, `ai:user:${user.id}`, 86400, 60)))
+  if ((await limited(supabase, "ai_company", id)) || (await limited(supabase, "ai_user", user.id)))
     return NextResponse.json({ error: "The daily limit for AI commentary has been reached. Try again tomorrow, or write the commentary by hand." }, { status: 429 });
   const { data: row } = await supabase.from("companies").select("industry, ai_context").eq("id", id).single();
   try {
@@ -37,7 +37,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const sel = { type: parsed.data.type, end: parsed.data.end };
     const [sales, expenses] = await Promise.all([loadSales(id), loadExpenses(id)]);
     const context = {
-      ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, parsed.data.sections),
+      ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, asOf: bundle.asOf ?? null, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, parsed.data.sections),
       // Customers, products and suppliers from the same data, so the commentary can name them.
       ...linesContext(bundle.months, bundle.accounts, sales, expenses, sel, bundle.settings.fyStartMonth, bundle.settings.currency),
     };

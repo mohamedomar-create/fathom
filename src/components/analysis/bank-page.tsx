@@ -36,7 +36,7 @@ export function BankPage() {
   const cur = c.settings.currency;
   const { a, setA, saved } = useAssumptions();
   const { lang, d: { bank: t }, pl } = useT();
-  const pack = useMemo(() => (sel.end ? bankPack(c.months, sel.end, c.settings, a, c.name, c.accounts, lang) : null), [c.months, sel.end, c.settings, a, c.name, c.accounts, lang]);
+  const pack = useMemo(() => (sel.end ? bankPack(c.months, sel.end, c.settings, a, c.name, c.accounts, lang, c.asOf) : null), [c.months, sel.end, c.settings, a, c.name, c.accounts, lang, c.asOf]);
   if (!pack) return null;
   const { basis, assessment: res, trend, stress, pf } = pack;
   const r = (k: string) => res.ratios.find((x) => x.key === k)!;

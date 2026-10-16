@@ -1,6 +1,7 @@
 "use client";
 import { money } from "@/lib/engine";
 import { monthBridge, receiptCost } from "@/lib/engine/inventory";
+import { productKey } from "@/lib/ingest/inventory";
 import { windowFor } from "@/lib/engine/period";
 import { addMonths } from "@/lib/engine/format";
 import { useCompany } from "@/lib/company/context";
@@ -29,7 +30,7 @@ export function InventoryValuation() {
   const shown = cols.filter(([k]) => k === "opening" || k === "closing" || rows.some((r) => r[k]));
   // Unit cost when received, for the three products with the most cost of sales, over the last twelve months.
   const last12 = Array.from({ length: 12 }, (_, i) => addMonths(s.end, i - 11));
-  const top = [...s.products].sort((a, b) => b.cogs - a.cogs).slice(0, 3).map((p) => p.code || p.product);
+  const top = [...s.products].sort((a, b) => b.cogs - a.cogs).slice(0, 3).map((p) => productKey(p.code, p.product));
   const prices = s.hasValue ? receiptCost(d, top, last12).filter((x) => x.points.filter((v) => v !== null).length > 1) : [];
   return (
     <>

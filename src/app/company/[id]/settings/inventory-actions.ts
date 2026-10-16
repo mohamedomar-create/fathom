@@ -45,7 +45,7 @@ export async function startInventoryBatch(input: z.input<typeof Start>): Promise
   if (!v.success) return { ok: false, error: "The stock data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, `inventory:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "inventory", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const { data, error } = await supabase.rpc("begin_inventory_batch", {
       p_company: v.data.companyId, p_kind: v.data.kind, p_periods: [...new Set(v.data.periods)].sort(), p_filename: v.data.filename, p_mode: v.data.mode, p_report: (v.data.report ?? {}) as Json,

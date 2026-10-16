@@ -5,7 +5,7 @@ import type { ClassKey } from "@/lib/engine";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { ALL_CLASSES } from "@/lib/company/build";
 import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
-import { planImport, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
+import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
 import { getUser } from "@/lib/supabase/server";
@@ -79,7 +79,7 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, `import:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "import", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const { plan, prevAccepted, hasData } = await buildPlan(supabase, v.data);
     const ok = new Set(prevAccepted.map((a) => a.key));
@@ -94,7 +94,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
   if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, `import:${user.id}`, 3600, 60)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "import", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const d = v.data;
     const { plan, prevAccepted, notes } = await buildPlan(supabase, d);
@@ -284,8 +284,18 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   if (!ok.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid changes" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  // A stored month is a movement on the P&L and a closing balance on the balance sheet: moving an account across would
+  // turn one into the other, so that change is made by re-importing the file with the new class instead.
+  const { data: cur, error: e0 } = await supabase.from("source_accounts").select("id, class").eq("company_id", companyId).in("id", Object.keys(ok.data));
+  if (e0) return { ok: false, error: dbError(e0, "reclassify") };
+  if (statementMoves(cur ?? [], ok.data).length) return { ok: false, error: "That would move an account between the P&L and the balance sheet, and its stored months can't be converted. Re-import the file with the account mapped to its new class instead." };
   const { data, error } = await supabase.rpc("reclassify_accounts", { p_company: companyId, p_changes: Object.fromEntries(Object.entries(ok.data).map(([k, c]) => [k, { class: c }])) as Json });
   if (error) return { ok: false, error: dbError(error, "reclassify") };
+  // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the new P&L lose them.
+  try {
+    const { data: co } = await supabase.from("companies").select("data_version").eq("id", companyId).maybeSingle();
+    if (co?.data_version) await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, co.data_version));
+  } catch (e) { console.error("reclassify: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, count: data as number };
 }

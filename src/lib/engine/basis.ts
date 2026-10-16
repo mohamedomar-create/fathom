@@ -1,6 +1,6 @@
 import { cashFlowStatement } from "./cashflow";
-import { addMonths, daysIn, mlabel, monthIndex, parsePeriod } from "./format";
-import { indexMonths } from "./period";
+import { addMonths, daysIn, mlabel, monthIndex } from "./format";
+import { indexMonths, isAnnualColumn } from "./period";
 import { bsCalc, plCalc, sumPL } from "./statements";
 import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types";
 
@@ -37,19 +37,17 @@ export interface Basis {
   annualColumn: boolean;
 }
 
-/** A year-end month with no other month of its financial year loaded: an annual column from audited statements. */
-function isAnnualAt(held: Set<string>, p: string, fyStart: number) {
-  if (parsePeriod(p).m !== ((fyStart + 10) % 12) + 1) return false;
-  for (let i = 1; i <= 11; i++) if (held.has(addMonths(p, -i))) return false;
-  return true;
-}
-
-export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Basis {
+/**
+ * asOf: the last day the books cover when the end month is still in progress ("2026-10-10"): only the days covered count,
+ * and the part month counts as that share of a month when flows are scaled to a year.
+ */
+export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf?: string | null): Basis {
   const { sorted: all, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(end);
   if (!endMonth) throw new Error(`No data for ${end}`);
   // Flows come from months holding a P&L; balances from months holding a balance sheet.
   const sorted = all.filter(hasPL);
+  const isAnnualAt = (_held: unknown, p: string, fy: number) => isAnnualColumn(sorted, p, fy);
   const held = new Set(sorted.map((m) => m.period));
   const bsAt = (p: string) => { for (let i = all.length - 1; i >= 0; i--) if (all[i].period <= p && hasBS(all[i])) return all[i]; return undefined; };
   const winStart = addMonths(end, -11);
@@ -62,7 +60,10 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Bas
   const used = annualColumn ? [endMonth] : inWindow.filter((m) => m.period >= start);
   const span = monthIndex(end) - monthIndex(start) + 1;
   const gaps = annualColumn ? [] : Array.from({ length: span }, (_, i) => addMonths(start, i)).filter((p) => !held.has(p));
-  const covered = annualColumn ? 12 : used.length;
+  // A part month (books to the 10th) covers that share of the month.
+  const partDay = !annualColumn && asOf && asOf.slice(0, 7) === end ? Number(asOf.slice(8)) : 0;
+  const part = partDay > 0 && partDay < daysIn(end) ? partDay / daysIn(end) : 1;
+  const covered = annualColumn ? 12 : used.length - 1 + part;
   const factor = 12 / covered;
   const flows = sumPL(used.map((m) => m.pl));
   const P = plCalc(flows);
@@ -72,7 +73,7 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Bas
   const B0 = open && hasBS(open) && hasBS(endMonth) ? bsCalc(open.bs) : null;
   let days = 0;
   if (annualColumn) for (let i = 0; i < 12; i++) days += daysIn(addMonths(winStart, i));
-  else for (const m of used) days += daysIn(m.period);
+  else for (const m of used) days += m.period === end && part < 1 ? partDay : daysIn(m.period);
   const points = [...(B0 ? [B0] : []), ...used.filter(hasBS).map((m) => bsCalc(m.bs))];
   if (!points.length) points.push(B);
   const avg = (k: keyof BSCalc) => points.reduce((s, b) => s + (b[k] as number), 0) / points.length;
@@ -84,7 +85,7 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1): Bas
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
-    label: `${covered} month${covered > 1 ? "s" : ""} to ${mlabel(end)}${gapNote}`,
+    label: `${Math.ceil(covered)} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
     ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0).cfo : null,
   };
 }

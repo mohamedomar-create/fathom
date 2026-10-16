@@ -7,7 +7,7 @@ import { cleanNum, parsePeriod, parsePeriodRange, splitCode, type Cell } from "@
 import type { Grid } from "@/lib/ingest/extract";
 import { classify } from "@/lib/ingest/classify";
 import { readWorkbook } from "@/lib/ingest/read";
-import { generalLedger, journalItems, months, odooReports, trialBalanceDebitCredit, trialBalanceSigned, trialBalanceSinglePeriod } from "../fixtures/odoo";
+import { generalLedger, journalItems, months, odooReports, trialBalanceDebitCredit, trialBalanceRange, trialBalanceSigned, trialBalanceSinglePeriod } from "../fixtures/odoo";
 
 const OPTS: IngestOptions = { fyStart: 1, ytd: "auto", closeEarnings: "auto", plugEquity: false, mapping: {} };
 
@@ -140,6 +140,18 @@ describe("Odoo exports reproduce the source numbers", () => {
     expect(res.periods).toEqual([months[3].period]);
     expect(res.ranges).toEqual({ [months[3].period]: Number(m) });
     expect(res.issues.notes.some((w) => /cover several months/.test(w))).toBe(true);
+  });
+
+  it("a trial balance over several months stores its opening balances at the month before the range starts", () => {
+    const res = ingest(trialBalanceRange(2, 4), OPTS);
+    expect(res.periods).toEqual([months[4].period]);
+    expect(res.openingMonth).toBe(months[1].period);
+    expect(res.slices.BS).toEqual([months[1].period, months[4].period]);
+    const got = classTotals(res);
+    const open = got.find((m) => m.period === months[1].period)!, close = got.find((m) => m.period === months[4].period)!;
+    for (const k of BS_KEYS) expect(Math.round(open.bs[k] ?? 0), `opening ${k}`).toBe(Math.round((months[1].bs as Record<string, number>)[k] ?? 0));
+    for (const k of BS_KEYS) expect(Math.round(close.bs[k] ?? 0), `closing ${k}`).toBe(Math.round((months[4].bs as Record<string, number>)[k] ?? 0));
+    expect(got.some((m) => m.period === months[3].period)).toBe(false);
   });
 
   it("an unrecognised sheet explains which Odoo exports work", () => {

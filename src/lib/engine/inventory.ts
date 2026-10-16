@@ -164,6 +164,11 @@ interface StockIndex {
 const group = <T, K>(xs: T[], key: (x: T) => K) => { const m = new Map<K, T[]>(); for (const x of xs) { const k = key(x); const a = m.get(k); if (a) a.push(x); else m.set(k, [x]); } return m; };
 
 function indexStock(d: InventoryData): StockIndex {
+  const weight = new Map<string, number>(), docKind = new Map<string, LayerKind>();
+  for (const r of d.byRef) {
+    const k = `${r.p}|${r.ref}`;
+    if (Math.abs(r.v) >= (weight.get(k) ?? -1)) { weight.set(k, Math.abs(r.v)); docKind.set(k, r.kind); }
+  }
   const byMonth = new Map<string, Map<LayerKind, number>>();
   for (const l of d.layers) {
     const m = byMonth.get(l.p) ?? new Map<LayerKind, number>();
@@ -175,7 +180,9 @@ function indexStock(d: InventoryData): StockIndex {
   return {
     months, byMonth, rental,
     refs: group(d.byRef, (r) => r.p),
-    led: group(d.ledger.map((r) => ({ p: r.p, ref: r.ref, v: r.v, kind: layerKind(r.ref, "", r.v) })), (r) => r.p),
+    // A ledger posting takes the kind of the module's own document (its move decided it: a return to a supplier on an
+    // OUT document is a return, not a delivery); only a document the valuation does not hold is read from its name.
+    led: group(d.ledger.map((r) => ({ p: r.p, ref: r.ref, v: r.v, kind: docKind.get(`${r.p}|${r.ref}`) ?? layerKind(r.ref, "", r.v) })), (r) => r.p),
     firstLayer: months[0],
     firstMove: d.moves.months[0],
   };
@@ -471,12 +478,13 @@ export function inventoryAnalysis(
  * Inventory (balance sheet, per month) and the cost of sales posted by stock moves or with customer invoices (the expense
  * lines grouped as "Cost of goods sold (stock)").
  */
-export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[] }): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
+export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[]; sources?: Record<string, "ledger" | "file"> }): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
   const stock: Record<string, number> = {};
   for (const m of months) if (Object.keys(m.bs).length) stock[m.period] = Number(m.bs.inventory ?? 0);
   // A month with expense lines is in the ledger: its cost of sales from stock is what was posted there, 0 when nothing was.
   const cogs: Record<string, number> = {};
-  for (const r of expenses.suppliers) cogs[r.p] = r2((cogs[r.p] ?? 0) + (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed") ? r.a : 0));
+  // A month whose expense lines come from a purchases file shows that file, not the ledger: its cost of sales is unknown.
+  for (const r of expenses.suppliers) if (expenses.sources?.[r.p] !== "file") cogs[r.p] = r2((cogs[r.p] ?? 0) + (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed") ? r.a : 0));
   return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
 }
 
@@ -507,9 +515,10 @@ export function inventoryMonthly(d: InventoryData, end: string, n = 12): { p: st
 }
 
 /** What one unit cost when received, per product and month (value ÷ quantity of receipt layers); null in a month with no receipts. */
-export function receiptCost(d: InventoryData, codes: string[], periods: string[]): { code: string; product: string; points: (number | null)[] }[] {
-  return codes.map((code) => {
-    const rows = d.layers.filter((l) => l.code === code && l.kind === "receipt" && l.q > 0);
+/** keys: products as productKey gives them ("[code] name", or the name alone when there is no internal reference). */
+export function receiptCost(d: InventoryData, keys: string[], periods: string[]): { code: string; product: string; points: (number | null)[] }[] {
+  return keys.map((code) => {
+    const rows = d.layers.filter((l) => productKey(l.code, l.product) === code && l.kind === "receipt" && l.q > 0);
     return {
       code, product: rows[rows.length - 1]?.product ?? code,
       points: periods.map((p) => { const m = rows.filter((l) => l.p === p); const q = m.reduce((s, l) => s + l.q, 0); return q > 0 ? r2(sumV(m) / q) : null; }),

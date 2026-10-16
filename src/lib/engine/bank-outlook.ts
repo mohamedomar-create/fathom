@@ -339,9 +339,9 @@ export interface BankPack {
   memo: string;
 }
 
-export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en"): BankPack {
+export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
   const cur = settings.currency;
-  const basis = twelveMonths(months, end, settings.fyStartMonth);
+  const basis = twelveMonths(months, end, settings.fyStartMonth, asOf);
   const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang };
   const assessment = bankAssessment(basis, inputs, cur);
   const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur);

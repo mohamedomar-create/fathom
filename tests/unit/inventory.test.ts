@@ -225,7 +225,16 @@ describe("Inventory page series", () => {
 
   it("receiptCost is the average unit cost of goods received each month, landed costs excluded, a month without receipts empty", () => {
     const d = data({ layers: [...two.layers, layer("2026-09", "receipt", "P1", 5, 650)] });
-    expect(receiptCost(d, ["P1"], ["2026-07", "2026-08", "2026-09"])).toEqual([{ code: "P1", product: "Mask", points: [null, 100, 125] }]);
+    expect(receiptCost(d, ["[P1] Mask"], ["2026-07", "2026-08", "2026-09"])).toEqual([{ code: "[P1] Mask", product: "Mask", points: [null, 100, 125] }]);
+  });
+
+  it("receiptCost finds a product with no internal reference, and keeps two products sharing a reference apart", () => {
+    const d = data({ layers: [
+      { p: "2026-09", kind: "receipt", code: "", product: "Oxygen tube", category: "", q: 4, v: 80, n: 1 },
+      { p: "2026-09", kind: "receipt", code: "Device", product: "Alpha", category: "", q: 1, v: 1000, n: 1 },
+      { p: "2026-09", kind: "receipt", code: "Device", product: "Beta", category: "", q: 1, v: 3000, n: 1 },
+    ] });
+    expect(receiptCost(d, ["Oxygen tube", "[Device] Alpha"], ["2026-09"]).map((x) => x.points)).toEqual([[20], [1000]]);
   });
 });
 
@@ -272,5 +281,28 @@ describe("demo company stock", async () => {
   it("the demo's cost of sales from stock is the cost-of-goods account in its accounts", () => {
     for (const m of months) expect(ledger.cogs![m.period]).toBeGreaterThan(0);
     expect(ledger.stock!["2026-09"]).toBe(months.find((m) => m.period === "2026-09")!.bs.inventory);
+  });
+});
+
+describe("ledger lines take the kind of the module's own document", () => {
+  it("a return to a supplier on an OUT document and a customer return on an IN document tie on receipts", () => {
+    const byRef = [
+      { p: "2026-09", ref: "WH/IN/00001", kind: "receipt" as const, v: 1000 },
+      { p: "2026-09", ref: "WH/OUT/00005", kind: "supplier_return" as const, v: -200 },
+      { p: "2026-09", ref: "WH/IN/00007", kind: "customer_return" as const, v: 100 },
+    ];
+    const d = data({
+      layers: [layer("2026-09", "receipt", "P1", 10, 1000), layer("2026-09", "supplier_return", "P1", -2, -200), layer("2026-09", "customer_return", "P1", 1, 100)],
+      byRef, ledger: byRef.map((r) => ({ p: r.p, ref: r.ref, v: r.v })),
+    });
+    const t = inventoryAnalysis(d, SEP, 1, { ledger: { stock: { "2026-09": 900 }, cogs: { "2026-09": -100 } } }).tieouts;
+    expect(t.find((x) => x.key === "receipts")).toMatchObject({ status: "ok", module: 800, ledger: 800 });
+  });
+});
+
+describe("the ledger side of cost of sales", () => {
+  it("a month whose expenses come from a purchases file has no ledger cost of sales to check against, not zero", () => {
+    const l = inventoryLedger([], { suppliers: [{ p: "2026-08", s: "Cost of goods sold (stock)", c: "cos_variable", a: 500 }, { p: "2026-09", s: "Supplier A", c: "exp_fixed", a: 70 }], sources: { "2026-08": "ledger", "2026-09": "file" } });
+    expect(l.cogs).toEqual({ "2026-08": 500 });
   });
 });

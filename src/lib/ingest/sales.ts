@@ -65,7 +65,7 @@ export function salesFromLedger(lines: { cls: string | null; excluded: boolean; 
 
 export type SalesField = "date" | "doc" | "customer" | "product" | "category" | "salesperson" | "qty" | "untaxed" | "total" | "cost" | "margin" | "period";
 const FIELD_RX: [SalesField, RegExp][] = [
-  ["untaxed", arRx(/^(untaxed( total| amount)?|amount untaxed|subtotal|sub ?total|price subtotal|net (sales|amount|revenue|total)|net sales amount|sales value|revenue|net|المبلغ قبل الضريبة|الصافي|صافي المبيعات|الإجمالي قبل الضريبة|قيمة المبيعات|المبيعات|الإيراد)$/i)],
+  ["untaxed", arRx(/^(untaxed( total| amount)?( signed)?|amount untaxed|total untaxed|tax excluded|subtotal|sub ?total|price subtotal|net (sales|amount|revenue|total)|net sales amount|sales value|revenue|net|المبلغ قبل الضريبة|الصافي|صافي المبيعات|الإجمالي قبل الضريبة|قيمة المبيعات|المبيعات|الإيراد)$/i)],
   ["total", arRx(/^(total|amount|amount total|total amount|grand total|value|الإجمالي|الاجمالي|القيمة|المبلغ|إجمالي)$/i)],
   ["date", arRx(/^(date|invoice date|order date|accounting date|التاريخ|تاريخ الفاتورة|تاريخ الطلب|تاريخ)$/i)],
   ["period", arRx(/^(month|period|الشهر|الفترة)$/i)],

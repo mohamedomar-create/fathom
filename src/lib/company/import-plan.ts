@@ -60,6 +60,11 @@ export interface ImportPlan {
 
 export const statementOf = (cls: ClassKey): Statement => (isPL(cls) ? "PL" : "BS");
 
+/** The accounts a change of class would move between the P&L and the balance sheet (their stored months mean different things there). */
+export function statementMoves(current: { id: string; class: string }[], changes: Record<string, string>): string[] {
+  return current.filter((a) => a.id in changes && statementOf(a.class as ClassKey) !== statementOf(changes[a.id] as ClassKey)).map((a) => a.id);
+}
+
 /** Accounts are the same across uploads when the code matches, or (without a code) the name within the same statement. */
 export function accountIdentity(a: { code: string; name: string; cls: ClassKey }) {
   const code = a.code.trim().toLowerCase();
@@ -111,7 +116,10 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
     // A class the user chose in the chart of accounts survives re-uploads (within the same statement).
     const keepUser = ex.mapped_by === "user" && n.mapped_by !== "user" && statementOf(ex.cls) === statementOf(n.cls);
     const cls = keepUser ? ex.cls : n.cls;
-    if (cls !== ex.cls) for (const p of Object.keys(ex.amounts)) ex.amounts[p] = recast(ex.cls, cls, ex.amounts[p]);
+    // Moving between the P&L and the balance sheet changes what each stored month means (a month's movement against a
+    // closing balance): the months the file does not cover cannot be converted, so only the file's months are kept.
+    if (statementOf(cls) !== statementOf(ex.cls)) { ex.amounts = {}; ex.sources = {}; }
+    else if (cls !== ex.cls) for (const p of Object.keys(ex.amounts)) ex.amounts[p] = recast(ex.cls, cls, ex.amounts[p]);
     for (const [p, v] of Object.entries(n.amounts)) ex.amounts[p] = (ex.amounts[p] ?? 0) + recast(n.cls, cls, v);
     ex.cls = cls;
     ex.code = n.code || ex.code;

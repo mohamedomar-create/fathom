@@ -12,7 +12,7 @@ const BAND: Record<Band, [string, string]> = {
 };
 
 function useBank(input: ReportInput) {
-  return useMemo(() => bankPack(input.months, input.sel.end, input.settings, input.assumptions ?? {}, input.companyName, input.accounts), [input.months, input.sel.end, input.settings, input.assumptions, input.companyName, input.accounts]);
+  return useMemo(() => bankPack(input.months, input.sel.end, input.settings, input.assumptions ?? {}, input.companyName, input.accounts, "en", input.asOf), [input.months, input.sel.end, input.settings, input.assumptions, input.companyName, input.accounts, input.asOf]);
 }
 
 const Tile = ({ label, value, sub }: { label: string; value: string; sub?: string }) => (
@@ -75,9 +75,9 @@ export function ReportBankOutlook({ input, head }: { input: ReportInput; head: (
 export function ReportRealProfit({ input, head }: { input: ReportInput; head: (title: string, label: string) => React.ReactNode }) {
   const cur = input.settings.currency;
   const { basis, x } = useMemo(() => {
-    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth);
+    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth, input.asOf);
     return { basis, x: realProfit(basis, input.assumptions ?? {}, cur, input.settings.targets?.ar_days ?? 45) };
-  }, [input.months, input.sel.end, input.settings, input.assumptions, cur]);
+  }, [input.months, input.sel.end, input.settings, input.assumptions, input.asOf, cur]);
   const inf = x.inflation;
   const rows: WaterfallRow[] = inf ? [
     { label: "Reported net profit", sign: "TOTAL", value: x.reported },

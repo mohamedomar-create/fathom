@@ -40,7 +40,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!check.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   // Reading costs money: 200 pages a day per company and 400 a day per person.
-  if ((await limited(supabase, `pdf:company:${id}`, 86400, 200)) || (await limited(supabase, `pdf:user:${user.id}`, 86400, 400)))
+  if ((await limited(supabase, "pdf_read_company", id)) || (await limited(supabase, "pdf_read_user", user.id)))
     return NextResponse.json({ error: "The daily limit for reading PDF pages has been reached. Try again tomorrow, or export the report from Odoo as Excel." }, { status: 429 });
 
   try {

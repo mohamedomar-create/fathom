@@ -22,7 +22,7 @@ export function RealProfitPage() {
   const { a, setA, saved } = useAssumptions();
   const { lang, d: { rp: t }, pl } = useT();
   const target = c.settings.targets?.ar_days ?? 45;
-  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth) : null), [c.months, sel.end, c.settings.fyStartMonth]);
+  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf]);
   const x = useMemo(() => (basis ? realProfit(basis, a, cur, target ?? 45, lang) : null), [basis, a, cur, target, lang]);
   if (!basis || !x) return null;
   const m = (v: number | null) => (v === null ? "–" : money(v, cur));

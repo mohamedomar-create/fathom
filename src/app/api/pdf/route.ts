@@ -25,12 +25,12 @@ export async function POST(req: Request) {
   const ip = clientIp(req);
   // Who may render: a signed-in user, a valid public report link, or the demo report. Each is limited across instances.
   let over: boolean;
-  if (user) over = await limited(supabase, `pdf:user:${user.id}`, 3600, 30);
+  if (user) over = await limited(supabase, "pdf_render_user", user.id);
   else if (b.token) {
     const { data } = await supabase.rpc("get_published_report", { p_token: b.token });
     if (!data) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-    over = (await limited(supabase, `pdf:ip:${ip}`, 600, 5)) || (await limited(supabase, `pdf:token:${b.token.slice(0, 16)}`, 3600, 20));
-  } else if (b.demo) over = await limited(supabase, `pdf:ip:${ip}`, 600, 5);
+    over = (await limited(supabase, "pdf_render_ip", ip)) || (await limited(supabase, "pdf_render_token", b.token.slice(0, 16)));
+  } else if (b.demo) over = await limited(supabase, "pdf_render_ip", ip);
   else return NextResponse.json({ error: "Please sign in" }, { status: 401 });
   if (over) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${b.title.replace(/</g, "")}</title>

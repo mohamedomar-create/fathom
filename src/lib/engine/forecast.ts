@@ -419,7 +419,9 @@ export function forecast(months: MonthData[], settings: CompanySettings, drivers
   // A part month (the books run only to a day inside it) would understate the base: the forecast starts after the last full month.
   const partNote = asOf && asOf.startsWith(lastP) && Number(asOf.slice(8)) < daysIn(lastP) ? L(`${mlabel(lastP)} runs only to day ${Number(asOf.slice(8))}, so the forecast is built on the months to ${mlabel(addMonths(lastP, -1))}, the last full month, and ${mlabel(lastP)} is forecast in full.`, `${ml(lastP)} يمتد حتى يوم ${Number(asOf.slice(8))} فقط، لذلك بُنيت التوقعات على الأشهر حتى ${ml(addMonths(lastP, -1))}، آخر شهر كامل، ويُتوقع ${ml(lastP)} كاملًا.`) : null;
   if (partNote) sorted = sorted.slice(0, -1);
-  const hist = consecutiveTail(sorted);
+  // An annual column holds a whole year, not a month: the monthly history starts after the last one.
+  const lastAnnual = sorted.filter((m) => isAnnualColumn(all, m.period, settings.fyStartMonth)).pop();
+  const hist = consecutiveTail(lastAnnual ? sorted.filter((m) => m.period > lastAnnual.period) : sorted);
   if (hist.length < 6) return { ok: false, reason: L(`Forecasting needs at least six consecutive months of figures; the latest run has ${hist.length}. Upload the General Ledger covering the missing months.`, `التوقعات تحتاج ستة أشهر متتالية على الأقل من الأرقام؛ آخر سلسلة بها ${hist.length}. ارفع دفتر الأستاذ العام الذي يغطي الأشهر الناقصة.`) };
   if (!hasBS(hist[hist.length - 1])) return { ok: false, reason: L(`${mlabel(hist[hist.length - 1].period)} has a P&L but no balance sheet, so the forecast has no starting cash, debtors or loans. Upload the balance sheet for that month, or the General Ledger, which gives both.`, `${ml(hist[hist.length - 1].period)} به قائمة دخل بدون ميزانية، فلا توجد نقدية أو مدينون أو قروض للبدء منها. ارفع ميزانية ذلك الشهر، أو دفتر الأستاذ العام الذي يعطي الاثنين.`) };
   const revHist = hist.map((m) => plCalc(m.pl).revenue);
