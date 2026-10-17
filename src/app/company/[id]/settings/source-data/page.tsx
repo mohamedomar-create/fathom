@@ -25,7 +25,9 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const lastUpload = imports?.find((i) => i.kind === "upload");
   // The company's account map (every class a person has chosen); before it existed, the last upload's mapping.
-  const accountMap = await loadAccountMap(supabase, id);
+  const [accountMap, { data: profiles }] = await Promise.all([loadAccountMap(supabase, id), supabase.from("input_profiles").select("kind, headings").eq("company_id", id)]);
+  // The company's remembered export layouts (none before the database has them).
+  const savedLayouts = Object.fromEntries((profiles ?? []).map((p) => [p.kind, p.headings]));
   const savedMapping = Object.keys(accountMap).length ? accountMap : ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};
   const tabs = [{ k: "upload", l: "Upload a file" }, { k: "odoo", l: "Connect Odoo (live)" }];
   return (
@@ -41,7 +43,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
-      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" || step === "expenses" || step === "inventory" ? step : undefined} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} />}
+      {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={step === "sales" || step === "financials" || step === "expenses" || step === "inventory" ? step : undefined} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} />}
       {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} />}
       </>}
     </div>

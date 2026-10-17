@@ -1,7 +1,7 @@
 "use client";
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
 import { extractAll, materialUnmapped, rememberKey, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
@@ -49,6 +49,8 @@ import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
+import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
+import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
@@ -60,7 +62,7 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
   const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
@@ -197,13 +199,21 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   const [downloading, setDownloading] = useState(false);
   const [showFile, setShowFile] = useState(0);
   const sorted = useMemo(() => (res ? sortedFinancials(res, raw) : null), [res, raw]);
+  // Each company's export layouts: a changed one stops until the person confirms how it was read.
+  const [layoutOk, setLayoutOk] = useState<Set<string>>(new Set());
+  const fingerprints = useMemo(() => [
+    ...(res?.layouts ?? []).filter((l) => l.role !== "check" && l.lines > 0 && l.kind !== "none" && l.kind !== "skipped").map(fingerprintAccounts),
+    ...(salesRead?.layouts ?? []).map(fingerprintSales), ...(expRead?.layouts ?? []).map(fingerprintBills),
+  ], [res, salesRead, expRead]);
+  useEffect(() => { if (done && !demo && fingerprints.length) void saveLayouts(companyId, fingerprints); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
   const issues = useMemo(() => [
     ...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : []),
     ...bookIssues([...cashRead.layouts, ...bankRead.layouts]),
     ...[...cashRead.failed.map((n) => ({ n, what: "a cash book" })), ...bankRead.failed.map((n) => ({ n, what: "a bank statement" }))].map(({ n, what }) => ({ id: `role:${n}`, severity: "check" as const, sheet: n, message: `${n.split(" › ").pop()} could not be read as ${what}. Change what it is under "Your sheets".`, fix: "settings" as const })),
     ...sheetIssues(guesses, (sh) => IMPORTED.has(roleOf(sh))),
     ...(tie ? tieMessages(tie).map((m, i) => ({ id: `tie:${m.sheet}:${m.row ?? ""}:${m.col ?? ""}:${i}`, severity: m.severity, sheet: m.sheet, row: m.row, col: m.col, message: m.message, fix: (m.row !== undefined ? "cell" : "settings") as "cell" | "settings" })) : []),
-  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf, tie]);
+    ...(demo ? [] : layoutIssues(fingerprints, savedLayouts ?? {}, layoutOk)),
+  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf, tie, demo, fingerprints, savedLayouts, layoutOk]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
@@ -306,7 +316,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
       leftSub={`${rawSheets.length} sheet${rawSheets.length === 1 ? "" : "s"} · click a row to see what it became`}
       rightTone={errorCount ? "bad" : "ok"} showFile={showFile}
       left={<RawSheets sheets={rawSheets} focus={focus} onRow={onRow} />}
-      right={<SortedView fin={sorted} sales={allSales.length || salesRead ? allSales : null} expenses={allExp.length || expRead ? allExp : null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
+      right={<SortedView onConfirmLayout={(k) => setLayoutOk((x) => new Set(x).add(k))} fin={sorted} sales={allSales.length || salesRead ? allSales : null} expenses={allExp.length || expRead ? allExp : null} issues={issues} currency={currency} origin={(sh) => rawSheets.find((x) => x.name === sh)?.origin}
         picked={picked} onFocus={(f, o) => { setFocus(f); if (f && !o?.stay) setShowFile((n) => n + 1); }} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} onDownload={download} downloading={downloading} />}
     />
   );

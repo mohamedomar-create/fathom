@@ -44,6 +44,7 @@ export type ImportJobRow = { id: string; company_id: string; kind: "inventory"; 
 export type ImportFileRow = { id: string; job_id: string; company_id: string; filename: string; size: number; export_key: string; kind: "valuation" | "moves" | "onhand" | "products"; storage_path: string; stored: boolean; rows_declared: number | null; counts: Json; created_at: string }
 export type ImportRowRow = { file_id: string; n: number; job_id: string; line: number | null; data: Json; error: string | null }
 export type AccountMapRow = { company_id: string; key: string; cls: string; name: string; updated_by: string | null; updated_at: string }
+export type InputProfileRow = { company_id: string; kind: string; headings: string[]; read: string[]; ignored: string[]; sheet: string; history: Json; updated_by: string | null; updated_at: string }
 export type ImportTemplateRow = { company_id: string; export_key: string; mapping: Json; updated_by: string | null; updated_at: string }
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
@@ -76,6 +77,7 @@ export type Database = {
       import_rows: Table<ImportRowRow, "file_id" | "n" | "job_id">;
       import_templates: Table<ImportTemplateRow, "company_id" | "export_key">;
       account_map: Table<AccountMapRow, "company_id" | "key" | "cls">;
+      input_profiles: Table<InputProfileRow, "company_id" | "kind" | "headings">;
     };
     Views: { [_ in never]: never };
     Functions: {

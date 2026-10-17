@@ -29,6 +29,8 @@ export interface SortedViewProps {
   onClass: (key: string, cls: ClassKey | "") => void;
   onCell: (sheet: string, row: number, col: number, value: number | string | null) => void;
   onSkipRow: (sheet: string, row: number) => void;
+  /** The person confirms a changed export layout was read right. */
+  onConfirmLayout?: (kind: string) => void;
   onDownload?: () => void;
   downloading?: boolean;
 }
@@ -103,7 +105,7 @@ function ClassSelect({ value, onChange, label, compact }: { value: ClassKey | ""
   );
 }
 
-function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, origin, fin }: SortedViewProps & { errors: UploadIssue[]; checks: UploadIssue[] }) {
+function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, onConfirmLayout, origin, fin }: SortedViewProps & { errors: UploadIssue[]; checks: UploadIssue[] }) {
   const clsOf = useMemo(() => {
     const m = new Map<string, ClassKey | null>();
     for (const g of [...(fin?.pl ?? []), ...(fin?.bs ?? [])]) for (const r of g.rows) m.set(r.key, r.cls);
@@ -112,7 +114,7 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, origin, f
   const [at, setAt] = useState(0);
   const [all, setAll] = useState(false);
   const i = Math.min(at, Math.max(0, errors.length - 1));
-  const row = (x: UploadIssue, main = false) => <IssueRow key={x.id} i={x} main={main} origin={origin?.(x.sheet)} onFocus={onFocus} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} cls={x.key ? clsOf.get(x.key) ?? null : null} />;
+  const row = (x: UploadIssue, main = false) => <IssueRow key={x.id} i={x} main={main} origin={origin?.(x.sheet)} onFocus={onFocus} onClass={onClass} onCell={onCell} onSkipRow={onSkipRow} onConfirmLayout={onConfirmLayout} cls={x.key ? clsOf.get(x.key) ?? null : null} />;
   return (
     <div className="text-[14px]" data-testid="issue-list">
       {errors.length > 0 && (
@@ -140,7 +142,7 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, origin, f
   );
 }
 
-function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls, main }: { i: UploadIssue; origin?: { r: number; c: number }; cls: ClassKey | null; main?: boolean } & Pick<SortedViewProps, "onFocus" | "onClass" | "onCell" | "onSkipRow">) {
+function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, onConfirmLayout, cls, main }: { i: UploadIssue; origin?: { r: number; c: number }; cls: ClassKey | null; main?: boolean } & Pick<SortedViewProps, "onFocus" | "onClass" | "onCell" | "onSkipRow" | "onConfirmLayout">) {
   const [v, setV] = useState(i.text ?? "");
   const [bad, setBad] = useState<string | null>(null);
   const isDate = /not a date|no invoice date|no month/.test(i.message);
@@ -172,6 +174,7 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, cls, main }:
             )}
             {i.fix === "cell" && <button onClick={() => onSkipRow(i.sheet, i.row!)} className="text-xs text-mute underline" data-testid="fix-skip">Skip this row</button>}
             {i.fix === "class" && i.key && <ClassSelect value={cls} label={`Class for ${i.message.slice(0, 40)}`} compact onChange={(c) => onClass(i.key!, c)} />}
+            {i.fix === "layout" && i.severity === "error" && i.key && onConfirmLayout && <button onClick={() => onConfirmLayout(i.key!)} className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="layout-confirm">The columns are read right</button>}
             {i.fix === "settings" && i.severity === "error" && <span className="text-xs text-mute">Open &quot;More options&quot; below, or upload a fixed file.</span>}
           </div>
           {bad && <div className="mt-1 text-xs text-red">{bad}</div>}

@@ -137,7 +137,7 @@ export interface UploadIssue {
   row?: number; col?: number;
   message: string;
   /** How it is fixed in the box: retype the cell (or leave the row out), pick a class, or a setting / the sheet. */
-  fix: "cell" | "class" | "settings";
+  fix: "cell" | "class" | "settings" | "layout";
   /** The line it concerns (class fixes). */
   key?: string;
   /** What the cell holds now (cell fixes), and whether it is an iReport template's class cell (fixed by picking a class). */
