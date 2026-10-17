@@ -1,5 +1,5 @@
 // A stand-in for Supabase's API gateway: /auth/v1 → GoTrue, /rest/v1 → PostgREST, /storage/v1/upload/resumable → a small
-// TUS (resumable upload) store on disk, enough for the import tests. Everything else 404.
+// TUS (resumable upload) store on disk with downloads of what it holds, enough for the import tests. Everything else 404.
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
@@ -57,6 +57,17 @@ http.createServer((req, res) => {
     return;
   }
   if (req.url === TUS || req.url.startsWith(TUS + "/") || req.url.startsWith(TUS + "?")) { tus(req, res); return; }
+  // A stored original, read back by the server (storage-js download): /storage/v1/object/[authenticated/]bucket/path.
+  const obj = req.method === "GET" && req.url.match(/^\/storage\/v1\/object\/(?:authenticated\/)?([^?]+)/);
+  if (obj) {
+    if (!/^Bearer /.test(req.headers.authorization ?? "")) { res.writeHead(401).end(); return; }
+    const file = path.join(storeDir, decodeURIComponent(obj[1]));
+    if (!file.startsWith(path.resolve(storeDir)) && !path.resolve(file).startsWith(path.resolve(storeDir))) { res.writeHead(400).end(); return; }
+    if (!fs.existsSync(file)) { res.writeHead(404, { "content-type": "application/json" }).end(JSON.stringify({ statusCode: "404", error: "not_found", message: "Object not found" })); return; }
+    res.writeHead(200, { "content-type": "application/octet-stream" });
+    fs.createReadStream(file).pipe(res);
+    return;
+  }
   const hit = routes.find(([p]) => req.url === p || req.url.startsWith(p + "/") || req.url.startsWith(p + "?"));
   if (!hit) { res.writeHead(404).end(); return; }
   const [prefix, target] = hit;

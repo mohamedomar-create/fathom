@@ -20,7 +20,8 @@ import { isTransient, missingOf, stageRows, type Range } from "./stage";
  */
 export type ImportMode = "replace" | "add" | "all" | "update";
 export interface ImportFile { file: File; export: ExportKey; mapping?: SavedMapping }
-export interface ImportProgress { phase: "starting" | "working" | "queued"; job?: string; upload: number; read: number; send: number; note?: string }
+/** server: the files are uploaded and the server is sending the rows; the page can be closed. */
+export interface ImportProgress { phase: "starting" | "working" | "server" | "queued"; job?: string; upload: number; read: number; send: number; note?: string }
 
 const BUCKET = "imports";
 const supabase = () => createClient();
@@ -143,25 +144,69 @@ export async function startImport(companyId: string, mode: ImportMode, files: Im
   const fileOf = (name: string) => files.find((f) => f.file.name === name)!;
   const parsedOf = (name: string) => parsed.files[files.indexOf(fileOf(name))];
 
+  const all = parsed.files.reduce((s, f) => s + f.records.length, 0) || 1;
+  const totals = Object.fromEntries(stored.map((s) => [s.id, parsedOf(s.name).records.length]));
+  const queue = () => retry(() => rpc("queue_import_job", { p_job: job, p_totals: totals as unknown as Json })).catch((e) => {
+    // The server queued it first: nothing left to do.
+    if (/NOT_PREPARING/.test(String((e as Error)?.message))) return;
+    throw e;
+  });
   const uploads = Promise.all(stored.map(async (s) => {
     // On a continued upload, a file already in storage is not sent again (storage refuses a second copy).
     if (resume && await rpc("mark_import_file_stored", { p_file: s.id }).then(() => true, () => false)) { sentBytes.set(s.id, s.size); return; }
     await uploadOriginal(fileOf(s.name).file, s.path, (sent) => { sentBytes.set(s.id, sent); p.upload = [...sentBytes.values()].reduce((a, b) => a + b, 0) / total; tell(); });
     await retry(() => rpc("mark_import_file_stored", { p_file: s.id }));
   }));
-  const sending = (async () => {
-    const all = parsed.files.reduce((s, f) => s + f.records.length, 0) || 1;
+  const sendHere = async (continuing: boolean) => {
     const sent = new Map<string, number>();
     for (const s of stored) {
-      await stageRecords(s.id, parsedOf(s.name).records, (n) => { sent.set(s.id, n); p.send = [...sent.values()].reduce((a, b) => a + b, 0) / all; tell(); }, !!resume);
+      await stageRecords(s.id, parsedOf(s.name).records, (n) => { sent.set(s.id, n); p.send = [...sent.values()].reduce((a, b) => a + b, 0) / all; tell(); }, continuing);
     }
-  })();
-  await Promise.all([uploads, sending]);
-  await retry(() => rpc("queue_import_job", { p_job: job, p_totals: Object.fromEntries(stored.map((s) => [s.id, parsedOf(s.name).records.length])) as unknown as Json }));
+  };
+  await uploads;
+  // The files are in storage: the server reads them and sends the rows, so this page can be closed. While it stays open
+  // it follows the server, and sends the missing rows itself if the server stops (or cannot be reached).
+  if (await handOff(job, Object.fromEntries(stored.flatMap((s) => (fileOf(s.name).mapping ? [[s.id, fileOf(s.name).mapping!]] : []))))) {
+    p.phase = "server"; tell();
+    const finished = await followServer(job, stored.map((s) => s.id), all, (f) => { p.send = f; tell(); });
+    if (!finished) { p.phase = "working"; tell(); await sendHere(true); await queue(); }
+  } else {
+    await sendHere(!!resume);
+    await queue();
+  }
   dropPending(job);
   p.phase = "queued"; p.upload = 1; p.send = 1; tell();
   return { job, parsed };
   } finally { activeHere.delete(job); }
+}
+
+/** Asks the server to read the stored files and send their rows. False: it could not take over (the page does it). */
+async function handOff(job: string, mappings: Record<string, SavedMapping>): Promise<boolean> {
+  try {
+    const r = await fetch(`/api/imports/${job}/stage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mappings }) });
+    return r.status === 202;
+  } catch {
+    return false;
+  }
+}
+
+/** Rows the database holds for a file, from its held ranges. */
+const heldCount = (held: Range[] | null) => (held ?? []).reduce((s, [a, b]) => s + b - a + 1, 0);
+
+/**
+ * Follows the server until it has queued the job (true), or until nothing has arrived for STALL_MS (false: the server
+ * stopped, and the page sends the rest itself). The server has read the files before taking over, so rows arrive at once.
+ */
+async function followServer(job: string, files: string[], total: number, onSent: (fraction: number) => void, STALL_MS = 45_000): Promise<boolean> {
+  let last = -1, since = Date.now();
+  for (;;) {
+    await sleep(2000);
+    const { data } = await supabase().from("import_jobs").select("status").eq("id", job).maybeSingle();
+    if (data && data.status !== "preparing") return true;
+    const held = (await Promise.all(files.map((f) => rpc<Range[]>("import_held", { p_file: f }).catch(() => null)))).reduce((s, h) => s + heldCount(h), 0);
+    onSent(Math.min(1, held / total));
+    if (held !== last) { last = held; since = Date.now(); } else if (Date.now() - since > STALL_MS) return false;
+  }
 }
 
 export interface JobView extends ImportJobRow { files: ImportFileRow[] }
