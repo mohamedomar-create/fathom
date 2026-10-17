@@ -3,7 +3,7 @@ import { layerKind, isInternalLocation, locationClass, productKey } from "@/lib/
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
 import { tieOut, type TieOut } from "./tieout";
-import { COGS_SUPPLIER } from "./expenses";
+import { COGS_SUPPLIER, type ExpensesData } from "./expenses";
 import { monthLabel, periodLabel } from "@/lib/i18n";
 
 /**
@@ -486,6 +486,17 @@ export function inventoryLedger(months: { period: string; bs: Partial<Record<str
   // A month whose expense lines come from a purchases file shows that file, not the ledger: its cost of sales is unknown.
   for (const r of expenses.suppliers) if (expenses.sources?.[r.p] !== "file") cogs[r.p] = r2((cogs[r.p] ?? 0) + (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed") ? r.a : 0));
   return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
+}
+
+/**
+ * The part of the expense summary the Inventory pages use: the stock cost of sales rows, and one empty row for each other
+ * month the ledger holds (its cost of sales from stock is 0). The rest of the summary is never sent to those pages.
+ */
+export function forInventory(e: ExpensesData): ExpensesData {
+  const keep = e.suppliers.filter((r) => r.s === COGS_SUPPLIER);
+  const has = new Set(keep.map((r) => r.p));
+  const empty = [...new Set(e.suppliers.map((r) => r.p))].filter((p) => !has.has(p)).map((p) => ({ p, s: "", j: "", c: null, a: 0, d: 0, n: 0 }));
+  return { ...e, suppliers: [...keep, ...empty], accounts: [], flags: [] };
 }
 
 const sumV = (rows: LayerRow[]) => rows.reduce((s, l) => s + l.v, 0);
