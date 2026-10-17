@@ -66,7 +66,7 @@ export const ODOO_TEMPLATES: Record<ExportKey, OdooTemplate> = {
   },
   "product.product": {
     key: "product.product", kind: "onhand", title: "Stock on hand (product variants)", where: "Inventory → Products → Product Variants",
-    fields: [{ field: "product", label: "Product", required: true }, { field: "qty", label: "Quantity on hand", required: true },
+    fields: [{ field: "product", label: "Product", required: true, hint: "Or Name, with Internal Reference beside it." }, { field: "qty", label: "Quantity on hand", required: true },
       { field: "value", label: "Total value" }, { field: "location", label: "Location" }, { field: "lot", label: "Lot/serial number" }],
   },
   "product.template": {
@@ -117,7 +117,8 @@ export function describeColumns(g: Grid, key: ExportKey, saved?: SavedMapping | 
     const c = h?.col[f.field];
     return { ...f, col: c ?? null, heading: c === undefined ? null : headings[c] };
   });
-  // "Reference" is satisfied by a description on a valuation export.
-  const missing = fields.filter((f) => f.required && f.col === null && !(key === "stock.valuation.layer" && f.field === "ref" && h?.col.desc !== undefined));
+  // "Reference" is satisfied by a description on a valuation export, "Product" by a name on the product variants.
+  const missing = fields.filter((f) => f.required && f.col === null && !(key === "stock.valuation.layer" && f.field === "ref" && h?.col.desc !== undefined)
+    && !(key === "product.product" && f.field === "product" && h?.col.name !== undefined));
   return { headerRow: h?.r ?? null, headings, fields, missing: missing.map((f) => f.label) };
 }

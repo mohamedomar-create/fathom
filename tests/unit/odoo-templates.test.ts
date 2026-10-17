@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Grid } from "@/lib/ingest/extract";
 import { describeColumns, mapColumns } from "@/lib/ingest/odoo-templates";
 import { parseStamp, readOnHandSheet, readStockMoves, readStockValuation } from "@/lib/ingest/inventory";
+import { guessRole } from "@/lib/ingest/roles";
 
 const grid = (rows: (string | number | Date | null)[][], origin?: { r: number; c: number }): Grid => ({ name: "Sheet1", rows, ...(origin ? { origin } : {}) });
 
@@ -69,5 +70,29 @@ describe("readers never drop or zero a row silently", () => {
     const r = readOnHandSheet(grid([["Product", "Quantity On Hand", "Total Value"], ["Mask", 5, 500], ["Gown", "n/a", 0]]), "2026-10-15")!;
     expect(r.rows.map((x) => x.product)).toEqual(["Mask"]);
     expect(r.issues).toEqual([{ line: 3, message: 'Quantity is not a number: "n/a"' }]);
+  });
+});
+
+describe("Odoo's product variant list in another layout (Name and Internal Reference, no Total Value)", () => {
+  // Today's export from a company's Odoo: the name and the internal reference in two columns, "Cost" instead of a value.
+  const variants = grid([
+    ["Cost", "Favorite", "Forecasted Quantity", "Internal Reference", "Name", "Quantity On Hand", "Sales Price", "Unit of Measure", "Variant Values"],
+    [4922.68, "False", 0, "Accessories", "Air mattress Compressor", 0, 0, "PCS", null],
+    [3546.16, "False", 3, "Device", "Airtech AE-5 10L/min", 3, 0, "PCS", null],
+    [12.5, "False", 0, null, "YUWELL FILTER", -2, 0, "PCS", null],
+  ]);
+
+  it("is read as stock on hand, each product named as in the valuation and moves (\"[reference] name\")", () => {
+    const r = readOnHandSheet(variants, "2026-10-15")!;
+    expect(r.issues).toEqual([]);
+    expect(r.rows.map((o) => [o.code, o.product, o.qty])).toEqual([["Accessories", "Air mattress Compressor", 0], ["Device", "Airtech AE-5 10L/min", 3], ["", "YUWELL FILTER", -2]]);
+  });
+
+  it("never takes Cost × quantity as the stock value: without Total Value the value is left to the valuation layers", () => {
+    expect(readOnHandSheet(variants, "2026-10-15")!.rows.every((o) => o.value === null)).toBe(true);
+  });
+
+  it("is recognised as Odoo's product variants (stock on hand), never as the products list", () => {
+    expect(guessRole(variants).role).toBe("stock_onhand");
   });
 });

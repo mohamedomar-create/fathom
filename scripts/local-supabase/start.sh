@@ -28,9 +28,11 @@ PG_BIN="${PG_BIN:-$(ls -d /usr/lib/postgresql/*/bin 2>/dev/null | sort -V | tail
 # --- a fresh Postgres cluster (initdb refuses to run as root, so use the postgres user there)
 AS=(); if [ "$(id -u)" = 0 ]; then AS=(runuser -u postgres --); fi
 PGDATA="$ROOT/pgdata"
+# The settings of a small Supabase project (checked on the live database), so timings here mean the same as there.
+PG_LIKE_SUPABASE="-c jit=off -c work_mem=2184kB -c shared_buffers=224MB -c max_parallel_workers_per_gather=1"
 rm -rf "$PGDATA"; mkdir -p "$PGDATA"; [ ${#AS[@]} -gt 0 ] && chown -R postgres "$PGDATA" "$ROOT/logs"
 "${AS[@]}" "$PG_BIN/initdb" -D "$PGDATA" -U postgres --auth=trust -E UTF8 >/dev/null
-"${AS[@]}" "$PG_BIN/pg_ctl" -D "$PGDATA" -o "-p $PG_PORT -k /tmp -c listen_addresses=127.0.0.1" -l "$ROOT/logs/postgres.log" -w start >/dev/null
+"${AS[@]}" "$PG_BIN/pg_ctl" -D "$PGDATA" -o "-p $PG_PORT -k /tmp -c listen_addresses=127.0.0.1 $PG_LIKE_SUPABASE" -l "$ROOT/logs/postgres.log" -w start >/dev/null
 DB="postgres://postgres@127.0.0.1:$PG_PORT/postgres"
 psql "$DB" -q -v ON_ERROR_STOP=1 -f scripts/local-supabase/bootstrap.sql
 

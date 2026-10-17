@@ -300,7 +300,10 @@ export function readOnHandSheet(g: Grid, asOf: string, saved?: SavedMapping | nu
   const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
-  if (c.product === undefined || c.qty === undefined || c.date !== undefined) return null;
+  // Odoo shows a product as "[internal reference] name" (Display Name) or, in some layouts, as Name and Internal Reference
+  // in two columns: both give the same product.
+  const productCol = c.product ?? c.name;
+  if (productCol === undefined || c.qty === undefined || c.date !== undefined) return null;
   // Without a location column, only Odoo's product list counts: its "Quantity On Hand" is the total in the warehouses
   // (location "" = all of them), and its "Total Value" what that stock is worth.
   if (c.location === undefined && !(g.rows[h.r] ?? []).some((v) => ON_HAND_HEADING.test(normAr(str(v))))) return null;
@@ -308,13 +311,14 @@ export function readOnHandSheet(g: Grid, asOf: string, saved?: SavedMapping | nu
   const issues: RowIssue[] = [];
   let skipped = 0;
   for (const { i, row } of dataRows(g, h)) {
-    if (!cell(row, c.product)) { skipped++; continue; }
+    if (!cell(row, productCol)) { skipped++; continue; }
     const qty = numOf(row[c.qty] ?? null), value = c.value === undefined ? null : numOf(row[c.value] ?? null);
     if (qty === null || (c.value !== undefined && value === null)) {
       issues.push({ line: lineOf(g, i), message: qty === null ? `Quantity is not a number: "${str(row[c.qty])}"` : `Value is not a number: "${str(row[c.value!])}"` });
       continue;
     }
-    const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
+    // Never Cost × quantity: without Total Value the stock is valued from its valuation layers.
+    const { code, product } = splitProduct(cell(row, productCol), cell(row, c.code));
     out.push({ asOf, product, code, location: cell(row, c.location), lot: cell(row, c.lot), qty, value: c.value === undefined || str(row[c.value]) === "" ? null : value });
   }
   return out.length || issues.length ? { rows: out, issues, skipped } : null;

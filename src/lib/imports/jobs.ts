@@ -7,20 +7,21 @@ import type { ExportKey, SavedMapping } from "@/lib/ingest/odoo-templates";
 import { ODOO_TEMPLATES } from "@/lib/ingest/odoo-templates";
 import type { ParseResult, StagedRecord } from "./prepare";
 import { parseInWorker } from "./worker-client";
+import { isTransient, missingOf, stageRows, type Range } from "./stage";
 
 /**
  * An import, from the browser straight to Supabase (never through the web server):
- *  1. the job is created (one row per file, each with its storage path);
- *  2. at the same time: each original file is uploaded to storage (resumable, 6 MB chunks), and the files are read in the
- *     background thread and their rows sent to the database in chunks (a chunk sent twice is stored once);
- *  3. the job is queued: the database checks and saves it in the background. The page can be closed from here.
+ *  1. the files are read in the background thread (a file with nothing to import never creates a job);
+ *  2. the job is created (one row per file, each with its storage path);
+ *  3. at the same time: each original file is uploaded to storage (resumable, 6 MB chunks), and the rows are sent to the
+ *     database in small batches (see stage.ts: a busy database splits a batch, never stalls the upload);
+ *  4. the job is queued: the database checks and saves it in the background. The page can be closed from here.
  * If the page is closed earlier, choosing the same files again continues the same job.
  */
 export type ImportMode = "replace" | "add" | "all" | "update";
 export interface ImportFile { file: File; export: ExportKey; mapping?: SavedMapping }
 export interface ImportProgress { phase: "starting" | "working" | "queued"; job?: string; upload: number; read: number; send: number; note?: string }
 
-const CHUNK = 2000, PARALLEL = 3;
 const BUCKET = "imports";
 const supabase = () => createClient();
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -32,6 +33,7 @@ export function importError(e: unknown): string {
   if (/not allowed|42501|permission/i.test(m)) return "You need edit rights on this company to import.";
   if (/NOT_PREPARING/.test(m)) return "This import is no longer open. Start a new one.";
   if (/MISSING_ROWS/.test(m)) return "Some rows did not arrive. Choose the same files again to continue.";
+  if (isTransient(m)) return "The database was busy and some rows did not arrive. Press “Continue” on this import to send only the rows still missing.";
   if (/NOT_STORED/.test(m)) return "The original file did not finish uploading. Choose the same files again to continue.";
   if (/create_import_job|import_jobs|schema cache|PGRST202|42883/i.test(m)) return "Imports are not switched on for this database yet. Ask your administrator to apply the import update (migration 0014).";
   if (/Failed to fetch|NetworkError|network/i.test(m)) return "The connection dropped. Choose the same files again to continue where it stopped.";
@@ -76,20 +78,19 @@ export function uploadOriginal(file: File, path: string, onProgress: (sent: numb
   });
 }
 
-/** Sends a file's records in chunks, a few at a time; a chunk that fails is tried again (a repeat is stored once). */
-export async function stageRecords(fileId: string, records: StagedRecord[], onSent: (sent: number) => void): Promise<void> {
-  const chunks: StagedRecord[][] = [];
-  for (let i = 0; i < records.length; i += CHUNK) chunks.push(records.slice(i, i + CHUNK));
-  let sent = 0, next = 0;
-  const lane = async () => {
-    while (next < chunks.length) {
-      const c = chunks[next++];
-      await retry(() => rpc<number>("stage_import_rows", { p_file: fileId, p_rows: c as unknown as Json }));
-      sent += c.length;
-      onSent(sent);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(PARALLEL, chunks.length) }, lane));
+/** Sends a file's records; on a continued upload, only the ones the database does not hold yet. */
+export async function stageRecords(fileId: string, records: StagedRecord[], onSent: (sent: number) => void, resume = false): Promise<void> {
+  let missing: Range[] | undefined;
+  if (resume) {
+    const held = await retry(() => rpc<Range[]>("import_held", { p_file: fileId }));
+    missing = missingOf(records.reduce((m, r) => Math.max(m, r.n), 0), held ?? []);
+    const already = records.length - records.filter((r) => missing!.some(([a, b]) => r.n >= a && r.n <= b)).length;
+    onSent(already);
+    if (!missing.length) return;
+    await stageRows(records, (b) => rpc<number>("stage_import_rows", { p_file: fileId, p_rows: b as unknown as Json }), (n) => onSent(already + n), { missing });
+    return;
+  }
+  await stageRows(records, (b) => rpc<number>("stage_import_rows", { p_file: fileId, p_rows: b as unknown as Json }), onSent);
 }
 
 /** Jobs this page is sending right now (a preparing job no page is sending was interrupted). */
@@ -113,6 +114,10 @@ export async function startImport(companyId: string, mode: ImportMode, files: Im
   const p: ImportProgress = { phase: "starting", upload: 0, read: 0, send: 0 };
   const tell = () => onProgress({ ...p });
   tell();
+  // Read first: a file with nothing to import never leaves a job behind.
+  const parsed = await parseInWorker(files.map((f) => ({ file: f.file, export: f.export, mapping: f.mapping })), options, (done, of) => { p.read = done / of; tell(); });
+  p.read = 1; tell();
+  if (!parsed.files.some((f) => f.records.length)) throw new Error("Nothing to import: no rows were found in these files.");
   let job: string, stored: Pending["files"];
   if (resume) {
     const prev = pendingJob(resume);
@@ -136,24 +141,23 @@ export async function startImport(companyId: string, mode: ImportMode, files: Im
   const total = files.reduce((s, f) => s + f.file.size, 0) || 1;
   const sentBytes = new Map<string, number>();
   const fileOf = (name: string) => files.find((f) => f.file.name === name)!;
+  const parsedOf = (name: string) => parsed.files[files.indexOf(fileOf(name))];
 
   const uploads = Promise.all(stored.map(async (s) => {
+    // On a continued upload, a file already in storage is not sent again (storage refuses a second copy).
+    if (resume && await rpc("mark_import_file_stored", { p_file: s.id }).then(() => true, () => false)) { sentBytes.set(s.id, s.size); return; }
     await uploadOriginal(fileOf(s.name).file, s.path, (sent) => { sentBytes.set(s.id, sent); p.upload = [...sentBytes.values()].reduce((a, b) => a + b, 0) / total; tell(); });
     await retry(() => rpc("mark_import_file_stored", { p_file: s.id }));
   }));
-  const reading = (async () => {
-    const parsed = await parseInWorker(stored.map((s) => ({ file: fileOf(s.name).file, export: s.export, mapping: fileOf(s.name).mapping })), options, (done, of) => { p.read = done / of; tell(); });
-    p.read = 1; tell();
+  const sending = (async () => {
     const all = parsed.files.reduce((s, f) => s + f.records.length, 0) || 1;
     const sent = new Map<string, number>();
-    for (const [i, f] of parsed.files.entries()) {
-      await stageRecords(stored[i].id, f.records, (n) => { sent.set(stored[i].id, n); p.send = [...sent.values()].reduce((a, b) => a + b, 0) / all; tell(); });
+    for (const s of stored) {
+      await stageRecords(s.id, parsedOf(s.name).records, (n) => { sent.set(s.id, n); p.send = [...sent.values()].reduce((a, b) => a + b, 0) / all; tell(); }, !!resume);
     }
-    return parsed;
   })();
-  const [, parsed] = await Promise.all([uploads, reading]);
-  if (!parsed.files.some((f) => f.records.length)) throw new Error("Nothing to import: no rows were found in these files.");
-  await retry(() => rpc("queue_import_job", { p_job: job, p_totals: Object.fromEntries(parsed.files.map((f, i) => [stored[i].id, f.records.length])) as unknown as Json }));
+  await Promise.all([uploads, sending]);
+  await retry(() => rpc("queue_import_job", { p_job: job, p_totals: Object.fromEntries(stored.map((s) => [s.id, parsedOf(s.name).records.length])) as unknown as Json }));
   dropPending(job);
   p.phase = "queued"; p.upload = 1; p.send = 1; tell();
   return { job, parsed };
