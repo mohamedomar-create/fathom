@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ExpensesData } from "@/lib/engine/expenses";
 import { EMPTY_RECORDS, summarizeInventory, inventoryAnalysis, inventoryLedger, inventoryMonthly, monthBridge, receiptCost, tieSummary, type InventoryData, type InventoryRecords, type LayerKind, type MoveKind } from "@/lib/engine/inventory";
 
 // Made-up products and documents (the repo is public). FIFO values are worked by hand.
@@ -304,5 +305,31 @@ describe("the ledger side of cost of sales", () => {
   it("a month whose expenses come from a purchases file has no ledger cost of sales to check against, not zero", () => {
     const l = inventoryLedger([], { suppliers: [{ p: "2026-08", s: "Cost of goods sold (stock)", c: "cos_variable", a: 500 }, { p: "2026-09", s: "Supplier A", c: "exp_fixed", a: 70 }], sources: { "2026-08": "ledger", "2026-09": "file" } });
     expect(l.cogs).toEqual({ "2026-08": 500 });
+  });
+});
+
+describe("what the Inventory pages take from the expense lines", () => {
+  it("only the stock cost of sales and each month's source, with the same ledger figures as the full summary", async () => {
+    const { inventoryLedger, forInventory } = await import("@/lib/engine/inventory");
+    const full = {
+      suppliers: [
+        { p: "2026-08", s: "Cost of goods sold (stock)", c: "cos_variable", a: 700, j: "STJ", d: 3, n: 3 },
+        { p: "2026-08", s: "Landlord", c: "exp_fixed", a: 500, j: "BILL", d: 1, n: 1 },
+        { p: "2026-09", s: "Cost of goods sold (stock)", c: "cos_fixed", a: 90, j: "STJ", d: 1, n: 1 },
+        { p: "2026-09", s: "Cost of goods sold (stock)", c: "other_ca", a: 40, j: "STJ", d: 1, n: 1 },
+        { p: "2026-10", s: "Ink Co", c: "exp_fixed", a: 80, j: "BILL", d: 1, n: 1 },
+      ],
+      accounts: [{ p: "2026-08", t: "6101 Rent", g: "Rent", c: "exp_fixed", a: 500, n: 1 }],
+      sources: { "2026-08": "ledger", "2026-09": "ledger", "2026-10": "file" } as Record<string, "ledger" | "file">,
+      flags: [{ k: "large" }],
+    };
+    const months = [{ period: "2026-08", bs: { inventory: 1000 } }, { period: "2026-09", bs: { inventory: 900 } }];
+    const slim = forInventory(full as unknown as ExpensesData);
+    expect(inventoryLedger(months, slim)).toEqual(inventoryLedger(months, full as unknown as ExpensesData));
+    // A month with no stock posting still counts as in the ledger (0), so it must keep a row.
+    expect(inventoryLedger(months, slim).cogs).toEqual({ "2026-08": 700, "2026-09": 90 });
+    expect(slim.accounts).toEqual([]);
+    expect(slim.flags).toEqual([]);
+    expect(slim.suppliers.length).toBeLessThan(full.suppliers.length);
   });
 });
