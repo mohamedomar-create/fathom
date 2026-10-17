@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
 import { CheckCircle2, ChevronDown, CircleDashed, Download, AlertTriangle } from "lucide-react";
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { setBooksFromZero } from "@/app/company/[id]/settings/actions";
 import { useCompany } from "@/lib/company/context";
 import { useSales } from "@/lib/company/sales-context";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -36,8 +38,8 @@ export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData |
   const c = useCompany();
   return useMemo(() => readiness({
     months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
-    sales, expenses, inventory, assumptions: c.assumptions, forecast: c.forecast,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, sales, expenses, inventory]);
+    sales, expenses, inventory, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, sales, expenses, inventory]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
@@ -53,6 +55,22 @@ function Score({ label, v, testId }: { label: string; v: number | null; testId?:
   );
 }
 
+/** No history before the first month (a company that started on Odoo): the opening balance is zero, not missing. */
+function BooksFromZero() {
+  const c = useCompany();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  if (c.readOnly || c.basePath === "/demo") return null;
+  return (
+    <>
+      <button disabled={pending} onClick={() => start(async () => { const r = await setBooksFromZero(c.id, true); if (r.ok) router.refresh(); else setErr(r.error ?? "Could not save"); })}
+        className="inline-flex items-center rounded border border-brand-d px-2 py-1 text-xs text-brand-d hover:bg-brand-bg" data-testid="books-from-zero">My books start from zero (no history before)</button>
+      {err && <span className="text-red">{err}</span>}
+    </>
+  );
+}
+
 export function FixLine({ item, basePath }: { item: ReadinessItem; basePath: string }) {
   const f = item.fix;
   if (!f) return null;
@@ -63,6 +81,7 @@ export function FixLine({ item, basePath }: { item: ReadinessItem; basePath: str
       <div className="mt-1.5 flex flex-wrap gap-2">
         {f.template && <TemplateButton kind={f.template} compact />}
         {f.href && <Link href={`${basePath}/${f.href}`} className="inline-flex items-center rounded bg-brand-d px-2 py-1 text-xs text-white">Go there</Link>}
+        {item.id === "opening" && <BooksFromZero />}
       </div>
     </div>
   );

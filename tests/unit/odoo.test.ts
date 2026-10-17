@@ -31,6 +31,14 @@ describe("Odoo connector", () => {
     });
   }
 
+  it("an off-balance account with posted lines is named, never dropped silently", async () => {
+    const f = fakeOdoo(17, { offBalance: true });
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    expect(res.diagnostics.offBalance).toEqual(["999100 Petty cash (off balance)"]);
+    expect(res.notes.join(" ")).toMatch(/999100 Petty cash \(off balance\).*off-balance.*Map it to Cash/);
+  });
+
   it("falls back to search_read when read_group is unavailable (Odoo 19)", async () => {
     const f = fakeOdoo(19);
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);

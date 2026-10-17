@@ -31,6 +31,13 @@ describe("the background reader", () => {
     expect(s.issues).toEqual([]);
   });
 
+  it("warns when a file holds exactly one page of Odoo's list (80, 200 or 500 records): \"Select all\" was probably not clicked", async () => {
+    const rows = (n: number) => [VAL[0], ...Array.from({ length: n }, (_, i) => [`svl_${i + 1}`, "2026-09-02 10:00:00", "2026-09-02", "[P1] Mask", 1, `WH/IN/${i + 1}`, 100])];
+    expect((await sampleFile("v.xlsx", await xlsx(rows(80)))).pageSized).toBe(true);
+    expect((await sampleFile("v.xlsx", await xlsx(rows(200)))).pageSized).toBe(true);
+    expect((await sampleFile("v.xlsx", await xlsx(rows(81)))).pageSized).toBe(false);
+  });
+
   it("refuses a workbook holding several sheets (Odoo saves one export per file)", async () => {
     expect((await sampleFile("two.xlsx", await xlsx(MOVES, 2))).export).toBeNull();
   });

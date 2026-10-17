@@ -47,6 +47,8 @@ export interface ReadinessInput {
   assumptions?: Assumptions;
   forecast?: ForecastDrivers;
   today?: string;
+  /** The company said its books start from zero (nothing before the first month), so no opening balance is due. */
+  booksFromZero?: boolean;
 }
 
 const pct = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 100);
@@ -97,7 +99,11 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
   const open = first ? by.get(addMonths(first, -1)) : undefined;
   const openOk = !!open && hasBS(open);
   const openBal = openOk ? Math.abs(bsCalc(open!.bs).imbalance) <= Math.max(1, Math.abs(bsCalc(open!.bs).ta) * 1e-4) : false;
-  items.push(item({
+  if (!openOk && first && x.booksFromZero) items.push(item({
+    id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
+    completion: 100, accuracy: null, detail: `Your books start from zero: nothing before ${mlabel(first)}.`,
+  }));
+  else items.push(item({
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: openOk ? 100 : 0, accuracy: openOk ? (openBal ? 100 : 0) : null,
     detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `Not loaded: ${mlabel(first)} has no cash flow without it.`,

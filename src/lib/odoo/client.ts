@@ -4,13 +4,21 @@ export class OdooError extends Error {
   constructor(message: string, public readonly detail?: string) { super(message); }
 }
 
+/** The only Odoo methods iReport ever sends: it reads a company's books and never changes them. */
+export const READ_METHODS: ReadonlySet<string> = new Set(["search_read", "read", "read_group", "search_count", "fields_get"]);
+/** Services and methods the raw call may use besides execute_kw with a reading method: logging in and the version. */
+const OPEN_CALLS = new Set(["common.version", "common.authenticate"]);
+
 /** Minimal Odoo external API client over /jsonrpc (works on Odoo 13–18; 19 keeps /jsonrpc available with a deprecation notice). */
 export class OdooClient {
   private uid: number | null = null;
   private id = 0;
   constructor(readonly url: string, readonly db: string, readonly login: string, private readonly apiKey: string, private readonly fetchImpl: Fetch = fetch, private readonly timeoutMs = 25_000) {}
 
-  async call<T>(service: string, method: string, args: unknown[]): Promise<T> {
+  private async call<T>(service: string, method: string, args: unknown[]): Promise<T> {
+    // Read-only, enforced here where every request leaves: nothing that writes can reach Odoo, whoever asks.
+    const readKw = service === "object" && method === "execute_kw" && READ_METHODS.has(String(args[4]));
+    if (!readKw && !OPEN_CALLS.has(`${service}.${method}`)) throw new OdooError(`iReport only reads from Odoo; "${service === "object" ? String(args[4]) : `${service}.${method}`}" is not allowed.`);
     let res: Response;
     try {
       res = await this.fetchImpl(`${this.url}/jsonrpc`, {
@@ -43,6 +51,7 @@ export class OdooClient {
   }
 
   async executeKw<T>(model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}): Promise<T> {
+    if (!READ_METHODS.has(method)) throw new OdooError(`iReport only reads from Odoo; "${method}" is not allowed.`);
     if (this.uid === null) await this.authenticate();
     return this.call<T>("object", "execute_kw", [this.db, this.uid, this.apiKey, model, method, args, kwargs]);
   }

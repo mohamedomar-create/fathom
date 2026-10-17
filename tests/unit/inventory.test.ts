@@ -52,7 +52,8 @@ describe("Inventory engine", () => {
     const a = inventoryAnalysis(d, SEP, 1, { ledger: { stock: { "2026-09": 550 }, cogs: null } });
     const t = a.tieouts.find((x) => x.key === "stock_value")!;
     expect(t).toMatchObject({ status: "off", module: 850, ledger: 550, diff: 300 });
-    expect(t.causes[0]).toEqual({ ref: "LC/2026/0001", module: 300, ledger: 0, why: "module_only" });
+    expect(t.causes[0]).toEqual({ ref: "LC/2026/0001", module: 300, ledger: 0, why: "module_only", bucket: "no_entry" });
+    expect(t.buckets).toEqual({ no_entry: 300 });
     expect(a.findings.some((f) => f.kind === "risk" && /Sep 2026/.test(f.title))).toBe(true);
   });
 

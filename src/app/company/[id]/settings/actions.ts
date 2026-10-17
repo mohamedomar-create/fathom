@@ -14,7 +14,7 @@ import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
-import { validTimeZone, withTimeZone } from "@/lib/company/time-zone";
+import { validTimeZone, withProfile, withTimeZone } from "@/lib/company/time-zone";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -229,6 +229,21 @@ export async function saveInventorySettings(companyId: string, input: { rentalLo
   const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [INVENTORY_KEY]: { rentalLocation: v.data.rentalLocation || null } };
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveInventorySettings") };
+  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}
+
+/** The company's books start from zero (no history before the first month): no opening balance is due. */
+export async function setBooksFromZero(companyId: string, value: boolean): Promise<{ ok: boolean; error?: string }> {
+  if (!z.string().uuid().safeParse(companyId).success || typeof value !== "boolean") return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+  if (e1) return { ok: false, error: dbError(e1, "setBooksFromZero") };
+  if (!row) return { ok: false, error: "You do not have permission to change this." };
+  const { error, count } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { booksFromZero: value }) as Json }, { count: "exact" }).eq("id", companyId);
+  if (error) return { ok: false, error: dbError(error, "setBooksFromZero") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };

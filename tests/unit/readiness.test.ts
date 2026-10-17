@@ -34,6 +34,15 @@ describe("data readiness", () => {
     expect(r.items.every((i) => i.status === "done")).toBe(true);
   });
 
+  it("books that start from zero need no opening balance once the company says so", () => {
+    const base = company(ps("2026-01", 12));
+    expect(financialsReadiness(base).items.find((i) => i.id === "opening")!.status).toBe("missing");
+    const r = financialsReadiness({ ...base, booksFromZero: true }).items.find((i) => i.id === "opening")!;
+    expect(r).toMatchObject({ status: "done", completion: 100 });
+    expect(r.detail).toBe("Your books start from zero: nothing before Jan 2026.");
+    expect(r.fix).toBeUndefined();
+  });
+
   it("names what is missing: months, the opening balance and a gap, each with what to upload", () => {
     const months = ps("2026-04", 9).filter((p) => p !== "2026-08");
     const r = financialsReadiness(company(months));

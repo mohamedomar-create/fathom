@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tieOut, tieOutSeries } from "@/lib/engine/tieout";
+import { tieOut, tieOutSeries, stockBuckets } from "@/lib/engine/tieout";
 
 describe("tie-outs: a module against the ledger", () => {
   it("exactMatchIsOk", () => {
@@ -47,5 +47,32 @@ describe("tie-outs on quantities", () => {
     expect(tieOut("qty_onhand", "2026-09", 6, 6, undefined, 0).status).toBe("ok");
     const t = tieOut("qty_onhand", "2026-09", 7, 6, { module: { P1: 7 }, ledger: { P1: 6 } }, 0);
     expect(t.causes).toEqual([{ ref: "P1", module: 7, ledger: 6, why: "amount_differs" }]);
+  });
+});
+
+describe("why stock and the accounts differ", () => {
+  // Stock records and ledger entries up to the month end, by document; the ledger and the stock records over all time.
+  const byRef = {
+    module: { "WH/IN/1": 100, "WH/OUT/2": -40, "WH/IN/3": 500, "WH/OUT/4": -70 },
+    ledger: { "WH/IN/1": 100, "WH/OUT/2": -40, "MISC/9": 250, "WH/OUT/4": -60 },
+  };
+  const everLedger = new Set(["WH/IN/1", "WH/OUT/2", "MISC/9", "WH/OUT/4", "WH/IN/3"]); // WH/IN/3 is booked next month
+  const everModule = new Set(["WH/IN/1", "WH/OUT/2", "WH/IN/3", "WH/OUT/4"]);
+  const classify = stockBuckets(everModule, everLedger);
+
+  it("each document is put in one of four groups, and each group is totalled over every document", () => {
+    const t = tieOut("stock_value", "2026-10", 490, 250, byRef, 1, classify);
+    expect(t.causes.find((c) => c.ref === "WH/IN/3")?.bucket).toBe("date");
+    expect(t.causes.find((c) => c.ref === "MISC/9")?.bucket).toBe("manual");
+    expect(t.causes.find((c) => c.ref === "WH/OUT/4")?.bucket).toBe("amount");
+    expect(t.buckets).toEqual({ date: 500, manual: -250, amount: -10 });
+    // The groups explain the whole difference.
+    expect(Object.values(t.buckets!).reduce((a, b) => a + b, 0)).toBe(t.diff);
+  });
+
+  it("a stock record the accounts never booked has no journal entry", () => {
+    const t = tieOut("stock_value", "2026-10", 120, 100, { module: { "WH/IN/1": 100, "INV/ADJ": 20 }, ledger: { "WH/IN/1": 100 } }, 1, stockBuckets(new Set(["WH/IN/1", "INV/ADJ"]), new Set(["WH/IN/1"])));
+    expect(t.causes[0]).toMatchObject({ ref: "INV/ADJ", bucket: "no_entry" });
+    expect(t.buckets).toEqual({ no_entry: 20 });
   });
 });

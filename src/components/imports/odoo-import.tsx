@@ -210,6 +210,7 @@ function SampleCard({ s, busy, onColumn, onExport }: { s: FileSample; busy: bool
         </select>
       </div>
       {!s.export && <p className="mt-2 text-[13px] text-red">{s.why}</p>}
+      {s.export && s.pageSized && <p className="mt-2 text-[13px] text-amber" data-testid="page-sized">This file has exactly {s.totalRows.toLocaleString("en-US")} records: one page of Odoo’s list. In Odoo, tick the top box, then click “Select all N records”, and export again.</p>}
       {s.export && s.columns && (
         <>
           <details className="mt-3" open={missing.length > 0}>
