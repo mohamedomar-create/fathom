@@ -100,6 +100,12 @@ const monthEnd = (day: string) => { const [y, m] = day.split("-").map(Number); r
 /** "2026-10-10" when the figures stop before the month ends; undefined for a full month. */
 export const partialDay = (day?: string | null) => (day && Number(day.slice(8)) < monthEnd(day) ? day : undefined);
 
+/** The heading row's non-month headings, marking those the reader uses (the export's layout, for the layout check). */
+function noteHeadings(layout: SheetLayout, row: Cell[], used: number[]) {
+  const months = new Set(layout.columns.map((c) => c.col));
+  layout.headings = row.flatMap((v, col) => { const header = str(v).trim(); return header && !months.has(col) && !headerPeriod(header) ? [{ col, header: header.slice(0, 80), used: used.includes(col) }] : []; });
+}
+
 function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
   if (cCred < 0) return null;
   const found = detectDateOrder(rows.slice(r + 1).map((row) => row[cDate]));
@@ -107,6 +113,7 @@ function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number,
   layout.dates = { order, sample: ov.dateOrder ? null : found.sample };
   layout.source = "Odoo General Ledger";
   layout.headerRow = r;
+  noteHeadings(layout, rows[r], [cCode, cName, cDate, cDeb, cCred, cPartner, cLabel].filter((c) => c >= 0));
   const title = titlePeriod(rows, r);
   layout.asOf = partialDay(title?.endDay);
   // Entries dated after the report's end (or after today) are left out, as Odoo's own reports for the period do; they are listed below.
@@ -185,6 +192,9 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last, tr 
   // Odoo heads its columns exactly "Code" and "Account Name"; other systems' trial balances are read the same way.
   layout.source = /^code$/i.test(head[cCode]) && /^account( name)?$/i.test(head[cName]) ? "Odoo Trial Balance" : "Trial balance";
   layout.headerRow = r;
+  // The layout: Code and Account Name, and each balance group that is not a month (Initial Balance, End Balance).
+  layout.headings = [{ col: cCode, header: head[cCode], used: true }, { col: cName, header: head[cName], used: true },
+    ...groups.filter((x) => x.kind !== "period").map((x) => ({ col: x.col, header: `${x.label} ${head[x.deb]}/${head[x.cred]}`.slice(0, 80), used: true }))];
   for (const gp of periods) {
     const o = ov.periods?.[gp.col];
     if (o === null) { layout.columns.push({ col: gp.col, header: gp.label.slice(0, 80), period: gp.p!, months: gp.months!, used: false, reason: "left out by you" }); continue; }
@@ -269,6 +279,7 @@ function trialBalance({ g, rows, num, ov, layout, issues, head, above, last, tr 
 
 function statement({ g, rows, num, ov, layout, issues, tr }: Ctx, r: number, cCode: number, cName: number, valCols: number[]): RawLine[] | null {
   const head = rows[r].map((v) => str(v));
+  noteHeadings(layout, rows[r], [cCode, cName]);
   const title = titlePeriod(rows, r);
   const cols: { c: number; p: string; months: number; endDay?: string }[] = [];
   for (const c of valCols) {

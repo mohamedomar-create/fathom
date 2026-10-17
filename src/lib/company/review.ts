@@ -54,7 +54,7 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
     if (Math.abs(now - usual) <= 0.15) continue;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     out.push({ id: "review", severity: "warn", period: m.period, statement: "PL", title: `Gross margin ${pct(now)} against a usual ${pct(usual)}`,
-      detail: `Gross margin in ${mlabel(m.period)} is ${pct(now)}, far from the company's usual ${pct(usual)}. Check the cost of sales cut-off, stock count adjustments, or costs posted to the wrong month or account.`, actual: now, expected: usual });
+      detail: `Gross margin in ${mlabel(m.period)} is ${pct(now)}, far from the company's usual ${pct(usual)}. The usual cause: cost of sales is posted when goods are delivered but revenue when the invoice is issued, in another month (in Odoo, Anglo-Saxon accounting with the "Stock Interim (Delivered)" output account matches them). Otherwise check stock count adjustments, or costs posted to the wrong month or account. Read margins over a quarter until then.`, actual: now, expected: usual });
   }
 
   // 3. A month with no depreciation while the months on both sides have it (and fixed assets are held).

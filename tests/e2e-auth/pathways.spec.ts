@@ -380,6 +380,11 @@ test("a company's export layout is remembered; changed columns stop the upload u
   await expect(page.getByTestId("sales-next")).toBeDisabled();
   await page.getByTestId("layout-confirm").click();
   await expect(page.getByTestId("sales-next")).toBeEnabled();
+  // Data health lists the remembered layout and the columns it reads (the confirmed change is saved only with the upload).
+  await page.goto(`/company/${id}/settings/data-health`);
+  await expect(page.getByTestId("export-layout").first()).toContainText("Sales list");
+  await expect(page.getByTestId("export-layout").first()).toContainText("Read: Invoice Date, Number, Partner");
+  await expect(page.getByTestId("export-layout").first()).not.toContainText("ignored");
 });
 
 test("re-uploading loaded months asks: add only new months, or replace them", async ({ page }) => {

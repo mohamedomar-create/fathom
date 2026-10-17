@@ -74,6 +74,8 @@ export interface SheetLayout {
   dates?: { order: DateOrder; sample: string | null };
   /** Last day the figures cover, when it falls before the end of its month ("2026-10-10"). */
   asOf?: string;
+  /** Every heading in the heading row that is not a month, and whether it was read: the export's layout for the layout check. */
+  headings?: { col: number; header: string; used: boolean }[];
   /** "check": the sheet only verifies figures that another sheet in the upload provides month by month. */
   role?: "data" | "check";
   /** Rows and columns read (empty ones removed) → their index in the sheet as uploaded. headerRow and columns[].col index the rows read. */
