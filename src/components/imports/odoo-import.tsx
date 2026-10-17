@@ -22,7 +22,7 @@ const mb = (b: number) => `${(b / 1024 / 1024).toFixed(b < 10 * 1024 * 1024 ? 1 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const EXPORTS = Object.values(ODOO_TEMPLATES);
 
-export function OdooImport({ companyId, rentalLocation: savedRental, onBack }: { companyId: string; rentalLocation: string | null; onBack?: () => void }) {
+export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = null, onBack }: { companyId: string; rentalLocation: string | null; timeZone?: string | null; onBack?: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [samples, setSamples] = useState<FileSample[] | null>(null);
   const [saved, setSaved] = useState<Partial<Record<ExportKey, SavedMapping>>>({});
@@ -86,7 +86,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, onBack }: {
       for (const k of changed) if (saved[k]) await saveTemplate(companyId, k, saved[k]!).catch(() => undefined);
       if (hasMoves && rental !== savedRental) await saveInventorySettings(companyId, { rentalLocation: rental }).catch(() => undefined);
       const list = ready.map((s) => ({ file: files.find((f) => f.name === s.name)!, export: s.export!, mapping: saved[s.export!] }));
-      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today() }, setProgress, resume ?? undefined);
+      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone }, setProgress, resume ?? undefined);
       setJobsKey((k) => k + 1);
     } catch (e) {
       setErr(importError(e)); setJobsKey((k) => k + 1);
@@ -138,7 +138,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, onBack }: {
             </button>
           ))}
         </div>
-        {stockFiles.length > 0 && !withIds && <p className="mt-4 flex max-w-5xl gap-2 rounded bg-amber/10 px-3 py-2 text-[13px]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />These exports have no Odoo ID column, so records are matched by date, document, product, lot and amounts. For exact matching, export again with “I want to update data (import-compatible export)” ticked.</p>}
+        {stockFiles.length > 0 && !withIds && <p className="mt-4 flex max-w-5xl gap-2 rounded bg-amber/10 px-3 py-2 text-[13px]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />These exports have no Odoo ID column, so records are matched by date, document, product, lot and amounts. For exact matching, export again: tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.</p>}
         <p className="mt-4 max-w-5xl text-[13px] text-mute">Rows that cannot be read stop the import before anything is saved; you then see each one with its row number and choose.</p>
         <WizardNav onBack={() => setScreen("check")} next="Import" nextTestId="import-start" disabled={!mode} hint={!mode ? "Choose one first." : undefined} onNext={run} />
       </div>

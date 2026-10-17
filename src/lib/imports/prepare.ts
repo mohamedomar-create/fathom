@@ -45,14 +45,14 @@ export async function sampleFile(name: string, data: ArrayBuffer, saved: Partial
 type Read = { layers: StockLayer[]; moves: StockMove[]; onhand: { product: string; code: string; location: string; lot: string; qty: number; value: number | null }[]; products: ReturnType<typeof readProducts>; issues: RowIssue[]; skipped: number; withIds: boolean; preview: Record<string, string>[] };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, rentalLocation: string | null, asOf: string): Read {
+function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, rentalLocation: string | null, asOf: string, tz: string | null = null): Read {
   const out: Read = { layers: [], moves: [], onhand: [], products: [], issues: [], skipped: 0, withIds: true, preview: [] };
   if (kind === "valuation") {
-    const r = readStockValuation(g, saved);
+    const r = readStockValuation(g, saved, tz);
     if (r) { out.layers = r.layers; out.issues = r.issues; out.skipped = r.skipped; out.withIds = r.withIds; }
     out.preview = out.layers.slice(0, 8).map((l) => ({ Date: l.day, Product: l.code ? `[${l.code}] ${l.product}` : l.product, Reference: l.ref, Kind: l.kind, Quantity: fmt(l.qty), Value: fmt(l.value), ...(l.updated ? { "Last updated": l.updated } : {}) }));
   } else if (kind === "moves") {
-    const r = readStockMoves(g, rentalLocation, saved);
+    const r = readStockMoves(g, rentalLocation, saved, tz);
     if (r) { out.moves = r.moves; out.issues = r.issues; out.skipped = r.skipped; out.withIds = r.withIds; }
     out.preview = out.moves.slice(0, 8).map((m) => ({ Date: m.day, Product: m.code ? `[${m.code}] ${m.product}` : m.product, Reference: m.ref, Kind: m.kind, From: m.from, To: m.to, Quantity: fmt(m.qty) }));
   } else if (kind === "onhand") {
@@ -75,11 +75,11 @@ const cut = (s: string | undefined, n: number) => (s ?? "").slice(0, n);
 const lineOf = (g: Grid, row?: number) => (row === undefined ? null : row + 1 + (g.origin?.r ?? 0));
 
 /** Every row of every file, ready to stage. Valuation rows take their kind from the moves read in the same upload. */
-export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
+export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
   const read: { f: (typeof files)[number]; g: Grid; r: Read }[] = [];
   for (const [i, f] of files.entries()) {
     const g = firstSheet(await readWorkbook(f.data, f.name));
-    read.push({ f, g, r: readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf) });
+    read.push({ f, g, r: readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf, opts.timeZone ?? null) });
     progress?.(i + 1, files.length);
   }
   const allMoves = read.flatMap((x) => x.r.moves);

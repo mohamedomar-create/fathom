@@ -107,6 +107,8 @@ export const expenseMonths = (d: ExpensesData) => [...new Set([...d.suppliers.ma
 // ---------------------------------------------------------------- analysis
 
 /** The groups costs are shown in, in P&L order. */
+/** What expense lines must add up to each month: every group below (spec R4.1, said word for word wherever the tie is shown). */
+export const COSTS_DEFINITION = "P&L costs = cost of sales + expenses (variable, fixed, depreciation and amortisation) + other expenses + interest + tax.";
 export const EXPENSE_GROUPS: { key: string; name: string; classes: ClassKey[] }[] = [
   { key: "cos", name: "Cost of sales", classes: ["cos_variable", "cos_fixed"] },
   { key: "fixed", name: "Running costs (fixed)", classes: ["exp_fixed"] },

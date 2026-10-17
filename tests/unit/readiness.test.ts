@@ -97,6 +97,16 @@ describe("data readiness", () => {
     expect(none.items[0].fix?.what).toBe("Upload your General Ledger");
   });
 
+  it("expenses: lines without cost of sales say how much is missing a month, and what P&L costs include", () => {
+    const d = demoCompany(), e = demoExpenses();
+    const noCos = { ...e, suppliers: e.suppliers.filter((r) => !String(r.c).startsWith("cos_")), accounts: e.accounts.filter((r) => !String(r.c).startsWith("cos_")) };
+    const r = expensesReadiness({ months: d.months, checks: [], fyStart: 1, expenses: noCos, today: "2026-10-12" }).items.find((i) => i.id === "reconciled")!;
+    expect(r.accuracy).toBe(0);
+    expect(r.detail).toMatch(/Cost of sales missing: [\d,]+ a month/);
+    expect(r.detail).toContain("P&L costs = cost of sales + expenses (variable, fixed, depreciation and amortisation) + other expenses + interest + tax");
+    expect(r.fix?.how).toMatch(/cost of sales/i);
+  });
+
   it("inventoryReadinessCountsTieOuts", () => {
     // Valuation and moves loaded without Odoo IDs; stock value agrees with the balance sheet, cost of sales does not (400 delivered, 500 in the accounts).
     const inventory = summarizeInventory({ ...EMPTY_RECORDS,

@@ -14,6 +14,7 @@ import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
+import { validTimeZone, withTimeZone } from "@/lib/company/time-zone";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -147,6 +148,7 @@ const ProfileSchema = z.object({
   tax_rate: z.number().min(0).max(99),
   industry: z.string().max(120).nullable(),
   ai_context: z.object({ goals: z.string().max(2000), strategy: z.string().max(2000), market: z.string().max(2000), position: z.string().max(2000), other: z.string().max(2000) }),
+  time_zone: z.string().max(64).refine(validTimeZone, "Choose a time zone from the list").nullable().optional(),
 });
 
 export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise<{ ok: boolean; error?: string }> {
@@ -154,9 +156,17 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  // The time zone is kept with the company's other settings (kpi_config), never overwriting them.
+  let kpi: Json | undefined;
+  if (v.data.time_zone !== undefined) {
+    const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", v.data.companyId).maybeSingle();
+    if (e1) return { ok: false, error: dbError(e1, "saveProfile") };
+    if (!row) return { ok: false, error: "You do not have permission to change this." };
+    kpi = withTimeZone(row.kpi_config, v.data.time_zone) as Json;
+  }
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,
-    industry: v.data.industry, ai_context: v.data.ai_context,
+    industry: v.data.industry, ai_context: v.data.ai_context, ...(kpi !== undefined ? { kpi_config: kpi } : {}),
   }, { count: "exact" }).eq("id", v.data.companyId);
   if (error) return { ok: false, error: dbError(error, "saveProfile") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };

@@ -10,7 +10,7 @@ export type Field = "id" | "updated" | "date" | "ref" | "product" | "code" | "na
 
 /** The headings Odoo 18 uses for each field (list-view labels, technical names of an import-compatible export, Arabic). */
 export const HEADINGS: [Field, RegExp][] = [
-  ["id", arRx(/^(id|external id|المعرف|المعرّف|المعرف الخارجي|معرف خارجي)$/i)],
+  ["id", arRx(/^(\.?id|odoo id|database id|record id|external id|المعرف|المعرّف|المعرف الخارجي|معرف خارجي|معرف قاعدة البيانات)$/i)],
   ["updated", arRx(/^(last updated on|last modified on|updated on|write_date|آخر تحديث في|آخر تحديث|تاريخ آخر تحديث)$/i)],
   ["date", arRx(/^(date|date done|create date|create_date|created on|date_done|accounting date|التاريخ|تاريخ|تاريخ الإنشاء)$/i)],
   ["ref", arRx(/^(reference|ref|stock move|stock_move_id|move|picking_id|transfer|المرجع|مرجع|حركة المخزون|التحويل)$/i)],
@@ -46,7 +46,7 @@ export type ExportKind = "valuation" | "moves" | "onhand" | "products";
 export interface TemplateField { field: Field; label: string; required?: boolean; hint?: string }
 export interface OdooTemplate { key: ExportKey; kind: ExportKind; title: string; where: string; fields: TemplateField[] }
 
-const ID: TemplateField = { field: "id", label: "Odoo ID", hint: "Ticked “I want to update data (import-compatible export)”: each record keeps Odoo’s own ID." };
+const ID: TemplateField = { field: "id", label: "Odoo ID", hint: "Tick “I want to update data (import-compatible export)” and add the ID field: each record keeps Odoo’s own database ID. Never External ID." };
 const UPDATED: TemplateField = { field: "updated", label: "Last updated on", hint: "Lets “Add new and changed records” replace only what changed in Odoo." };
 
 export const ODOO_TEMPLATES: Record<ExportKey, OdooTemplate> = {

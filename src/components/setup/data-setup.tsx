@@ -62,7 +62,7 @@ export function DataSetup({ sales, expenses = null, inventory: state = null }: {
     {
       n: 6, title: "Your stock (optional)", status: sectorStatus(by("inventory")), testId: "step-inventory",
       why: "Stock value, movements and what sits unsold, checked against your accounts.",
-      how: <>From Odoo: Inventory → Reporting → Valuation, Moves History and Stock → list view → Export, with “I want to update data (import-compatible export)” ticked. Upload one or all three together.</>,
+      how: <>From Odoo: Inventory → Reporting → Valuation, Moves History and Stock → list view → tick the top box and click “Select all N records” → Export, with “I want to update data (import-compatible export)” ticked and the ID field added (never External ID). Upload one or all three together.</>,
       actions: <Link href={upload("inventory")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-inventory">Upload</Link>,
     },
     {

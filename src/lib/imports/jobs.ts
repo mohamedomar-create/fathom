@@ -110,7 +110,7 @@ const dropPending = (job: string) => { try { localStorage.removeItem(PENDING + j
  * Runs an import up to the point the database takes over. `resume`: an earlier job of this browser to continue (the same
  * files chosen again).
  */
-export async function startImport(companyId: string, mode: ImportMode, files: ImportFile[], options: { rentalLocation: string | null; asOf: string }, onProgress: (p: ImportProgress) => void, resume?: string): Promise<{ job: string; parsed: ParseResult }> {
+export async function startImport(companyId: string, mode: ImportMode, files: ImportFile[], options: { rentalLocation: string | null; asOf: string; timeZone?: string | null }, onProgress: (p: ImportProgress) => void, resume?: string): Promise<{ job: string; parsed: ParseResult }> {
   const p: ImportProgress = { phase: "starting", upload: 0, read: 0, send: 0 };
   const tell = () => onProgress({ ...p });
   tell();

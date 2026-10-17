@@ -262,15 +262,28 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   const firstSpan = Math.max(1, ...mov.map((l) => l.r.spans?.[periods[0]] ?? 1));
   const opensAt = periods.length ? addMonths(periods[0], -firstSpan) : "";
   const openingMonth = mov.some((l) => l.r.opening) && periods.length && movP[0] === periods[0] && !bsP.includes(opensAt) ? opensAt : null;
+  // Each sheet's balances run over its own months only: a yearly trial balance must never carry its December balance into
+  // the next year's months (six yearly files were refused as "counted twice"). A later file's opening balances fall in a
+  // month another file already covers: that month keeps the other file's closing, and the two must agree (checked below).
+  const movSheets = [...new Set(mov.map((l) => l.r.sheet))];
+  const own = new Map(movSheets.map((sh) => [sh, continuous(mov.filter((l) => l.r.sheet === sh).flatMap((l) => Object.keys(l.r.values)))]));
+  movSheets.sort((a, b) => (own.get(a)![0] ?? "").localeCompare(own.get(b)![0] ?? ""));
+  const opensOf = (sh: string) => {
+    const ps = own.get(sh)!;
+    return ps.length ? addMonths(ps[0], -Math.max(1, ...mov.filter((l) => l.r.sheet === sh).map((l) => l.r.spans?.[ps[0]] ?? 1))) : "";
+  };
+  const coveredElsewhere = (sh: string, p: string) => bsP.includes(p) || movSheets.some((o) => o !== sh && own.get(o)!.includes(p));
+  const openAt = new Map(movSheets.map((sh) => { const o = opensOf(sh); return [sh, o && !coveredElsewhere(sh, o) ? o : null] as const; }));
   // movement lines → natural (P&L: monthly movement; BS: opening + cumulative movement)
   for (const l of mov) {
     const cls = l.cls!;
     const out: Record<string, number> = {};
     if (isPL(cls)) for (const p of periods) { const v = l.r.values[p]; if (v) out[p] = toNatural(cls, v); }
     else {
+      const oa = openAt.get(l.r.sheet);
       let run = l.r.opening;
-      if (openingMonth && run) out[openingMonth] = toNatural(cls, run);
-      for (const p of periods) { run += l.r.values[p] ?? 0; if (run) out[p] = toNatural(cls, run); }
+      if (oa && run) out[oa] = toNatural(cls, run);
+      for (const p of own.get(l.r.sheet)!) { run += l.r.values[p] ?? 0; if (run) out[p] = toNatural(cls, run); }
     }
     values.set(l.r.key, out);
   }
@@ -287,12 +300,19 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
 
   // Movement exports: P&L accounts are never closed in Odoo, so earnings to date are carried into retained earnings.
   if (mov.length) {
+    // Per file, like the balances: each month's earnings come from the first file that covers it.
     const re: Record<string, number> = {};
-    let run = mov.filter((l) => isPL(l.cls!)).reduce((s, l) => s + l.r.opening, 0);
-    if (openingMonth && run) re[openingMonth] = -run;
-    for (const p of periods) {
-      run += mov.filter((l) => isPL(l.cls!)).reduce((s, l) => s + (l.r.values[p] ?? 0), 0);
-      if (run) re[p] = -run;
+    const claimed = new Set<string>();
+    for (const sh of movSheets) {
+      const pl = mov.filter((l) => l.r.sheet === sh && isPL(l.cls!));
+      if (!pl.length) continue;
+      let run = pl.reduce((s, l) => s + l.r.opening, 0);
+      const oa = openAt.get(sh);
+      if (oa && !claimed.has(oa)) { claimed.add(oa); if (run) re[oa] = -run; }
+      for (const p of own.get(sh)!) {
+        run += pl.reduce((s, l) => s + (l.r.values[p] ?? 0), 0);
+        if (!claimed.has(p)) { claimed.add(p); if (run) re[p] = -run; }
+      }
     }
     if (Object.keys(re).length) {
       result.push(sys("__re_computed", "Earnings to date (computed from P&L accounts)", "retained_earnings", re));
@@ -300,6 +320,71 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     }
     if (!mov.some((l) => l.r.opening)) issues.notes.push("The file has movements but no opening balances. When merged, balances continue from the balance sheet already loaded for the month before; otherwise they start from zero, so include opening balances (Trial Balance with an Initial Balance column) unless the export starts at the company's first entry.");
   }
+
+  // A later file's opening balances must equal the closing balances already read for that month, account by account
+  // (retained earnings and profit to date together: Odoo moves last year's profit into its undistributed profits account).
+  const acctId = (code: string, name: string, stmt: "PL" | "BS") => (code ? `c:${code.toLowerCase()}` : `n:${stmt}:${normLabel(name)}`);
+  const contOff: string[] = [];
+  for (const sh of movSheets) {
+    const o = opensOf(sh);
+    if (!o || openAt.get(sh) || !kept.includes(o)) continue;
+    const others = result.filter((x) => x.sheet !== sh && !x.excluded && x.cls && !isPL(x.cls));
+    const mine = mov.filter((l) => l.r.sheet === sh && !isPL(l.cls!));
+    const tol = (x: number) => Math.max(0.05, Math.abs(x) * 1e-7);
+    let reMine = -mov.filter((l) => l.r.sheet === sh && isPL(l.cls!)).reduce((s, l) => s + l.r.opening, 0);
+    let reOther = others.filter((x) => x.system && x.cls === "retained_earnings").reduce((a, x) => a + (x.values[o] ?? 0), 0);
+    const seenIds = new Set<string>();
+    for (const l of mine) {
+      const want = toNatural(l.cls!, l.r.opening);
+      if (l.cls === "retained_earnings") { reMine += want; continue; }
+      const id = acctId(l.r.code, l.r.name, "BS");
+      seenIds.add(id);
+      const got = others.filter((x) => !x.system && acctId(x.code, x.name, "BS") === id).reduce((a, x) => a + (x.values[o] ?? 0), 0);
+      if (Math.abs(want - got) > tol(want)) contOff.push(`${l.r.label}: ${fmt0(want)} at the start of '${sh}' vs ${fmt0(got)} (off by ${fmt0(want - got)})`);
+    }
+    for (const x of others) {
+      if (x.system) continue;
+      if (x.cls === "retained_earnings") { reOther += x.values[o] ?? 0; continue; }
+      const v = x.values[o] ?? 0;
+      if (Math.abs(v) > 0.05 && !seenIds.has(acctId(x.code, x.name, "BS"))) { seenIds.add(acctId(x.code, x.name, "BS")); contOff.push(`${x.label}: ${fmt0(v)} in '${x.sheet}', missing from the start of '${sh}'`); }
+    }
+    if (Math.abs(reMine - reOther) > tol(reMine)) contOff.push(`Retained earnings and profit to date: ${fmt0(reMine)} at the start of '${sh}' vs ${fmt0(reOther)} (off by ${fmt0(reMine - reOther)})`);
+    if (contOff.length) contOff.push(`(closing balances of ${monthName(o)})`);
+  }
+
+  // The same account and month read from two sheets (a Trial Balance and a P&L in one workbook, or files that overlap):
+  // the same amount is counted once; different amounts stop the upload, with both amounts shown.
+  const groups = new Map<string, { name: string; stmt: "PL" | "BS"; lines: IngestLine[] }>();
+  for (const l of result) {
+    if (l.excluded || !l.cls || l.system) continue;
+    const stmt = isPL(l.cls) ? "PL" : "BS";
+    const id = acctId(l.code, l.name, stmt);
+    const g = groups.get(id) ?? { name: l.name, stmt, lines: [] };
+    g.lines.push(l);
+    groups.set(id, g);
+  }
+  const clashes: { name: string; stmt: "PL" | "BS"; p: string; vals: [string, number][] }[] = [];
+  let countedOnce = 0;
+  for (const g of groups.values()) {
+    const sheets = [...new Set(g.lines.map((l) => l.sheet))];
+    if (sheets.length < 2) continue;
+    let merged = false;
+    for (const p of [...new Set(g.lines.flatMap((l) => Object.keys(l.values)))].sort()) {
+      const vals = sheets.filter((sh) => g.lines.some((l) => l.sheet === sh && p in l.values))
+        .map((sh): [string, number] => [sh, g.lines.filter((l) => l.sheet === sh).reduce((a, l) => a + (l.values[p] ?? 0), 0)]);
+      if (vals.length < 2) continue;
+      const v0 = vals[0][1];
+      if (vals.every(([, v]) => Math.abs(v - v0) <= Math.max(0.01, Math.abs(v0) * 1e-9))) {
+        for (const [sh] of vals.slice(1)) for (const l of g.lines.filter((x) => x.sheet === sh)) {
+          delete l.values[p];
+          if (l.entries) l.entries = l.entries.filter((e) => e.period !== p);
+        }
+        merged = true;
+      } else clashes.push({ name: g.name, stmt: g.stmt, p, vals });
+    }
+    if (merged) countedOnce++;
+  }
+  if (countedOnce) issues.notes.push(`${countedOnce} account${countedOnce > 1 ? "s appear" : " appears"} in more than one sheet with the same amounts for the same months: each month is counted once.`);
 
   // balance check & close-earnings
   const balanceOf = (ls: IngestLine[]) => {
@@ -402,30 +487,15 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
     controls.push({ metric: c.metric, period: c.period, value, source: c.source });
   }
 
-  // The same account read from two sheets would be counted twice (e.g. a Trial Balance and a P&L in one workbook).
   const fileChecks: Check[] = [...(extractIssues.checks ?? [])];
-  const seen = new Map<string, { bySheet: Map<string, Set<string>>; name: string; stmt: "PL" | "BS" }>();
-  for (const l of result) {
-    if (l.excluded || !l.cls || l.system) continue;
-    const stmt = isPL(l.cls) ? "PL" : "BS";
-    const id = l.code ? `c:${l.code.toLowerCase()}` : `n:${stmt}:${normLabel(l.name)}`;
-    const e = seen.get(id) ?? { bySheet: new Map<string, Set<string>>(), name: l.name, stmt };
-    const ps = e.bySheet.get(l.sheet) ?? new Set<string>();
-    for (const p of Object.keys(l.values)) ps.add(p);
-    e.bySheet.set(l.sheet, ps);
-    seen.set(id, e);
-  }
-  const dups = [...seen.values()].map((e) => {
-    const sheets = [...e.bySheet.entries()];
-    const clash = sheets.filter(([sh, ps]) => sheets.some(([sh2, ps2]) => sh2 !== sh && [...ps].some((p) => ps2.has(p)))).map(([sh]) => sh);
-    return { ...e, clash };
-  }).filter((e) => e.clash.length > 1);
   for (const st of ["PL", "BS"] as const) {
-    const ds = dups.filter((d) => d.stmt === st);
-    if (!ds.length) continue;
-    const sheets = [...new Set(ds.flatMap((d) => d.clash))];
-    fileChecks.push({ id: "duplicate", severity: "block", statement: st, title: `${ds.length} account${ds.length > 1 ? "s appear" : " appears"} in more than one sheet`, detail: `${ds.slice(0, 3).map((d) => `'${d.name}'`).join(", ")}${ds.length > 3 ? "…" : ""} ${ds.length > 1 ? "are" : "is"} in ${sheets.map((x) => `'${x}'`).join(" and ")}, so ${ds.length > 1 ? "they" : "it"} would be counted twice. Leave out one of the sheets under "How the file was read".` });
+    const cs = clashes.filter((c) => c.stmt === st);
+    if (!cs.length) continue;
+    const n = new Set(cs.map((c) => c.name)).size;
+    fileChecks.push({ id: "duplicate", severity: "block", statement: st, title: `${n} account${n > 1 ? "s have" : " has"} different amounts in two sheets for the same month`, detail: `${cs.slice(0, 4).map((c) => `'${c.name}' ${c.p}: ${c.vals.map(([sh, v]) => `${fmt0(v)} in '${sh}'`).join(" vs ")}`).join("; ")}${cs.length > 4 ? "…" : ""}. One of them would be counted twice or wrongly: export the sheets for the same dates and filters, or leave one out under "How the file was read".` });
   }
+  const contN = contOff.filter((x) => !x.startsWith("(")).length;
+  if (contN) fileChecks.push({ id: "continuity", severity: "block", title: `${contN} opening balance${contN > 1 ? "s don't" : " doesn't"} match the previous file`, detail: `${contOff.filter((x) => !x.startsWith("(")).slice(0, 5).join("; ")}${contN > 5 ? "…" : ""} ${contOff.find((x) => x.startsWith("(")) ?? ""}. Each file must start where the one before it ends: export them all from the same Odoo database, posted entries only, with nothing changed in between.` });
 
   // Trial balances, ledgers and journals: debits must equal credits.
   if (mov.length) {

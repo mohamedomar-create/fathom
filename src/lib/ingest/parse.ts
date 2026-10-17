@@ -134,8 +134,49 @@ export function parseDay(v: Cell, order: DateOrder = "dmy"): string | null {
   if (!m) return null;
   let a = +m[1], b = +m[2];
   const y = +m[3] < 100 ? +m[3] + 2000 : +m[3];
-  if (a > 12 || (b <= 12 && order === "dmy")) [a, b] = [b, a]; // a is now the month
+  // Never guessed: a date that does not fit the column's order (05/13 in a day-first column) is not read.
+  if (order === "dmy" ? b > 12 : a > 12) return null;
+  if (order === "dmy") [a, b] = [b, a]; // a is now the month
   return validDay(y, a, b);
+}
+
+const zoneFmt = new Map<string, Intl.DateTimeFormat>();
+/** The day a UTC moment falls on in a time zone ("Africa/Cairo"). */
+export function dayInZone(utcMs: number, tz: string): string {
+  let f = zoneFmt.get(tz);
+  if (!f) zoneFmt.set(tz, (f = new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" })));
+  return f.format(new Date(utcMs));
+}
+
+/**
+ * The day of an Odoo date or date-time cell. Odoo writes date-times in UTC: with the company's time zone they are moved
+ * to the day they fall on there (22:30 UTC on 31 March is 1 April in Cairo); plain dates are never moved. Excel serial
+ * numbers are read in the workbook's date system (1900, or 1904 on old Mac files).
+ */
+export function parseStampDay(v: Cell, order: DateOrder, opts: { tz?: string | null; date1904?: boolean } = {}): string | null {
+  const at = (y: number, mo: number, d: number, h: number, mi: number, sec: number) => {
+    const day = validDay(y, mo, d);
+    if (!day || !opts.tz || !(h || mi || sec)) return day;
+    return dayInZone(Date.UTC(y, mo - 1, d, h, mi, sec), opts.tz);
+  };
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : at(v.getFullYear(), v.getMonth() + 1, v.getDate(), v.getHours(), v.getMinutes(), v.getSeconds());
+  if (typeof v === "number") {
+    // 1 Jan 1955 .. 2119 only: anything else in a date column is not a date.
+    const n = opts.date1904 ? v + 1462 : v;
+    if (!(n > 20000 && n < 80000)) return null;
+    const t = new Date(Math.round((n - 25569) * 86_400_000));
+    return at(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate(), t.getUTCHours(), t.getUTCMinutes(), t.getUTCSeconds());
+  }
+  if (typeof v !== "string") return null;
+  const s = arToLatin(v.trim());
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+  if (iso) return at(+iso[1], +iso[2], +iso[3], +iso[4], +iso[5], +(iso[6] ?? 0));
+  const dt = s.match(/^(\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}) (\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (dt) {
+    const day = parseDay(dt[1], order);
+    return day ? at(+day.slice(0, 4), +day.slice(5, 7), +day.slice(8), +dt[2], +dt[3], +(dt[4] ?? 0)) : null;
+  }
+  return parseDay(v, order);
 }
 const validDay = (y: number, m: number, d: number) => (m >= 1 && m <= 12 && d >= 1 && d <= new Date(Date.UTC(y, m, 0)).getUTCDate() ? `${y}-${pad(m)}-${pad(d)}` : null);
 

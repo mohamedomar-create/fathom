@@ -115,8 +115,8 @@ export function trialBalanceDebitCredit(): Grid[] {
 }
 
 /** Odoo General Ledger export: account headings, an Initial Balance row, then dated move lines (no account column). */
-export function generalLedger(): Grid[] {
-  const [h1, h2, ...body] = trialBalanceDebitCredit()[0].rows.slice(1);
+export function generalLedger(tb: Grid[] = trialBalanceDebitCredit(), name = "General Ledger"): Grid[] {
+  const [h1, h2, ...body] = tb[0].rows.slice(1);
   const periods = (h1.filter((x) => x && x !== "Initial Balance") as string[]);
   void h2;
   const rows: Cell[][] = [["My Company"], ["General Ledger"], [], ["", "Date", "Communication", "Partner", "Currency", "Debit", "Credit", "Balance"]];
@@ -132,7 +132,7 @@ export function generalLedger(): Grid[] {
     });
   }
   rows.push(["Total", null, null, null, null, 0, 0, 0]);
-  return [{ name: "General Ledger", rows }];
+  return [{ name, rows }];
 }
 
 /** Odoo Trial Balance for a single month without comparison: the column header is a date range. */
@@ -172,4 +172,26 @@ export function trialBalanceRange(from: number, to: number): Grid[] {
   }
   rows.push(["Total", 0, 0, 0, 0, 0, 0]);
   return [{ name: "Trial Balance", rows }];
+}
+
+/** One file of a history exported a year at a time: a debit/credit Trial Balance for months `from`..`to` (indexes into
+ *  `months`), its Initial Balance the closing balances of the month before `from`. */
+export function trialBalanceWindow(from: number, to: number, name = `TB ${months[from].period}`): Grid[] {
+  const ps = months.slice(from, to + 1).map((m) => m.period);
+  const openP = months[from - 1].period;
+  const h1: Cell[] = ["", "Initial Balance", null], h2: Cell[] = ["Account", "Debit", "Credit"];
+  for (const p of ps) { h1.push(lab(p), null); h2.push("Debit", "Credit"); }
+  const rows: Cell[][] = [["Trial Balance"], h1, h2];
+  const dc = (v: number): [number, number] => [v > 0 ? v : 0, v < 0 ? -v : 0];
+  rows.push(["999999 Undistributed Profits/Losses", ...dc(toRaw("retained_earnings", months[from - 1].bs.retained_earnings ?? 0)), ...ps.flatMap(() => [0, 0])]);
+  for (const a of accounts) {
+    if (a.cls === "retained_earnings") continue;
+    const r: Cell[] = [`${a.code} ${a.name}`, ...dc(isPL(a.cls) ? 0 : toRaw(a.cls, a.amounts[openP] ?? 0))];
+    ps.forEach((p, i) => {
+      const prev = i === 0 ? openP : ps[i - 1];
+      r.push(...dc(toRaw(a.cls, isPL(a.cls) ? a.amounts[p] ?? 0 : (a.amounts[p] ?? 0) - (a.amounts[prev] ?? 0))));
+    });
+    rows.push(r);
+  }
+  return [{ name, rows }];
 }

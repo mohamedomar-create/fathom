@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
+import { COSTS_DEFINITION } from "@/lib/engine/expenses";
 import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
 import type { FinancialsFill, FillRow } from "./fill";
 
@@ -155,7 +156,8 @@ function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
     ["RULES", "القواعد"],
     [`Amounts in ${o.currency}, before VAT, as plain numbers. Dates as date cells or written day first (15/01/2026).`, "المبالغ بدون ضريبة القيمة المضافة. التاريخ بصيغة يوم/شهر/سنة."],
     ["Write each supplier and expense type the same way every time, so they add up correctly.", "اكتب اسم المورد ونوع المصروف بنفس الطريقة دائمًا."],
-    ["Include salaries, rent and other costs too (leave Supplier empty for salaries), so the months match your P&L.", "أضف الرواتب والإيجار وباقي المصروفات حتى تطابق قائمة الدخل."],
+    ["Include cost of sales, salaries, rent, depreciation and every other cost, so each month matches your P&L. Leave Supplier empty for salaries and for the cost of goods sold from stock (no one is paid).", "أضف تكلفة المبيعات والرواتب والإيجار والإهلاك وكل المصروفات الأخرى حتى يطابق كل شهر قائمة الدخل. اترك المورد فارغًا للرواتب ولتكلفة البضاعة المباعة من المخزون."],
+    [COSTS_DEFINITION, "تكاليف قائمة الدخل = تكلفة المبيعات + المصروفات (المتغيرة والثابتة والإهلاك والاستهلاك) + المصروفات الأخرى + الفوائد + الضرائب."],
     ["Do not change the headings in row 4 or the first cell (A1).", "لا تغيّر عناوين الصف الرابع ولا الخلية A1."],
     ["COLUMNS", "الأعمدة"],
     ...EXPENSE_COLS.map((c) => [`${c.head}${c.required ? " *" : ""}: ${c.help}`, ""] as [string, string]),

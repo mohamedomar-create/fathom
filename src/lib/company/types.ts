@@ -38,6 +38,8 @@ export interface CompanyBundle {
   assumptions?: Assumptions;
   /** Inventory settings: the location rented items go to (null: found by its name). */
   inventorySettings?: { rentalLocation: string | null };
+  /** Where the company is ("Africa/Cairo"): Odoo's UTC date-times are moved to its days. Null: not moved. */
+  timeZone?: string | null;
   /** Forecast drivers the company has saved. */
   forecast?: ForecastDrivers;
 }

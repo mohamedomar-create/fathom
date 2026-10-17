@@ -15,6 +15,12 @@ describe("Odoo export templates", () => {
     expect(mapColumns(["Date", "Product", "Qty", "Valeur", "Total Value", "Reference"], { value: "Valeur" })).toMatchObject({ value: 3, qty: 2 });
   });
 
+  it("recognises every way Odoo labels its record ID (.id, id, ID, Odoo ID, Database ID)", () => {
+    for (const h of [".id", "id", "ID", "Odoo ID", "Database ID", "database id", "Record ID"]) expect(mapColumns([h, "Date", "Product", "Quantity", "Total Value"]).id, h).toBe(0);
+    const d = describeColumns(grid([[".id", "create_date", "product_id", "quantity", "value", "reference"]]), "stock.valuation.layer");
+    expect(d.fields.find((f) => f.field === "id")).toMatchObject({ col: 0 });
+  });
+
   it("says which required columns an export is missing", () => {
     const d = describeColumns(grid([["Date", "Product", "Quantity", "Reference"]]), "stock.valuation.layer");
     expect(d.missing).toEqual(["Total value"]);

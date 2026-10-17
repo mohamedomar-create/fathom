@@ -5,4 +5,6 @@ export const FORECAST_KEY = "forecast";
 /** Keys in kpi_config that are not KPIs. */
 /** Inventory settings: the location rented items go to. */
 export const INVENTORY_KEY = "inventory";
-export const RESERVED_KEYS: string[] = [ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY];
+/** Company profile settings kept with the KPI settings: the time zone. */
+export const PROFILE_KEY = "profile";
+export const RESERVED_KEYS: string[] = [ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, PROFILE_KEY];

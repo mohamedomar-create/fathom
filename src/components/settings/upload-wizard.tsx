@@ -449,9 +449,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // 2 · Get your file
   if (screen === "get") {
     const steps = kind === "inventory"
-      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Select all lines. Click Export.", "Tick “I want to update data (import-compatible export)”, then Export.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
+      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then click “Select all N records” (otherwise Odoo exports only the page you see). Click Export.", "Tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
-      ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Select all lines. Click Export."]
+      ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Tick the top box, then click “Select all N records” (otherwise Odoo exports only the page you see). Click Export."]
       : kind === "expenses"
         ? ["Open Odoo: Accounting → Reporting → Invoice Analysis.", "Filter: Vendor Bills. Switch to the list view.", "Select all lines. Click Export."]
         : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
@@ -493,7 +493,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   }
 
   // 3 · Odoo Inventory exports: uploaded, read and saved as a background job (never read on this page's main thread).
-  if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} onBack={() => setScreen("get")} />;
+  if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} timeZone={company.timeZone ?? null} onBack={() => setScreen("get")} />;
 
   // 3 · Upload
   if (screen === "upload" || (!allGrids && screen !== "done")) {
