@@ -170,19 +170,21 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const restore = (r: HistoryRow) => {
     if (!r.version || !confirm(`Restore the data as it was after "${r.file ?? r.kind}" (${fmtDate(r.at)})? The current data stays in the history and can be restored again.`)) return;
     setErr(null);
     start(async () => {
       const out = await restoreVersion(companyId, r.version!);
       if (!out.ok) setErr(out.error ?? "Restore failed.");
-      else router.refresh();
+      else { setNote(out.notice ?? null); router.refresh(); }
     });
   };
   if (!rows.length) return <p className="text-sm text-mute">No imports yet.</p>;
   return (
     <div className="overflow-x-auto">
       {err && <p className="mb-2 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
+      {note && <p className="mb-2 rounded bg-band px-3 py-2 text-sm" data-testid="restore-notice">{note}</p>}
       <table className="tbl text-[13px]" data-testid="history">
         <thead><tr><th className="!text-start">When</th><th className="!text-start">What</th><th className="!text-start">Months</th><th className="!text-start">By</th><th /></tr></thead>
         <tbody>

@@ -36,7 +36,7 @@ export function CoaEditor() {
   const save = () => start(async () => {
     const r = await reclassify(c.id, changes);
     if (!r.ok) { setMsg(r.error ?? "Could not save"); return; }
-    setChanges({}); setMsg(`${r.count} account(s) reclassified. All analysis now uses the new mapping.`);
+    setChanges({}); setMsg(`${r.count} account(s) reclassified. All analysis now uses the new mapping.${r.notice ? ` ${r.notice}` : ""}`);
     router.refresh();
   });
   if (!c.accounts.length) return <p className="text-mute">No accounts yet — import data first.</p>;

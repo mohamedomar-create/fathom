@@ -1,4 +1,4 @@
-import { EXPENSE_GROUPS, type ClassKey } from "@/lib/engine";
+import { EXPENSE_GROUPS, mlabel, type ClassKey } from "@/lib/engine";
 
 export type LineKind = "sales" | "expenses";
 
@@ -13,3 +13,14 @@ export function untied(totals: Record<LineKind, Record<string, number>>, account
   };
 }
 
+
+const months = (ps: string[]) => { const l = ps.map(mlabel); return l.length > 1 ? `${l.slice(0, -1).join(", ")} and ${l[l.length - 1]}` : l[0]; };
+
+/** What the person is told when ledger lines were removed because they no longer match the P&L (null: nothing removed). */
+export function clearedNotice(bad: Record<LineKind, string[]>): string | null {
+  const parts = [bad.sales.length ? `sales lines for ${months(bad.sales)}` : "", bad.expenses.length ? `expense lines for ${months(bad.expenses)}` : ""].filter(Boolean);
+  if (!parts.length) return null;
+  const n = new Set([...bad.sales, ...bad.expenses]).size;
+  const text = parts.join(" and ");
+  return `${text[0].toUpperCase()}${text.slice(1)} no longer matched the P&L, so they were removed. Upload the General Ledger for ${n > 1 ? "those months" : "that month"} again to bring them back.`;
+}
