@@ -4,6 +4,11 @@ create role authenticated nologin noinherit;
 create role service_role nologin noinherit bypassrls;
 create role authenticator login noinherit password 'local-authenticator';
 grant anon, authenticated, service_role to authenticator;
+-- The same time limits as a Supabase project, so slow queries fail here exactly as they would on the live site.
+alter role anon set statement_timeout = '3s';
+alter role authenticated set statement_timeout = '8s';
+alter role authenticator set statement_timeout = '8s';
+alter role authenticator set lock_timeout = '8s';
 create role supabase_auth_admin login createrole noinherit password 'local-auth-admin';
 create schema auth authorization supabase_auth_admin;
 grant usage on schema auth to anon, authenticated, service_role;
