@@ -3,8 +3,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
-import { ALL_CLASSES } from "@/lib/company/build";
-import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
+import { checkKey, type Check } from "@/lib/company/checks";
+import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/lib/company/import-schema";
 import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
@@ -16,48 +16,6 @@ import { ForecastSchema } from "@/lib/company/forecast-schema";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
-
-const ClassEnum = z.enum(ALL_CLASSES as [string, ...string[]]);
-const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const Ref = z.object({ sheet: z.string().max(120).optional(), row: z.number().int().min(0).optional(), label: z.string().max(300).optional() });
-const CheckSchema = z.object({
-  id: z.enum(CHECK_IDS),
-  severity: z.enum(["block", "warn", "info"]), period: Period.optional(), statement: z.enum(["PL", "BS"]).optional(),
-  title: z.string().max(200), detail: z.string().max(1000),
-  expected: z.number().finite().optional(), actual: z.number().finite().optional(), diff: z.number().finite().optional(),
-});
-const PlanSchema = z.object({
-  companyId: z.string().uuid(),
-  mode: z.enum(["merge", "add", "replace"]),
-  slices: z.object({ PL: z.array(Period).max(600), BS: z.array(Period).max(600) }),
-  accounts: z.array(z.object({
-    code: z.string().max(40), name: z.string().min(1).max(300), cls: ClassEnum,
-    amounts: z.record(Period, z.number().finite()),
-    confidence: z.number().min(0).max(1).nullable().optional(),
-    mapped_by: z.enum(["auto", "user", "system"]).optional(),
-    ref: Ref.optional(),
-  })).min(1).max(5000),
-  controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(400), months: z.number().int().min(1).max(60).optional() })).max(3000).default([]),
-  extra: z.array(CheckSchema).max(500).default([]),
-  ranges: z.record(Period, z.number().int().min(1).max(60)).default({}),
-  openingFrom: Period.nullable().default(null),
-});
-const ImportSchema = PlanSchema.extend({
-  filename: z.string().max(300).nullable(),
-  report: z.object({
-    kind: z.string(), periods: z.array(Period), warnings: z.array(z.string()), notes: z.array(z.string()), flips: z.array(z.string()),
-    mapping: z.record(z.string(), z.string()),
-    asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    // Figures read from PDF pages: how many pages, and how many figures the person corrected before importing.
-    pdf: z.object({ pages: z.number().int().min(0).max(1000), corrected: z.number().int().min(0).max(100000), flagged: z.number().int().min(0).max(100000) }).optional(),
-    // Corrections made in the upload's reading box: retyped cells and rows left out, with what the file held.
-    fixes: z.array(z.object({
-      sheet: z.string().max(200), row: z.number().int().min(0).max(10_000_000), col: z.number().int().min(0).max(100_000).optional(),
-      action: z.enum(["set", "empty", "skip-row"]), value: z.union([z.number().finite(), z.string().max(120)]).optional(), was: z.string().max(120).optional(),
-    })).max(500).optional(),
-  }),
-  accept: z.object({ keys: z.array(z.string().max(80)).max(500), reason: z.string().trim().min(10, "Give a reason of at least 10 characters.").max(500) }).optional(),
-});
 
 export interface AcceptedItem { key: string; title: string; period?: string; reason: string; by: string; at: string }
 export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[] }
@@ -78,7 +36,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
 
 export async function previewImport(input: z.input<typeof PlanSchema>): Promise<{ ok: true; data: PreviewResult } | { ok: false; error: string }> {
   const v = PlanSchema.safeParse(input);
-  if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
+  if (!v.success) return { ok: false, error: invalidImport(v.error, input) };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, "import", user.id)) return { ok: false, error: TOO_MANY };
@@ -93,7 +51,7 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
 
 export async function commitImport(input: z.input<typeof ImportSchema>): Promise<{ ok: true; version: number } | { ok: false; error: string; blocking?: Check[] }> {
   const v = ImportSchema.safeParse(input);
-  if (!v.success) return { ok: false, error: "The import data is not valid: " + v.error.issues[0]?.message };
+  if (!v.success) return { ok: false, error: invalidImport(v.error, input) };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, "import", user.id)) return { ok: false, error: TOO_MANY };
