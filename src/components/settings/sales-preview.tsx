@@ -41,6 +41,7 @@ export function SalesPreview({ read, currency, overrides, onChange }: { read: Sa
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Only a total including tax was found, so sales will read about 14% high (VAT). Export the &quot;Untaxed Total&quot; column from Odoo if you can, or pick it below.
             </p>
           )}
+          {l.qtyFlipped ? <p className="mb-2 text-[12.5px] text-mute" data-testid="qty-flipped">{l.qtyFlipped.toLocaleString("en-US")} credit note line{l.qtyFlipped === 1 ? "" : "s"} had a positive quantity with a negative amount: the quantity was made negative (goods returned).</p> : null}
           {l.kind === "list" && (
             <div className="flex flex-wrap gap-2 text-[12.5px]">
               {l.columns.filter((c) => c.header).map((c) => (

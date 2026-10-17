@@ -85,7 +85,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
   } catch (e) { return fail(e); }
 }
 
-export async function syncOdooNow(companyId: string): Promise<Result<{ months: number; accounts: number; method: string; tb: number; unmapped: string[]; version: string; detail: string | null }>> {
+export async function syncOdooNow(companyId: string): Promise<Result<{ months: number; accounts: number; method: string; tb: number; unmapped: string[]; offBalance: string[]; version: string; detail: string | null }>> {
   const { supabase, user } = await getUser();
   try {
     if (!user) throw new Error("Please sign in again.");
@@ -118,7 +118,7 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version }).eq("company_id", companyId);
     await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
     revalidatePath(`/company/${companyId}`, "layout");
-    return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, version: res.diagnostics.version, detail } };
+    return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, offBalance: res.diagnostics.offBalance ?? [], version: res.diagnostics.version, detail } };
   } catch (e) {
     await supabase.from("odoo_connections").update({ status: "error", last_error: safeError(e, "syncOdoo").slice(0, 500) }).eq("company_id", companyId);
     return fail(e);

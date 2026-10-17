@@ -108,6 +108,8 @@ export interface SalesLayout {
   dateOrder?: DateOrder;
   /** Only a tax-inclusive total was found. */
   taxIncluded: boolean;
+  /** Credit notes whose positive quantity was turned negative, to match their negative amount. */
+  qtyFlipped?: number;
   lines: number;
   total: number;
   /** Rows kept (empty rows removed) → row in the sheet as uploaded; headerRow indexes the kept rows. */
@@ -177,6 +179,7 @@ function readList(ctx: Ctx, fields: (SalesField | null)[]) {
   const cDate = col("date"), cPer = col("period");
   const order = detectDateOrder(rows.slice(r + 1).map((x) => x[cDate])).order ?? "dmy";
   const lines: SalesLine[] = [];
+  let qtyFlipped = 0;
   const text = (x: Cell[], f: SalesField) => (col(f) >= 0 ? str(x[col(f)]).replace(/\s+/g, " ") : "");
   const err = (i: number, c: number, message: string) => { ctx.errors.push({ row: i, col: c, text: shown(rows[i][c]), message }); ctx.marks[i] = { role: "error", note: message }; };
   for (let i = r + 1; i < rows.length; i++) {
@@ -203,17 +206,20 @@ function readList(ctx: Ctx, fields: (SalesField | null)[]) {
     const rawProduct = text(x, "product");
     const lab = rawProduct ? splitLabel(rawProduct) : { product: "No description", category: NO_CATEGORY };
     if (!ctx.marks[i]) ctx.marks[i] = { role: "entry" };
+    // A credit note takes goods back: Odoo can print its quantity positive beside a negative amount.
+    let qty = col("qty") >= 0 ? cleanNum(x[col("qty")]) : null;
+    if (qty !== null && qty > 0 && amount < 0) { qty = -qty; qtyFlipped++; }
     lines.push({
       day, period, doc, series: seriesOf(doc), customer: text(x, "customer") || NO_CUSTOMER,
       product: lab.product, category: text(x, "category") || lab.category, salesperson: text(x, "salesperson"),
-      qty: col("qty") >= 0 ? cleanNum(x[col("qty")]) : null, amount: Math.round(amount * 100) / 100, cost: cost === null ? null : Math.round(cost * 100) / 100,
+      qty, amount: Math.round(amount * 100) / 100, cost: cost === null ? null : Math.round(cost * 100) / 100,
       src: { sheet, row: ctx.rowNo[i] },
     });
   }
   if (!lines.length && !ctx.errors.length) return null;
   const layout = {
     sheet, kind: "list" as const, headerRow: r, columns: heads.map((h, c) => ({ col: c, header: h, field: fields[c] })), dateOrder: cDate >= 0 ? order : undefined,
-    taxIncluded: col("untaxed") < 0, lines: lines.length, total: lines.reduce((s, l) => s + l.amount, 0),
+    taxIncluded: col("untaxed") < 0, lines: lines.length, total: lines.reduce((s, l) => s + l.amount, 0), ...(qtyFlipped ? { qtyFlipped } : {}),
   };
   return { lines, layout };
 }

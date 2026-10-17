@@ -39,7 +39,7 @@ export interface SyncResult {
   accounts: SyncedAccount[];
   periods: string[];
   notes: string[];
-  diagnostics: { version: string; major: number; accounts: number; groups: number; method: "read_group" | "search_read"; trialBalanceCheck: number; unmapped: string[] };
+  diagnostics: { version: string; major: number; accounts: number; groups: number; method: "read_group" | "search_read"; trialBalanceCheck: number; unmapped: string[]; offBalance?: string[] };
 }
 
 type Group = { account_id: [number, string] | false; balance: number; __range?: Record<string, { from: string; to: string }>; __domain?: unknown[]; [k: string]: unknown };
@@ -63,7 +63,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   const major = majorVersion(v.server_version_info, v.server_version);
   await client.authenticate();
   const cid = opts.companyId;
-  const ctx = { allowed_company_ids: [cid], active_test: false };
+  const ctx = { allowed_company_ids: [cid], lang: "en_US", active_test: false };
 
   // ---- chart of accounts
   const acctDomain = major >= 18 ? [["company_ids", "in", [cid]]] : [["company_id", "=", cid]];
@@ -138,6 +138,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   const openingP = addMonths(startP, -1);
   const out: SyncedAccount[] = [];
   const unmapped: string[] = [];
+  const offBalance: string[] = [];
   let plRun = 0;
   const plMoves: Record<string, number> = {};
   let tb = 0;
@@ -150,7 +151,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     const mv = moves.get(a.id) ?? {};
     const hasData = op !== 0 || Object.values(mv).some((x) => x !== 0);
     tb += op + Object.values(mv).reduce((s, x) => s + x, 0);
-    if (!c.cls) { if (hasData && type !== "off_balance") unmapped.push(`${a.code || ""} ${a.name}`.trim()); continue; }
+    if (!c.cls) { if (hasData) (type === "off_balance" ? offBalance : unmapped).push(`${a.code || ""} ${a.name}`.trim()); continue; }
     if (!hasData) continue;
     const amounts: Record<string, number> = {};
     if (isPL(c.cls)) {
@@ -175,7 +176,9 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     "Retained earnings include profit to date computed from the P&L accounts (Odoo does not close P&L accounts into equity).",
   ];
   if (unmapped.length) notes.push(`${unmapped.length} account(s) with balances had no recognised type and were left out: ${unmapped.slice(0, 5).join(", ")}${unmapped.length > 5 ? "…" : ""}.`);
-  return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped } };
+  // An off-balance account that holds posted entries is often a real one typed wrongly (petty cash kept "off the books").
+  if (offBalance.length) notes.push(`${offBalance.join(", ")}: typed off-balance in Odoo but ${offBalance.length > 1 ? "they hold" : "it holds"} posted entries, left out like every off-balance account. This looks like a real account (e.g. petty cash). Map it to Cash in Chart of accounts if it is one.`);
+  return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance } };
 }
 
 export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[]; lines: number; note: string | null }
@@ -193,7 +196,7 @@ export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res
   const stockAccts = res.accounts.filter((a) => a.odoo_id !== null && a.cls === "inventory");
   if ((!core.length && !stockAccts.length) || !res.periods.length) return { sales: [], expenses: [], stock: [], lines: 0, note: null };
   const cid = opts.companyId;
-  const ctx = { allowed_company_ids: [cid], active_test: false };
+  const ctx = { allowed_company_ids: [cid], lang: "en_US", active_test: false };
   const first = res.periods[0], last = res.periods[res.periods.length - 1];
   type Line = { account_id: [number, string] | false; date: string; move_id: [number, string] | false; partner_id: [number, string] | false; name: string | false; balance: number };
   // One group of accounts at a time, each with its own limit: stock postings never crowd out sales and expense detail.

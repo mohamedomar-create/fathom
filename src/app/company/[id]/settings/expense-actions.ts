@@ -25,6 +25,8 @@ const Start = z.object({
   periods: z.array(Period).min(1).max(240),
   filename: z.string().max(300).optional(),
   report: z.record(z.string(), z.unknown()).optional(),
+  /** Replace all: every month of this source goes first, not only the file's months. */
+  all: z.boolean().optional(),
 });
 
 /** Opens a batch: this source's expense lines for these months are replaced by the lines added next. */
@@ -38,12 +40,15 @@ export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{
     const periods = [...new Set(v.data.periods)].sort();
     const { data, error } = await supabase.rpc("begin_expense_batch", {
       p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
+      ...(v.data.all ? { p_all: true } : {}),
     });
     if (!error) { await dropEmpty(supabase, v.data.companyId, v.data.source, data as string, sameFile(v.data), periods); return { ok: true, batch: data as string }; }
     // A database without the function (its update not yet applied) does the same steps through the table rules,
     // which let only the company's editors delete and add its expense lines.
     if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "begin_expense_batch") };
-    const del = await supabase.from("expense_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source).in("period", periods);
+    const del = v.data.all
+      ? await supabase.from("expense_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source)
+      : await supabase.from("expense_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source).in("period", periods);
     if (del.error) return { ok: false, error: dbError(del.error, "expense_lines delete") };
     const ins = await supabase.from("expense_batches").insert({ company_id: v.data.companyId, source: v.data.source, periods, filename: v.data.filename?.slice(0, 300) ?? null, report: (v.data.report ?? {}) as Json, created_by: user.id }).select("id").single();
     if (ins.error) return { ok: false, error: dbError(ins.error, "expense_batches insert") };
@@ -83,7 +88,7 @@ export async function addExpenseLines(companyId: string, batch: string, lines: z
 
 /** A file saved again in place of its earlier upload ("replace", or saved as new), never "add only new months". */
 const sameFile = (d: { source: "ledger" | "file"; filename?: string; report?: Record<string, unknown> }) =>
-  d.source === "file" && d.filename && d.report?.mode !== "add" ? d.filename.slice(0, 300) : null;
+  d.source === "file" && d.filename && !["add", "new", "changed"].includes(String(d.report?.mode)) ? d.filename.slice(0, 300) : null;
 
 /**
  * Uploads left with no lines (every month replaced by a later upload) are removed, so Data health lists only uploads
@@ -104,4 +109,15 @@ async function dropEmpty(supabase: Awaited<ReturnType<typeof getUser>>["supabase
     const empty = ((data ?? []) as unknown as { id: string; lines: { count: number }[] }[]).filter((b) => !(b.lines?.[0]?.count ?? 0)).map((b) => b.id);
     if (empty.length) await supabase.from("expense_batches").delete().in("id", empty);
   } catch { /* the upload itself is what matters */ }
+}
+
+/** Each loaded month of this source: line count and fingerprint, for "Add new and changed". Null: the database has no
+ *  line_months yet (migration 0021 not applied), and the caller replaces the file's months instead. */
+export async function expenseLineMonths(companyId: string, source: "ledger" | "file"): Promise<{ ok: true; months: Record<string, { n: number; print: string }> | null } | { ok: false; error: string }> {
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company" };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data, error } = await supabase.rpc("line_months", { p_company: companyId, p_kind: "expenses", p_source: source });
+  if (error) return error.code === "PGRST202" ? { ok: true, months: null } : { ok: false, error: dbError(error, "line_months") };
+  return { ok: true, months: (data ?? {}) as Record<string, { n: number; print: string }> };
 }

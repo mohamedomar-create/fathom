@@ -6,9 +6,9 @@ import { addSalesLines, startSalesBatch } from "@/app/company/[id]/settings/sale
 const CHUNK = 3000;
 
 /** Saves sales lines in chunks the server accepts (each request stays well under the size limit). */
-export async function saveSales(companyId: string, source: "ledger" | "file", lines: SalesLine[], filename: string, report: Record<string, unknown> = {}): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+export async function saveSales(companyId: string, source: "ledger" | "file", lines: SalesLine[], filename: string, report: Record<string, unknown> = {}, opts: { all?: boolean } = {}): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
   if (!lines.length) return { ok: true, saved: 0 };
-  const start = await startSalesBatch({ companyId, source, periods: salesPeriods(lines), filename: filename.slice(0, 300), report });
+  const start = await startSalesBatch({ companyId, source, periods: salesPeriods(lines), filename: filename.slice(0, 300), report, ...(opts.all ? { all: true } : {}) });
   if (!start.ok) return start;
   let saved = 0;
   for (let i = 0; i < lines.length; i += CHUNK) {

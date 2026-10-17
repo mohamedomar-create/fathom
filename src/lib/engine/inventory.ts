@@ -2,7 +2,7 @@ import type { LayerKind, MoveKind, OnHand, ProductRow } from "@/lib/ingest/inven
 import { layerKind, isInternalLocation, locationClass, productKey } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
-import { tieOut, type TieOut } from "./tieout";
+import { stockBuckets, TIE_TOLERANCE, tieOut, type TieOut } from "./tieout";
 import { COGS_SUPPLIER, type ExpensesData } from "./expenses";
 import { monthLabel, periodLabel } from "@/lib/i18n";
 
@@ -218,10 +218,14 @@ function monthTieOuts(d: InventoryData, ix: StockIndex, periods: string[], ledge
     module: refsOf(ix.refs.get(p), (r) => !kinds || kinds.has(r.kind), sign),
     ledger: refsOf(ix.led.get(p), (r) => !kinds || kinds.has(r.kind), sign),
   });
+  // Why a document differs needs every document the stock records and the ledger hold, whatever their month.
+  const ever = (m: Map<string, { ref: string }[]>) => new Set([...m.values()].flatMap((rows) => rows.map((r) => r.ref)));
+  let reasons: ReturnType<typeof stockBuckets> | undefined;
+  const classify: ReturnType<typeof stockBuckets> = (c) => (reasons ??= stockBuckets(ever(ix.refs), ever(ix.led)))(c);
   if (d.layers.length) for (const p of periods) {
-    if (!partial) out.push(tieOut("stock_value", p, closingOf(ix, p), stock && p in stock ? stock[p] : null, hasLedgerRefs ? () => upTo(p) : undefined));
+    if (!partial) out.push(tieOut("stock_value", p, closingOf(ix, p), stock && p in stock ? stock[p] : null, hasLedgerRefs ? () => upTo(p) : undefined, TIE_TOLERANCE, classify));
     const prev = addMonths(p, -1);
-    out.push(tieOut("stock_movement", p, kindSum(ix, p), stock && p in stock && prev in stock ? stock[p] - stock[prev] : null, hasLedgerRefs ? () => inMonth(p) : undefined));
+    out.push(tieOut("stock_movement", p, kindSum(ix, p), stock && p in stock && prev in stock ? stock[p] - stock[prev] : null, hasLedgerRefs ? () => inMonth(p) : undefined, TIE_TOLERANCE, classify));
     out.push(tieOut("cogs", p, -kindSum(ix, p, OUT_KINDS), ledger.cogs && p in ledger.cogs ? ledger.cogs[p] : null, hasLedgerRefs ? () => inMonth(p, OUT_KINDS, -1) : undefined));
     // The ledger holds the month when it has stock postings in it or the month's balance sheet is loaded.
     const holds = hasLedgerRefs && (ix.led.has(p) || (!!stock && p in stock));

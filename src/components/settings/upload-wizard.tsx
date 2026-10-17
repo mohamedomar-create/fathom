@@ -29,6 +29,7 @@ import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
 import { expensePeriods, expensesFromLedger, type ExpenseOverride } from "@/lib/ingest/expenses";
 import { saveExpenses } from "@/lib/company/save-expenses";
+import { saveExpensesAs, saveSalesAs, type SaveMode } from "@/lib/company/save-modes";
 import { clearLedgerLines } from "@/app/company/[id]/settings/ledger-actions";
 import { EXPENSE_FIELD_LABEL, ExpensesPreview, readExpenses } from "./expenses-preview";
 import { isPdfLike } from "@/lib/ingest/pdf-client";
@@ -69,8 +70,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
-  const [salesMode, setSalesMode] = useState<"add" | "replace" | null>(null);
-  const [expMode, setExpMode] = useState<"add" | "replace" | null>(null);
+  const [salesMode, setSalesMode] = useState<SaveMode | null>(null);
+  const [expMode, setExpMode] = useState<SaveMode | null>(null);
   const [done, setDone] = useState<{ what: string } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
@@ -420,9 +421,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const newMonths = res ? [...new Set([...res.slices.PL.filter((p) => !overlap.some((o) => o.statement === "PL" && o.period === p)), ...res.slices.BS.filter((p) => !overlap.some((o) => o.statement === "BS" && o.period === p))])].sort() : [];
   const choose = (m: ImportMode) => { setMode(m); setModeChosen(true); runPreview(m); };
   const salesOverlap = salesPeriods(allSales).filter((p) => salesLoaded.includes(p));
-  const salesToSave = allSales.filter((l) => salesMode !== "add" || !salesLoaded.includes(l.period));
+  const salesToSave = allSales.filter((l) => salesMode !== "new" || !salesLoaded.includes(l.period));
   const expOverlap = expensePeriods(allExp).filter((p) => expensesLoaded.includes(p));
-  const expToSave = allExp.filter((l) => expMode !== "add" || !expensesLoaded.includes(l.period));
+  const expToSave = allExp.filter((l) => expMode !== "new" || !expensesLoaded.includes(l.period));
   const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
   const found: Record<Kind, boolean> = { accounts: !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts };
@@ -449,9 +450,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // 2 · Get your file
   if (screen === "get") {
     const steps = kind === "inventory"
-      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then click “Select all N records” (otherwise Odoo exports only the page you see). Click Export.", "Tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
+      ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then “Select all N records”.", "Click Export. Tick “I want to update data (import-compatible export)”.", "Add the ID field. Never External ID: Odoo would create records for it.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
-      ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Tick the top box, then click “Select all N records” (otherwise Odoo exports only the page you see). Click Export."]
+      ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Tick the top box, then “Select all N records” (not just this page). Click Export."]
       : kind === "expenses"
         ? ["Open Odoo: Accounting → Reporting → Invoice Analysis.", "Filter: Vendor Bills. Switch to the list view.", "Select all lines. Click Export."]
         : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
@@ -527,7 +528,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="done" />
         <div className="mb-6 flex items-center gap-4 rounded-xl bg-green-bg p-6 text-green-d">
           <CheckCircle2 className="h-12 w-12 shrink-0" />
-          <div><div className="text-2xl font-medium">Saved!</div><div className="text-[15px]">{done.what}.</div></div>
+          <div><div className="text-2xl font-medium">Saved!</div><div className="text-[15px]">{done.what.replace(/\.$/, "")}.</div></div>
         </div>
         {kind === "accounts" && <ImportReadiness />}
         <div className="flex flex-wrap gap-3">
@@ -615,10 +616,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <div data-testid="books-save">
           <WizardSteps at="save" />
           <WizardTitle title="Save your money in and out" hint={`${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines${months.length ? `, ${monthsText(months)}` : ""}.`} />
-          {overlapB.length > 0 ? (
-            <Duplicates months={overlapB} same={false} newMonths={months.filter((p) => !salesLoaded.includes(p) && !expensesLoaded.includes(p))} chosen={expMode === null ? null : expMode === "add" ? "add" : "merge"}
-              onAdd={() => { setExpMode("add"); setSalesMode("add"); }} onReplace={() => { setExpMode("replace"); setSalesMode("replace"); }} />
-          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          <LineModes fileMonths={months} loaded={[...new Set([...salesLoaded, ...expensesLoaded])]} chosen={expMode} onChoose={(m) => { setExpMode(m); setSalesMode(m); }} />
           <ul className="mt-4 max-w-4xl space-y-1 text-[14px]" data-testid="books-save-summary">
             {cashRead.layouts.map((l) => <li key={l.sheet}><b className="font-medium">{l.sheet.split(" › ").pop()}</b>: {l.out.lines} costs {money(l.out.total, currency)} · {l.in.lines} sales {money(l.in.total, currency)}</li>)}
             {bankRead.layouts.filter((l) => l.outAsExpenses || l.inAsSales).map((l) => <li key={l.sheet}><b className="font-medium">{l.sheet.split(" › ").pop()}</b>: bank statement{l.outAsExpenses ? `, ${l.moneyOut.lines} payments` : ""}{l.inAsSales ? `, ${l.moneyIn.lines} receipts` : ""}</li>)}
@@ -648,19 +646,19 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
                 // JANUARY) must not stay behind: the month either side is rewritten too when it holds only cash-book figures.
                 const cashNames = new Set(["Sales (cash book)", ...cashCostColumns(cashRead.expenses).map((c) => c.name)]);
                 const onlyCash = (p: string) => company.accounts.some((a) => a.amounts[p] && cashNames.has(a.name)) && company.accounts.every((a) => !a.amounts[p] || !isPL(a.cls) || cashNames.has(a.name));
-                const edges = periods.length && expMode !== "add" ? [addMonths(periods[0], -1), addMonths(periods[periods.length - 1], 1)].filter((p) => !periods.includes(p) && onlyCash(p)) : [];
+                const edges = periods.length && expMode !== "new" ? [addMonths(periods[0], -1), addMonths(periods[periods.length - 1], 1)].filter((p) => !periods.includes(p) && onlyCash(p)) : [];
                 const pl = await commitImport({
-                  companyId, mode: expMode === "add" ? "add" : "merge", slices: { PL: [...periods, ...edges].sort(), BS: [] }, accounts, extra: [], controls: [], ranges: {}, openingFrom: null, filename: name.slice(0, 300),
+                  companyId, mode: expMode === "new" ? "add" : "merge", slices: { PL: [...periods, ...edges].sort(), BS: [] }, accounts, extra: [], controls: [], ranges: {}, openingFrom: null, filename: name.slice(0, 300),
                   report: { kind: "cashbook", periods, warnings: [], notes: ["Cash basis: the P&L is built from a cash book (money in and money out), not from accounts."], flips: [], mapping: Object.fromEntries(Object.entries(plMap)), fixes: report.fixes },
                 });
                 if (!pl.ok && !/Nothing new to add/.test(pl.error)) { setErr(`Nothing was saved: the P&L could not be built. ${pl.error}${pl.blocking?.length ? ` (${pl.blocking.slice(0, 3).map((c) => c.title).join("; ")})` : ""}`); return; }
                 if (pl.ok) plSaved = periods.length;
               }
-              const e = await saveExpenses(companyId, "file", expToSave, name, { ...report, mode: expMode ?? "new" });
+              const e = await saveExpensesAs(companyId, expToSave, name, report, expMode ?? "changed", expensesLoaded);
               if (!e.ok) { setErr(e.error); return; }
-              const sv = await saveSales(companyId, "file", salesToSave, name, { ...report, mode: salesMode ?? "new" });
+              const sv = await saveSalesAs(companyId, salesToSave, name, report, salesMode ?? "changed", salesLoaded);
               if (!sv.ok) { setErr(`The expenses were saved, but the sales could not be: ${sv.error}`); return; }
-              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines${plSaved ? `, and a P&L for ${plSaved} months,` : ""} saved` });
+              setDone({ what: `${e.summary} ${sv.summary}${plSaved ? ` And a P&L for ${plSaved} months.` : ""}` });
               if (plSaved) setKind("accounts");
               setScreen("done"); router.refresh();
             })} />
@@ -705,7 +703,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { const o = overlapB.length > 0; setExpMode(o ? null : "replace"); setSalesMode(o ? null : "replace"); setScreen("save"); }}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { const o = overlapB.length > 0; setExpMode(o ? null : "changed"); setSalesMode(o ? null : "changed"); setScreen("save"); }}
               disabled={errorCount > 0 || !(allSales.length + allExp.length) || rolesBlock} nextTestId="books-next" hint={errorCount ? "Fix the problems first." : rolesHint ?? (!(allSales.length + allExp.length) ? "Nothing to save from these sheets." : undefined)} />}
       </div>
     );
@@ -719,19 +717,16 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <div data-testid="expenses-save">
           <WizardSteps at="save" />
           <WizardTitle title="Save your expenses" hint={`${expToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
-          {expOverlap.length > 0 ? (
-            <Duplicates months={expOverlap} same={false} newMonths={ps.filter((p) => !expensesLoaded.includes(p))} chosen={expMode === null ? null : expMode === "add" ? "add" : "merge"}
-              onAdd={() => setExpMode("add")} onReplace={() => setExpMode("replace")} />
-          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          <LineModes fileMonths={ps} loaded={expensesLoaded} chosen={expMode} onChoose={setExpMode} />
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save expenses"} nextTestId="save-expenses"
             disabled={saving || !expToSave.length || (expOverlap.length > 0 && expMode === null)}
             hint={expOverlap.length > 0 && expMode === null ? "Choose one first." : !expToSave.length ? "Nothing new to save." : undefined}
             onNext={() => start(async () => {
               setErr(null);
-              const out = await saveExpenses(companyId, "file", expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes(), mode: expMode ?? "new" });
+              const out = await saveExpensesAs(companyId, expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes() }, expMode ?? "changed", expensesLoaded);
               if (!out.ok) { setErr(out.error); return; }
-              setDone({ what: `${expToSave.length.toLocaleString("en-US")} expense lines saved` }); setScreen("done"); router.refresh();
+              setDone({ what: out.summary }); setScreen("done"); router.refresh();
             })} />
         </div>
       );
@@ -754,7 +749,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }
@@ -767,19 +762,16 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <div data-testid="sales-save">
           <WizardSteps at="save" />
           <WizardTitle title="Save your sales" hint={`${salesToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
-          {salesOverlap.length > 0 ? (
-            <Duplicates months={salesOverlap} same={false} newMonths={ps.filter((p) => !salesLoaded.includes(p))} chosen={salesMode === null ? null : salesMode === "add" ? "add" : "merge"}
-              onAdd={() => setSalesMode("add")} onReplace={() => setSalesMode("replace")} />
-          ) : <p className="text-[15px]">New months only. Nothing is replaced.</p>}
+          <LineModes fileMonths={ps} loaded={salesLoaded} chosen={salesMode} onChoose={setSalesMode} />
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save sales"} nextTestId="save-sales"
             disabled={saving || !salesToSave.length || (salesOverlap.length > 0 && salesMode === null)}
             hint={salesOverlap.length > 0 && salesMode === null ? "Choose one first." : !salesToSave.length ? "Nothing new to save." : undefined}
             onNext={() => start(async () => {
               setErr(null);
-              const out = await saveSales(companyId, "file", salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes(), mode: salesMode ?? "new" });
+              const out = await saveSalesAs(companyId, salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() }, salesMode ?? "changed", salesLoaded);
               if (!out.ok) { setErr(out.error); return; }
-              setDone({ what: `${salesToSave.length.toLocaleString("en-US")} sales lines saved` }); setScreen("done"); router.refresh();
+              setDone({ what: out.summary }); setScreen("done"); router.refresh();
             })} />
         </div>
       );
@@ -802,7 +794,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "replace"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }
@@ -922,6 +914,23 @@ function Duplicates({ months, same, newMonths, chosen, onAdd, onReplace, onRepla
         <ChoiceCard icon="🔁" title="Replace those months" sub="Use this file's numbers for them." onClick={onReplace} selected={chosen === "merge" && !replaceAll} testId="mode-merge" />
       </div>
       {onReplaceAll && <button onClick={onReplaceAll} className={cn("mt-3 text-[13px] underline", replaceAll ? "font-semibold text-red" : "text-mute")} data-testid="mode-replace">{replaceAll ? "Replacing ALL your data with this file" : "Or replace all my data with this file"}</button>}
+    </div>
+  );
+}
+
+/** How to save sales or expense lines when some months are already saved (spec R2.2): four ways, in plain words. */
+function LineModes({ fileMonths, loaded, chosen, onChoose }: { fileMonths: string[]; loaded: string[]; chosen: SaveMode | null; onChoose: (m: SaveMode) => void }) {
+  if (!loaded.length) return <p className="text-[15px]">New months only. Nothing is replaced.</p>;
+  const overlap = fileMonths.filter((p) => loaded.includes(p)), fresh = fileMonths.filter((p) => !loaded.includes(p));
+  return (
+    <div className="rounded-xl border-2 border-amber bg-amber/5 p-4" data-testid="duplicates">
+      <p className="text-[16px]">{overlap.length ? <><b>You already have {monthsText(overlap)}.</b> How should this file be saved?</> : <><b>You already have {monthsText(loaded)} saved.</b> This file has other months. How should it be saved?</>}</p>
+      <div className="mt-3 grid max-w-4xl gap-3 sm:grid-cols-2">
+        <ChoiceCard icon="✳️" title="Add new and changed" sub="New months added, changed months replaced, the same months kept." onClick={() => onChoose("changed")} selected={chosen === "changed"} testId="mode-changed" />
+        <ChoiceCard icon="➕" title="Add only new months" sub={fresh.length ? `Adds ${monthsText(fresh)}. Keeps what you have.` : "Nothing new in this file."} onClick={() => onChoose("new")} selected={chosen === "new"} testId="mode-add" />
+        <ChoiceCard icon="🔁" title="Replace these months" sub={overlap.length ? `Use this file's lines for ${monthsText(overlap)}.` : "Use this file's lines for its months."} onClick={() => onChoose("months")} selected={chosen === "months"} testId="mode-merge" />
+        <ChoiceCard icon="♻️" title="Replace all" sub="Remove the lines saved from earlier files, every month, and keep only this one." onClick={() => onChoose("all")} selected={chosen === "all"} testId="mode-all" />
+      </div>
     </div>
   );
 }

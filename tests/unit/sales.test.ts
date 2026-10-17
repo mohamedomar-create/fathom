@@ -178,3 +178,12 @@ describe("accounting files are never taken for sales exports", async () => {
     });
   }
 });
+
+describe("credit notes", () => {
+  it("a credit note with a positive quantity and a negative amount gets its quantity turned negative, and the reading says so", () => {
+    const g = { name: "Invoices", rows: [["Invoice Date", "Number", "Customer", "Product", "Quantity", "Untaxed Total"], ["2026-01-05", "INV/2026/0001", "Nile", "[A1] Pump", 2, 1000], ["2026-01-09", "RINV/2026/0001", "Nile", "[A1] Pump", 1, -500]] };
+    const r = readSalesGrid(g)!;
+    expect(r.lines.map((l) => l.qty)).toEqual([2, -1]);
+    expect(r.layout.qtyFlipped).toBe(1);
+  });
+});

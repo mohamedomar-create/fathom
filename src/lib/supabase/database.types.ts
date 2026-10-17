@@ -92,11 +92,12 @@ export type Database = {
       leave_organisation: { Args: { p_org: string }; Returns: undefined };
       delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };
       delete_my_account: { Args: { p_email: string }; Returns: undefined };
-      begin_sales_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json }; Returns: string };
+      begin_sales_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       add_sales_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       sales_summary: { Args: { p_company: string }; Returns: Json };
       get_published_sales: { Args: { p_token: string }; Returns: Json };
-      begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json }; Returns: string };
+      begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
+      line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };
       add_expense_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       expense_summary: { Args: { p_company: string }; Returns: Json };
       get_published_expenses: { Args: { p_token: string }; Returns: Json };

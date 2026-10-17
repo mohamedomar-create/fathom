@@ -40,6 +40,8 @@ export interface CompanyBundle {
   inventorySettings?: { rentalLocation: string | null };
   /** Where the company is ("Africa/Cairo"): Odoo's UTC date-times are moved to its days. Null: not moved. */
   timeZone?: string | null;
+  /** The company said its books start from zero (no opening balance due). */
+  booksFromZero?: boolean;
   /** Forecast drivers the company has saved. */
   forecast?: ForecastDrivers;
 }

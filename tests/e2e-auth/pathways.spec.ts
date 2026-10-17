@@ -158,6 +158,20 @@ test("an Odoo Invoice Analysis export becomes sales by customer and product", as
   await page.getByTestId("mode-merge").click();
   await page.getByTestId("save-sales").click();
   await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  // A third time, adding only what is new or changed: every month is the same, so nothing is saved.
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+  await page.getByTestId("sales-next").click();
+  await page.getByTestId("mode-changed").click();
+  await page.getByTestId("save-sales").click();
+  await expect(page.getByTestId("done-step")).toContainText("Nothing changed", { timeout: 30_000 });
+  // And "Replace all": what was saved before is replaced, never added to.
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+  await page.getByTestId("sales-next").click();
+  await page.getByTestId("mode-all").click();
+  await page.getByTestId("save-sales").click();
+  await expect(page.getByTestId("done-step")).toContainText("Everything saved before was replaced", { timeout: 30_000 });
   await page.getByTestId("done-see").click();
   await expect(page).toHaveURL(new RegExp(`/company/${id}/sales`), { timeout: 30_000 });
   await expect(page.getByTestId("tile-sales")).toContainText("93,800");
@@ -432,7 +446,9 @@ test("a messy cash book workbook: sheets named, the owner's totals checked, mone
   await expect(page.getByTestId("roles-confirmed")).toBeVisible();
   await page.getByTestId("books-next").click();
   await page.getByTestId("save-books").click();
-  await expect(page.getByTestId("done-step")).toContainText("8 expense lines and 5 sales lines, and a P&L for 3 months, saved", { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toContainText("8 expense lines saved", { timeout: 30_000 });
+  await expect(page.getByTestId("done-step")).toContainText("5 sales lines saved");
+  await expect(page.getByTestId("done-step")).toContainText("a P&L for 3 months");
   await page.goto(`/company/${id}/expenses?type=year&end=2026-02`);
   await expect(page.getByTestId("tile-costs")).toContainText("43,150", { timeout: 30_000 });
   await page.goto(`/company/${id}/sales?type=year&end=2026-02`);

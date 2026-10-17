@@ -136,6 +136,12 @@ export function TieTable({ tieouts, cur }: { tieouts: TieOut[]; cur: string }) {
               <td className="!text-start">{T.ml(x.period)}</td>
               <td className="!text-start">
                 {t.checks[x.key]}
+                {x.status === "off" && x.buckets && Object.keys(x.buckets).length > 0 && (
+                  <div className="mt-1 text-[12px]" data-testid="tie-buckets">
+                    <div className="text-mute">{t.buckets}</div>
+                    <ul className="space-y-0.5">{(["no_entry", "manual", "date", "amount"] as const).filter((k) => x.buckets![k]).map((k) => <li key={k}>{t.bucket[k]}: <span className="num">{f(x, x.buckets![k]!)}</span></li>)}</ul>
+                  </div>
+                )}
                 {x.causes.length > 0 && (
                   <details className="mt-1 text-[12px]">
                     <summary className="cursor-pointer text-mute">{t.causes(x.causes.length)}</summary>

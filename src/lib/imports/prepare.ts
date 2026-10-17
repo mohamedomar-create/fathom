@@ -1,7 +1,7 @@
 import { readWorkbook } from "@/lib/ingest/read";
 import type { Grid } from "@/lib/ingest/extract";
 import { guessRole, type SheetRole } from "@/lib/ingest/roles";
-import { describeColumns, KIND_EXPORT, ODOO_TEMPLATES, type ExportKey, type ExportKind, type SavedMapping } from "@/lib/ingest/odoo-templates";
+import { describeColumns, findHeader, KIND_EXPORT, ODOO_TEMPLATES, type ExportKey, type ExportKind, type SavedMapping } from "@/lib/ingest/odoo-templates";
 import { classifyLayers, locationClass, readOnHandSheet, readProducts, readStockMoves, readStockValuation, type RowIssue, type StockLayer, type StockMove } from "@/lib/ingest/inventory";
 
 /**
@@ -20,7 +20,12 @@ export interface FileSample {
   /** A few rows as iReport reads them (labels → text). */
   preview: Record<string, string>[];
   issues: RowIssue[];
+  /** Exactly one page of Odoo's list view (80, 200 or 500 records): probably exported without "Select all". */
+  pageSized?: boolean;
 }
+
+/** The page sizes of Odoo's list view: a file with exactly this many records is most likely one page, not all of them. */
+export const ODOO_PAGE_SIZES = [80, 200, 500];
 
 /** The first sheet with something in it (Odoo exports one sheet per file). */
 const firstSheet = (grids: Grid[]) => grids.find((g) => g.rows.some((r) => r?.some((v) => v !== null && v !== ""))) ?? grids[0];
@@ -39,7 +44,9 @@ export async function sampleFile(name: string, data: ArrayBuffer, saved: Partial
   const map = saved[key];
   const columns = describeColumns(g, key, map);
   const read = readKind(g, ODOO_TEMPLATES[key].kind, map, null, "");
-  return { ...base, export: key, why: ODOO_TEMPLATES[key].title, columns, preview: read.preview.slice(0, 8), issues: read.issues.slice(0, 20) };
+  const h = findHeader(g, map);
+  const records = (g.totalRows ?? g.rows.length) - (h ? h.r + 1 : 1);
+  return { ...base, export: key, why: ODOO_TEMPLATES[key].title, columns, preview: read.preview.slice(0, 8), issues: read.issues.slice(0, 20), pageSized: ODOO_PAGE_SIZES.includes(records) };
 }
 
 type Read = { layers: StockLayer[]; moves: StockMove[]; onhand: { product: string; code: string; location: string; lot: string; qty: number; value: number | null }[]; products: ReturnType<typeof readProducts>; issues: RowIssue[]; skipped: number; withIds: boolean; preview: Record<string, string>[] };

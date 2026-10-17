@@ -53,8 +53,14 @@ function match(l: Line, dom: unknown[]): boolean {
   });
 }
 
-export function fakeOdoo(version: 15 | 17 | 18 | 19) {
+/** offBalance: an off-balance account that holds posted lines (petty cash kept off the books, a memo account). */
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean } = {}) {
   const { accs, lines } = buildLedger();
+  if (opts.offBalance) {
+    accs.push({ id: 900, code: "999100", name: "Petty cash (off balance)", cls: "cash", type: "off_balance" });
+    lines.push({ account: 900, date: `${months[2].period}-12`, balance: 4500, company: 1 }, { account: 900, date: `${months[2].period}-12`, balance: -4500, company: 1 });
+    lines.push({ account: 900, date: `${months[3].period}-03`, balance: 1200, company: 1 });
+  }
   const calls: string[] = [];
   const handler = async (_url: string | URL | Request, init?: RequestInit) => {
     const { params } = JSON.parse(String(init!.body));

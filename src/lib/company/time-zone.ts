@@ -21,6 +21,18 @@ export function timeZoneOf(kpiConfig: unknown): string | null {
   return p && typeof p.timeZone === "string" && validTimeZone(p.timeZone) ? p.timeZone : null;
 }
 
+/** The company said its books start from zero: no history before its first month, so no opening balance is due. */
+export function booksFromZeroOf(kpiConfig: unknown): boolean {
+  return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;
+}
+
+/** The company's settings with one profile setting changed, every other setting kept. */
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean }): Record<string, unknown> {
+  const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
+  cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
+  return cfg;
+}
+
 /** The company's settings with the time zone set (null: back to the default). */
 export function withTimeZone(kpiConfig: unknown, tz: string | null): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
