@@ -355,6 +355,33 @@ test("a class chosen in the chart of accounts survives the next upload of the sa
   await expect(page.locator(`select[aria-label="${label}"]`)).toHaveValue(target);
 });
 
+test("a company's export layout is remembered; changed columns stop the upload until confirmed", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Layout Owner", org: "Layout Advisory", email: newEmail("layout") });
+  const id = await createCompany(page, "Layout Co");
+  // First upload: the layout is listed to check, and remembered on save.
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-invoice-analysis.xlsx"));
+  await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("sales-next")).toBeEnabled();
+  await page.getByTestId("sales-next").click();
+  await page.getByTestId("save-sales").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  // The same export with a renamed and an added column: stopped until the person confirms how it was read.
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.readFile(fixture("odoo-invoice-analysis.xlsx"));
+  const ws = wb.worksheets[0];
+  ws.getRow(1).getCell(10).value = "Gross Margin";
+  ws.getRow(1).getCell(11).value = "Branch";
+  await startUpload(page, id, "sales");
+  await page.getByTestId("file-input").setInputFiles({ name: "invoices-v2.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) });
+  await expect(page.getByTestId("sales-preview")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("issue-text")).toHaveAttribute("title", /columns changed since the last upload \(new columns "Gross Margin", "Branch"; "margin" is gone\)/);
+  await expect(page.getByTestId("sales-next")).toBeDisabled();
+  await page.getByTestId("layout-confirm").click();
+  await expect(page.getByTestId("sales-next")).toBeEnabled();
+});
+
 test("re-uploading loaded months asks: add only new months, or replace them", async ({ page }) => {
   test.setTimeout(150_000);
   await signUp(page, { name: "Dup Owner", org: "Dup Advisory", email: newEmail("dup") });
