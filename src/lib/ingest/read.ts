@@ -141,13 +141,13 @@ export function extent(cells: { r: number; c: number }[], at: { r: number; c: nu
   }
   if (cs.far !== null) {
     const away = cells.filter((x) => x.c > cs.end);
-    cut.push({ what: "columns", from: col(cs.far), to: col(Math.max(...away.map((x) => x.c))), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
+    cut.push({ what: "columns", from: col(cs.far), to: col(away.reduce((m, x) => Math.max(m, x.c), 0)), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
   }
   const inCols = cells.filter((x) => x.c <= cs.end);
   const rs = edge(inCols.map((x) => x.r), at.r, FAR_ROWS);
   if (rs.far !== null) {
     const away = inCols.filter((x) => x.r > rs.end);
-    cut.push({ what: "rows", from: String(rs.far + 1), to: String(Math.max(...away.map((x) => x.r)) + 1), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
+    cut.push({ what: "rows", from: String(rs.far + 1), to: String(away.reduce((m, x) => Math.max(m, x.r), 0) + 1), cells: away.length, rows: [...new Set(away.map((x) => x.r + 1))].sort((a, b) => a - b).slice(0, 12) });
   }
   return { end: { r: rs.end, c: cs.end }, cut };
 }

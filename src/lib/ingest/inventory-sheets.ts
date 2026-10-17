@@ -29,13 +29,13 @@ export function readInventorySheets(grids: Grid[], roleOf: (sheet: string) => Sh
       const r = readStockValuation(g);
       any = true;
       if (!r) { parts.sheets[g.name] = "Could not be read as a stock valuation."; continue; }
-      parts.layers.push(...r.layers); parts.withIds &&= r.withIds;
+      for (const x of r.layers) parts.layers.push(x); parts.withIds &&= r.withIds;
       parts.sheets[g.name] = `${n(r.layers.length, "valuation layer")}, net value ${money(r.layers.reduce((s, l) => s + l.value, 0), currency)}${r.withIds ? "" : " · no Odoo ID column"}`;
     } else if (role === "stock_moves") {
       const r = readStockMoves(g, rentalLocation);
       any = true;
       if (!r) { parts.sheets[g.name] = "Could not be read as a moves history."; continue; }
-      parts.moves.push(...r.moves); parts.withIds &&= r.withIds;
+      for (const x of r.moves) parts.moves.push(x); parts.withIds &&= r.withIds;
       parts.sheets[g.name] = `${n(r.moves.length, "done move")}${r.withIds ? "" : " · no Odoo ID column"}`;
     } else if (role === "stock_onhand") {
       const rows = readStockOnHand(g, asOf);
@@ -47,7 +47,7 @@ export function readInventorySheets(grids: Grid[], roleOf: (sheet: string) => Sh
       const rows = readProducts(g);
       any = true;
       if (!rows) { parts.sheets[g.name] = "Could not be read as a products list."; continue; }
-      parts.products.push(...rows);
+      for (const x of rows) parts.products.push(x);
       parts.sheets[g.name] = n(rows.length, "product");
     }
   }

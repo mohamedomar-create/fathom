@@ -15,7 +15,7 @@ export interface SalesRead { lines: SalesLine[]; layouts: SalesLayout[] }
 /** Reads every sales sheet with the user's corrections. */
 export function readSales(grids: Grid[], ov: Record<string, SalesOverride>): SalesRead {
   const lines: SalesLine[] = [], layouts: SalesLayout[] = [];
-  for (const g of grids) { const r = readSalesGrid(g, ov[g.name]); if (r) { lines.push(...r.lines); layouts.push(r.layout); } }
+  for (const g of grids) { const r = readSalesGrid(g, ov[g.name]); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
   return { lines, layouts };
 }
 
