@@ -8,6 +8,7 @@ import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/li
 import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
+import { clearedNotice } from "@/lib/company/ledger-tie";
 import { rememberClasses, rememberedEntries } from "@/lib/company/account-map";
 import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
@@ -123,17 +124,18 @@ export async function loadProvenance(companyId: string, accountIds: string[], pe
 }
 
 /** Undo: make an earlier kept version current again. */
-export async function restoreVersion(companyId: string, version: number): Promise<{ ok: boolean; error?: string }> {
+export async function restoreVersion(companyId: string, version: number): Promise<{ ok: boolean; error?: string; notice?: string | null }> {
   if (!z.string().uuid().safeParse(companyId).success || !Number.isInteger(version) || version < 1) return { ok: false, error: "Invalid version." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   const { error } = await supabase.rpc("restore_company_version", { p_company: companyId, p_version: version });
   if (error) return { ok: false, error: error.code === "42501" ? "Only editors can restore data." : dbError(error, "restoreVersion") };
   // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the restored P&L lose them.
-  try { await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, version)); }
+  let notice: string | null = null;
+  try { notice = clearedNotice(await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, version))); }
   catch (e) { console.error("restoreVersion: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
-  return { ok: true };
+  return { ok: true, notice };
 }
 
 // ------------------------------------------------------------------ profile, KPIs, mapping
@@ -241,7 +243,7 @@ export async function saveForecast(companyId: string, input: z.input<typeof Fore
   return { ok: true };
 }
 
-export async function reclassify(companyId: string, changes: Record<string, string>): Promise<{ ok: boolean; error?: string; count?: number }> {
+export async function reclassify(companyId: string, changes: Record<string, string>): Promise<{ ok: boolean; error?: string; count?: number; notice?: string | null }> {
   const ok = z.record(z.string().uuid(), ClassEnum).safeParse(changes);
   if (!ok.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid changes" };
   const { supabase, user } = await getUser();
@@ -256,12 +258,13 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   // Kept in the company's account map, so the next upload or Odoo sync does not undo it.
   await rememberClasses(supabase, companyId, (cur ?? []).map((a) => ({ key: rememberKey({ code: a.code, label: a.name }), cls: ok.data[a.id] as ClassKey, name: a.name })));
   // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the new P&L lose them.
+  let notice: string | null = null;
   try {
     const { data: co } = await supabase.from("companies").select("data_version").eq("id", companyId).maybeSingle();
-    if (co?.data_version) await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, co.data_version));
+    if (co?.data_version) notice = clearedNotice(await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, co.data_version)));
   } catch (e) { console.error("reclassify: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
-  return { ok: true, count: data as number };
+  return { ok: true, count: data as number, notice };
 }
 
 export async function deleteCompany(companyId: string): Promise<{ ok: boolean; error?: string }> {

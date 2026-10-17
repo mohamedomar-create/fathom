@@ -1,6 +1,7 @@
 import { addMonths, bsCalc, mlabel, plCalc, type MonthData } from "@/lib/engine";
 import { buildMonths, isPL } from "./build";
 import type { AccountLine } from "./types";
+import { reviewChecks } from "./review";
 
 /** Accounting identity and integrity checks, shared by the upload preview, the server commit, the Data health page and reports. */
 
@@ -8,7 +9,7 @@ export type CheckSeverity = "block" | "warn" | "info";
 export const CHECK_IDS = [
   "bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month",
   "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening",
-  "account_rollforward", "cross_check", "future_dated", "partial_month", "contra_balance",
+  "account_rollforward", "cross_check", "future_dated", "partial_month", "contra_balance", "continuity", "review",
 ] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
@@ -167,6 +168,8 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
       out.push({ id: "control_total", severity: c.metric === "gross_profit" ? "warn" : "block", period: c.period, statement: c.metric === "revenue" || c.metric === "gross_profit" || c.metric === "net_income" ? "PL" : "BS", title: `${CONTROL_LABEL[c.metric]} does not match the file`, detail: `The file says ${fmt(c.value)}${win.length > 1 ? ` for ${win.length} months` : ""} (${c.source}); the imported accounts add up to ${fmt(actual)}, a difference of ${fmt(diff)}. Some lines are probably excluded, double counted or mapped to the wrong class.`, expected: c.value, actual, diff });
     }
   }
+  // The accountant's review: questions about books that already balance (warnings, never blocks).
+  out.push(...reviewChecks({ accounts, months }));
   return out;
 }
 

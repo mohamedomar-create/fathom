@@ -212,3 +212,34 @@ describe("changing an account's class in the chart of accounts", () => {
     expect(statementMoves(cur, {})).toEqual([]);
   });
 });
+
+describe("continuity with the months already loaded", () => {
+  const cur = books(["2025-01", "2025-02", "2025-03"]);
+  /** April from a ledger that brings its own opening balances (the March balance sheet). */
+  const april = (bankOpening: number) => {
+    const next = books(["2025-01", "2025-02", "2025-03", "2025-04"], "x");
+    return next.map((a) => {
+      const amounts: Record<string, number> = { "2025-04": a.amounts["2025-04"] };
+      if (a.cls !== "revenue" && a.cls !== "exp_fixed") amounts["2025-03"] = a.code === "101000" ? bankOpening : a.amounts["2025-03"];
+      return inc(a.code, a.name, a.cls, amounts);
+    });
+  };
+
+  it("openings equal to the stored closing balances pass", () => {
+    const plan = planImport(cur, april(1900), { mode: "merge", slices: { PL: ["2025-04"], BS: ["2025-03", "2025-04"] } });
+    expect(plan.checks.filter((c) => c.id === "continuity")).toEqual([]);
+  });
+
+  it("an opening that differs from the stored closing stops the import and names the account", () => {
+    const plan = planImport(cur, april(6900), { mode: "merge", slices: { PL: ["2025-04"], BS: ["2025-03", "2025-04"] } });
+    const c = plan.checks.find((x) => x.id === "continuity")!;
+    expect(c).toMatchObject({ severity: "block", period: "2025-03", statement: "BS" });
+    expect(c.detail).toMatch(/101000 Bank: loaded 1,900, this file 6,900/);
+    expect(unresolved(plan.checks, [])).toContainEqual(c);
+  });
+
+  it("replacing everything does not compare with what it replaces", () => {
+    const plan = planImport(cur, april(6900), { mode: "replace", slices: { PL: ["2025-04"], BS: ["2025-03", "2025-04"] } });
+    expect(plan.checks.filter((c) => c.id === "continuity")).toEqual([]);
+  });
+});

@@ -78,13 +78,14 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
   const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
   const seeded = seedOpening(current, incomingIn, opts);
   const derived = deriveRanges(current, seeded.incoming, opts);
-  const rangeChecks = [...derived.rangeChecks, ...seeded.checks];
+  const rangeChecks: Check[] = [...derived.rangeChecks, ...seeded.checks];
   const inc: Record<Statement, Set<string>> = { PL: new Set(opts.slices.PL), BS: new Set(opts.slices.BS) };
   // Every month the file has a figure for is covered, whatever the caller declared.
   for (const n of derived.incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
   const loaded = coverageOf(current);
   const isLoaded = (st: Statement, p: string) => (st === "PL" ? loaded.pl : loaded.bs).has(p);
   const overlap = overlaps(current, derived.incoming, inc, isLoaded);
+  const continuity = opts.mode === "merge" ? continuityCheck(current, derived.incoming, isLoaded) : [];
   let incoming = derived.incoming;
   if (optsIn.mode === "add") {
     for (const st of ["PL", "BS"] as const) for (const p of [...inc[st]]) if (isLoaded(st, p)) inc[st].delete(p);
@@ -164,9 +165,47 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
   // Checks run on the merged result. In a merge, failures in months this file doesn't touch are existing issues and don't block it.
   const touched = new Set<string>();
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
-  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks] })
+  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks, overlap };
+}
+
+/**
+ * A file that brings its own opening balances (the balance sheet of the month before its first P&L month) must agree, account
+ * by account, with that month as already loaded: otherwise the company's history breaks at the join (a back-dated entry, an
+ * export from another company, or a different chart). Each account that differs by more than 1 is named.
+ */
+function continuityCheck(current: VersionAccount[], incoming: IncomingAccount[], isLoaded: (st: Statement, p: string) => boolean): Check[] {
+  const bsMonths = [...new Set(incoming.filter((a) => !isPL(a.cls)).flatMap((a) => Object.keys(a.amounts)))].sort();
+  const plMonths = new Set(incoming.filter((a) => isPL(a.cls)).flatMap((a) => Object.keys(a.amounts)));
+  const p0 = bsMonths[0];
+  const firstPL = [...plMonths].sort()[0];
+  // Only a true opening: the balance sheet of the month just before the file's first P&L month (not a balance-sheet correction).
+  if (!p0 || !firstPL || addMonths(p0, 1) !== firstPL || !isLoaded("BS", p0)) return [];
+  const sum = (as: { code: string; name: string; cls: ClassKey; amounts: Record<string, number> }[]) => {
+    const m = new Map<string, { label: string; cls: ClassKey; v: number }>();
+    for (const a of as) {
+      if (isPL(a.cls)) continue;
+      const k = accountIdentity(a), e = m.get(k) ?? { label: `${a.code} ${a.name}`.trim(), cls: a.cls, v: 0 };
+      e.v += a.amounts[p0] ?? 0;
+      m.set(k, e);
+    }
+    return m;
+  };
+  const was = sum(current), now = sum(incoming);
+  const off: { label: string; a: number; b: number }[] = [];
+  for (const k of new Set([...was.keys(), ...now.keys()])) {
+    const w = was.get(k), n = now.get(k);
+    const a = w ? (n ? recast(w.cls, n.cls, w.v) : w.v) : 0, b = n?.v ?? 0;
+    if (Math.abs(a - b) > 1) off.push({ label: (n ?? w)!.label, a, b });
+  }
+  if (!off.length) return [];
+  off.sort((x, y) => Math.abs(y.b - y.a) - Math.abs(x.b - x.a));
+  const f = (v: number) => Math.round(v).toLocaleString("en-US");
+  const total = off.reduce((s2, o) => s2 + Math.abs(o.b - o.a), 0);
+  return [{ id: "continuity", severity: "block", period: p0, statement: "BS", title: `Opening balances differ from ${p0} as loaded`,
+    detail: `${off.length} account${off.length > 1 ? "s" : ""} open differently from the balance sheet already loaded for ${p0} (${f(total)} in all): ${off.slice(0, 5).map((o) => `${o.label}: loaded ${f(o.a)}, this file ${f(o.b)}`).join("; ")}${off.length > 5 ? "…" : ""}. Check for entries posted back-dated in Odoo, or that the export is for the same company, then accept with a reason or replace the earlier months.`,
+    expected: Math.round(total * 100) / 100, actual: 0, diff: Math.round(total * 100) / 100 }];
 }
 
 /** Months in the file that are already loaded, each marked the same (every account equal to the cent) or different. */
