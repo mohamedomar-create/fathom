@@ -51,6 +51,7 @@ import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
 import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
+import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
@@ -949,18 +950,6 @@ function Stat({ label, value, sub, tone, testId }: { label: string; value: strin
   );
 }
 
-interface Diagnostic { file: string; size: number; sheets: { name: string; rows: number; cols: number; head: string[][] }[]; warnings: string[]; skipped: string[] }
-
-/** Layout-only summary (first rows, truncated cells) to diagnose files the importer can't read. */
-function diagnostic(fs: File[], grids: { name: string; rows: unknown[][] }[], issues: { warnings: string[]; skippedCols: string[] }): Diagnostic {
-  return {
-    file: fs.map((f) => f.name).join(" + "), size: fs.reduce((a, f) => a + f.size, 0), warnings: issues.warnings, skipped: issues.skippedCols,
-    sheets: grids.map((g) => ({
-      name: g.name, rows: g.rows.length, cols: Math.max(0, ...g.rows.map((r) => r?.length ?? 0)),
-      head: g.rows.slice(0, 15).map((r) => (r ?? []).slice(0, 16).map((c) => (c instanceof Date ? c.toISOString().slice(0, 10) : c === null || c === undefined ? "" : String(c).slice(0, 60)))),
-    })),
-  };
-}
 
 function downloadDiagnostic(d: Diagnostic) {
   const url = URL.createObjectURL(new Blob([JSON.stringify(d, null, 2)], { type: "application/json" }));
@@ -975,7 +964,7 @@ function readBooks<O, L>(gs: Grid[] | null, ov: Record<string, O>, read: (g: Gri
   for (const g of gs ?? []) {
     const r = read(g, ov[g.name]);
     if (!r) { out.failed.push(g.name); continue; }
-    out.sales.push(...r.sales); out.expenses.push(...r.expenses); out.layouts.push(r.layout);
+    for (const x of r.sales) out.sales.push(x); for (const x of r.expenses) out.expenses.push(x); out.layouts.push(r.layout);
   }
   return out;
 }

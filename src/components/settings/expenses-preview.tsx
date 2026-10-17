@@ -15,7 +15,7 @@ export interface ExpensesRead { lines: ExpenseLine[]; layouts: ExpenseLayout[] }
 /** Reads every expenses sheet with the person's corrections. */
 export function readExpenses(grids: Grid[], ov: Record<string, ExpenseOverride>): ExpensesRead {
   const lines: ExpenseLine[] = [], layouts: ExpenseLayout[] = [];
-  for (const g of grids) { const r = readExpenseGrid(g, ov[g.name]); if (r) { lines.push(...r.lines); layouts.push(r.layout); } }
+  for (const g of grids) { const r = readExpenseGrid(g, ov[g.name]); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
   return { lines, layouts };
 }
 
