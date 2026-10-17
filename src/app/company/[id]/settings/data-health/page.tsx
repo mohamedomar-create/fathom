@@ -10,6 +10,7 @@ import { ImportReadiness } from "@/components/setup/import-readiness";
 import { LineUploads, type LineUpload } from "@/components/settings/line-uploads";
 import { StockChecks } from "@/components/inventory/stock-checks";
 import { ImportJobs } from "@/components/imports/import-jobs";
+import { ExportLayouts, type LayoutRow } from "@/components/settings/export-layouts";
 import { loadInventory } from "@/lib/company/inventory-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
 
@@ -18,13 +19,19 @@ export default async function DataHealthPage({ params, searchParams }: { params:
   const { imported } = await searchParams;
   const { supabase } = await getUser();
   const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses] = await Promise.all([
+  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses, { data: profiles }] = await Promise.all([
     loadVersion(supabase, id, bundle.dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     loadInventory(id), loadExpenses(id),
+    supabase.from("input_profiles").select("kind, sheet, headings, read, ignored, history, updated_at").eq("company_id", id).order("kind"),
   ]);
+  // Each export's remembered layout (none before the database has the table).
+  const layouts: LayoutRow[] = (profiles ?? []).map((p) => ({
+    kind: p.kind, sheet: p.sheet, headings: p.headings, read: p.read, ignored: p.ignored, updatedAt: p.updated_at,
+    earlier: (Array.isArray(p.history) ? p.history : []).map((h) => h as { headings?: string[]; until?: string }).filter((h) => h.headings && h.until).map((h) => ({ headings: h.headings!, until: h.until! })),
+  }));
   // Sales and expenses files uploaded on their own (lines from a General Ledger belong to its import above).
   const lineUploads: LineUpload[] = [
     ...(salesFiles ?? []).map((b) => ({ id: b.id, kind: "sales" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
@@ -89,6 +96,11 @@ export default async function DataHealthPage({ params, searchParams }: { params:
       <section className="mt-10">
         <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
         <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />
+      </section>
+      <section className="mt-10">
+        <h2 className="mb-1 text-lg font-medium">Your Odoo export layouts</h2>
+        <p className="mb-3 text-sm text-mute">Every company’s Odoo exports its own columns. Each export’s layout is remembered on its first upload; an upload whose columns change stops until you confirm how it was read.</p>
+        <ExportLayouts rows={layouts} />
       </section>
       <section className="mt-10"><ImportJobs companyId={id} /></section>
       <StockChecks inventory={inventory} expenses={expenses} />

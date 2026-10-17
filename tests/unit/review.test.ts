@@ -40,6 +40,7 @@ describe("the accountant's review", () => {
   it("a gross margin far from the company's usual level is flagged with the month", () => {
     const c = reviewChecks({ accounts: books((a) => { a[1].amounts["2026-06"] = 95_000; }) });
     expect(c.map((x) => [x.period, x.title])).toEqual([["2026-06", "Gross margin 5% against a usual 40%"]]);
+    expect(c[0].detail).toMatch(/cost of sales is posted when goods are delivered but revenue when the invoice is issued/);
   });
 
   it("a month with no depreciation when the months around it have it is flagged", () => {

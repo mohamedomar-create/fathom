@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { mlabel } from "@/lib/engine";
+import { layerSummary } from "@/lib/company/checks";
 import { restoreVersion, type AcceptedItem } from "@/app/company/[id]/settings/actions";
 import { cn } from "@/lib/cn";
 import { cellRef, type FixRecord } from "@/lib/ingest/trace";
@@ -79,6 +80,23 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
         <Tile label="Failed checks" value={String(failing.length)} tone={failing.length ? "bad" : "ok"} sub={failing.length ? "fix before relying on the numbers" : "none"} testid="failed-count" />
         <Tile label="Accepted / warnings" value={`${acceptedNow.length} / ${warns.length}`} tone={acceptedNow.length || warns.length ? "warn" : "ok"} sub="see the months marked below" />
       </div>
+
+      {real.length > 0 && (
+        <section data-testid="check-layers">
+          <h2 className="mb-1 text-lg font-medium">Checks, layer by layer</h2>
+          <p className="mb-3 text-sm text-mute">From the file itself to the questions an accountant would ask. Open checks stop the numbers being relied on; warnings are questions to answer.</p>
+          <div className="grid gap-2 sm:grid-cols-4">
+            {layerSummary(real).map((l) => (
+              <div key={l.layer} className="rounded-md border border-line px-3 py-2.5" data-testid={`layer-${l.layer}`}>
+                <div className="text-[13px] font-medium">{l.label}</div>
+                <div className={cn("mt-1 text-sm", l.open ? "text-red" : l.warn ? "text-[#9a6b00]" : "text-green-d")}>
+                  {l.open ? `${l.open} open` : l.warn ? `${l.warn} to answer` : "All clear"}{l.accepted ? ` · ${l.accepted} accepted` : ""}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {!coverage.range.length ? (
         <p className="text-mute">No financial data yet. <Link className="text-brand-d underline" href={`/company/${companyId}/settings/source-data`}>Upload an Odoo export</Link>.</p>

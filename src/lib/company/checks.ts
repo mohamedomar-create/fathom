@@ -13,6 +13,25 @@ export const CHECK_IDS = [
 ] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
+/** The layers an upload is checked in, from the file itself to an accountant's questions. */
+export type CheckLayer = "file" | "identities" | "continuity" | "review";
+export const LAYER_LABEL: Record<CheckLayer, string> = { file: "The file was read completely", identities: "Double entry holds", continuity: "Agrees with the months already loaded", review: "An accountant's questions" };
+const LAYER: Record<CheckId, CheckLayer> = {
+  tb_zero: "file", duplicate: "file", unmapped: "file", control_total: "file", cross_check: "file", future_dated: "file", partial_month: "file", multi_month: "file",
+  bs_balance: "identities", re_rollforward: "identities", cash_flow: "identities", account_rollforward: "identities", sign: "identities", contra_balance: "identities", statement_mismatch: "identities",
+  gap: "continuity", opening: "continuity", continuity: "continuity",
+  review: "review",
+};
+export const checkLayer = (id: CheckId): CheckLayer => LAYER[id];
+
+/** Per layer: checks that still stop the books (open), ones accepted with a reason, and warnings. Info is left out. */
+export function layerSummary(checks: (Pick<Check, "id" | "severity"> & { accepted?: boolean })[]) {
+  return (Object.keys(LAYER_LABEL) as CheckLayer[]).map((layer) => {
+    const cs = checks.filter((c) => LAYER[c.id] === layer && c.severity !== "info");
+    return { layer, label: LAYER_LABEL[layer], open: cs.filter((c) => c.severity === "block" && !c.accepted).length, accepted: cs.filter((c) => c.accepted).length, warn: cs.filter((c) => c.severity === "warn" && !c.accepted).length };
+  });
+}
+
 export interface Check {
   id: CheckId;
   severity: CheckSeverity;

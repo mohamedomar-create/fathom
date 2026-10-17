@@ -31,6 +31,7 @@ describe("each company's export layout", () => {
   it("first time, same, and changed (with what was added and what is gone)", () => {
     const fp = fingerprintAccounts(gl(BASE));
     expect(compareLayout(fp, undefined).status).toBe("new");
+    expect(compareLayout(fp, []).status).toBe("new");
     expect(compareLayout(fp, fp.headings).status).toBe("same");
     const changed = fingerprintAccounts(gl([...BASE.filter(([h]) => h !== "Credit"), ["Amount EGP", true, null]]));
     expect(compareLayout(changed, fp.headings)).toEqual({ status: "changed", added: ["Amount EGP"], removed: ["credit"] });

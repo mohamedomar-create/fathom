@@ -29,6 +29,8 @@ export function fingerprintList(kind: string, sheet: string, headers: string[], 
 }
 
 export function fingerprintAccounts(l: SheetLayout): SheetFingerprint {
+  // The readers note every non-month heading they saw; older layouts only list their columns.
+  if (l.headings?.length) return fingerprintList(`accounts:${l.source ?? l.kind}`, l.sheet, l.headings.map((h) => h.header), l.headings.flatMap((h, i) => (h.used ? [i] : [])));
   const cols = l.columns.filter((c) => !c.period);
   return fingerprintList(`accounts:${l.source ?? l.kind}`, l.sheet, cols.map((c) => c.header), cols.filter((c) => c.used).map((c) => cols.indexOf(c)));
 }
@@ -39,7 +41,8 @@ export type LayoutStatus = { status: "new" } | { status: "same" } | { status: "c
 
 /** The export's headings against the company's remembered layout. */
 export function compareLayout(fp: SheetFingerprint, saved: string[] | undefined): LayoutStatus {
-  if (!saved) return { status: "new" };
+  // Nothing usable remembered (a layout saved before the reader noted its headings) counts as the first upload.
+  if (!saved || !saved.length) return { status: "new" };
   const was = new Set(saved), now = new Set(fp.headings);
   const shown = new Map(fp.headings.map((h, i) => [h, [...fp.read, ...fp.ignored].find((x) => norm(x) === h) ?? fp.headings[i]]));
   const added = fp.headings.filter((h) => !was.has(h)).map((h) => shown.get(h)!);
