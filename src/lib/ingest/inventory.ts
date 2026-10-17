@@ -1,4 +1,4 @@
-import { arRx, cleanNum, detectDateOrder, normAr, parseDay, type Cell, type DateOrder } from "./parse";
+import { arRx, cleanNum, detectDateOrder, normAr, parseStampDay, type Cell, type DateOrder } from "./parse";
 import { str, type Grid, type LedgerEntry } from "./extract";
 import { findHeader, type ColumnMap, type SavedMapping } from "./odoo-templates";
 
@@ -160,14 +160,17 @@ const cell = (row: Cell[], c: number | undefined) => (c === undefined ? "" : str
 const DONE = arRx(/^(done|منتهي|منتهية|تم|مكتمل)$/i);
 
 /** Data rows under the heading, with a readable day; the date order (dd/mm or mm/dd) is taken from the column itself. */
-function* dataRows(g: Grid, h: { r: number; col: ColumnMap }) {
+function* dataRows(g: Grid, h: { r: number; col: ColumnMap }, tz?: string | null) {
   const dc = h.col.date;
   const order: DateOrder = (dc === undefined ? null : detectDateOrder(g.rows.slice(h.r + 1).map((x) => x?.[dc])).order) ?? "dmy";
   for (let i = h.r + 1; i < g.rows.length; i++) {
     const row = g.rows[i] ?? [];
     if (!row.some((v) => str(v) !== "")) continue;
-    const day = dc === undefined ? null : parseDay(row[dc] ?? null, order);
-    yield { i, row, day };
+    const day = dc === undefined ? null : parseStampDay(row[dc] ?? null, order, { tz, date1904: g.date1904 });
+    // A record with no Odoo ID is keyed by its contents with the day as Odoo wrote it, so a change of time zone never
+    // makes an already-saved record look new.
+    const keyDay = !tz || dc === undefined ? day : parseStampDay(row[dc] ?? null, order, { date1904: g.date1904 });
+    yield { i, row, day, keyDay };
   }
 }
 
@@ -214,7 +217,7 @@ function rowProblems(row: Cell[], c: ColumnMap, day: string | null, need: ("qty"
   return { problems, nums, updated: updated ?? "" };
 }
 
-export function readStockValuation(g: Grid, saved?: SavedMapping | null): ({ layers: StockLayer[]; withIds: boolean } & ReadNotes) | null {
+export function readStockValuation(g: Grid, saved?: SavedMapping | null, tz?: string | null): ({ layers: StockLayer[]; withIds: boolean } & ReadNotes) | null {
   const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
@@ -226,16 +229,16 @@ export function readStockValuation(g: Grid, saved?: SavedMapping | null): ({ lay
   const layers: StockLayer[] = [];
   const issues: RowIssue[] = [];
   let skipped = 0;
-  for (const { i, row, day: rowDay } of dataRows(g, h)) {
+  for (const { i, row, day: rowDay, keyDay: rowKeyDay } of dataRows(g, h, tz)) {
     // A line with neither a date nor a product is a group heading or a total, not a record.
     if (!rowDay && !cell(row, c.product)) { skipped++; continue; }
     const { problems, nums, updated } = rowProblems(row, c, rowDay, ["qty", "value"]);
     if (problems.length) { issues.push({ line: lineOf(g, i), message: problems.join("; ") }); continue; }
-    let day = rowDay!;
+    let day = rowDay!, keyDay = rowKeyDay ?? rowDay!;
     const ref = cell(row, c.ref), desc = cell(row, c.desc), qty = nums.qty, value = nums.value;
     // Odoo marks a back-dated row "[Accounted on 2026-01-17]": its journal entry, and so the accounts, carry that date.
     const accounted = ref.match(/\[Accounted on (\d{4}-\d{2}-\d{2})\]/i)?.[1];
-    if (accounted) day = accounted;
+    if (accounted) day = keyDay = accounted;
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const lot = cell(row, c.lot);
     // A value with no quantity changes what goods cost, not how many: on a receipt it is a landed cost, otherwise a revaluation.
@@ -244,7 +247,7 @@ export function readStockValuation(g: Grid, saved?: SavedMapping | null): ({ lay
     const id = cell(row, c.id);
     const unitValue = c.unitValue === undefined ? null : numOf(row[c.unitValue] ?? null);
     layers.push({
-      key: withIds && id ? id : fp([day, ref, code || product, lot, qty, value]), ...(updated ? { updated } : {}),
+      key: withIds && id ? id : fp([keyDay, ref, code || product, lot, qty, value]), ...(updated ? { updated } : {}),
       day, period: day.slice(0, 7), ref, kind, product, code, category: cell(row, c.category), lot, qty,
       unitValue: unitValue ?? (qty ? Math.round((value / qty) * 10000) / 10000 : 0),
       value, partner: cell(row, c.partner), landedRef, src: { sheet: g.name, row: i },
@@ -253,7 +256,7 @@ export function readStockValuation(g: Grid, saved?: SavedMapping | null): ({ lay
   return layers.length || issues.length ? { layers, withIds, issues, skipped } : null;
 }
 
-export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: SavedMapping | null): ({ moves: StockMove[]; withIds: boolean } & ReadNotes) | null {
+export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: SavedMapping | null, tz?: string | null): ({ moves: StockMove[]; withIds: boolean } & ReadNotes) | null {
   const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
@@ -262,24 +265,24 @@ export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: 
   const fp = fingerprints();
   const issues: RowIssue[] = [];
   let skipped = 0;
-  const done: { i: number; row: Cell[]; day: string; qty: number; updated: string }[] = [];
-  for (const { i, row, day } of dataRows(g, h)) {
+  const done: { i: number; row: Cell[]; day: string; keyDay: string; qty: number; updated: string }[] = [];
+  for (const { i, row, day, keyDay } of dataRows(g, h, tz)) {
     if (!day && !cell(row, c.product)) { skipped++; continue; }
     // Only done moves moved goods; draft, waiting and cancelled ones are left out.
     if (c.status !== undefined && !DONE.test(normAr(cell(row, c.status)))) { skipped++; continue; }
     const { problems, nums, updated } = rowProblems(row, c, day, ["qty"]);
     if (!cell(row, c.from) || !cell(row, c.to)) problems.push("No source or destination location");
     if (problems.length) { issues.push({ line: lineOf(g, i), message: problems.join("; ") }); continue; }
-    done.push({ i, row, day: day!, qty: nums.qty, updated });
+    done.push({ i, row, day: day!, keyDay: keyDay ?? day!, qty: nums.qty, updated });
   }
   // Which locations are "out on rental" is decided from every location the export uses, before any move is classified.
   const rentals = rentalLocationsOf(done.flatMap(({ row }) => [cell(row, c.from), cell(row, c.to)]), rentalLocation);
-  const moves: StockMove[] = done.map(({ i, row, day, qty, updated }) => {
+  const moves: StockMove[] = done.map(({ i, row, day, keyDay, qty, updated }) => {
     const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), lot = cell(row, c.lot);
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const id = cell(row, c.id);
     return {
-      key: withIds && id ? id : fp([day, ref, code || product, lot, from, to, qty]), ...(updated ? { updated } : {}),
+      key: withIds && id ? id : fp([keyDay, ref, code || product, lot, from, to, qty]), ...(updated ? { updated } : {}),
       day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentals), product, code, lot, from, to, qty,
       uom: cell(row, c.uom), partner: cell(row, c.partner), src: { sheet: g.name, row: i },
     };

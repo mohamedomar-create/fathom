@@ -40,7 +40,7 @@ export function InventoryStep({ parts, companyId, currency, demo, filename, rent
             </button>
           ))}
         </div>
-        {!parts.withIds && <p className="mt-4 flex max-w-4xl gap-2 rounded bg-amber/10 px-3 py-2 text-[13px]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />These sheets have no Odoo ID column. Records are matched by date, document, product, lot and amounts instead. For an exact check, export again with “I want to update data (import-compatible export)” ticked.</p>}
+        {!parts.withIds && <p className="mt-4 flex max-w-4xl gap-2 rounded bg-amber/10 px-3 py-2 text-[13px]"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber" />These sheets have no Odoo ID column. Records are matched by date, document, product, lot and amounts instead. For an exact check, export again: tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.</p>}
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save stock"} nextTestId="save-inventory" disabled={saving || !mode || !count} hint={!mode ? "Choose one first." : undefined}
           onNext={() => start(async () => {

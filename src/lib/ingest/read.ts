@@ -71,6 +71,7 @@ export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { 
   const wb = isCsv
     ? XLSX.read(decodeText(data), { type: "string", raw: true, ...rows })
     : XLSX.read(new Uint8Array(data), { type: "array", cellDates: true, ...rows });
+  const date1904 = !isCsv && Boolean((wb.Workbook as { WBProps?: { date1904?: boolean } } | undefined)?.WBProps?.date1904);
   return wb.SheetNames.map((name): Grid => {
     const ws = wb.Sheets[name];
     if (isCsv) return { name: filename.replace(/\.[^.]+$/, ""), rows: csvCells(XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })) };
@@ -100,7 +101,7 @@ export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { 
     const merges = ((ws["!merges"] ?? []) as Merge[]).map((m) => ({ s: { r: m.s.r - at.r, c: m.s.c - at.c }, e: { r: m.e.r - at.r, c: m.e.c - at.c } }));
     const full = ws["!fullref"] ? XLSX.utils.decode_range(ws["!fullref"]) : null;
     return {
-      name, rows: fillMerges(rows, merges), origin: at, ...(full && opts.sheetRows ? { totalRows: full.e.r - full.s.r + 1 } : {}),
+      name, rows: fillMerges(rows, merges), origin: at, ...(date1904 ? { date1904 } : {}), ...(full && opts.sheetRows ? { totalRows: full.e.r - full.s.r + 1 } : {}),
       ...(Object.keys(formulas).length ? { formulas } : {}), ...(cut.length ? { cut } : {}), ...(broken ? { broken } : {}),
     };
   });

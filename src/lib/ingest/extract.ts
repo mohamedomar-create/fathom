@@ -12,6 +12,8 @@ export interface Grid {
   origin?: { r: number; c: number };
   /** When only a sample was read: how many rows the whole sheet has. */
   totalRows?: number;
+  /** The workbook counts dates from 1904 (old Mac Excel): its serial numbers are 1,462 days short. */
+  date1904?: boolean;
   /** Formulas by cell ("row:col" in this grid), as written in the spreadsheet ("SUM(L21:L82)"). */
   formulas?: Record<string, string>;
   /** Cells far away from the table (past a wide gap of empty columns or rows), left out: where they were and how many. */
