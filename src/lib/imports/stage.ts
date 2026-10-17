@@ -18,7 +18,7 @@ export interface StageOptions {
 const MIN = 50;
 const TRIES = 4;
 /** The database or the connection was busy, not wrong: worth splitting or trying again. */
-export const isTransient = (e: unknown) => /statement timeout|canceling statement|lock timeout|57014|55P03|Failed to fetch|NetworkError|network|timed? ?out|50[234]|ECONNRESET/i.test(String((e as Error)?.message ?? e));
+export const isTransient = (e: unknown) => /statement timeout|canceling statement|lock timeout|57014|55P03|Failed to fetch|fetch failed|NetworkError|network|ECONNREFUSED|UND_ERR|socket hang up|timed? ?out|50[234]|ECONNRESET/i.test(String((e as Error)?.message ?? e));
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** The row numbers 1..total not covered by the ranges held (sorted, not overlapping). */

@@ -1,5 +1,6 @@
 import "server-only";
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createPlainClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import type { Database } from "./database.types";
@@ -27,3 +28,14 @@ export const getUser = cache(async () => {
   const { data } = await supabase.auth.getUser();
   return { supabase, user: data.user };
 });
+
+/**
+ * A client for work that carries on after the answer has been sent (next/server's after()): the request's cookies are
+ * gone by then, so it carries the signed-in person's token itself. Same person, same rights, no stored session.
+ */
+export function clientWithToken(accessToken: string) {
+  return createPlainClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}

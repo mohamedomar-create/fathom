@@ -104,7 +104,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
     return (
       <div data-testid="import-running">
         <WizardSteps at="save" />
-        <WizardTitle title={done ? "Your import is on its way" : "Importing your stock"} hint={done ? "iReport is checking and saving it in the background. You can leave this page." : "Keep this page open until every row is sent."} />
+        <WizardTitle title={done ? "Your import is on its way" : "Importing your stock"} hint={done ? "iReport is checking and saving it in the background. You can leave this page." : progress?.phase === "server" ? "The files are uploaded. iReport is sending the rows: you can close this page." : "Keep this page open until the files are uploaded."} />
         {!done && !err && (
           <div className="mb-6 max-w-2xl space-y-3" data-testid="import-progress">
             <Bar label="Uploading the original files" value={progress?.upload ?? 0} testId="progress-upload" />

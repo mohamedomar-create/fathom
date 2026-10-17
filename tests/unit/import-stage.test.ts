@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { missingOf, stageRows } from "@/lib/imports/stage";
+import { isTransient, missingOf, stageRows } from "@/lib/imports/stage";
 
 const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ n: i + 1, data: { x: i } }));
 const TIMEOUT = new Error("canceling statement due to statement timeout");
@@ -40,5 +40,13 @@ describe("sending staged rows to the database", () => {
     expect(missingOf(10, [[1, 2], [5, 8]])).toEqual([[3, 4], [9, 10]]);
     expect(missingOf(3, [])).toEqual([[1, 3]]);
     expect(missingOf(3, [[1, 3]])).toEqual([]);
+  });
+});
+
+describe("Node's network errors", () => {
+  it("are worth trying again, like the browser's", () => {
+    expect(isTransient(new TypeError("fetch failed"))).toBe(true);
+    expect(isTransient(new Error("connect ECONNREFUSED 127.0.0.1:54321"))).toBe(true);
+    expect(isTransient(new Error("duplicate key value"))).toBe(false);
   });
 });
