@@ -331,6 +331,30 @@ test("filled templates import exactly, and mistakes are listed before anything i
 });
 
 /** Monthly uploads: months already loaded are named, and the person chooses to add only new months or replace them. */
+test("a class chosen in the chart of accounts survives the next upload of the same accounts", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Map Owner", org: "Map Advisory", email: newEmail("map") });
+  const id = await createCompany(page, "Map Co");
+  await importFiles(page, id, ["odoo-pl-bs.xlsx"]);
+  await page.goto(`/company/${id}/settings/chart-of-accounts`);
+  const first = page.locator('select[aria-label^="Reclassify"]').first();
+  const label = (await first.getAttribute("aria-label"))!;
+  const target = (await first.inputValue()) === "other_income" ? "other_expenses" : "other_income";
+  await first.selectOption(target);
+  await page.getByRole("button", { name: "Save mapping" }).click();
+  await expect(page.getByText(/1 account\(s\) reclassified/)).toBeVisible();
+  // The same file again, replacing all data: the account keeps the class the person chose.
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
+  await page.getByTestId("continue-timeline").click();
+  await page.getByTestId("mode-replace").click();
+  page.once("dialog", (d) => void d.accept());
+  await page.getByTestId("commit-import").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  await page.goto(`/company/${id}/settings/chart-of-accounts`);
+  await expect(page.locator(`select[aria-label="${label}"]`)).toHaveValue(target);
+});
+
 test("re-uploading loaded months asks: add only new months, or replace them", async ({ page }) => {
   test.setTimeout(150_000);
   await signUp(page, { name: "Dup Owner", org: "Dup Advisory", email: newEmail("dup") });

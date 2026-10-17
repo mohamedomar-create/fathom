@@ -10,12 +10,15 @@ import { fmtDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normAr, normLabel } from "./parse";
 
+/** How the company's account map remembers an account: by its code, or by its name when it has none (renames keep the class). */
+export const rememberKey = (l: { code: string; label: string }) => (l.code.trim() ? `#${l.code.trim()}` : normLabel(l.label));
+
 export interface IngestOptions {
   fyStart: number;
   ytd: "auto" | "yes" | "no";
   closeEarnings: boolean | "auto";
   plugEquity: boolean;
-  /** Overrides by line key or normalised label → class ("" = exclude). */
+  /** Overrides → class ("" = exclude): by line key (this upload), by "#code" (the company's account map) or by normalised label. */
   mapping: Record<string, ClassKey | "">;
   /** "YYYY-MM-DD"; entries after it are future-dated and a month that contains it is partial (defaults to the real date). */
   today?: string;
@@ -161,7 +164,8 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   if (chart.unified) issues.notes.push("Egypt's unified chart of accounts recognised (3xxx expenses, 4xxx revenues): accounts were placed by their code group where the name alone was not enough.");
   const lines = used.map((r) => {
     // The class a template states beats a mapping remembered from earlier uploads; a choice made on this upload beats both.
-    const override = map[r.key] ?? (r.forcedCls ? undefined : map[normLabel(r.label)]);
+    // A coded account is remembered by its code, so a renamed account keeps its class.
+    const override = map[r.key] ?? (r.forcedCls ? undefined : (r.code.trim() ? map[`#${r.code.trim()}`] : undefined) ?? map[normLabel(r.label)]);
     const c = override !== undefined
       ? { cls: (override || null) as ClassKey | null, conf: 1, why: override ? "your mapping" : "excluded by you" }
       : r.forcedCls ? { cls: r.forcedCls, conf: 1, why: "class given in the iReport template" }

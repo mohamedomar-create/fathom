@@ -8,6 +8,8 @@ import { CHECK_IDS, checkKey, type Check } from "@/lib/company/checks";
 import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
+import { rememberClasses, rememberedEntries } from "@/lib/company/account-map";
+import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
@@ -123,6 +125,8 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
       kind: "upload", filename: d.filename,
       report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,
     }, allNotes);
+    // The person's class choices become the company's account map: the next upload and every Odoo sync keep them.
+    await rememberClasses(supabase, d.companyId, rememberedEntries(d.report.mapping, d.accounts));
     await supabase.from("companies").update({ source: "upload" }).eq("id", d.companyId).neq("source", "odoo");
     revalidatePath(`/company/${d.companyId}`, "layout");
     return { ok: true, version };
@@ -286,11 +290,13 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   if (!user) return { ok: false, error: "Please sign in again." };
   // A stored month is a movement on the P&L and a closing balance on the balance sheet: moving an account across would
   // turn one into the other, so that change is made by re-importing the file with the new class instead.
-  const { data: cur, error: e0 } = await supabase.from("source_accounts").select("id, class").eq("company_id", companyId).in("id", Object.keys(ok.data));
+  const { data: cur, error: e0 } = await supabase.from("source_accounts").select("id, class, code, name").eq("company_id", companyId).in("id", Object.keys(ok.data));
   if (e0) return { ok: false, error: dbError(e0, "reclassify") };
   if (statementMoves(cur ?? [], ok.data).length) return { ok: false, error: "That would move an account between the P&L and the balance sheet, and its stored months can't be converted. Re-import the file with the account mapped to its new class instead." };
   const { data, error } = await supabase.rpc("reclassify_accounts", { p_company: companyId, p_changes: Object.fromEntries(Object.entries(ok.data).map(([k, c]) => [k, { class: c }])) as Json });
   if (error) return { ok: false, error: dbError(error, "reclassify") };
+  // Kept in the company's account map, so the next upload or Odoo sync does not undo it.
+  await rememberClasses(supabase, companyId, (cur ?? []).map((a) => ({ key: rememberKey({ code: a.code, label: a.name }), cls: ok.data[a.id] as ClassKey, name: a.name })));
   // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the new P&L lose them.
   try {
     const { data: co } = await supabase.from("companies").select("data_version").eq("id", companyId).maybeSingle();
