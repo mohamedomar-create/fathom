@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { loadAccountMap } from "@/lib/company/account-map";
 import { saveCompanyData } from "@/lib/company/persist";
 import { runChecks } from "@/lib/company/checks";
 import { OdooClient } from "@/lib/odoo/client";
@@ -95,7 +96,8 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     // The key is cleared whenever the address, database or login changes (migration 0016).
     if (!conn.api_key_enc) throw new Error("Enter the API key again in the Odoo connection, then save it.");
     const { client } = await connect(conn.url, conn.db, conn.login, decrypt(conn.api_key_enc));
-    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history });
+    // The company's account map: classes a person chose win over Odoo's account types.
+    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history, classes: await loadAccountMap(supabase, companyId) });
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");
     await saveCompanyData(supabase, companyId, res.accounts, {
       kind: "odoo", filename: `${conn.odoo_company_name ?? "Odoo"} (${res.diagnostics.version})`,

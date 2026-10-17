@@ -1,6 +1,7 @@
 import { addMonths, daysIn, type ClassKey } from "@/lib/engine";
 import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
+import { normLabel } from "@/lib/ingest/parse";
 import { majorVersion, OdooClient, OdooError } from "./client";
 import type { LedgerEntry } from "@/lib/ingest/extract";
 import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
@@ -25,11 +26,13 @@ export interface SyncOptions {
   months: number;
   /** Last month to include (YYYY-MM); defaults to the current month. */
   end?: string;
+  /** The company's account map ("#code" or normalised name → class): a person's choice beats Odoo's account type. */
+  classes?: Record<string, ClassKey | "">;
 }
 
 export interface SyncedAccount {
   code: string; name: string; cls: ClassKey; amounts: Record<string, number>;
-  odoo_id: number | null; odoo_type: string | null; confidence: number; mapped_by: "auto" | "system";
+  odoo_id: number | null; odoo_type: string | null; confidence: number; mapped_by: "auto" | "user" | "system";
 }
 
 export interface SyncResult {
@@ -140,7 +143,9 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   let tb = 0;
   for (const a of accts) {
     const type = typeOf(a);
-    const c = classFromOdooType(type, a.name);
+    const code = typeof a.code === "string" ? a.code.trim() : "";
+    const chosen = opts.classes?.[code ? `#${code}` : normLabel(a.name)];
+    const c = chosen ? { cls: chosen as ClassKey, conf: 1 } : classFromOdooType(type, a.name);
     const op = opening.get(a.id) ?? 0;
     const mv = moves.get(a.id) ?? {};
     const hasData = op !== 0 || Object.values(mv).some((x) => x !== 0);
@@ -157,7 +162,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
       if (Math.abs(run) > 0.004) amounts[openingP] = toNatural(c.cls, run);
       for (const p of periods) { run += mv[p] ?? 0; if (Math.abs(run) > 0.004) amounts[p] = toNatural(c.cls, run); }
     }
-    out.push({ code: a.code || "", name: a.name, cls: c.cls, amounts, odoo_id: a.id, odoo_type: type || null, confidence: c.conf, mapped_by: "auto" });
+    out.push({ code: a.code || "", name: a.name, cls: c.cls, amounts, odoo_id: a.id, odoo_type: type || null, confidence: c.conf, mapped_by: chosen ? "user" : "auto" });
   }
   // Odoo never closes P&L accounts: carry all earnings to date into retained earnings.
   const re: Record<string, number> = {};

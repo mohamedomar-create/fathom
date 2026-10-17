@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upl
 import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useRef, useState, useTransition } from "react";
 import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
-import { extractAll, materialUnmapped, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import { extractAll, materialUnmapped, rememberKey, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
 import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
 import { expenseIssues, financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
@@ -184,7 +184,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
     } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", []]; }
   }, [grids, overrides, opts, mapping]);
 
-  const setCls = (labelKey: string, cls: ClassKey | "") => setMapping((m) => ({ ...m, [labelKey]: cls }));
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
   const fileChecks = useMemo(() => {
@@ -217,7 +216,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, demo 
   };
   const onCell = (sheet: string, row: number, col: number, value: number | string | null) => fixAt(sheet, (o) => ({ cells: { ...o.cells, [`${row}:${col}`]: value } }));
   const onSkipRow = (sheet: string, row: number) => fixAt(sheet, (o) => ({ skipRows: [...new Set([...(o.skipRows ?? []), row])] }));
-  const onClass = (key: string, cls: ClassKey | "") => { const l = res?.lines.find((x) => x.key === key); if (l) setCls(normLabel(l.label), cls); };
+  // A choice applies to every line of the same account name; a coded account is remembered by its code (renames keep it).
+  const onClass = (key: string, cls: ClassKey | "") => {
+    const l = res?.lines.find((x) => x.key === key);
+    if (!l) return;
+    const same = (res?.lines ?? []).filter((x) => normLabel(x.label) === normLabel(l.label));
+    setMapping((m) => ({ ...m, [normLabel(l.label)]: cls, ...Object.fromEntries(same.filter((x) => x.code.trim()).map((x) => [rememberKey(x), cls])) }));
+  };
   const rawSheets: RawSheetData[] = useMemo(() => {
     const out: RawSheetData[] = [];
     for (const l of res?.layouts ?? []) {

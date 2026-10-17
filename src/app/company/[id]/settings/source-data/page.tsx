@@ -6,6 +6,7 @@ import { loadCompanyBundle } from "@/lib/company/load";
 import { UploadWizard } from "@/components/settings/upload-wizard";
 import { OdooPanel, type OdooConn } from "@/components/settings/odoo-panel";
 import { cn } from "@/lib/cn";
+import { loadAccountMap } from "@/lib/company/account-map";
 
 export default async function SourceDataPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ tab?: string; step?: string }> }) {
   const { id } = await params;
@@ -23,7 +24,9 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const lastUpload = imports?.find((i) => i.kind === "upload");
-  const savedMapping = ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};
+  // The company's account map (every class a person has chosen); before it existed, the last upload's mapping.
+  const accountMap = await loadAccountMap(supabase, id);
+  const savedMapping = Object.keys(accountMap).length ? accountMap : ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};
   const tabs = [{ k: "upload", l: "Upload a file" }, { k: "odoo", l: "Connect Odoo (live)" }];
   return (
     <div>
