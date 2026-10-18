@@ -49,3 +49,25 @@ select pg_temp.check('lines take the class by account code', (select string_agg(
   'interest_expenses,exp_variable,exp_fixed');
 select pg_temp.check('a second run changes nothing', (select public.restamp_expense_classes((select co from ids)))::text, '0');
 reset role;
+
+-- Lines saved from a file hold the account name only: they follow the current Chart of accounts by exact, unique name.
+update public.companies set data_version = 2 where id = (select co from ids);
+insert into public.source_accounts (company_id, code, name, statement, class, version) values
+  ((select co from ids), '532500', 'Advertisement', 'PL', 'exp_variable', 2),
+  ((select co from ids), '522011', 'Transportation - Goods', 'PL', 'exp_variable', 2),
+  ((select co from ids), '611', 'Travel', 'PL', 'exp_fixed', 2), ((select co from ids), '612', 'Travel', 'PL', 'exp_variable', 2),
+  ((select co from ids), '700', 'Old name', 'PL', 'exp_variable', 1),
+  ((select co from ids), '620300', 'Advertisement (old)', 'PL', 'other_expenses', 2);
+insert into public.expense_lines (company_id, batch_id, source, period, account, cls, amount) values
+  ((select co from ids), '00000000-0000-4000-8000-0000000000e1', 'file', '2026-09', 'advertisement ', 'exp_fixed', 5),
+  ((select co from ids), '00000000-0000-4000-8000-0000000000e1', 'file', '2026-09', 'Transportation - Goods', 'exp_fixed', 6),
+  ((select co from ids), '00000000-0000-4000-8000-0000000000e1', 'file', '2026-09', 'Travel', 'exp_fixed', 7),
+  ((select co from ids), '00000000-0000-4000-8000-0000000000e1', 'file', '2026-09', 'Old name', 'exp_fixed', 8);
+select pg_temp.login('xa@x.test');
+select pg_temp.check('name-only lines follow the chart', (select public.restamp_expense_classes((select co from ids)))::text, '2');
+select pg_temp.check('by exact name, trimmed, any case', (select cls from public.expense_lines where account = 'advertisement '), 'exp_variable');
+select pg_temp.check('a name two chart accounts share is left alone', (select cls from public.expense_lines where account = 'Travel'), 'exp_fixed');
+select pg_temp.check('only the current chart counts', (select cls from public.expense_lines where account = 'Old name'), 'exp_fixed');
+select pg_temp.check('the account map still wins over the chart', (select cls from public.expense_lines where account = '620300 Advertisement'), 'exp_variable');
+select pg_temp.check('a second run changes nothing', (select public.restamp_expense_classes((select co from ids)))::text, '0');
+reset role;
