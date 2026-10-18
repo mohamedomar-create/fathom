@@ -3,7 +3,15 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 function key(): Buffer {
   const k = process.env.ENCRYPTION_KEY;
-  if (!k) throw new Error("ENCRYPTION_KEY is not set on the server. Add it in Vercel → Settings → Environment Variables (openssl rand -base64 32).");
+  if (!k) {
+    // Vercel's own deployment labels (not secret): a key added for Production only is missing on a branch's Preview.
+    const env = process.env.VERCEL_ENV, ref = process.env.VERCEL_GIT_COMMIT_REF;
+    if (env) {
+      const tick = env === "production" ? "Production" : env === "preview" ? "Preview" : "Development";
+      throw new Error(`ENCRYPTION_KEY is not set for this deployment (${env}${ref ? `, branch ${ref}` : ""}). In Vercel → Settings → Environment Variables, tick ${tick} for ENCRYPTION_KEY, then redeploy this deployment.`);
+    }
+    throw new Error("ENCRYPTION_KEY is not set on the server. Add it in Vercel → Settings → Environment Variables (openssl rand -base64 32).");
+  }
   const b = Buffer.from(k, "base64");
   if (b.length !== 32) throw new Error("ENCRYPTION_KEY must be 32 bytes, base64-encoded (openssl rand -base64 32).");
   return b;
