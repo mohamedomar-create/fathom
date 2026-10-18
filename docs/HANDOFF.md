@@ -97,6 +97,12 @@ RECON_DIR=<private folder> npx vitest run tests/unit/golden-reconciliation.test.
   - saved in the company profile;
   - used by uploads, the import plan (stored months before it are dropped) and the Odoo sync;
   - postings to the opening-balance account after go-live are flagged for review.
+- **Opening balances upload, 18 Oct:**
+  - its own card on the upload page (`kind: "opening"`, setup step `?step=opening`), for any company;
+  - takes an Odoo GL or TB for the opening day, or the Code | Account | Debit | Credit template;
+  - stored as the balance sheet of the as-at month only, with P&L closed into retained earnings; books start = the next day;
+  - loaded later, it moves balance-sheet months built from zero (import `report.openingBasis = "zero"`) by each account's opening;
+  - without it, uploads still work and balances start from zero, said on the Check step and in Readiness.
 - **Cut-off date:** set on every upload, defaulting to the last entry's date. Rows after it are left out and listed. The period label comes from it ("to 15 Oct").
 - **Part months:**
   - KPIs use the days covered;
@@ -211,7 +217,11 @@ Not in this public copy. See the private handoff (`fathom-handoff.md`), which th
 
 ## 9. Open items, in order
 
-1. **Owner:** re-import the the main company General Ledger with cut-off **15 Oct 2026**; books start should show **Jul 2021**. Then the three stock files with **"Replace all"**. Reply "done".
+1. **Owner:**
+   - upload Odoo's 30 Jun 2021 opening ledger on the **Opening balances** card;
+   - then re-import the the main company General Ledger with cut-off **15 Oct 2026** (books start **Jul 2021**);
+   - then the three stock files with **"Replace all"**;
+   - reply "done".
 2. **Then, read-only on the live data:**
    - the first month is Jun 2021, balance sheet only, and Jan–May 2021 are gone;
    - the opening balances equal Odoo's 30 Jun 2021 opening ledger;
@@ -249,7 +259,10 @@ Not in this public copy. See the private handoff (`fathom-handoff.md`), which th
    - fix;
    - watch it pass.
 3. **Real-data check:** the private fixture test with `RECON_DIR`. Every line within 1 EGP, or the cause named by document.
-4. **Before each push:** typecheck, lint, unit, DB tests, both browser suites (reset the rate counter first). Then push and check CI.
+4. **Before each push:**
+   - typecheck, lint, unit and DB tests;
+   - both browser suites: they serve the last production build, so first run `set -a && . .local-supabase/env && set +a && npx next build`, and reset the rate counter;
+   - then push and check CI.
 5. **Schema change:** write the migration, give the owner the path and the text, wait for "done", then verify read-only.
 6. **Reply to the owner briefly:**
    - what changed;
