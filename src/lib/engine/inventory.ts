@@ -299,6 +299,8 @@ function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, 
 
 /** Checks against the accounts (the internal ones, rentals and quantities, are not counted as "agreeing with the accounts"). */
 const ACCOUNT_CHECKS = new Set(["stock_value", "stock_movement", "cogs", "receipts"]);
+/** A check counted in units, not money. */
+export const isUnitCheck = (key: string) => key.startsWith("qty_");
 /** A check between Odoo's own exports (units, value by location, rentals), not against the accounts. */
 export const isInsideCheck = (key: string) => !ACCOUNT_CHECKS.has(key);
 export function tieSummary(tieouts: TieOut[]): { off: TieOut[]; agreed: number; checked: number } {
@@ -419,7 +421,7 @@ export function inventoryAnalysis(
   };
   for (const t of tieouts.filter((x) => x.status === "off")) {
     const [en, a] = NAME[t.key];
-    const units = t.key === "qty_onhand" || t.key === "qty_valued";
+    const units = isUnitCheck(t.key);
     const f = (v: number) => (units ? String(r2(v)) : fmt(v));
     const causes = t.causes.slice(0, 3).map((c) => `${c.ref} (${f(c.module - c.ledger)})`).join(", ");
     const inside = INSIDE[t.key];
@@ -489,13 +491,25 @@ export function inventoryAnalysis(
  * Inventory (balance sheet, per month) and the cost of sales posted by stock moves or with customer invoices (the expense
  * lines grouped as "Cost of goods sold (stock)").
  */
-export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[]; sources?: Record<string, "ledger" | "file"> }): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
+/** Odoo's stock interim (delivered) account: goods delivered whose cost waits for the customer invoice. */
+const DELIVERED_INTERIM = /interim.*deliver|deliver.*interim|مخزون مؤقت.*(مسلم|تسليم)/i;
+
+export function inventoryLedger(months: { period: string; bs: Partial<Record<string, number>> }[], expenses: { suppliers: { p: string; s: string; c: string | null; a: number }[]; sources?: Record<string, "ledger" | "file"> }, accounts: { name: string; cls: string; amounts: Record<string, number> }[] = []): { stock: Record<string, number> | null; cogs: Record<string, number> | null } {
   const stock: Record<string, number> = {};
   for (const m of months) if (Object.keys(m.bs).length) stock[m.period] = Number(m.bs.inventory ?? 0);
   // A month with expense lines is in the ledger: its cost of sales from stock is what was posted there, 0 when nothing was.
   const cogs: Record<string, number> = {};
   // A month whose expense lines come from a purchases file shows that file, not the ledger: its cost of sales is unknown.
   for (const r of expenses.suppliers) if (expenses.sources?.[r.p] !== "file") cogs[r.p] = r2((cogs[r.p] ?? 0) + (r.s === COGS_SUPPLIER && (r.c === "cos_variable" || r.c === "cos_fixed") ? r.a : 0));
+  // Goods delivered but not yet invoiced are in the stock interim (delivered) account, not yet in cost of sales: the cost of
+  // what left the stock is the cost of sales posted plus that account's change. A month whose opening balance is unknown is
+  // not checked.
+  const interim = accounts.filter((a) => DELIVERED_INTERIM.test(a.name) && !["revenue", "cos_variable", "cos_fixed"].includes(a.cls));
+  if (interim.length) for (const p of Object.keys(cogs)) {
+    const prev = addMonths(p, -1);
+    if (!months.some((m) => m.period === prev && Object.keys(m.bs).length)) { delete cogs[p]; continue; }
+    cogs[p] = r2(cogs[p] + interim.reduce((x, a) => x + (a.amounts[p] ?? 0) - (a.amounts[prev] ?? 0), 0));
+  }
   return { stock: Object.keys(stock).length ? stock : null, cogs: Object.keys(cogs).length ? cogs : null };
 }
 
@@ -538,13 +552,19 @@ export function inventoryMonthly(d: InventoryData, end: string, n = 12): { p: st
 
 /** What one unit cost when received, per product and month (value ÷ quantity of receipt layers); null in a month with no receipts. */
 /** keys: products as productKey gives them ("[code] name", or the name alone when there is no internal reference). */
-export function receiptCost(d: InventoryData, keys: string[], periods: string[]): { code: string; product: string; points: (number | null)[] }[] {
+/**
+ * A month whose receipts cost under 5% of the product's usual (median) receipt cost is set aside in odd ("check receipt"):
+ * a receipt entered at a token price and revalued later must not read as a price rise of thousands of percent.
+ */
+export function receiptCost(d: InventoryData, keys: string[], periods: string[]): { code: string; product: string; points: (number | null)[]; odd: string[] }[] {
   return keys.map((code) => {
     const rows = d.layers.filter((l) => productKey(l.code, l.product) === code && l.kind === "receipt" && l.q > 0);
-    return {
-      code, product: rows[rows.length - 1]?.product ?? code,
-      points: periods.map((p) => { const m = rows.filter((l) => l.p === p); const q = m.reduce((s, l) => s + l.q, 0); return q > 0 ? r2(sumV(m) / q) : null; }),
-    };
+    const unit = (p: string) => { const m = rows.filter((l) => l.p === p); const q = m.reduce((s, l) => s + l.q, 0); return q > 0 ? sumV(m) / q : null; };
+    const all = [...new Set(rows.map((l) => l.p))].map(unit).filter((v): v is number => v !== null).sort((a, b) => a - b);
+    const median = all.length ? (all[(all.length - 1) >> 1] + all[all.length >> 1]) / 2 : 0;
+    const odd: string[] = [];
+    const points = periods.map((p) => { const u = unit(p); if (u !== null && u < median * 0.05) { odd.push(p); return null; } return u === null ? null : r2(u); });
+    return { code, product: rows[rows.length - 1]?.product ?? code, points, odd };
   });
 }
 

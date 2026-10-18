@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Boxes, CheckCircle2, Info, Loader2, TriangleAlert } from "lucide-react";
 import { hasPL, money } from "@/lib/engine";
-import { inventoryAnalysis, inventoryLedger, isInsideCheck, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
+import { inventoryAnalysis, inventoryLedger, isInsideCheck, isUnitCheck, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
 import { useCompany } from "@/lib/company/context";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -34,9 +34,9 @@ export function useInventoryAnalysis() {
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
     // The company's location types (Odoo's, or its own choices) decide which locations hold stock.
     const types = c.inventorySettings?.locationTypes;
-    const s = inventoryAnalysis(types && Object.keys(types).length ? { ...d, moves: { ...d.moves, types } } : d, { type: sel.type, end }, c.settings.fyStartMonth, { ledger: inventoryLedger(c.months, expenses), revenue, lang, cur: c.settings.currency, ...(c.asOf?.startsWith(end) ? { today: c.asOf } : {}) });
+    const s = inventoryAnalysis(types && Object.keys(types).length ? { ...d, moves: { ...d.moves, types } } : d, { type: sel.type, end }, c.settings.fyStartMonth, { ledger: inventoryLedger(c.months, expenses, c.accounts), revenue, lang, cur: c.settings.currency, ...(c.asOf?.startsWith(end) ? { today: c.asOf } : {}) });
     return { ...s, end, months, own: end === sel.end };
-  }, [d, months, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, c.inventorySettings, c.asOf, lang]);
+  }, [d, months, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, c.inventorySettings, c.asOf, c.accounts, lang]);
 }
 export type InventoryView = NonNullable<ReturnType<typeof useInventoryAnalysis>>;
 
@@ -127,7 +127,7 @@ export function TieChip({ status, inside = false }: { status: TieOut["status"]; 
 export function TieTable({ tieouts, cur }: { tieouts: TieOut[]; cur: string }) {
   const T = useT();
   const t = T.d.inv;
-  const f = (x: TieOut, v: number | null) => (v === null ? "–" : x.key === "qty_onhand" ? v.toLocaleString("en-US") : money(v, cur));
+  const f = (x: TieOut, v: number | null) => (v === null ? "–" : isUnitCheck(x.key) ? v.toLocaleString("en-US", { maximumFractionDigits: 2 }) : money(v, cur));
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl min-w-[720px]" data-testid="inv-tieout-table">

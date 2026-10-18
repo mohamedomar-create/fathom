@@ -73,7 +73,7 @@ export function InventoryValuation() {
                     <td className="num">{money(a, cur)}</td>
                     <td className="num">{money(z, cur)}</td>
                     <td><Delta value={a ? ((z - a) / a) * 100 : null} good={z <= a} /></td>
-                    <td className="!text-start"><Sparkline values={pts} w={110} h={22} color="#7a7a72" /></td>
+                    <td className="!text-start"><Sparkline values={pts} w={110} h={22} color="#7a7a72" />{x.odd.length > 0 && <div className="mt-1 text-[11px] text-[#9a6b00]" data-testid="check-receipt">{t.checkReceipt(x.odd.map((p) => T.ms(p)).join(", "))}</div>}</td>
                   </tr>
                 );
               })}

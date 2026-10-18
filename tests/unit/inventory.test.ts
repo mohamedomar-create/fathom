@@ -227,7 +227,7 @@ describe("Inventory page series", () => {
 
   it("receiptCost is the average unit cost of goods received each month, landed costs excluded, a month without receipts empty", () => {
     const d = data({ layers: [...two.layers, layer("2026-09", "receipt", "P1", 5, 650)] });
-    expect(receiptCost(d, ["[P1] Mask"], ["2026-07", "2026-08", "2026-09"])).toEqual([{ code: "[P1] Mask", product: "Mask", points: [null, 100, 125] }]);
+    expect(receiptCost(d, ["[P1] Mask"], ["2026-07", "2026-08", "2026-09"])).toEqual([{ code: "[P1] Mask", product: "Mask", points: [null, 100, 125], odd: [] }]);
   });
 
   it("receiptCost finds a product with no internal reference, and keeps two products sharing a reference apart", () => {

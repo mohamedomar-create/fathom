@@ -11,7 +11,7 @@ import { TieTable } from "./common";
 export function StockChecks({ inventory: state, expenses }: { inventory: InventoryState; expenses: ExpensesData | null }) {
   const c = useCompany();
   const inventory = useInventoryData(state);
-  const ties = useMemo(() => inventoryTieOuts(inventory, inventoryLedger(c.months, expenses ?? { suppliers: [] }), c.settings.fyStartMonth), [inventory, expenses, c.months, c.settings.fyStartMonth]);
+  const ties = useMemo(() => inventoryTieOuts(inventory, inventoryLedger(c.months, expenses ?? { suppliers: [] }, c.accounts), c.settings.fyStartMonth), [inventory, expenses, c.months, c.accounts, c.settings.fyStartMonth]);
   if (!ties.length) return null;
   const sum = tieSummary(ties), off = sum.off.length, checked = sum.checked;
   return (

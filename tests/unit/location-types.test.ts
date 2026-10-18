@@ -62,3 +62,38 @@ describe("slow and dead stock (register D18)", () => {
     expect(a.products.find((p) => p.product === "Tube")?.flag).toBeNull();
   });
 });
+
+describe("cost of sales against the ledger (register D17)", () => {
+  it("goods delivered but not yet invoiced sit in the stock interim (delivered) account: the ledger side adds its change", async () => {
+    const { inventoryLedger } = await import("@/lib/engine/inventory");
+    const { COGS_SUPPLIER } = await import("@/lib/engine/expenses");
+    const months = [{ period: "2026-09", bs: { inventory: 1000 } }, { period: "2026-10", bs: { inventory: 900 } }];
+    const expenses = { suppliers: [{ p: "2026-09", s: COGS_SUPPLIER, c: "cos_variable", a: 400 }, { p: "2026-10", s: COGS_SUPPLIER, c: "cos_variable", a: 5087.38 }] };
+    const accounts = [{ id: "1", code: "w.3", name: "Stock Interim (Delivered)", cls: "other_ca" as const, amounts: { "2026-09": 100, "2026-10": 125.6 } }];
+    expect(inventoryLedger(months, expenses, accounts).cogs).toEqual({ "2026-10": 5112.98 });
+    expect(inventoryLedger(months, expenses).cogs).toEqual({ "2026-09": 400, "2026-10": 5087.38 });
+  });
+});
+
+describe("unit checks read as units (register D28)", () => {
+  it("every quantity check is a unit check; money checks are not", async () => {
+    const { isUnitCheck } = await import("@/lib/engine/inventory");
+    expect(["qty_valued", "qty_onhand"].every(isUnitCheck)).toBe(true);
+    expect(["stock_value", "cogs", "receipts", "onhand_value", "rental_value"].some(isUnitCheck)).toBe(false);
+  });
+});
+
+describe("receipt cost sanity (register D29)", () => {
+  it("a receipt below 5% of the product's average receipt cost is set aside as 'check receipt' and left out of the change", async () => {
+    const { receiptCost } = await import("@/lib/engine/inventory");
+    const L: LayerRow[] = [
+      { p: "2026-01", kind: "receipt", code: "", product: "DPC Low", category: "", q: 750, v: 1200, n: 1 },
+      { p: "2026-03", kind: "receipt", code: "", product: "DPC Low", category: "", q: 10, v: 32000, n: 1 },
+      { p: "2026-06", kind: "receipt", code: "", product: "DPC Low", category: "", q: 10, v: 38680, n: 1 },
+    ];
+    const d = summarizeInventory({ ...EMPTY_RECORDS, layers: L, meta: { withIds: false, kinds: ["valuation"], periods: [] } });
+    const [x] = receiptCost(d, ["DPC Low"], ["2026-01", "2026-03", "2026-06"]);
+    expect(x.points).toEqual([null, 3200, 3868]);
+    expect(x.odd).toEqual(["2026-01"]);
+  });
+});
