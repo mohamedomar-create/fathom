@@ -10,7 +10,7 @@ import { atLeast, connectionVerdict, unbalancedSync, type Role } from "@/lib/odo
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
-import { booksStartOf } from "@/lib/company/time-zone";
+import { booksStartOf, withProfile } from "@/lib/company/time-zone";
 import { probe, syncLedgerLines, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
 import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger, saveLedgerLines } from "@/lib/company/ledger-lines";
@@ -230,7 +230,8 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     const done = await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version.slice(0, 40), sync_started_at: null }).eq("company_id", companyId);
     if (done.error) throw new DbError(done.error);
     claimed = false;
-    await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
+    // A books start proposed from Odoo's opening date is kept for the next syncs and uploads (the company had none).
+    await supabase.from("companies").update({ source: "odoo", ...(res.booksStart && !booksStartOf(co?.kpi_config) ? { kpi_config: withProfile(co?.kpi_config, { booksStart: res.booksStart.suggested, openingAsAt: res.booksStart.day }) as Json } : {}) }).eq("id", companyId);
     await audit(supabase, companyId, "sync", true, `${res.periods[0]}–${res.periods[res.periods.length - 1]} · ${res.accounts.length} accounts · trial balance ${res.diagnostics.trialBalanceCheck}${detail ? ` · ${detail}` : ""}`, res.diagnostics.groups + lines);
     revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, offBalance: res.diagnostics.offBalance ?? [], version: res.diagnostics.version, detail } };

@@ -61,7 +61,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
 /** userCompanies: the companies the connected user may see. */
 /** custody: an employee's petty-cash custody account typed off-balance (as at the main company), coded next to the cash accounts. */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; openingDate?: string; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.custody) {
     accs.push({ id: 901, code: "101400", name: "Hossam Hassan", cls: "cash", type: "off_balance" });
@@ -93,6 +93,8 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
       } else if (model === "res.users") {
         if (m !== "read" || a[0][0] !== 7) throw new Error("only the user's own record");
         result = [{ id: 7, name: "iReport Reader", login: "me@x.com", company_ids: opts.userCompanies ?? [1] }];
+      } else if (model === "res.company" && m === "read") {
+        result = [{ id: a[0][0], account_opening_date: opts.openingDate ?? false }];
       } else if (model === "res.company") result = [{ id: 1, name: "Sample Trading Co", currency_id: [1, "EGP"] }, { id: 2, name: "Other Co", currency_id: [1, "EGP"] }];
       else if (model === "account.account") {
         const dom = a[0][0];

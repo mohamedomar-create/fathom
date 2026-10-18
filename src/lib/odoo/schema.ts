@@ -14,6 +14,7 @@ const many2one = z.union([z.tuple([id, text(256)]), z.literal(false), z.null()])
 const day = z.string().regex(/^\d{4}-\d{2}-\d{2}/, "not a date");
 
 export const Version = z.object({ server_version: z.string().max(40), server_version_info: z.array(z.union([z.number(), z.string().max(20)])).max(10) });
+export const OpeningRows = z.array(z.object({ id, account_opening_date: z.union([day.transform((d) => d.slice(0, 10)), z.literal(false), z.null()]).optional() })).max(1);
 export const CompanyRows = z.array(z.object({ id, name: text(256), currency_id: many2one })).max(10_000);
 export const UserRows = z.array(z.object({ id, name: text(256), company_ids: z.array(id).max(10_000) })).length(1);
 export const AccountRows = z.array(z.object({

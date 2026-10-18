@@ -11,7 +11,8 @@ import { isPL } from "@/lib/company/build";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
 import { clearedNotice } from "@/lib/company/ledger-tie";
-import { rememberClasses, rememberedEntries } from "@/lib/company/account-map";
+import { loadAccountMap, rememberClasses, rememberedEntries } from "@/lib/company/account-map";
+import { settingsToCopy } from "@/lib/company/copy-settings";
 import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
@@ -348,4 +349,39 @@ export async function deleteCompany(companyId: string): Promise<{ ok: boolean; e
   if (!count) return { ok: false, error: "Only organisation admins can delete a company." };
   revalidatePath("/companies");
   return { ok: true };
+}
+
+/**
+ * Start a company from what another company of the same books has learned: every account's class (that company's chart
+ * and its people's choices) and its books start, opening date and time zone. The target's own choices are kept. Classes
+ * apply from the next upload or sync.
+ */
+export async function copyCompanySettings(companyId: string, fromId: string): Promise<{ ok: true; classes: number; profile: boolean } | { ok: false; error: string }> {
+  if (!z.string().uuid().safeParse(companyId).success || !z.string().uuid().safeParse(fromId).success || companyId === fromId) return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const [{ data: target }, { data: src }] = await Promise.all([
+    supabase.from("companies").select("org_id, kpi_config").eq("id", companyId).maybeSingle(),
+    supabase.from("companies").select("org_id, kpi_config, data_version").eq("id", fromId).maybeSingle(),
+  ]);
+  if (!target || !src) return { ok: false, error: "You do not have access to both companies." };
+  const { data: mem } = await supabase.from("memberships").select("role").eq("org_id", target.org_id).eq("user_id", user.id).maybeSingle();
+  if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can do that." };
+  const [{ data: accts, error: e1 }, srcMap, targetMap] = await Promise.all([
+    supabase.from("source_accounts").select("code, name, class").eq("company_id", fromId).eq("version", src.data_version),
+    loadAccountMap(supabase, fromId), loadAccountMap(supabase, companyId),
+  ]);
+  if (e1) return { ok: false, error: dbError(e1, "copyCompanySettings") };
+  const { entries, profile } = settingsToCopy({ accounts: (accts ?? []).map((a) => ({ code: a.code ?? "", name: a.name, cls: a.class as ClassKey })), map: srcMap, kpiConfig: src.kpi_config }, targetMap);
+  for (let i = 0; i < entries.length; i += 500) {
+    const { error } = await supabase.from("account_map").upsert(entries.slice(i, i + 500).map((e) => ({ company_id: companyId, key: e.key, cls: e.cls, name: e.name })), { onConflict: "company_id,key" });
+    if (error) return { ok: false, error: dbError(error, "copyCompanySettings") };
+  }
+  const hasProfile = Object.keys(profile).length > 1 || profile.booksFromZero;
+  if (hasProfile) {
+    const { error } = await supabase.from("companies").update({ kpi_config: withProfile(target.kpi_config, profile) as Json }).eq("id", companyId);
+    if (error) return { ok: false, error: dbError(error, "copyCompanySettings") };
+  }
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true, classes: entries.length, profile: hasProfile };
 }

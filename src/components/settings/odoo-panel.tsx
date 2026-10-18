@@ -3,6 +3,7 @@ import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, S
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { disconnectOdoo, saveOdoo, syncOdooNow, testOdoo } from "@/app/company/[id]/settings/odoo-actions";
+import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
 import { mlabel } from "@/lib/engine";
@@ -22,7 +23,7 @@ const ACTION: Record<string, string> = { test: "Test", save: "Saved", key_change
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 const daysTo = (day: string) => Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.now()) / 86_400_000);
 
-export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean }) {
+export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0 }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number }) {
   const router = useRouter();
   const [url, setUrl] = useState(connection?.url ?? "");
   const [db, setDb] = useState(connection?.db ?? "");
@@ -34,6 +35,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const [months, setMonths] = useState(connection?.months_history ?? (booksStart ? ALL_MONTHS : 25));
   const [expires, setExpires] = useState(connection?.key_expires_on ?? "");
   const admin = role === "admin";
+  const [from, setFrom] = useState(others[0]?.id ?? "");
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[] } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
   const [pending, start] = useTransition();
   const [step, setStep] = useState<"idle" | "test" | "save" | "sync">("idle");
@@ -57,6 +59,15 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     setApiKey("");
     router.refresh();
   });
+  const copy = () => {
+    const name = others.find((o) => o.id === from)?.name ?? "";
+    if (!confirm(`Copy the account classes and the books start of "${name}" to this company? Classes you set here yourself are kept.`)) return;
+    run("save", async () => {
+      const r = await copyCompanySettings(companyId, from);
+      setMsg(r.ok ? { tone: "ok", text: `Copied ${r.classes} account class${r.classes === 1 ? "" : "es"}${r.profile ? " and the books start" : ""} from "${name}". Sync again to apply them.` } : { tone: "bad", text: r.error });
+      router.refresh();
+    });
+  };
   const disconnect = () => {
     if (!confirm("Remove the Odoo connection and its stored key? Synced data stays; syncing stops until the connection is saved again.")) return;
     run("save", async () => {
@@ -96,6 +107,18 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
               {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? "Syncing…" : "Sync now"}
             </button>
             {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />Disconnect</button>}
+          </div>
+        )}
+        {others.length > 0 && (
+          <div className={cn("mb-5 rounded-md border px-4 py-3 text-sm", mapCount === 0 ? "border-amber bg-amber/10" : "border-line")} data-testid="odoo-copy-settings">
+            <div className="font-medium">Start from another company of the same books</div>
+            <p className="mt-0.5 text-xs text-mute">{mapCount === 0 ? "This company has learned no account classes yet, so Odoo's own account types are used. " : ""}Copy every account&apos;s class and the books start from a company you already set up (e.g. from uploads), so both read the books the same way.</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <select className="rounded border border-line px-2 py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="odoo-copy-from">
+                {others.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <button onClick={copy} disabled={pending || !from} className="rounded border border-brand-d px-3 py-1.5 font-medium text-brand-d disabled:opacity-50" data-testid="odoo-copy">Copy settings</button>
+            </div>
           </div>
         )}
         <div className="grid gap-4 sm:grid-cols-2">

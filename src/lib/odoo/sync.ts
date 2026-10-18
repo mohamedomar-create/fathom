@@ -5,7 +5,7 @@ import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
 import { CLASS_LABEL } from "@/lib/ingest/classes";
 import { normLabel } from "@/lib/ingest/parse";
 import { GUARDED_MODELS, majorVersion, OdooClient, OdooError } from "./client";
-import { AccountRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, Version, XmlRows } from "./schema";
+import { AccountRows, OpeningRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, Version, XmlRows } from "./schema";
 import type { LedgerEntry } from "@/lib/ingest/extract";
 import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
 import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
@@ -79,6 +79,8 @@ export interface SyncedAccount {
 }
 
 export interface SyncResult {
+  /** Proposed from Odoo's opening entry when the company has no books start: the entry's day and the day after it. */
+  booksStart?: { day: string; suggested: string };
   accounts: SyncedAccount[];
   periods: string[];
   notes: string[];
@@ -140,10 +142,25 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     typeOf = (a) => (a.user_type_id ? byId.get(a.user_type_id[0]) ?? "" : "");
   }
 
+  // ---- books start: the company's, else Odoo's opening date (res.company.account_opening_date: Odoo dates the opening
+  // entry the day before it)
+  let proposed: SyncResult["booksStart"];
+  let booksStart = opts.booksStart ?? null;
+  if (!booksStart) {
+    try {
+      const [co] = trust(OpeningRows, await client.executeKw("res.company", "read", [[cid]], { fields: ["account_opening_date"], context: ctx }), "opening date");
+      const start = co?.account_opening_date;
+      if (start && start.endsWith("-01")) {
+        proposed = { day: new Date(Date.parse(`${start}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10), suggested: start };
+        booksStart = start;
+      }
+    } catch (e) { if (!(e instanceof OdooError) || /can't trust|switched off|too long/.test(e.message)) throw e; }
+  }
+
   // ---- periods
   const endP = opts.end ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const asked = addMonths(endP, -(opts.months - 1));
-  const startP = opts.booksStart && opts.booksStart.slice(0, 7) > asked && opts.booksStart.slice(0, 7) <= endP ? opts.booksStart.slice(0, 7) : asked;
+  const startP = booksStart && booksStart.slice(0, 7) > asked && booksStart.slice(0, 7) <= endP ? booksStart.slice(0, 7) : asked;
   const periods: string[] = [];
   for (let p = startP; p <= endP; p = addMonths(p, 1)) periods.push(p);
   const startDate = `${startP}-01`;
@@ -252,6 +269,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
 
   const notes = [
     `Synced from Odoo ${v.server_version}: posted entries only, ${opts.includeBranches ? "including branches" : "this company only"}.`,
+    ...(proposed ? [`The books start on ${fmtDay(proposed.suggested)}: the day after Odoo's opening entry (${fmtDay(proposed.day)}). Everything before it is the opening balance; change it in Company profile if it is wrong.`] : []),
     "Retained earnings include profit to date computed from the P&L accounts (Odoo does not close P&L accounts into equity).",
   ];
   // An account Odoo types off-balance (or not at all) that holds posted entries is a real one (petty cash custody kept
@@ -264,7 +282,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     latePostings = trust(Count, await client.executeKw("account.move.line", "search_count", [[...base, ["date", "<=", opts.since.through], ["create_date", ">", at]]], { context: ctx }), "late postings");
     if (latePostings) notes.push(`${latePostings} posted line${latePostings > 1 ? "s" : ""} dated up to ${fmtDay(opts.since.through)} ${latePostings > 1 ? "were" : "was"} entered in Odoo after the last import (${fmtDay(at.slice(0, 10))}). They are in this sync; reports made from the last import missed them. Set a lock date in Odoo once a period is closed.`);
   }
-  return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance, ...(latePostings !== undefined ? { latePostings } : {}) } };
+  return { ...(proposed ? { booksStart: proposed } : {}), accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance, ...(latePostings !== undefined ? { latePostings } : {}) } };
 }
 
 export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[]; lines: number; note: string | null }

@@ -27,6 +27,11 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const { data: people } = who.length ? await supabase.from("profiles").select("id, email, full_name").in("id", who) : { data: [] };
   const name = new Map((people ?? []).map((p) => [p.id, p.full_name || p.email]));
   const odooLog = (audit ?? []).map((a) => ({ ...a, who: a.user_id ? name.get(a.user_id) ?? "a former member" : "—" }));
+  // Other companies this person can see, to start this one from what they have learned (classes, books start).
+  const [{ data: others }, { count: mapCount }] = await Promise.all([
+    supabase.from("companies").select("id, name").neq("id", id).order("name"),
+    supabase.from("account_map").select("key", { count: "exact", head: true }).eq("company_id", id),
+  ]);
   // The Odoo security update (migration 0025) adds the columns read above; until it runs, the connection stays closed.
   const odooReady = !odooErr || odooErr.code !== "42703";
   // Months that already have sales from a file: a new sales file asks before replacing them.
@@ -53,7 +58,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
       {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={step === "opening" || step === "sales" || step === "financials" || step === "expenses" || step === "inventory" ? step : undefined} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} />}
-      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} role={role === "admin" ? "admin" : "editor"} log={odooLog} ready={odooReady} />}
+      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} role={role === "admin" ? "admin" : "editor"} log={odooLog} ready={odooReady} others={others ?? []} mapCount={mapCount ?? 0} />}
       </>}
     </div>
   );

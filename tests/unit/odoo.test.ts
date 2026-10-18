@@ -60,6 +60,24 @@ describe("Odoo connector", () => {
     expect(plain.diagnostics.latePostings).toBeUndefined();
   });
 
+  it("without a books start, Odoo's opening date proposes it (its opening entry is dated the day before)", async () => {
+    const f = fakeOdoo(17, { openingDate: "2026-01-01" });
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    expect(res.booksStart).toEqual({ day: "2025-12-31", suggested: "2026-01-01" });
+    expect(res.periods[0]).toBe("2026-01");
+    expect(res.notes.join(" ")).toMatch(/books start on 1 Jan 2026.*opening entry/);
+    check(res, 9);
+  });
+
+  it("a books start the company already has wins over Odoo's", async () => {
+    const f = fakeOdoo(17, { openingDate: "2026-01-01" });
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09", booksStart: "2025-10-01" });
+    expect(res.periods[0]).toBe("2025-10");
+    expect(res.booksStart).toBeUndefined();
+  });
+
   it("a books start inside the months asked for: nothing before it is a month, and the books still agree", async () => {
     const f = fakeOdoo(17);
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
