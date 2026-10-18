@@ -351,3 +351,17 @@ describe("banks are lenders, not suppliers", () => {
     expect(a.byLender[0].interest).toBeGreaterThan(0);
   });
 });
+
+describe("one-off accounts are judged over twelve months (register D27)", () => {
+  const months = ["2025-11", "2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09", "2026-10"];
+  const accts: ExpenseAccount[] = [
+    { id: "rent", code: "6101", name: "Office rent", cls: "exp_fixed", amounts: Object.fromEntries(months.map((p) => [p, 1000])) },
+    { id: "fair", code: "6201", name: "Exhibition", cls: "exp_variable", amounts: { "2026-10": 5000 } },
+    { id: "sales", code: "4000", name: "Sales", cls: "revenue", amounts: Object.fromEntries(months.map((p) => [p, 9000])) },
+  ];
+  it("in a one-month view, rent paid every month is recurring and a first-time exhibition is one-off", () => {
+    const a = expensesAnalysis(accts, summariseExpenses([]), { type: "month", end: "2026-10" }, 1, {});
+    expect(a.byAccount.find((r) => r.key === "rent")!.recurring).toBe(true);
+    expect(a.byAccount.find((r) => r.key === "fair")!.recurring).toBe(false);
+  });
+});

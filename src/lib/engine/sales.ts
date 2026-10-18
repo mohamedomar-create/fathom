@@ -81,6 +81,8 @@ export interface SalesAnalysis {
   compare: number | null;
   growth: number | null;
   invoices: number;
+  /** Credit notes (refunds) in the period, counted apart from invoices. */
+  creditNotes: number;
   avgInvoice: number | null;
   lines: number;
   customers: { active: number; new: number | null; returning: number | null; lost: number | null; lostNames: string[]; top10Share: number | null; topShare: number | null; topName: string | null };
@@ -105,6 +107,8 @@ export interface SalesAnalysis {
 }
 
 const sum = <T,>(xs: T[], f: (x: T) => number) => xs.reduce((s, x) => s + f(x), 0);
+/** A credit note: Odoo's refund series ("RINV"), or a series that names one, or any series whose lines net negative. */
+export const isCreditNote = (r: { s: string; a: number }) => /^R[A-Z]*INV|refund|credit|^CN$/i.test(r.s) || (r.a < 0 && !/INV/i.test(r.s));
 const pctOf = (a: number, b: number) => (b ? (a / b) * 100 : 0);
 const growthOf = (a: number, b: number | null) => (b === null || b === 0 ? null : ((a - b) / Math.abs(b)) * 100);
 
@@ -156,7 +160,11 @@ export function salesAnalysis(
   const cRows = d.customers, pRows = d.products;
   const total = sum(cRows.filter((r) => cur.has(r.p)), (r) => r.a);
   const compare = cmp ? sum(cRows.filter((r) => cmp.has(r.p)), (r) => r.a) : null;
-  const invoices = sum(cRows.filter((r) => cur.has(r.p)), (r) => r.d);
+  // Credit notes ("RINV/…", or a series whose lines net negative) are counted apart from invoices.
+  const inWin = cRows.filter((r) => cur.has(r.p));
+  const invoices = sum(inWin.filter((r) => !isCreditNote(r)), (r) => r.d);
+  const creditNotes = sum(inWin.filter(isCreditNote), (r) => r.d);
+  const invoiced = sum(inWin.filter((r) => !isCreditNote(r)), (r) => r.a);
   const lines = sum(cRows.filter((r) => cur.has(r.p)), (r) => r.n);
 
   // ---- customers
@@ -164,7 +172,8 @@ export function salesAnalysis(
   const byCust = new Map<string, Map<string, number>>();
   for (const r of cRows) if (named(r)) { const m = byCust.get(r.c) ?? new Map(); m.set(r.p, (m.get(r.p) ?? 0) + r.a); byCust.set(r.c, m); }
   const bought = (c: string, ps: string[]) => ps.some((p) => (byCust.get(c)?.get(p) ?? 0) > 0);
-  const activeSet = [...byCust.keys()].filter((c) => bought(c, window.periods));
+  // Active: any invoice or refund in the period (a customer with only a refund is still a customer of the period).
+  const activeSet = [...byCust.keys()].filter((c) => window.periods.some((p) => (byCust.get(c)?.get(p) ?? 0) !== 0));
   const first = [...held][0];
   // "New" needs history: at least three loaded months before the window, so a first purchase really is a first.
   const history = first && first <= addMonths(window.start, -3);
@@ -256,7 +265,7 @@ export function salesAnalysis(
   if (margin === null && costCoverage < 95) notes.push(L("Margins need product cost: upload Odoo's Sales or Invoice Analysis with the Margin or Cost column.", "الهوامش تحتاج تكلفة المنتج: ارفع تحليل المبيعات أو الفواتير من Odoo مع عمود الهامش أو التكلفة."));
 
   return {
-    window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, invoices, avgInvoice: invoices ? total / invoices : null, lines,
+    window, compareLabel: cmpOk ? word : "", months, total, compare, growth: g, invoices, creditNotes, avgInvoice: invoices ? invoiced / invoices : null, lines,
     customers: {
       active: activeSet.length, new: newSet?.length ?? null, returning: newSet ? activeSet.length - newSet.length : null,
       lost: lostSet?.length ?? null, lostNames: lostSet?.slice(0, 20) ?? [],

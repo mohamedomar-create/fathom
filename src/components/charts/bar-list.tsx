@@ -13,8 +13,10 @@ export interface BarItem { key: string; label: string; value: number; share?: nu
 export function BarList({ items, cur, max = 10, testId, onSelect }: { items: BarItem[]; cur: string; max?: number; testId?: string; onSelect?: (key: string) => void }) {
   const [hover, setHover] = useState<string | null>(null);
   const T = useT();
-  const shown = items.slice(0, max);
-  const rest = items.slice(max);
+  // Rows with nothing in the period (they exist only in the comparison period) are neither drawn nor counted in "+N more".
+  const live = items.filter((x) => x.value !== 0);
+  const shown = live.slice(0, max);
+  const rest = live.slice(max);
   const rows = rest.length ? [...shown, { key: "__other", label: T.d.ana.more(rest.length), value: rest.reduce((s, x) => s + x.value, 0), share: rest.reduce((s, x) => s + (x.share ?? 0), 0) }] : shown;
   const top = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
   const anyNeg = rows.some((r) => r.value < 0);

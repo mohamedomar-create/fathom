@@ -19,7 +19,7 @@ export const sales = area(
     headline: (name: string, total: string, when: string, growth: string | null, invoices: number, customers: number, cat: string | null) =>
       `${name} invoiced ${total} in ${when}${growth ?? ""}, across ${invoices.toLocaleString("en-US")} invoice${invoices === 1 ? "" : "s"} to ${customers} customer${customers === 1 ? "" : "s"}${cat ?? ""}.`,
     catPart: (cat: string, share: string) => `; ${cat} is the largest category at ${share} of sales`,
-    netSales: "Net sales", invoices: "Invoices", needsLines: "needs invoice lines", lines: (n: number) => `${n.toLocaleString("en-US")} lines`,
+    netSales: "Net sales", invoices: "Invoices", needsLines: "needs invoice lines", lines: (n: number) => `${n.toLocaleString("en-US")} lines`, creditNotes: (n: number) => `${n.toLocaleString("en-US")} credit note${n === 1 ? "" : "s"}`,
     avgInvoice: "Average invoice", netOfTax: "net of tax", active: "Active customers", newNeedEarlier: "new customers need earlier months",
     newReturning: (n: number, r: number) => `${n} new · ${r} returning`, top10: "Top 10 customers", largest: (s: string) => `largest: ${s}`, ofSales: "of sales",
     grossMargin: "Gross margin", needsCost: "needs product cost", costKnown: (s: string) => `cost known for ${s}`,
@@ -66,7 +66,7 @@ export const sales = area(
     headline: (name: string, total: string, when: string, growth: string | null, invoices: number, customers: number, cat: string | null) =>
       `أصدرت ${name} فواتير بقيمة ${total} في ${when}${growth ?? ""}، عبر ${invoices.toLocaleString("en-US")} فاتورة لعدد ${customers} عميل${cat ?? ""}.`,
     catPart: (cat: string, share: string) => `؛ ${cat} أكبر فئة بنسبة ${share} من المبيعات`,
-    netSales: "صافي المبيعات", invoices: "الفواتير", needsLines: "يحتاج بنود الفواتير", lines: (n: number) => `عدد البنود: ${n.toLocaleString("en-US")}`,
+    netSales: "صافي المبيعات", invoices: "الفواتير", needsLines: "يحتاج بنود الفواتير", lines: (n: number) => `عدد البنود: ${n.toLocaleString("en-US")}`, creditNotes: (n: number) => `إشعارات دائنة: ${n.toLocaleString("en-US")}`,
     avgInvoice: "متوسط الفاتورة", netOfTax: "بعد خصم الضريبة", active: "العملاء النشطون", newNeedEarlier: "العملاء الجدد يحتاجون أشهرًا سابقة",
     newReturning: (n: number, r: number) => `جدد: ${n} · عائدون: ${r}`, top10: "أكبر 10 عملاء", largest: (s: string) => `الأكبر: ${s}`, ofSales: "من المبيعات",
     grossMargin: "هامش الربح الإجمالي", needsCost: "يحتاج تكلفة المنتج", costKnown: (s: string) => `التكلفة معروفة لـ ${s}`,

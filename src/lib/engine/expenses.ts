@@ -242,11 +242,16 @@ export function expensesAnalysis(
   const compare = cmp ? sum(acctRows.filter((r) => cmp.has(r.p)), (r) => r.a) : null;
   const byAccount = rank(acctRows, cur, cmp, (r) => r.acct.id, (r) => [r.acct.code, r.acct.name].filter(Boolean).join(" "), revenue, (r) => ({ group: GROUP_OF.get(r.acct.cls)!.name, cls: r.acct.cls }))
     .filter((r) => r.amount || r.compare);
+  const last12 = Array.from({ length: 12 }, (_, i) => addMonths(window.end, i - 11));
   for (const r of byAccount) {
     const a = costs.find((x) => x.id === r.key)!;
     r.spark = window.periods.map((p) => a.amounts[p] ?? 0);
     r.months = months.filter((p) => a.amounts[p]).length;
-    r.recurring = months.length >= 2 && r.months >= Math.ceil(months.length * 0.75);
+    // Recurring or one-off is judged over the twelve months to the period's end (a one-month view says nothing on its
+    // own), on the months the books hold; with under three months there is no judgement.
+    const year = last12.filter((p) => held.has(p));
+    const used = year.filter((p) => a.amounts[p]).length;
+    r.recurring = year.length >= 3 ? used >= Math.ceil(year.length * 0.75) : undefined;
   }
   const byGroup = rank(acctRows, cur, cmp, (r) => GROUP_OF.get(r.acct.cls)!.key, (r) => GROUP_OF.get(r.acct.cls)!.name, revenue);
   byGroup.sort((a, b) => EXPENSE_GROUPS.findIndex((g) => g.key === a.key) - EXPENSE_GROUPS.findIndex((g) => g.key === b.key));

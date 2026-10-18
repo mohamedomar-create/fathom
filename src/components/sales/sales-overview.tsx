@@ -34,7 +34,7 @@ export function SalesOverview() {
       <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="sales-headline">{headline}</p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
         <SalesTile label={t.netSales} value={money(s.total, cur)} sub={vs(s.growth, s.compareLabel)} neg={s.total < 0 || (s.growth ?? 0) < 0} testId="tile-sales" />
-        <SalesTile label={t.invoices} value={s.fromAccounts ? "–" : s.invoices.toLocaleString("en-US")} sub={<span className="text-mute">{s.fromAccounts ? t.needsLines : t.lines(s.lines)}</span>} />
+        <SalesTile label={t.invoices} value={s.fromAccounts ? "–" : s.invoices.toLocaleString("en-US")} sub={<span className="text-mute">{s.fromAccounts ? t.needsLines : s.creditNotes ? `${t.creditNotes(s.creditNotes)} · ${t.lines(s.lines)}` : t.lines(s.lines)}</span>} />
         <SalesTile label={t.avgInvoice} value={s.avgInvoice === null ? "–" : money(s.avgInvoice, cur)} sub={<span className="text-mute">{t.netOfTax}</span>} />
         <SalesTile label={t.active} value={s.fromAccounts ? "–" : cu.active.toLocaleString("en-US")} sub={<span className="text-mute">{s.fromAccounts ? t.needsLines : cu.new === null ? t.newNeedEarlier : t.newReturning(cu.new, cu.returning ?? 0)}</span>} />
         <SalesTile label={t.top10} value={cu.top10Share === null ? "–" : pct(cu.top10Share, 0)} sub={<span className="text-mute">{cu.topName ? t.largest(pct(cu.topShare ?? 0, 0)) : t.ofSales}</span>} neg={(cu.topShare ?? 0) > 20} />
@@ -58,7 +58,7 @@ export function SalesOverview() {
             ]} />
           {!s.fromAccounts && <>
             <h3 className="mb-2 mt-8 text-lg font-normal">{t.largestCustomers}</h3>
-            <BarList items={s.byCustomer.filter((r) => r.amount > 0).map((r) => ({ key: r.key, label: T.tl(r.name), value: r.amount, share: r.share }))} cur={cur} max={8} testId="customer-bars" />
+            <BarList items={s.byCustomer.map((r) => ({ key: r.key, label: T.tl(r.name), value: r.amount, share: r.share }))} cur={cur} max={8} testId="customer-bars" />
           </>}
         </div>
       </div>

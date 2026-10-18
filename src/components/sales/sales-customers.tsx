@@ -30,7 +30,7 @@ export function SalesCustomers() {
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
           <h2 className="mb-3 text-xl font-light">{t.topCustomers}</h2>
-          <BarList items={s.byCustomer.filter((r) => r.amount > 0).map((r) => ({ key: r.key, label: T.tl(r.name), value: r.amount, share: r.share }))} cur={cur} max={12} testId="customer-bars" />
+          <BarList items={s.byCustomer.map((r) => ({ key: r.key, label: T.tl(r.name), value: r.amount, share: r.share }))} cur={cur} max={12} testId="customer-bars" />
           <p className="mt-3 text-[13px] text-mute">{cu.top10Share === null ? "" : t.top10Text(pct(cu.top10Share, 0))} {(cu.topShare ?? 0) > 20 ? t.concentration : ""}</p>
         </div>
         <div>
