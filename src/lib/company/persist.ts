@@ -4,7 +4,7 @@ import type { ClassKey } from "@/lib/engine";
 import type { Json } from "@/lib/supabase/database.types";
 import type { createClient } from "@/lib/supabase/server";
 import { isPL, toNatural, toRaw } from "./build";
-import { fetchAllPages } from "./paged";
+import { loadBalances } from "./balances";
 import type { SourceRef, VersionAccount } from "./import-plan";
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
@@ -36,14 +36,7 @@ export async function loadVersion(supabase: Supa, companyId: string, version: nu
     refs: (a.refs ?? {}) as Record<string, SourceRef>, odoo_id: a.odoo_id, odoo_type: a.odoo_type, confidence: a.confidence,
     mapped_by: a.mapped_by as VersionAccount["mapped_by"],
   } satisfies VersionAccount]));
-  const bal = await fetchAllPages(async (from, to, withCount) => {
-    const { data, error: e2, count } = await supabase.from("account_balances")
-      .select("account_id, period, amount, import_id, source_accounts!inner(version)", withCount ? { count: "exact" } : undefined)
-      .eq("company_id", companyId).eq("source_accounts.version", version)
-      .order("account_id").order("period").range(from, to);
-    if (e2) throw new Error(e2.message);
-    return { rows: data ?? [], count: count ?? null };
-  });
+  const bal = await loadBalances(supabase, companyId, version);
   for (const b of bal) {
     const a = byId.get(b.account_id);
     if (!a) continue;

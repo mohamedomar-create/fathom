@@ -6,7 +6,6 @@ import type { Assumptions, ClassKey, ForecastDrivers, CompanySettings, Importanc
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts, type StoredAccount } from "./build";
-import { fetchAllPages } from "./paged";
 import type { AlertSetting, CompanyBundle } from "./types";
 
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
@@ -57,6 +56,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
 }
 
 import { KPI_DEFS } from "@/lib/engine";
+import { loadBalances } from "./balances";
 import { checkKey, runChecks } from "./checks";
 function withDefaults(active: string[], cfg: KpiConfig) {
   const set = new Set(active);
@@ -68,15 +68,8 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
   const { data: accts, error } = await supabase.from("source_accounts").select("id, code, name, class, sort_order").eq("company_id", companyId).eq("version", version).order("sort_order");
   if (error) throw error;
   const raw = new Map<string, Record<string, number>>((accts ?? []).map((a) => [a.id, {}]));
-  // All balances of this version, in 1,000-row pages fetched together (PostgREST caps a response at 1,000 rows).
-  const bal = await fetchAllPages(async (from, to, withCount) => {
-    const { data, error: e2, count } = await supabase.from("account_balances")
-      .select("account_id, period, amount, source_accounts!inner(version)", withCount ? { count: "exact" } : undefined)
-      .eq("company_id", companyId).eq("source_accounts.version", version)
-      .order("account_id").order("period").range(from, to);
-    if (e2) throw e2;
-    return { rows: data ?? [], count: count ?? null };
-  });
+  // All balances of this version in one call (see loadBalances).
+  const bal = await loadBalances(supabase, companyId, version);
   for (const b of bal) {
     const r = raw.get(b.account_id);
     if (r) r[b.period] = Number(b.amount);
