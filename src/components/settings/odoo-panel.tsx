@@ -33,7 +33,6 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const [branches, setBranches] = useState(connection?.include_branches ?? false);
   const [months, setMonths] = useState(connection?.months_history ?? (booksStart ? ALL_MONTHS : 25));
   const [expires, setExpires] = useState(connection?.key_expires_on ?? "");
-  const [accept, setAccept] = useState(false);
   const admin = role === "admin";
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[] } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
   const [pending, start] = useTransition();
@@ -48,13 +47,11 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     if (!company || !r.data.companies.some((c) => c.id === company)) setCompany(r.data.companies[0]?.id ?? null);
     const p = r.data;
     const safe = p.rights === "read" && p.user.companies.length === 1;
-    setMsg({ tone: p.rights === "write" ? "bad" : "ok", text: p.rights === "write"
-      ? `Connected to Odoo ${p.version}, but user "${p.user.name}" can change accounting data (${p.canChange.join(", ")}). It can't be saved: use a read-only user.`
-      : `Connected to Odoo ${p.version} as "${p.user.name}". ${safe ? "Read-only ✓ · one company ✓." : p.rights === "unknown" ? "Odoo did not confirm the user is read-only." : "Read-only ✓."} ${admin ? "Choose the company, then save." : "An admin saves the connection."}` });
+    setMsg({ tone: "ok", text: `Connected to Odoo ${p.version} as "${p.user.name}". ${safe ? "Read-only ✓ · one company ✓. " : ""}${admin ? "Choose the company, then save." : "An admin saves the connection."}` });
   });
   const save = () => run("save", async () => {
     const name = probe?.companies.find((c) => c.id === company)?.name ?? connection?.odoo_company_name ?? "";
-    const r = await saveOdoo({ companyId, url, db, login, apiKey, odooCompanyId: company!, odooCompanyName: name, includeBranches: branches, months, version: probe?.version, keyExpiresOn: expires || null, acceptUnverified: accept });
+    const r = await saveOdoo({ companyId, url, db, login, apiKey, odooCompanyId: company!, odooCompanyName: name, includeBranches: branches, months, version: probe?.version, keyExpiresOn: expires || null });
     if (!r.ok) { setMsg({ tone: "bad", text: r.error }); return; }
     setMsg({ tone: "ok", text: "Connection saved. Run a sync to load the data." });
     setApiKey("");
@@ -115,7 +112,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
         {probe && (
           <div className={cn("mt-5 flex gap-2 rounded px-3 py-2.5 text-sm", probe.rights === "read" ? "bg-green-bg text-green-d" : "bg-amber/15")} data-testid="odoo-rights">
             {probe.rights === "read" ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />}
-            <div>Odoo user <b>{probe.user.name}</b> · {probe.rights === "read" ? "cannot create, change or delete accounting records" : probe.rights === "write" ? `can change ${probe.canChange.join(", ")}` : "rights not confirmed by Odoo"} · sees {probe.user.companies.length} compan{probe.user.companies.length === 1 ? "y" : "ies"}</div>
+            <div>Odoo user <b>{probe.user.name}</b> · {probe.rights === "read" ? "cannot create, change or delete accounting records" : probe.rights === "write" ? `can change ${probe.canChange.join(", ")} (allowed; iReport only reads, keep the key private)` : "rights not confirmed by Odoo (allowed; iReport only reads)"} · sees {probe.user.companies.length} compan{probe.user.companies.length === 1 ? "y" : "ies"}</div>
           </div>
         )}
         {admin && (probe || saved) && (
@@ -133,9 +130,8 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
             </label>
             <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={branches} onChange={(e) => setBranches(e.target.checked)} /> Include branches (child companies)</label>
             <label><span className="label mb-1 block">API key expires on (optional)</span><input type="date" className={field} value={expires} onChange={(e) => setExpires(e.target.value)} data-testid="odoo-expires" /></label>
-            {probe?.rights === "unknown" && <label className="flex items-start gap-2 text-sm sm:col-span-3"><input type="checkbox" className="mt-1" checked={accept} onChange={(e) => setAccept(e.target.checked)} /> I accept the risk: Odoo did not confirm this user is read-only (iReport still sends reading requests only).</label>}
             <div className="sm:col-span-3">
-              <button onClick={save} disabled={pending || !company || probe?.rights === "write"} data-testid="odoo-save" className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? "Saving…" : "Save connection"}</button>
+              <button onClick={save} disabled={pending || !company} data-testid="odoo-save" className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? "Saving…" : "Save connection"}</button>
             </div>
           </div>
         )}
@@ -164,10 +160,10 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
       <aside className="rounded-lg bg-band p-4 text-[13px]">
         <div className="label mb-2">How to connect</div>
         <ol className="list-decimal space-y-2 ps-4">
-          <li>In Odoo, create a separate user, e.g. <b>iReport Reader</b>, with Accounting <b>Read-only</b> access only, and only your company in <b>Allowed companies</b>. Never use an admin&apos;s key.</li>
+          <li>Any Odoo user with API access works. Safest: a separate user, e.g. <b>iReport Reader</b>, with Accounting <b>Read-only</b> access and only your company in <b>Allowed companies</b>.</li>
           <li>Sign in as that user: <b>avatar → My Profile → Account Security → New API Key</b>. Give it an end date (e.g. 90 days). Copy the key.</li>
           <li>The database name is shown on the Odoo login page or under <b>Settings → Developer tools → About</b>.</li>
-          <li>Test: iReport checks with Odoo that the user cannot change anything and sees only your company. Otherwise it won&apos;t save.</li>
+          <li>Test: iReport shows what the user may do in Odoo. Any user with API access can connect; iReport only ever reads. A read-only user is still the safest choice.</li>
         </ol>
         <p className="mt-3 text-mute">Odoo Online (SaaS) allows the external API on the <b>Custom</b> plan; Odoo.sh and self-hosted Odoo 13–18 work out of the box. The server must be reachable on the internet.</p>
         <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">Odoo external API docs <ExternalLink className="h-3 w-3" /></a>

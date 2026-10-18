@@ -170,21 +170,25 @@ describe("when a connection may be saved", async () => {
   const { connectionVerdict, atLeast } = await import("@/lib/odoo/policy");
   const base = { rights: "read" as const, canChange: [], user: { name: "iReport Reader", companies: [1] }, companies: [{ id: 1, name: "Sample Trading Co", currency: "EGP" }, { id: 2, name: "Other Co", currency: "EGP" }] };
 
-  it("a read-only user of exactly the chosen company is accepted", () => {
-    expect(connectionVerdict(base, 1, false)).toMatchObject({ ok: true });
+  it("a read-only user of exactly the chosen company is accepted, with no warning", () => {
+    expect(connectionVerdict(base, 1, false)).toMatchObject({ ok: true, warnings: [] });
   });
-  it("a user who can change accounting data is refused", () => {
-    expect(connectionVerdict({ ...base, rights: "write", canChange: ["account.move"] }, 1, false)).toMatchObject({ ok: false, reason: expect.stringMatching(/can change accounting data \(account\.move\)/) });
+  it("any user with API access may connect: one who can change accounting data is accepted, with a warning", () => {
+    const v = connectionVerdict({ ...base, rights: "write", canChange: ["account.move"] }, 1, false);
+    expect(v.ok).toBe(true);
+    expect(v.warnings.join(" ")).toMatch(/can change accounting data \(account\.move\).*only reads/);
   });
-  it("unconfirmed rights are refused unless the admin accepts the risk", () => {
-    expect(connectionVerdict({ ...base, rights: "unknown" }, 1, false).ok).toBe(false);
-    expect(connectionVerdict({ ...base, rights: "unknown" }, 1, false, true).ok).toBe(true);
+  it("unconfirmed rights are accepted, with a warning", () => {
+    const v = connectionVerdict({ ...base, rights: "unknown" }, 1, false);
+    expect(v.ok).toBe(true);
+    expect(v.warnings.join(" ")).toMatch(/did not confirm/);
   });
-  it("a user who can see other companies is refused, naming them", () => {
-    expect(connectionVerdict({ ...base, user: { name: "x", companies: [1, 2] } }, 1, false)).toMatchObject({ ok: false, reason: expect.stringMatching(/also see Other Co/) });
-    expect(connectionVerdict({ ...base, user: { name: "x", companies: [1, 2] } }, 1, true).ok).toBe(true);
+  it("a user who can see other companies is accepted, naming them in a warning", () => {
+    const v = connectionVerdict({ ...base, user: { name: "x", companies: [1, 2] } }, 1, false);
+    expect(v.ok).toBe(true);
+    expect(v.warnings.join(" ")).toMatch(/also see Other Co/);
   });
-  it("a company the user can't see is refused", () => {
+  it("a company the user can't see is still refused (nothing could be read from it)", () => {
     expect(connectionVerdict(base, 2, false).ok).toBe(false);
   });
   it("roles: admin ≥ editor ≥ viewer; no role is nothing", () => {

@@ -134,8 +134,6 @@ const SaveSchema = ConnSchema.extend({
   version: z.string().max(40).optional(),
   /** The day the Odoo API key expires (set in Odoo), for a reminder before it stops working. */
   keyExpiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  /** The admin accepts a user Odoo did not confirm as read-only. */
-  acceptUnverified: z.boolean().optional(),
 });
 
 export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Result<true>> {
@@ -149,7 +147,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
     if (!key) throw new Error("Enter the API key.");
     // Tested again here, on the server: what the browser showed is never trusted for the save.
     const p = await probe((await connect(url, v.db, v.login, key)).client);
-    const verdict = connectionVerdict(p, v.odooCompanyId, v.includeBranches, v.acceptUnverified === true);
+    const verdict = connectionVerdict(p, v.odooCompanyId, v.includeBranches);
     if (!verdict.ok) { await audit(supabase, v.companyId, "refused", false, `save refused: ${verdict.reason} ${verdict.note}`); throw new Error(verdict.reason!); }
     const odooCompanyName = p.companies.find((c) => c.id === v.odooCompanyId)?.name ?? v.odooCompanyName;
     // A new key is encrypted bound to this company and connection; no key keeps the saved one (the database clears it if
@@ -159,7 +157,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
       p_odoo_company_id: v.odooCompanyId, p_odoo_company_name: odooCompanyName, p_include_branches: v.includeBranches, p_months: v.months, p_version: p.version, p_key_expires_on: v.keyExpiresOn ?? null,
     });
     if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
-    if (p.rights !== "read") await audit(supabase, v.companyId, "test", true, `saved with unconfirmed rights, accepted by the admin. ${verdict.note}`);
+    if (verdict.warnings.length) await audit(supabase, v.companyId, "test", true, `saved with warnings: ${verdict.warnings.join(" ")} ${verdict.note}`);
     revalidatePath(`/company/${v.companyId}/settings/source-data`);
     return { ok: true, data: true };
   } catch (e) { return fail(e); }
