@@ -38,6 +38,8 @@ export type SalesLineRow = { id: number; company_id: string; batch_id: string; s
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type PaymentBatchRow = { id: string; company_id: string; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type AgedReportRow = { id: string; company_id: string; side: "receivable" | "payable"; as_of: string; buckets: string[]; totals: Json; findings: Json; filename: string | null; created_by: string | null; created_at: string }
 export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add" | "all" | "update"; status: "open" | "done"; report: Json; created_by: string | null; created_at: string }
 export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string; live: boolean }
 export type StockMoveRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; lot: string; from_loc: string; to_loc: string; qty: number; uom: string; partner: string; live: boolean }
@@ -67,6 +69,8 @@ export type Database = {
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
+      payment_batches: Table<PaymentBatchRow, "company_id">;
+      aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
       expense_batches: Table<ExpenseBatchRow, "company_id" | "source">;
       expense_lines: Table<ExpenseLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
@@ -95,6 +99,10 @@ export type Database = {
       rate_limit_hit: { Args: { p_scope: string; p_subject: string }; Returns: boolean };
       odoo_secret: { Args: { p_company: string }; Returns: string | null };
       company_balances: { Args: { p_company: string; p_version: number }; Returns: Json };
+      save_aged_report: { Args: { p_company: string; p_side: string; p_as_of: string; p_buckets: string[]; p_totals: Json; p_findings: Json; p_filename: string; p_items: Json }; Returns: number };
+      begin_payment_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string | null; p_report?: Json }; Returns: string };
+      add_payment_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
+      payments_summary: { Args: { p_company: string }; Returns: Json };
       odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
       odoo_claim_sync: { Args: { p_company: string }; Returns: boolean };
       odoo_save: { Args: { p_company: string; p_url: string; p_db: string; p_login: string; p_key_enc: string | null; p_odoo_company_id: number; p_odoo_company_name: string; p_include_branches: boolean; p_months: number; p_version: string; p_key_expires_on: string | null }; Returns: undefined };
