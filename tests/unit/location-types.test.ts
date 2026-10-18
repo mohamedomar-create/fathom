@@ -40,3 +40,25 @@ describe("location types", () => {
     expect(at({ "WH/Workshop": "outside" })).toMatchObject({ status: "ok", module: 3, ledger: 3 });
   });
 });
+
+describe("product names over several lines (register D13)", () => {
+  it("every line of an Odoo product name is kept, joined with a space, in stock and sales files alike", async () => {
+    const { splitProduct } = await import("@/lib/ingest/inventory");
+    const { splitLabel } = await import("@/lib/ingest/sales");
+    expect(splitProduct("[Spare Parts] 3000126\nFlow Sensor, Mass Flow Front ")).toEqual({ code: "Spare Parts", product: "3000126 Flow Sensor, Mass Flow Front" });
+    expect(splitProduct("[Spare Parts] 3000126\nFlow Sensor, Back")).not.toEqual(splitProduct("[Spare Parts] 3000126\nFlow Sensor, Mass Flow Front"));
+    expect(splitLabel("[Spare Parts] 3000126\nFlow Sensor, Mass Flow Front").product).toBe("3000126 Flow Sensor, Mass Flow Front");
+    // An invoice line's label in the ledger adds the sale description under the product: only its first line names the product.
+    expect(splitLabel("[Spare Parts] Flow Sensor\nDelivered to ward 3, serial 77", true).product).toBe("Flow Sensor");
+  });
+});
+
+describe("slow and dead stock (register D18)", () => {
+  it("stock that came in through an inventory adjustment, never delivered, ages from that month; idle days count from the cut-off", () => {
+    const L: LayerRow[] = [{ p: "2026-01", kind: "adjustment", code: "P1", product: "Mask", category: "", q: 5, v: 500, n: 1 }, { p: "2026-09", kind: "receipt", code: "P2", product: "Tube", category: "", q: 1, v: 100, n: 1 }];
+    const d = summarizeInventory({ ...EMPTY_RECORDS, layers: L, meta: { withIds: false, kinds: ["valuation"], periods: ["2026-01", "2026-09", "2026-10"] } });
+    const a = inventoryAnalysis(d, { type: "month", end: "2026-10" }, 1, { ledger: { stock: null, cogs: null }, today: "2026-10-15" });
+    expect(a.products.find((p) => p.product === "Mask")?.flag).toBe("dead");
+    expect(a.products.find((p) => p.product === "Tube")?.flag).toBeNull();
+  });
+});

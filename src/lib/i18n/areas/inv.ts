@@ -31,7 +31,7 @@ export const inv = area(
     product: "Product", category: "Category", abc: "ABC", qty: "Quantity", valueCol: "Value", cogsCol: "Cost of sales", daysCol: "Days on hand",
     turnover: "Turns a year", lastOut: "Last delivery", flagSlow: "slow", flagDead: "dead",
     all: "All", aItems: "A items", bItems: "B items", cItems: "C items", slowF: "Slow", deadF: "Dead", noneMatch: "No products match.",
-    abcNote: "A items make 80% of cost of sales, B the next 15%, C the rest. Slow: not delivered for 90 days; dead: 180 days.",
+    abcNote: "A items make 80% of cost of sales, B the next 15%, C the rest. Slow: nothing delivered to a customer for 90 days; dead: 180 days, counted to the cut-off date. A product never delivered counts from the month its stock first came in.",
     kinds: {
       receipt: "Received from suppliers", delivery: "Delivered to customers", customer_return: "Customer returns", supplier_return: "Returned to suppliers",
       internal: "Between your locations", rental_out: "Out on rental", rental_back: "Back from rental", adjustment: "Inventory adjustments", scrap: "Scrap", manufacturing: "Manufacturing",
@@ -74,7 +74,7 @@ export const inv = area(
     product: "الصنف", category: "الفئة", abc: "فئة ABC", qty: "الكمية", valueCol: "القيمة", cogsCol: "تكلفة المبيعات", daysCol: "أيام المخزون",
     turnover: "مرات الدوران سنويًا", lastOut: "آخر تسليم", flagSlow: "بطيء", flagDead: "راكد",
     all: "الكل", aItems: "أصناف A", bItems: "أصناف B", cItems: "أصناف C", slowF: "بطيء", deadF: "راكد", noneMatch: "لا توجد أصناف مطابقة.",
-    abcNote: "أصناف A تمثل 80% من تكلفة المبيعات، وB الـ 15% التالية، وC الباقي. البطيء: لم يُسلَّم منذ 90 يومًا، والراكد: منذ 180 يومًا.",
+    abcNote: "أصناف A تمثل 80% من تكلفة المبيعات، وB الـ 15% التالية، وC الباقي. البطيء: لم يُسلَّم منه شيء لعميل منذ 90 يومًا، والراكد: منذ 180 يومًا، حتى تاريخ الإقفال. الصنف الذي لم يُسلَّم قط يُحسب من شهر أول دخول له.",
     kinds: {
       receipt: "مستلم من الموردين", delivery: "مسلّم للعملاء", customer_return: "مرتجعات العملاء", supplier_return: "مرتجع للموردين",
       internal: "بين مواقعك", rental_out: "خارج للتأجير", rental_back: "عائد من التأجير", adjustment: "تسويات الجرد", scrap: "هالك", manufacturing: "تصنيع",

@@ -38,8 +38,9 @@ export { isBillDoc, seriesOf };
  * An Odoo invoice line label: "[Trudell] Aero Chamber Plus, Medium Mask" or "[Device] Airtech AE-8\n01/04/2026 13:00 to 02/04/2026".
  * The bracket is the product's internal reference, which many companies use for the brand or category.
  */
-export function splitLabel(label: string): { category: string; product: string } {
-  const first = label.split(/\r?\n/)[0].trim();
+/** firstLine: an invoice line's label (a ledger entry), where the lines under the product's name are the sale description. */
+export function splitLabel(label: string, firstLine = false): { category: string; product: string } {
+  const first = (firstLine ? label.split(/\r?\n/)[0] : label).replace(/\s+/g, " ").trim();
   const m = first.match(/^\[([^\]]+)\]\s*(.*)$/);
   const product = (m ? m[2] : first).replace(/\s+/g, " ").trim();
   return { category: m ? m[1].trim() : NO_CATEGORY, product: product || "No description" };
@@ -54,7 +55,7 @@ export function salesFromLedger(lines: { cls: string | null; excluded: boolean; 
       if (!e.amount) continue;
       // A journal entry on a revenue account (no invoice behind it) keeps sales equal to revenue, under one plain name.
       const journal = !e.label || e.label === e.ref || e.label === `Entry ${e.ref}` || /^MISC\b/i.test(seriesOf(e.ref));
-      const { category, product } = journal && !/^\[/.test(e.label) ? { category: NO_CATEGORY, product: JOURNAL_ENTRIES } : splitLabel(e.label);
+      const { category, product } = journal && !/^\[/.test(e.label) ? { category: NO_CATEGORY, product: JOURNAL_ENTRIES } : splitLabel(e.label, true);
       out.push({ day: e.day, period: e.period, doc: e.ref, series: seriesOf(e.ref), customer: e.partner || NO_CUSTOMER, product, category, salesperson: "", qty: null, amount: Math.round(-e.amount * 100) / 100, cost: null });
     }
   }

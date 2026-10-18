@@ -34,9 +34,9 @@ export function useInventoryAnalysis() {
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
     // The company's location types (Odoo's, or its own choices) decide which locations hold stock.
     const types = c.inventorySettings?.locationTypes;
-    const s = inventoryAnalysis(types && Object.keys(types).length ? { ...d, moves: { ...d.moves, types } } : d, { type: sel.type, end }, c.settings.fyStartMonth, { ledger: inventoryLedger(c.months, expenses), revenue, lang, cur: c.settings.currency });
+    const s = inventoryAnalysis(types && Object.keys(types).length ? { ...d, moves: { ...d.moves, types } } : d, { type: sel.type, end }, c.settings.fyStartMonth, { ledger: inventoryLedger(c.months, expenses), revenue, lang, cur: c.settings.currency, ...(c.asOf?.startsWith(end) ? { today: c.asOf } : {}) });
     return { ...s, end, months, own: end === sel.end };
-  }, [d, months, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, c.inventorySettings, lang]);
+  }, [d, months, expenses, sel.type, sel.end, c.months, c.settings.fyStartMonth, c.settings.currency, c.inventorySettings, c.asOf, lang]);
 }
 export type InventoryView = NonNullable<ReturnType<typeof useInventoryAnalysis>>;
 

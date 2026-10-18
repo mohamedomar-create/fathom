@@ -11,7 +11,7 @@ const line = (p: Partial<L> & { period: string; amount: number }): L => ({ doc: 
 describe("reading sales from an Odoo General Ledger", () => {
   it("splits Odoo's invoice line label into category and product", () => {
     expect(splitLabel("[Trudell] Aero Chamber Plus, Medium Mask")).toEqual({ category: "Trudell", product: "Aero Chamber Plus, Medium Mask" });
-    expect(splitLabel("[Device] Airtech AE-8 10L/min\n01/04/2026 13:00:00 to 02/04/2026 13:00:00")).toEqual({ category: "Device", product: "Airtech AE-8 10L/min" });
+    expect(splitLabel("[Device] Airtech AE-8 10L/min\n01/04/2026 13:00:00 to 02/04/2026 13:00:00", true)).toEqual({ category: "Device", product: "Airtech AE-8 10L/min" });
     expect(splitLabel("Consulting fee")).toEqual({ category: "No category", product: "Consulting fee" });
     expect(seriesOf("INV2/2026/0004")).toBe("INV2");
     expect(seriesOf("RINV/2026/0001")).toBe("RINV");

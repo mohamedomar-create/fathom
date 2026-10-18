@@ -353,7 +353,7 @@ export function inventoryAnalysis(
     const x = acc.get(k) ?? { code: l.code, product: l.product, category: l.category, v: 0, q: 0, c: 0 };
     x.v += l.v; x.q += l.q; x.product = l.product; x.category = l.category;
     if (inWin.has(l.p) && OUT_KINDS.has(l.kind)) x.c -= l.v;
-    if (l.kind === "receipt" && (!x.firstIn || l.p < x.firstIn)) x.firstIn = l.p;
+    if (l.q > 0 && (!x.firstIn || l.p < x.firstIn)) x.firstIn = l.p;
     acc.set(k, x);
   }
   const stats = [...acc.entries()].map(([k, x]) => {

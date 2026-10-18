@@ -30,9 +30,10 @@ const lineOf = (g: Grid, i: number) => i + 1 + (g.origin?.r ?? 0);
 
 /** "[P1] Mask" → code P1, product Mask (Odoo shows the internal reference in brackets). */
 export function splitProduct(label: string, code = ""): { code: string; product: string } {
-  const first = label.split(/\r?\n/)[0].trim();
-  const m = first.match(/^\[([^\]]+)\]\s*(.*)$/);
-  return m ? { code: code || m[1].trim(), product: m[2].trim() } : { code, product: first };
+  // A product name can run over several lines in Odoo ("3000126\nFlow Sensor…"): every line is part of it.
+  const all = label.replace(/\s+/g, " ").trim();
+  const m = all.match(/^\[([^\]]+)\]\s*(.*)$/);
+  return m ? { code: code || m[1].trim(), product: m[2].trim() } : { code, product: all };
 }
 
 /**
