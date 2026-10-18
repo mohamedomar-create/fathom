@@ -657,5 +657,7 @@ export { CLASS_LABEL, CLASS_OPTIONS } from "./classes";
 export function materialUnmapped(res: IngestResult) {
   const scale = (o: Record<string, number>) => Math.max(0, ...Object.values(o).map(Math.abs));
   const limit = Math.max(1, 0.005 * Math.max(scale(res.totals.revenue), scale(res.totals.assets)));
-  return res.lines.filter((l) => !l.cls && !l.system && l.why !== "excluded by you" && Math.max(0, ...Object.values(l.values).map(Math.abs)) > limit);
+  // A real account (a code, or ledger entries) must be mapped whatever its size; a line without either only when material.
+  const real = (l: (typeof res.lines)[number]) => !!l.code?.trim() || !!l.entries?.length;
+  return res.lines.filter((l) => !l.cls && !l.system && l.why !== "excluded by you" && Math.max(0, ...Object.values(l.values).map(Math.abs)) > (real(l) ? 0.004 : limit));
 }

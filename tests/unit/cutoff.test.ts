@@ -79,3 +79,16 @@ describe("the cut-off date on sales and expense files", () => {
     expect(cutLines(lines, undefined)).toEqual({ kept: lines, late: [] });
   });
 });
+
+describe("no account left unmapped (register D12)", () => {
+  it("an account with a code and any amount, however small, must be mapped before saving", async () => {
+    const { materialUnmapped } = await import("@/lib/ingest/pipeline");
+    const r = ingest(gl(), OPTS);
+    const fake = { ...r, lines: [...r.lines, { ...r.lines[0], key: "x", code: "5499", name: "Odd write-off", label: "5499 Odd write-off", cls: null, values: { "2026-10": 0.01 }, entries: [] }] };
+    expect(materialUnmapped(fake as never).map((l) => l.code)).toEqual(["5499"]);
+  });
+  it("Odoo's Sales Manual Discount is a revenue deduction", async () => {
+    const { classify } = await import("@/lib/ingest/classify");
+    expect(classify("Sales Manual Discount", "", null, {}, "5410").cls).toBe("revenue");
+  });
+});

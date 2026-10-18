@@ -75,3 +75,12 @@ describe("a part month against the month before (register D21)", () => {
     expect(a.findings.some((f) => /Revenue (up|down)/.test(f.title))).toBe(false);
   });
 });
+
+describe("a large margin swing points at timing first (register D22)", () => {
+  it("a fall of more than 10 points asks whether goods were delivered in one month and invoiced in another", () => {
+    const ms = [month("2026-08"), month("2026-09"), month("2026-10", 1, { cos_variable: 95_000 })];
+    const a = analyze(ms, { type: "month", end: "2026-10" }, SET);
+    const f = a.findings.find((x) => /Gross margin fell/.test(x.title))!;
+    expect(f.text).toMatch(/delivered .* invoiced/);
+  });
+});

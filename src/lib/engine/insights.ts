@@ -79,8 +79,8 @@ export function insights(ctx: InsightCtx): Finding[] {
       const d = gpm - (Pp.gross_profit / Pp.revenue) * 100;
       if (Math.abs(d) >= 1)
         add(d < 0 ? 2 : 1, d < 0 ? "risk" : "win", "profitability", L(`Gross margin ${d < 0 ? "fell" : "rose"} ${fixed(Math.abs(d), 1)} points`, `هامش مجمل الربح ${d < 0 ? "انخفض" : "ارتفع"} ${fixed(Math.abs(d), 1)} نقطة`),
-          L(`Now ${pct(gpm, 1)} (was ${pct(gpm - d, 1)}). ` + (d < 0 ? "Check supplier prices, discounts and product mix." : "Hold on to whatever drove this."),
-            `الآن ${pct(gpm, 1)} (كان ${pct(gpm - d, 1)}). ` + (d < 0 ? "راجع أسعار الموردين والخصومات وتشكيلة المنتجات." : "حافظ على ما أدى إلى ذلك.")));
+          L(`Now ${pct(gpm, 1)} (was ${pct(gpm - d, 1)}). ` + (Math.abs(d) >= 10 ? "A swing this large is usually timing: cost of sales is booked when goods are delivered, revenue when they are invoiced. Check first what was delivered in one month and invoiced in another, then supplier prices, discounts and mix." : d < 0 ? "Check supplier prices, discounts and product mix." : "Hold on to whatever drove this."),
+            `الآن ${pct(gpm, 1)} (كان ${pct(gpm - d, 1)}). ` + (Math.abs(d) >= 10 ? "تقلب بهذا الحجم غالبًا سببه التوقيت: تُسجل تكلفة المبيعات عند التسليم والإيراد عند الفوترة. راجع أولًا ما سُلّم في شهر وفُوتر في آخر، ثم أسعار الموردين والخصومات والتشكيلة." : d < 0 ? "راجع أسعار الموردين والخصومات وتشكيلة المنتجات." : "حافظ على ما أدى إلى ذلك.")));
     }
     if (gpm < tgtG) add(2, "risk", "kpis", L(`Gross margin ${pct(gpm, 1)} is under the ${pct(tgtG, 0)} target`, `هامش مجمل الربح ${pct(gpm, 1)} أقل من المستهدف ${pct(tgtG, 0)}`), L(`Each 1 point is worth about ${m(R * 0.01)} of gross profit a ${per} at this revenue.`, `كل نقطة واحدة تساوي نحو ${m(R * 0.01)} من مجمل الربح في ال${perA} عند هذه الإيرادات.`));
   }
