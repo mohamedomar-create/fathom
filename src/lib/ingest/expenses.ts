@@ -108,7 +108,7 @@ export function expensesFromLedger(lines: { code: string; name: string; cls: Cla
       if (stock && !(isBillDoc(e.ref) && e.partner)) continue;
       const series = seriesOf(e.ref);
       const supplier = cost ? supplierOf(e, l.cls, account) : e.partner;
-      out.push({ day: e.day, period: e.period, doc: e.ref, series, supplier, account, cls: l.cls, category: l.name || account, label: (e.label || "").split(/\r?\n/)[0].trim().slice(0, 200), amount: round2(e.amount) });
+      out.push({ day: e.day, period: e.period, doc: e.ref, series, supplier, account, cls: l.cls, category: l.name || account, label: (e.label || "").replace(/\s+/g, " ").trim().slice(0, 200), amount: round2(e.amount) });
     }
   }
   return out;

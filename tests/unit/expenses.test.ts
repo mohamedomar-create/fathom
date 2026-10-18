@@ -365,3 +365,10 @@ describe("one-off accounts are judged over twelve months (register D27)", () => 
     expect(a.byAccount.find((r) => r.key === "fair")!.recurring).toBe(false);
   });
 });
+
+describe("expense labels keep every line (register D10)", () => {
+  it("a two-line Odoo label is kept whole, joined with a space", () => {
+    const ls = expensesFromLedger([{ cls: "exp_fixed", excluded: false, code: "6101", name: "Rent", entries: [entry("2026-09-01", "BILL/1", "Office rent\nSeptember, 3rd floor", "Landlord", 1000)] }] as never);
+    expect(ls[0].label).toBe("Office rent September, 3rd floor");
+  });
+});
