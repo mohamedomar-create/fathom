@@ -23,6 +23,8 @@ const GRAND_TOTAL = arRx(/^(total|grand total|الإجمالي|الاجمالي|
 const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)\b/i);
 const PARTNER_HDR = arRx(/^(partner|customer|الشريك|العميل|الطرف|partenaire)$/i);
 const LABEL_HDR = arRx(/^(communication|label|description|memo|البيان|الوصف|البيان التفصيلي|libellé)$/i);
+const ASSETS_HEAD = arRx(/^(assets|total assets|الأصول|الاصول|actif)$/i);
+const CLAIMS_HEAD = arRx(/^(liabilities|equity|liabilities (\+|and|&) equity|الخصوم|الالتزامات|حقوق الملكية|الخصوم وحقوق الملكية|passif|capitaux propres)$/i);
 const NO_GROUP = arRx(/^\(no group\)$|^\(بدون مجموعة\)$/i);
 /** Words around a period in a trial-balance column group ("حركة شهر يناير 2025", "Movement Jan 2025"). */
 const PERIOD_WORDS = arRx(/(الحركة|حركة|خلال|الفترة|فترة|شهر|عن|movements?|transactions|period|month|for|of)\s*/gi);
@@ -125,14 +127,45 @@ function ledger({ g, rows, num, ov, layout, issues, today, cutoff: chosen, tr }:
   const accounts: Acc[] = [];
   let cur: Acc | null = null;
   const dc = (row: Cell[]) => (num(row[cDeb]) ?? 0) - (num(row[cCred]) ?? 0);
+  const empty = (v: Cell) => v === null || v === undefined || str(v) === "";
+  // A group heading's amounts are those of the accounts under it, up to its own "Total" row; nested groups are skipped
+  // (their accounts are counted one by one) and a code-less account inside it counts as an account.
+  const groupHeading = (at: number, label: string) => {
+    if (NO_GROUP.test(normAr(label))) return true;
+    const gcode = label.match(/^([\dA-Za-z][\d.\-]*)\s+/)?.[1];
+    if (!gcode) return false;
+    let sum = 0, kids = 0;
+    for (let k = at + 1; k < rows.length; k++) {
+      const c = str(rows[k][cCode]), n = str(rows[k][cName]);
+      if (!empty(rows[k][cDate])) continue;
+      if (!c) {
+        if (!n || INITIAL.test(n)) continue;
+        if (TOTAL_PREFIX.test(n)) { if (n.replace(TOTAL_PREFIX, "").trim() === label.trim()) break; continue; }
+        if (GRAND_TOTAL.test(n)) break;
+        const sub = n.match(/^([\dA-Za-z][\d.\-]*)\s+/)?.[1];
+        if (NO_GROUP.test(normAr(n)) || (sub && !sub.startsWith(gcode) && /^\d/.test(sub) && /^\d/.test(gcode))) break;
+        if (sub && sub.startsWith(gcode)) continue;
+        kids++; sum += dc(rows[k]);
+        continue;
+      }
+      if (!c.startsWith(gcode)) break;
+      kids++; sum += dc(rows[k]);
+    }
+    return kids > 0 && Math.abs(dc(rows[at]) - sum) <= Math.max(1, Math.abs(num(rows[at][cDeb]) ?? 0) * 1e-6);
+  };
   mark(tr, r, { role: "header" });
   for (let i = r + 1; i < rows.length; i++) {
     const row = rows[i];
     const code = str(row[cCode]), name = str(row[cName]);
     const date = row[cDate];
     const noDate = date === null || date === undefined || str(date) === "";
-    // Odoo 17+ accounts can lack a code in a company (shared charts): a dated-less heading with amounts is still an account.
-    const codeless = !code && noDate && name && !INITIAL.test(name) && !TOTAL_PREFIX.test(name) && !GRAND_TOTAL.test(name) && (num(row[cDeb]) !== null || num(row[cCred]) !== null);
+    // Odoo 17+ accounts can lack a code in a company (shared charts): a dated-less heading with amounts is still an account,
+    // unless it is an account-group heading (Odoo 18: "11 Fixed Assets", "(No Group)") carrying the totals of the accounts under it.
+    const codeless = !code && noDate && name && !INITIAL.test(name) && !TOTAL_PREFIX.test(name) && !GRAND_TOTAL.test(name) && (num(row[cDeb]) !== null || num(row[cCred]) !== null) && !groupHeading(i, name);
+    if (!code && noDate && name && !INITIAL.test(name) && !TOTAL_PREFIX.test(name) && !GRAND_TOTAL.test(name) && !codeless && (num(row[cDeb]) !== null || num(row[cCred]) !== null)) {
+      mark(tr, i, { role: "heading", note: "a group: its accounts are read one by one" });
+      continue;
+    }
     if ((code && noDate) || codeless) {
       cur = { key: `${g.name}|gl|${code || "-"}|${name}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: "", stmt: null, kind: "movement", values: {}, opening: 0, closing: dc(row), initial: false, moves: 0, entries: [] };
       accounts.push(cur);
@@ -304,7 +337,15 @@ function statement({ g, rows, num, ov, layout, issues, tr }: Ctx, r: number, cCo
   layout.headerRow = r;
   layout.asOf = partialDay(cols[cols.length - 1].endDay);
   const out: RawLine[] = [];
-  const heads: string[] = [];
+  // Odoo's sections ("Revenue", "Less Costs of Revenue") hold account groups ("4 Reveneus", "(No Group)"): a line's section
+  // is both, so an exchange gain under "(No Group)" is still known to be printed under Revenue.
+  let top: string | undefined;
+  const groups: string[] = [];
+  const sectionOf = () => [top, ...groups].filter(Boolean).join(" / ");
+  const GROUP_ROW = /^(\([^)]*\)|[\dA-Za-z]*\d[\d.\-]*\s+\S)/;
+  // Balance sheets print each amount signed for its side: assets debit-positive, liabilities and equity credit-positive.
+  let side: "debit" | "credit" | undefined;
+  const totals = new Set(rows.slice(r + 1).map((row) => str(row[cName])).filter((n) => TOTAL_PREFIX.test(n)).map((n) => n.replace(TOTAL_PREFIX, "").trim()));
   for (let i = r + 1; i < rows.length; i++) {
     const row = rows[i];
     const code = str(row[cCode]), name = str(row[cName]);
@@ -314,9 +355,25 @@ function statement({ g, rows, num, ov, layout, issues, tr }: Ctx, r: number, cCo
       for (const col of cols) { const v = num(row[col.c]); if (v !== null) values[col.p] = v; }
       const metric = controlMetric(name);
       if (metric) for (const col of cols) if (col.p in values) (issues.controls ??= []).push({ metric, period: col.p, value: values[col.p], months: col.months, source: `${g.name} row ${i + 1} '${name.slice(0, 60)}'`, sheet: g.name });
+      if (stmt === "BS" && ASSETS_HEAD.test(normAr(name))) side = "debit";
+      else if (stmt === "BS" && CLAIMS_HEAD.test(normAr(name))) side = "credit";
+      // Odoo 18's computed equity lines ("Current Year Unallocated Earnings", "Previous Years Retained Earnings") have no
+      // code and no "Total" row of their own: a figure, not a heading.
+      if (stmt === "BS" && !metric && !TOTAL_PREFIX.test(name) && Object.keys(values).length && !totals.has(name.trim())) {
+        mark(tr, i, { role: "account", ref: `${g.name}|${i + 1}|-` });
+        out.push({ key: `${g.name}|${i + 1}|-`, sheet: g.name, row: i + 1, label: name, code: "", name, section: sectionOf(), stmt, kind: "natural", values, opening: 0, ...(side ? { side } : {}) });
+        continue;
+      }
       // Section rows ("Revenue", "Less Costs of Revenue") open a section; their "Total …" rows close it.
-      if (TOTAL_PREFIX.test(name) || metric) { heads.length = 0; mark(tr, i, TOTAL_NOTE); }
-      else { heads.length = 0; heads.push(name); mark(tr, i, { role: "heading" }); }
+      if (metric) { top = undefined; groups.length = 0; mark(tr, i, TOTAL_NOTE); }
+      else if (TOTAL_PREFIX.test(name)) {
+        const closes = name.replace(TOTAL_PREFIX, "").trim();
+        const at = groups.lastIndexOf(closes);
+        if (at >= 0) groups.length = at;
+        else { top = undefined; groups.length = 0; }
+        mark(tr, i, TOTAL_NOTE);
+      } else if (GROUP_ROW.test(name)) { groups.push(name.trim()); mark(tr, i, { role: "heading" }); }
+      else { top = name.trim(); groups.length = 0; mark(tr, i, { role: "heading" }); }
       continue;
     }
     const errs = tr.errs.length;
@@ -324,7 +381,7 @@ function statement({ g, rows, num, ov, layout, issues, tr }: Ctx, r: number, cCo
     if (!Object.keys(values).length && tr.errs.length === errs) continue;
     const spans = Object.fromEntries(cols.filter((c) => c.months > 1 && c.p in values).map((c) => [c.p, c.months]));
     mark(tr, i, tr.errs.length > errs ? { role: "error", ref: `${g.name}|${i + 1}|${code}`, note: "an amount cannot be read" } : { role: "account", ref: `${g.name}|${i + 1}|${code}` });
-    out.push({ key: `${g.name}|${i + 1}|${code}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: heads.join(" / "), stmt, kind: "natural", values, opening: 0, ...(Object.keys(spans).length ? { spans } : {}) });
+    out.push({ key: `${g.name}|${i + 1}|${code}`, sheet: g.name, row: i + 1, label: `${code} ${name}`.trim(), code, name: name || code, section: sectionOf(), stmt, kind: "natural", values, opening: 0, ...(Object.keys(spans).length ? { spans } : {}), ...(side ? { side } : {}) });
   }
   return out.length ? out : null;
 }

@@ -1,6 +1,7 @@
 import { arRx, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, parsePeriodRange, splitCode, stmtFromText, type Cell, type DateOrder } from "./parse";
 import { extractOdoo } from "./odoo";
 import { readFinancialTemplate, templateMarkOf } from "./template";
+import { otherOdooReport } from "./odoo-reports";
 import type { ClassKey } from "@/lib/engine";
 import type { Check } from "@/lib/company/checks";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
@@ -53,6 +54,8 @@ export interface RawLine {
   forcedCls?: ClassKey;
   /** The line comes from an iReport template: an account row as entered, never a total to detect. */
   template?: boolean;
+  /** Balance sheets printed by section: the side the line is printed on (its amount is signed for that side). */
+  side?: "debit" | "credit";
 }
 
 /** One dated line of a General Ledger. amount is debit − credit. */
@@ -473,6 +476,13 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   // Odoo adds a "Filters" sheet (Company, Journals, Options): report settings, not figures.
   if (/^filters?$/i.test(g.name.split(" › ").pop() ?? "") && rows.length <= 40 && !rows.some((r) => r.some((v) => typeof v === "number"))) {
     layout.kind = "skipped"; layout.source = "Report filters (no figures)"; whole("report settings, no figures"); return [];
+  }
+  // Odoo's other reports (ageing, partner statements, cash flow, VAT, the asset register…) are not account balances.
+  const other = otherOdooReport(g);
+  if (other) {
+    layout.kind = "skipped"; layout.source = `Odoo ${other.title} (not account balances)`; whole(`Odoo's ${other.title}: not account balances`);
+    issues.warnings.push(`"${g.name}" is Odoo's ${other.title}: ${other.why}. It was left out of the accounts.`);
+    return [];
   }
   const num = numReader(layout.scale, layout.decimal);
   let tr = newTr();

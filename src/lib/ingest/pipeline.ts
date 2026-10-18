@@ -84,7 +84,7 @@ export interface IngestResult {
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
-const SUBTOTAL = /^\s*(total|sub.?total|grand total|gross (profit|margin|loss)|net (income|profit|loss|earnings|sales)|operating (profit|income|loss)|ebit(da)?\b|profit (before|after)|(income|earnings) before|working capital|check|difference|balance check|الإجمالي|اجمالي|إجمالي|مجموع|صافي (الربح|الدخل|الخسارة)|مجمل (الربح|الخسارة))/i;
+const SUBTOTAL = /^\s*(total|sub.?total|grand total|gross (profit|margin|loss)|net (income|profit|loss|earnings|sales)|operating (profit|income|loss)|ebit(da)?\b|profit (before|after)|(income|earnings) before|working capital|check\b|difference\b|balance check|الإجمالي|اجمالي|إجمالي|مجموع|صافي (الربح|الدخل|الخسارة)|مجمل (الربح|الخسارة))/i;
 
 const fmt0 = (v: number) => (Math.round(v * 100) / 100).toLocaleString("en-GB", { maximumFractionDigits: 2 });
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -123,8 +123,17 @@ function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
     const cols = layouts.find((l) => l.sheet === sheet)?.columns.filter((c) => c.used) ?? [];
     return cols.length > 0 && cols.every((c) => c.months > 1);
   };
+  // A statement (balance sheet, P&L) for months a ledger or trial balance in the same upload already gives, account by
+  // account, only checks it: imported as well, Odoo's presentation (equity split by year, computed lines) would count twice.
+  const movSheets = sheets.filter((s) => raw.some((r) => r.sheet === s && r.kind === "movement"));
+  const movMonths = new Set(movSheets.flatMap((s) => [...monthly(s)]));
+  const statementChecks = (sh: string) => {
+    const ls = raw.filter((r) => r.sheet === sh);
+    const ps = [...new Set(ls.flatMap((r) => Object.keys(r.values)))];
+    return ls.length > 0 && ls.every((r) => r.kind === "natural" && r.stmt) && ps.length > 0 && ps.every((p) => movMonths.has(p));
+  };
   for (const sh of sheets) {
-    if (!isRange(sh)) { roles.set(sh, "data"); continue; }
+    if (!isRange(sh)) { roles.set(sh, movSheets.length && !movSheets.includes(sh) && statementChecks(sh) ? "check" : "data"); continue; }
     const others = new Set(sheets.filter((o) => o !== sh && !isRange(o)).flatMap((o) => [...monthly(o)]));
     const cols = layouts.find((l) => l.sheet === sh)!.columns.filter((c) => c.used && c.period);
     roles.set(sh, others.size && cols.every((c) => windowOf(c.period!, c.months).every((p) => others.has(p))) ? "check" : "data");
@@ -161,7 +170,8 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
     }
   });
   raw.forEach((r, i) => {
-    if (r.kind !== "natural" || r.template || skip.has(r.key) || !r.row) return;
+    // An Odoo statement prints its accounts with their codes and its subtotals without: a coded row is an account.
+    if (r.kind !== "natural" || r.template || skip.has(r.key) || !r.row || (r.side && r.code)) return;
     const ps = Object.keys(r.values);
     if (!ps.some((p) => r.values[p])) return;
     const run: Record<string, number> = Object.fromEntries(ps.map((p) => [p, 0]));
@@ -213,13 +223,21 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
   const values = new Map<string, Record<string, number>>();
 
   // natural lines: contra revenue, trial-balance sign detection, negative costs
-  const classSum = (k: ClassKey) => nat.filter((l) => l.cls === k).reduce((s, l) => s + Object.values(l.r.values).reduce((a, b) => a + b, 0), 0);
   for (const l of nat) values.set(l.r.key, Object.fromEntries(Object.entries(l.r.values).map(([p, v]) => [p, l.cls === "revenue" && CONTRA_REVENUE.test(normAr(l.r.name)) ? -Math.abs(v) : v])));
+  // A balance sheet signs each amount for the side it is printed on: a credit balance in the assets section (stock
+  // interim received, checks under collection) is negative there, and is positive once classed as a liability.
+  for (const l of nat) {
+    if (!l.r.side || isPL(l.cls!) || (l.r.side === "credit") === CREDIT_CLASSES.has(l.cls!)) continue;
+    const v = values.get(l.r.key)!;
+    for (const p in v) v[p] = -v[p];
+  }
+  // Trial-balance sign is guessed only for lines whose side the file doesn't state.
+  const classSum = (k: ClassKey) => nat.filter((l) => l.cls === k && !l.r.side).reduce((s, l) => s + Object.values(l.r.values).reduce((a, b) => a + b, 0), 0);
   const credSigns = (["revenue", "ap", "std", "ltd", "other_cl", "tax_liab", "other_equity"] as ClassKey[]).map((k) => classSum(k)).filter((s) => Math.abs(s) > 0).map((s) => (s > 0 ? 1 : -1));
   const creditNegative = credSigns.length > 0 && credSigns.reduce((a: number, b) => a + b, 0) < 0 && credSigns.filter((s) => s < 0).length >= Math.max(2, Math.floor(credSigns.length / 2) + 1);
   if (creditNegative) {
     issues.flips.push("Credit-side lines (revenue, liabilities, equity, other/interest income) arrive as negatives (trial-balance sign). Flipped to positive.");
-    for (const l of nat) if (CREDIT_CLASSES.has(l.cls!)) { const v = values.get(l.r.key)!; for (const p in v) v[p] = -v[p]; }
+    for (const l of nat) if (CREDIT_CLASSES.has(l.cls!) && !l.r.side) { const v = values.get(l.r.key)!; for (const p in v) v[p] = -v[p]; }
   }
   for (const k of COSTS) {
     if (k === "adjustments") continue;
@@ -468,8 +486,8 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
     const moved: string[] = [];
     for (const l of [...lines, ...checkLines]) {
       if (c.sheet && l.r.sheet !== c.sheet) continue;
-      const sec = l.r.section.split(" / ").pop() ?? "";
-      const file = REV_SEC.test(sec.replace(/^(less|plus)\s+/i, "")) ? 1 : COS_SEC.test(sec) ? -1 : 0;
+      const secs = l.r.section.split(" / ");
+      const file = secs.some((sec) => REV_SEC.test(sec.replace(/^(less|plus)\s+/i, ""))) ? 1 : secs.some((sec) => COS_SEC.test(sec)) ? -1 : 0;
       const ours = l.excluded ? 0 : GP_IN(l.cls);
       if (file === ours) continue;
       const v = win.reduce((a, p) => a + (l.r.values[p] ?? 0), 0);
@@ -478,6 +496,23 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
       moved.push(`${l.r.name} ${Math.round(Math.abs(v)).toLocaleString("en-GB")} shown as ${l.cls ? CLASS_LABEL[l.cls] : "unmapped"}`);
     }
     return { value: c.value - adj, why: moved.length ? ` (less ${moved.slice(0, 3).join("; ")}${moved.length > 3 ? "…" : ""})` : "" };
+  };
+  // A balance sheet's totals count each line on the side it is printed: a credit balance printed under assets (stock interim
+  // received) and classed as a liability moves out of total assets, and into liabilities, by its amount.
+  const clsById = new Map(lines.filter((l) => l.cls).map((l) => [l.r.code ? `c:${l.r.code.toLowerCase()}` : `n:${normLabel(l.r.name)}`, l.cls!]));
+  const totalsAsMapped = (c: ControlRow) => {
+    let adj = 0;
+    const moved: string[] = [];
+    for (const l of [...lines, ...checkLines]) {
+      if (!l.r.side || (c.sheet && l.r.sheet !== c.sheet)) continue;
+      const cls = clsById.get(l.r.code ? `c:${l.r.code.toLowerCase()}` : `n:${normLabel(l.r.name)}`) ?? l.cls;
+      if (!cls || isPL(cls) || (l.r.side === "credit") === CREDIT_CLASSES.has(cls)) continue;
+      const v = l.r.values[c.period] ?? 0;
+      if (!v) continue;
+      adj -= v;
+      moved.push(`${l.r.name} ${Math.round(Math.abs(v)).toLocaleString("en-GB")} shown as ${CLASS_LABEL[cls]}`);
+    }
+    return { adj, why: moved.length ? ` (with ${moved.slice(0, 3).join("; ")}${moved.length > 3 ? "…" : ""})` : "" };
   };
   // Total rows from the file. P&L totals only verify single-month columns (year-to-date totals are converted like the lines).
   const controls: ControlTotal[] = [];
@@ -502,6 +537,7 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
       if (fyOf(prev, opts.fyStart) === fyOf(c.period, opts.fyStart)) { if (!before) continue; value -= before.value; }
     }
     if (c.metric === "gross_profit") { const g = gpAsMapped(c, [c.period]); value += g.value - c.value; controls.push({ metric: c.metric, period: c.period, value, source: c.source + g.why }); continue; }
+    if (c.metric === "ta" || c.metric === "tle") { const t = totalsAsMapped(c); controls.push({ metric: c.metric, period: c.period, value: value + t.adj, source: c.source + t.why }); continue; }
     controls.push({ metric: c.metric, period: c.period, value, source: c.source });
   }
 
@@ -536,13 +572,25 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
   const excludedIds = new Set(result.filter((l) => l.excluded).map((l) => (l.code ? `c:${l.code.toLowerCase()}` : `n:${normLabel(l.name)}`)));
   const byId = new Map<string, IngestLine>();
   const idOf = (code: string, name: string) => (code ? `c:${code.toLowerCase()}` : `n:${normLabel(name)}`);
-  for (const l of result) if (!l.system && l.cls && !l.excluded) byId.set(idOf(l.code, l.name), l);
+  // The same account in two sheets (a ledger and a trial balance) is kept once: compare with the copy that holds figures.
+  for (const l of result) if (!l.system && l.cls && !l.excluded) { const id = idOf(l.code, l.name), had = byId.get(id); if (!had || Object.keys(had.values).length < Object.keys(l.values).length) byId.set(id, l); }
+  const EQUITY_CLS = new Set<ClassKey>(["retained_earnings", "other_equity"]);
+  const checkCls = new Map(checkLines.map((l) => [l.r.key, l.cls]));
   for (const sh of [...new Set(checkRaw.map((r) => r.sheet))]) {
     const off: string[] = [];
     let compared = 0;
+    // Odoo's balance sheet splits equity by year and prints computed earnings lines: equity is compared in total.
+    const equity: Record<string, number> = {};
     for (const r of checkRaw.filter((x) => x.sheet === sh)) {
       const d = byId.get(idOf(r.code, r.name));
-      for (const [p, v] of Object.entries(r.values)) {
+      const cls0 = d?.cls ?? checkCls.get(r.key) ?? null;
+      if (r.side && cls0 && EQUITY_CLS.has(cls0)) {
+        for (const [p, v] of Object.entries(r.values)) equity[p] = (equity[p] ?? 0) + (r.side === "credit" ? v : -v);
+        continue;
+      }
+      for (const [p, v0] of Object.entries(r.values)) {
+        // A balance sheet signs each amount for the side it is printed on.
+        const v = r.side && d?.cls && (r.side === "credit") !== CREDIT_CLASSES.has(d.cls) ? -v0 : v0;
         const win = windowOf(p, r.spans?.[p] ?? 1);
         if (!d) { const exp = r.kind === "movement" ? v + r.opening : v; if (Math.abs(exp) > 0.05 && !excludedIds.has(idOf(r.code, r.name))) off.push(`${r.label}: ${fmt0(exp)} in '${sh}', missing from the import`); continue; }
         const cls = d.cls!;
@@ -553,8 +601,13 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
         if (Math.abs(want - got) > Math.max(0.05, Math.abs(want) * 1e-7)) off.push(`${r.label}: ${fmt0(want)} in '${sh}' vs ${fmt0(got)} imported`);
       }
     }
+    for (const [p, want] of Object.entries(equity)) {
+      const got = result.filter((l) => l.cls && EQUITY_CLS.has(l.cls) && !l.excluded).reduce((a, l) => a + (l.values[p] ?? 0), 0);
+      compared++;
+      if (Math.abs(want - got) > Math.max(0.05, Math.abs(want) * 1e-7)) off.push(`Equity in total: ${fmt0(want)} in '${sh}' vs ${fmt0(got)} imported`);
+    }
     if (off.length) fileChecks.push({ id: "cross_check", severity: "block", title: `${off.length} figure${off.length > 1 ? "s" : ""} differ from '${sh}'`, detail: `${off.slice(0, 5).join("; ")}${off.length > 5 ? "…" : ""}. The files probably cover different dates or filters: export them for the same period.` });
-    else if (compared) issues.notes.push(`'${sh}' covers several months in one total, so it was used to check the import instead of being imported: all ${compared} account figures agree.`);
+    else if (compared) issues.notes.push(`'${sh}' ${(extractIssues.layouts ?? []).find((l) => l.sheet === sh)?.columns.some((c) => c.used && c.months > 1) ? "covers several months in one total" : "covers the same months as the ledger or trial balance"}, so it was used to check the import instead of being imported: all ${compared} account figures agree${Object.keys(equity).length ? " (equity in total, as Odoo splits it by year)" : ""}.`);
   }
 
   // A month that is still running (or a report that stops mid-month) is partial: its figures cover only some days.

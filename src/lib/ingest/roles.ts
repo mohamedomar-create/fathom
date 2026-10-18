@@ -5,6 +5,7 @@ import { readSalesGrid } from "./sales";
 import { bankShape } from "./bank";
 import { readCashBook } from "./cashbook";
 import { templateMarkOf } from "./template";
+import { otherOdooReport } from "./odoo-reports";
 import { readProducts, readStockMoves, readStockOnHand, readStockValuation } from "./inventory";
 
 /**
@@ -55,6 +56,9 @@ export function guessRole(g: Grid): RoleGuess {
   for (const c of g.cut ?? []) notes.push(`${c.cells.toLocaleString("en-US")} cells far to the ${c.what === "columns" ? "right" : "bottom"} of the table (${c.what} ${c.from}–${c.to}, rows ${c.rows.slice(0, 5).join(", ")}${c.rows.length > 5 ? "…" : ""}) were left out: they sit away from the table, as if pasted across the sheet.`);
   if (g.broken) notes.push(`${g.broken} cell${g.broken > 1 ? "s show" : " shows"} a spreadsheet error (#REF!, #DIV/0!…).`);
   const base = { sheet: g.name, figures, notes };
+  // Odoo's other reports are named even when their amounts are text ("2,500.00 E£" in the Journal Report).
+  const other = otherOdooReport(g);
+  if (other) return { ...base, role: "summary", sure: true, why: `Odoo's ${other.title}: ${other.why}.` };
   if (figures < 3) return { ...base, role: "notes", sure: true, why: "No figures on this sheet." };
   const mark = templateMarkOf(g);
   if (mark === "expenses") return { ...base, role: "bills", sure: true, why: "iReport's expenses template." };

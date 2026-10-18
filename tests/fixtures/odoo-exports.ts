@@ -126,10 +126,15 @@ export function expected() {
 const split = (v: number): [Cell, Cell] => (v > 0.0049 ? [r2(v), null] : v < -0.0049 ? [null, r2(-v)] : [null, null]);
 
 /** Odoo General Ledger export (one sheet, plus Odoo's "Filters" sheet). */
-export function generalLedger(): Grid[] {
+/**
+ * Odoo General Ledger export. With `groups`, as Odoo 18 prints it: account-group headings ("1 Assets", "11 Fixed Assets",
+ * "(No Group)") carrying the totals of the accounts under them, each closed by a "Total <group>" row.
+ */
+export function generalLedger(opts: { groups?: boolean } = {}): Grid[] {
   const all = moves();
   const rows: Cell[][] = [[null, null, "2026"], [], ["Code", "Account Name", "Date", "Communication", "Partner", "Currency", "Debit", "Credit", "Balance"]];
   let gd = 0, gc = 0;
+  const blocks = new Map<string, { d: number; c: number; close: number; rows: Cell[][] }>();
   for (const a of ACCOUNTS) {
     const k = key(a);
     const lines = all.flatMap((m) => m.lines.filter(([c]) => c === k).map(([, v]) => ({ m, v })));
@@ -139,13 +144,39 @@ export function generalLedger(): Grid[] {
     const d = r2(Math.max(open, 0) + lines.filter((l) => l.v > 0).reduce((s, l) => s + l.v, 0));
     const c = r2(Math.max(-open, 0) + lines.filter((l) => l.v < 0).reduce((s, l) => s - l.v, 0));
     gd += d; gc += c;
-    rows.push([a.code || null, a.code ? a.name : a.name, null, null, null, null, d || null, c || null, close]);
+    const out: Cell[][] = [[a.code || null, a.code ? a.name : a.name, null, null, null, null, d || null, c || null, close]];
     // Like Odoo, undistributed profits and code-less accounts show no "Initial Balance" row: their heading still carries the balance.
-    if (!lines.length) continue;
-    let run = open;
-    if (open) rows.push([null, "Initial Balance", null, null, null, null, ...split(open), r2(open)]);
-    for (const l of lines) { run = r2(run + l.v); rows.push([null, l.m.ref, l.m.date, `Entry ${l.m.ref}`, "", null, ...split(l.v), run]); }
-    rows.push([null, `Total ${k} ${a.name}`, null, null, null, null, d || null, c || null, close]);
+    if (lines.length) {
+      let run = open;
+      if (open) out.push([null, "Initial Balance", null, null, null, null, ...split(open), r2(open)]);
+      for (const l of lines) { run = r2(run + l.v); out.push([null, l.m.ref, l.m.date, `Entry ${l.m.ref}`, "", null, ...split(l.v), run]); }
+      out.push([null, `Total ${k} ${a.name}`, null, null, null, null, d || null, c || null, close]);
+    }
+    blocks.set(k, { d, c, close, rows: out });
+  }
+  const live = ACCOUNTS.filter((a) => blocks.has(key(a)));
+  if (!opts.groups) for (const a of live) rows.push(...blocks.get(key(a))!.rows);
+  else {
+    const group = (label: string, accs: Acct[], body: () => void) => {
+      const t = (f: (b: { d: number; c: number; close: number }) => number) => r2(accs.reduce((s, a) => s + f(blocks.get(key(a))!), 0));
+      rows.push([null, label, null, null, null, null, t((b) => b.d) || null, t((b) => b.c) || null, t((b) => b.close)]);
+      body();
+      rows.push([null, `Total ${label}`, null, null, null, null, t((b) => b.d) || null, t((b) => b.c) || null, t((b) => b.close)]);
+    };
+    const children = (prefix: string) => GROUPS.filter(([g]) => g.length > prefix.length && g.startsWith(prefix) && !GROUPS.some(([h]) => h.length > prefix.length && h.length < g.length && g.startsWith(h) && h.startsWith(prefix)));
+    const walk = (prefix: string) => {
+      for (const a of live.filter((x) => x.group === prefix)) rows.push(...blocks.get(key(a))!.rows);
+      for (const [g, label] of children(prefix)) {
+        const accs = live.filter((x) => x.group.startsWith(g) && x.group !== "none");
+        if (accs.length) group(label, accs, () => walk(g));
+      }
+    };
+    for (const [g, label] of GROUPS.filter(([g]) => g.length === 1)) {
+      const accs = live.filter((x) => x.group.startsWith(g) && x.group !== "none");
+      if (accs.length) group(label, accs, () => walk(g));
+    }
+    const none = live.filter((a) => a.group === "none");
+    group("(No Group)", none, () => { for (const a of none) rows.push(...blocks.get(key(a))!.rows); });
   }
   rows.push([null, "Total", null, null, null, null, r2(gd), r2(gc), null]);
   return [{ name: "General Ledger", rows }, { name: "Filters", rows: [["Company", "Example Trading Egypt"]] }];

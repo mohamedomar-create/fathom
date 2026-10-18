@@ -34,7 +34,7 @@ const BS_RULES: [ClassKey, RegExp][] = ([
   ["other_ncl", /deferred tax|lease liabilit|non.?current (liabilit|provision)|end of service|severance|مكافأة نهاية|التزامات طويلة/],
   ["other_cl", /accrued|accruals?|deferred (revenue|income)|unearned|customer (deposit|advance)|advances? from|provision|salaries payable|wages payable|due to|other (current )?liabilit|مستحق(ات)?|مصروفات مستحقة|إيرادات مقدمة|مخصص|دائنون متنوعون|أرصدة دائنة/],
   ["ap", /payables?|creditors?|suppliers?|vendors?|موردين|موردون|دائنون|أوراق دفع/],
-  ["retained_earnings", /retained|accumulated (earnings|profit|loss)|undistributed|(current|this) (year|period).*(earnings|profit|income)|net (profit|income|loss) (for|ytd|of)|profit (for|of) the (year|period)|أرباح (محتجزة|مرحلة|العام|السنة)|الأرباح المرحلة|نتيجة العام/],
+  ["retained_earnings", /retained|accumulated (earnings|profit|loss)|undistributed|unallocated (earnings|profits?)|(previous|prior) years?.*(earnings|profit)|(current|this) (year|period).*(earnings|profit|income)|net (profit|income|loss) (for|ytd|of)|profit (for|of) the (year|period)|أرباح (محتجزة|مرحلة|العام|السنة)|الأرباح المرحلة|نتيجة العام/],
   ["other_equity", /capital|share (premium|capital)|equity|reserves?|owner|partner|paid.?in|treasury shares|رأس المال|احتياطي|جاري الشركاء|حقوق (الملكية|المساهمين)/],
   ["wip", /work.?in.?(progress|process)|\bwip\b|عقود تحت التنفيذ|إنتاج تحت التشغيل/],
   ["inventory", /inventor|stock|finished goods|merchandise|goods (on hand|for resale)|مخزون|بضاعة/],

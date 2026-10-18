@@ -53,6 +53,13 @@ describe("Odoo exports of an Egyptian company (General Ledger, Trial Balance, P&
     expectExact(res, MONTHS, { "z Adjustment": "other_equity" });
   });
 
+  it("Odoo 18's General Ledger with account-group headings (\"11 Fixed Assets\", \"(No Group)\") reads exactly the same: a heading is never an account", () => {
+    const res = ingest(generalLedger({ groups: true }), OPTS);
+    expect(res.lines.filter((l) => /^(\d+ |\(No Group\))/.test(l.name) && !l.code).map((l) => l.name)).toEqual([]);
+    expectExact(res, MONTHS, { "z Adjustment": "other_equity" });
+    expect(checksOf(res).filter((c) => c.severity === "block")).toEqual(checksOf(ingest(generalLedger(), OPTS)).filter((c) => c.severity === "block"));
+  });
+
   it("leaves out an entry dated in the future and says so; marks October as a part month", () => {
     const res = ingest(generalLedger(), OPTS);
     const fut = res.checks.find((c) => c.id === "future_dated")!;
