@@ -1,5 +1,5 @@
 import type { LayerKind, MoveKind, OnHand, ProductRow } from "@/lib/ingest/inventory";
-import { layerKind, isInternalLocation, locationClass, productKey } from "@/lib/ingest/inventory";
+import { layerKind, isInternalLocation, locationClass, locationTypeOf, productKey, type LocationType, type LocationTypes } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
 import { stockBuckets, TIE_TOLERANCE, tieOut, type TieOut } from "./tieout";
@@ -36,6 +36,8 @@ export interface MoveSummary {
   asOf: string | null;
   byProductLoc: { code: string; product: string; loc: string; q: number }[];
   rentalLocs: string[];
+  /** The company's location types (from Odoo's export or its own list): which locations hold stock. Not stored with the moves. */
+  types?: LocationTypes;
 }
 
 /** The stock records as read (valuation by month and product, every move route): what the summary is made from. */
@@ -131,7 +133,8 @@ export interface InventoryAnalysis {
   bridge: InventoryBridge | null;
   products: ProductStat[];
   movements: { p: string; kind: MoveKind; q: number }[];
-  locations: { loc: string; inQ: number; outQ: number }[];
+  /** The company's locations, with how each counts (stock, transit, rental, outside stock). */
+  locations: { loc: string; inQ: number; outQ: number; counts: LocationType }[];
   tieouts: TieOut[];
   /** Where the valued stock is: warehouses, out with customers on rental, in transit (adds up to the stock value). */
   position: StockPosition | null;
@@ -259,7 +262,7 @@ function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, 
   const into: Record<string, Record<string, number>> = { warehouse: wh, rental_out: rent, transit: trans };
   const cls = new Map<string, Record<string, number> | undefined>();
   for (const m of d.moves.byProductLoc) {
-    if (!cls.has(m.loc)) cls.set(m.loc, into[locationClass(m.loc, rentals)]);
+    if (!cls.has(m.loc)) cls.set(m.loc, into[locationClass(m.loc, rentals, d.moves.types)]);
     const to = cls.get(m.loc);
     if (to) add(to, productKey(m.code, m.product), m.q);
   }
@@ -283,8 +286,11 @@ function positionChecks(d: InventoryData, ix: StockIndex, stock: Record<string, 
     const whOnly = Object.fromEntries(Object.entries(wh).filter(([k, v]) => v || k in sq));
     tieouts.push(tieOut("qty_onhand", pa, total(sq), total(whOnly), { module: round(sq), ledger: round(whOnly) }, 0));
     if (d.onhand.some((o) => o.value !== null)) {
+      // A stock list by location (Odoo's Stock report) values the warehouses only, so rental and transit are added; a product
+      // list (Product Variants, no location) gives each product's whole valuation, rental and transit already in it.
+      const byLoc = new Set(d.onhand.filter((o) => o.location).map((o) => productKey(o.code, o.product)));
       const expected: Record<string, number> = {};
-      for (const k of new Set([...Object.keys(lv), ...Object.keys(sv)])) expected[k] = r2((sv[k] ?? 0) + ((rent[k] ?? 0) + (trans[k] ?? 0)) * unit(k));
+      for (const k of new Set([...Object.keys(lv), ...Object.keys(sv)])) expected[k] = r2((sv[k] ?? 0) + (byLoc.has(k) || !(k in sv) ? ((rent[k] ?? 0) + (trans[k] ?? 0)) * unit(k) : 0));
       tieouts.push(tieOut("onhand_value", pa, books, total(expected), { module: Object.fromEntries(Object.entries(lv).map(([k, v]) => [k, r2(v)])), ledger: expected }));
     }
   }
@@ -370,19 +376,20 @@ export function inventoryAnalysis(
 
   // ---- movements and locations (quantities)
   const mv = new Map<string, { p: string; kind: MoveKind; q: number }>();
-  const locs = new Map<string, { loc: string; inQ: number; outQ: number }>();
+  const locs = new Map<string, { loc: string; inQ: number; outQ: number; counts: LocationType }>();
   for (const m of d.moves.byKind) {
     if (!inWin.has(m.p)) continue;
     const k = `${m.p}|${m.kind}`;
     const e = mv.get(k) ?? { p: m.p, kind: m.kind, q: 0 };
     e.q += m.q; mv.set(k, e);
   }
-  const internal = new Map<string, boolean>();
+  const counts = new Map<string, LocationType | null>();
   for (const f of d.moves.flow) {
     if (!inWin.has(f.p)) continue;
-    if (!internal.has(f.loc)) internal.set(f.loc, isInternalLocation(f.loc));
-    if (!internal.get(f.loc)) continue;
-    const l = locs.get(f.loc) ?? { loc: f.loc, inQ: 0, outQ: 0 };
+    if (!counts.has(f.loc)) counts.set(f.loc, locationTypeOf(f.loc, d.moves.rentalLocs, d.moves.types));
+    const c = counts.get(f.loc);
+    if (!c || (c === "rental" && !d.moves.types?.[f.loc])) continue;
+    const l = locs.get(f.loc) ?? { loc: f.loc, inQ: 0, outQ: 0, counts: c };
     l.inQ += f.inQ; l.outQ += f.outQ; locs.set(f.loc, l);
   }
 

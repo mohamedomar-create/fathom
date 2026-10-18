@@ -61,6 +61,26 @@ const SCRAP = arRx(/scrap|خردة|هالك|تالف/i);
 const PRODUCTION = arRx(/production|إنتاج|انتاج|التصنيع/i);
 
 const TRANSIT = arRx(/transit|عبور|ترانزيت/i);
+/**
+ * A repair or maintenance location outside any warehouse ("Repair & Maintenance"): Odoo types such a top-level location
+ * "inventory" (outside stock), so units sent there leave the stock. One inside a warehouse ("MAINT/Maintenance") is stock.
+ */
+const REPAIR_NAME = arRx(/repair|maintenance|صيانة|إصلاح|اصلاح/i);
+const REPAIR = { test: (l: string) => !l.includes("/") && REPAIR_NAME.test(l) };
+
+/** How the company treats a location: its own stock, in transit, out on rental, or outside stock (repair, loss, production). */
+export const LOCATION_TYPES = ["internal", "transit", "rental", "outside"] as const;
+export type LocationType = (typeof LOCATION_TYPES)[number];
+export type LocationTypes = Record<string, LocationType>;
+/** Odoo's location usage, as exported ("Internal Location", "internal", "Inventory Loss"…), as a location type. */
+export function usageType(v: string): LocationType | null {
+  const u = normAr(v).toLowerCase();
+  if (!u) return null;
+  if (/^internal|داخلي/.test(u)) return "internal";
+  if (/transit|عبور/.test(u)) return "transit";
+  if (/^inventory|loss|production|view|فاقد|انتاج|إنتاج/.test(u)) return "outside";
+  return null;
+}
 
 /**
  * Where a location stands:
@@ -71,14 +91,26 @@ const TRANSIT = arRx(/transit|عبور|ترانزيت/i);
  * rentalLocations are the locations goods go to when rented out (see rentalLocationsOf).
  */
 export type LocationClass = "warehouse" | "rental_out" | "transit" | "partner" | "virtual";
-export function locationClass(loc: string, rentalLocations: readonly string[] = []): LocationClass {
+export function locationClass(loc: string, rentalLocations: readonly string[] = [], types?: LocationTypes): LocationClass {
   const l = normAr(loc);
   if (!l) return "virtual";
+  const t = types?.[loc];
+  if (t) return t === "outside" ? "virtual" : t === "transit" ? "transit" : t === "rental" ? "rental_out" : rentalLocations.some((r) => normAr(r).toLowerCase() === l.toLowerCase()) ? "rental_out" : "warehouse";
   if (rentalLocations.some((r) => normAr(r).toLowerCase() === l.toLowerCase())) return "rental_out";
   if (VENDOR.test(l) || CUSTOMER.test(l) || /^partner/i.test(l)) return "partner";
-  if (/^virtual/i.test(l) || ADJUST.test(l) || SCRAP.test(l) || PRODUCTION.test(l)) return "virtual";
+  if (/^virtual/i.test(l) || ADJUST.test(l) || SCRAP.test(l) || PRODUCTION.test(l) || REPAIR.test(l)) return "virtual";
   if (TRANSIT.test(l)) return "transit";
   return "warehouse";
+}
+
+/** How a location counts, for the company to see and change: stock, in transit, out on rental, or outside stock; null for partners and Odoo's own virtual locations. */
+export function locationTypeOf(loc: string, rentalLocations: readonly string[] = [], types?: LocationTypes): LocationType | null {
+  if (types?.[loc]) return types[loc];
+  const c = locationClass(loc, rentalLocations);
+  if (c === "warehouse") return "internal";
+  if (c === "transit") return "transit";
+  if (c === "rental_out") return "rental";
+  return REPAIR.test(normAr(loc)) && !/^virtual/i.test(normAr(loc)) ? "outside" : null;
 }
 
 /** A location of the company's own (a warehouse, the rental fleet's warehouse, or in transit between them). */
@@ -97,7 +129,7 @@ export function rentalLocationsOf(locations: Iterable<string>, chosen?: string |
 }
 
 /** What a move did, from its source and destination locations (Odoo's partner and virtual locations). */
-export function moveKind(from: string, to: string, rentalLocations: string | readonly string[] | null = null): MoveKind {
+export function moveKind(from: string, to: string, rentalLocations: string | readonly string[] | null = null, types?: LocationTypes): MoveKind {
   const rentals = rentalLocations === null ? rentalLocationsOf([from, to]) : typeof rentalLocations === "string" ? [rentalLocations] : rentalLocations;
   const f = normAr(from), t = normAr(to);
   if (VENDOR.test(f)) return "receipt";
@@ -107,7 +139,10 @@ export function moveKind(from: string, to: string, rentalLocations: string | rea
   if (ADJUST.test(f) || ADJUST.test(t)) return "adjustment";
   if (SCRAP.test(f) || SCRAP.test(t)) return "scrap";
   if (PRODUCTION.test(f) || PRODUCTION.test(t)) return "manufacturing";
-  const rf = locationClass(from, rentals) === "rental_out", rt = locationClass(to, rentals) === "rental_out";
+  // Into or out of a location the company or Odoo types outside stock (repair, loss): the units leave or come back, as in an adjustment.
+  const outside = (loc: string) => (types?.[loc] ? types[loc] === "outside" : REPAIR.test(normAr(loc)));
+  if (outside(from) !== outside(to)) return "adjustment";
+  const rf = locationClass(from, rentals, types) === "rental_out", rt = locationClass(to, rentals, types) === "rental_out";
   if (rt && !rf) return "rental_out";
   if (rf && !rt) return "rental_back";
   return "internal";
@@ -256,7 +291,7 @@ export function readStockValuation(g: Grid, saved?: SavedMapping | null, tz?: st
   return layers.length || issues.length ? { layers, withIds, issues, skipped } : null;
 }
 
-export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: SavedMapping | null, tz?: string | null): ({ moves: StockMove[]; withIds: boolean } & ReadNotes) | null {
+export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: SavedMapping | null, tz?: string | null, chosen?: LocationTypes): ({ moves: StockMove[]; withIds: boolean; locationTypes?: LocationTypes } & ReadNotes) | null {
   const h = header(g, saved);
   if (!h) return null;
   const c = h.col;
@@ -277,17 +312,25 @@ export function readStockMoves(g: Grid, rentalLocation?: string | null, saved?: 
   }
   // Which locations are "out on rental" is decided from every location the export uses, before any move is classified.
   const rentals = rentalLocationsOf(done.flatMap(({ row }) => [cell(row, c.from), cell(row, c.to)]), rentalLocation);
+  // Odoo's own location types, when the export carries them; the company's choices win.
+  const found: LocationTypes = {};
+  for (const { row } of done) for (const [lc, tc] of [[c.from, c.fromType], [c.to, c.toType]] as const) {
+    if (tc === undefined) continue;
+    const t = usageType(cell(row, tc)), loc = cell(row, lc!);
+    if (t && loc) found[loc] = t;
+  }
+  const types = { ...found, ...chosen };
   const moves: StockMove[] = done.map(({ i, row, day, keyDay, qty, updated }) => {
     const ref = cell(row, c.ref), from = cell(row, c.from), to = cell(row, c.to), lot = cell(row, c.lot);
     const { code, product } = splitProduct(cell(row, c.product), cell(row, c.code));
     const id = cell(row, c.id);
     return {
       key: withIds && id ? id : fp([keyDay, ref, code || product, lot, from, to, qty]), ...(updated ? { updated } : {}),
-      day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentals), product, code, lot, from, to, qty,
+      day, period: day.slice(0, 7), ref, kind: moveKind(from, to, rentals, types), product, code, lot, from, to, qty,
       uom: cell(row, c.uom), partner: cell(row, c.partner), src: { sheet: g.name, row: i },
     };
   });
-  return moves.length || issues.length ? { moves, withIds, issues, skipped } : null;
+  return moves.length || issues.length ? { moves, withIds, issues, skipped, ...(Object.keys(found).length ? { locationTypes: found } : {}) } : null;
 }
 
 /** Headings of Odoo's product list that give what is on hand in the warehouses (product.product: "Quantity On Hand"). */

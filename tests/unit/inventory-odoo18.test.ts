@@ -34,8 +34,9 @@ const MOVES = grid("Sheet1", [
 ]);
 const VARIANT = grid("Sheet1", [
   ["Average Cost", "Display Name", "Free To Use Quantity", "Incoming", "Outgoing", "Quantity On Hand", "Total Value", "Unit of Measure"],
-  [110, "[Device] Alpha Concentrator", 1, 0, 0, 1, 110, "PCS"],
-  [500, "[Device] Beta Ventilator", 1, 0, 0, 1, 500, "PCS"],
+  // Odoo's Total Value is the product's whole valuation: the unit out on rental (Alpha) and in transit (Beta) included.
+  [110, "[Device] Alpha Concentrator", 1, 0, 0, 1, 220, "PCS"],
+  [500, "[Device] Beta Ventilator", 1, 0, 0, 1, 1000, "PCS"],
   [0, "[Device] Gamma Mask", 0, 0, 0, 0, 0, "PCS"],
 ]);
 
@@ -91,7 +92,7 @@ describe("Odoo 18 exports as a real company makes them", () => {
   it("reads Odoo's Product Variant list as stock on hand in the warehouses, with its value", () => {
     expect(guessRole(VARIANT)).toMatchObject({ role: "stock_onhand", sure: true });
     expect(readStockOnHand(VARIANT, "2026-08-31")!.map((o) => [productKey(o.code, o.product), o.location, o.qty, o.value])).toEqual([
-      ["[Device] Alpha Concentrator", "", 1, 110], ["[Device] Beta Ventilator", "", 1, 500], ["[Device] Gamma Mask", "", 0, 0],
+      ["[Device] Alpha Concentrator", "", 1, 220], ["[Device] Beta Ventilator", "", 1, 1000], ["[Device] Gamma Mask", "", 0, 0],
     ]);
   });
 
@@ -104,6 +105,13 @@ describe("Odoo 18 exports as a real company makes them", () => {
     expect(a.position).toEqual({ warehouse: 610, rental: 110, transit: 500, at: "2026-08" });
     // These are checks inside Inventory: they never read as "agree with the accounts".
     expect(tieSummary(a.tieouts).checked).toBe(0);
+  });
+
+  it("a stock list by location values the warehouses only, so rental and transit are added to it, once", () => {
+    const d = summary();
+    d.onhand = [{ asOf: "2026-08-31", product: "Alpha Concentrator", code: "Device", location: "WH/Stock", lot: "", qty: 1, value: 110 }, { asOf: "2026-08-31", product: "Beta Ventilator", code: "Device", location: "WH/Stock", lot: "", qty: 1, value: 500 }];
+    const a = inventoryAnalysis(d, { type: "month", end: "2026-08" }, 1, { ledger: { stock: null, cogs: null } });
+    expect(a.tieouts.find((x) => x.key === "onhand_value")).toMatchObject({ status: "ok", module: 1220, ledger: 1220 });
   });
 
   it("names the products whose units Odoo moved but never valued (a receipt posted without value)", () => {

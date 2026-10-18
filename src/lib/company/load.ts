@@ -1,3 +1,4 @@
+import { LOCATION_TYPES, type LocationType, type LocationTypes } from "@/lib/ingest/inventory";
 import { cache } from "react";
 import "server-only";
 import { notFound } from "next/navigation";
@@ -20,9 +21,10 @@ export function forecastFromRow(c: Pick<CompanyRow, "kpi_config">): ForecastDriv
 }
 
 /** Inventory settings kept with the company (the rental location picked at upload). */
-export function inventorySettingsFromRow(c: Pick<CompanyRow, "kpi_config">): { rentalLocation: string | null } {
-  const e = ((c.kpi_config ?? {}) as Record<string, unknown>)[INVENTORY_KEY] as { rentalLocation?: unknown } | undefined;
-  return { rentalLocation: e && typeof e.rentalLocation === "string" && e.rentalLocation ? e.rentalLocation : null };
+export function inventorySettingsFromRow(c: Pick<CompanyRow, "kpi_config">): { rentalLocation: string | null; locationTypes: LocationTypes } {
+  const e = ((c.kpi_config ?? {}) as Record<string, unknown>)[INVENTORY_KEY] as { rentalLocation?: unknown; locationTypes?: unknown } | undefined;
+  const types = e && e.locationTypes && typeof e.locationTypes === "object" ? Object.entries(e.locationTypes as Record<string, unknown>).filter((x): x is [string, LocationType] => LOCATION_TYPES.includes(x[1] as LocationType)) : [];
+  return { rentalLocation: e && typeof e.rentalLocation === "string" && e.rentalLocation ? e.rentalLocation : null, locationTypes: Object.fromEntries(types) };
 }
 
 export function assumptionsFromRow(c: Pick<CompanyRow, "kpi_config">): Assumptions {

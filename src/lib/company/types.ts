@@ -1,3 +1,4 @@
+import type { LocationTypes } from "@/lib/ingest/inventory";
 import type { Assumptions, ForecastDrivers, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
 
 /** One general-ledger account with its monthly amounts in natural sign
@@ -37,7 +38,7 @@ export interface CompanyBundle {
   /** Economic assumptions (inflation, exchange rates, borrowing) for the bank and real-profit views. */
   assumptions?: Assumptions;
   /** Inventory settings: the location rented items go to (null: found by its name). */
-  inventorySettings?: { rentalLocation: string | null };
+  inventorySettings?: { rentalLocation: string | null; locationTypes?: LocationTypes };
   /** Where the company is ("Africa/Cairo"): Odoo's UTC date-times are moved to its days. Null: not moved. */
   timeZone?: string | null;
   /** The company said its books start from zero (no opening balance due). */

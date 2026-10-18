@@ -2,6 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
+import { LOCATION_TYPES, type LocationTypes } from "@/lib/ingest/inventory";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { checkKey, type Check } from "@/lib/company/checks";
 import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/lib/company/import-schema";
@@ -218,15 +219,18 @@ export async function saveAssumptions(companyId: string, input: z.input<typeof A
 }
 
 /** Inventory settings: the location rented items go to (null: found by its name, "Rental" or "تأجير"). */
-export async function saveInventorySettings(companyId: string, input: { rentalLocation: string | null }): Promise<{ ok: boolean; error?: string }> {
-  const v = z.object({ rentalLocation: z.string().trim().max(200).nullable() }).safeParse(input);
+export async function saveInventorySettings(companyId: string, input: { rentalLocation: string | null; locationTypes?: LocationTypes }): Promise<{ ok: boolean; error?: string }> {
+  const v = z.object({ rentalLocation: z.string().trim().max(200).nullable(), locationTypes: z.record(z.string().max(300), z.enum(LOCATION_TYPES)).refine((o) => Object.keys(o).length <= 2000).optional() }).safeParse(input);
   if (!v.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid request." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
   if (e1) return { ok: false, error: dbError(e1, "saveInventorySettings") };
   if (!row) return { ok: false, error: "You do not have permission to change this." };
-  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [INVENTORY_KEY]: { rentalLocation: v.data.rentalLocation || null } };
+  const cfg = (row.kpi_config ?? {}) as Record<string, unknown>;
+  const was = (cfg[INVENTORY_KEY] ?? {}) as { locationTypes?: LocationTypes };
+  // Location types are kept unless new ones are given (Odoo's own types from an export, or the person's choice).
+  const next = { ...cfg, [INVENTORY_KEY]: { rentalLocation: v.data.rentalLocation || null, locationTypes: { ...(was.locationTypes ?? {}), ...(v.data.locationTypes ?? {}) } } };
   const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
   if (error) return { ok: false, error: dbError(error, "saveInventorySettings") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };

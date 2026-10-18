@@ -2,7 +2,7 @@ import { readWorkbook } from "@/lib/ingest/read";
 import type { Grid } from "@/lib/ingest/extract";
 import { guessRole, type SheetRole } from "@/lib/ingest/roles";
 import { describeColumns, findHeader, KIND_EXPORT, ODOO_TEMPLATES, type ExportKey, type ExportKind, type SavedMapping } from "@/lib/ingest/odoo-templates";
-import { classifyLayers, locationClass, readOnHandSheet, readProducts, readStockMoves, readStockValuation, type RowIssue, type StockLayer, type StockMove } from "@/lib/ingest/inventory";
+import { classifyLayers, locationClass, readOnHandSheet, readProducts, readStockMoves, readStockValuation, type LocationTypes, type RowIssue, type StockLayer, type StockMove } from "@/lib/ingest/inventory";
 
 /**
  * What the background thread does with an upload, as plain functions (tested without a browser):
@@ -49,18 +49,18 @@ export async function sampleFile(name: string, data: ArrayBuffer, saved: Partial
   return { ...base, export: key, why: ODOO_TEMPLATES[key].title, columns, preview: read.preview.slice(0, 8), issues: read.issues.slice(0, 20), pageSized: ODOO_PAGE_SIZES.includes(records) };
 }
 
-type Read = { layers: StockLayer[]; moves: StockMove[]; onhand: { product: string; code: string; location: string; lot: string; qty: number; value: number | null }[]; products: ReturnType<typeof readProducts>; issues: RowIssue[]; skipped: number; withIds: boolean; preview: Record<string, string>[] };
+type Read = { layers: StockLayer[]; moves: StockMove[]; onhand: { product: string; code: string; location: string; lot: string; qty: number; value: number | null }[]; products: ReturnType<typeof readProducts>; issues: RowIssue[]; skipped: number; withIds: boolean; preview: Record<string, string>[]; locationTypes?: LocationTypes };
 
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, rentalLocation: string | null, asOf: string, tz: string | null = null): Read {
+function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, rentalLocation: string | null, asOf: string, tz: string | null = null, types?: LocationTypes): Read {
   const out: Read = { layers: [], moves: [], onhand: [], products: [], issues: [], skipped: 0, withIds: true, preview: [] };
   if (kind === "valuation") {
     const r = readStockValuation(g, saved, tz);
     if (r) { out.layers = r.layers; out.issues = r.issues; out.skipped = r.skipped; out.withIds = r.withIds; }
     out.preview = out.layers.slice(0, 8).map((l) => ({ Date: l.day, Product: l.code ? `[${l.code}] ${l.product}` : l.product, Reference: l.ref, Kind: l.kind, Quantity: fmt(l.qty), Value: fmt(l.value), ...(l.updated ? { "Last updated": l.updated } : {}) }));
   } else if (kind === "moves") {
-    const r = readStockMoves(g, rentalLocation, saved, tz);
-    if (r) { out.moves = r.moves; out.issues = r.issues; out.skipped = r.skipped; out.withIds = r.withIds; }
+    const r = readStockMoves(g, rentalLocation, saved, tz, types);
+    if (r) { out.moves = r.moves; out.issues = r.issues; out.skipped = r.skipped; out.withIds = r.withIds; out.locationTypes = r.locationTypes; }
     out.preview = out.moves.slice(0, 8).map((m) => ({ Date: m.day, Product: m.code ? `[${m.code}] ${m.product}` : m.product, Reference: m.ref, Kind: m.kind, From: m.from, To: m.to, Quantity: fmt(m.qty) }));
   } else if (kind === "onhand") {
     const r = readOnHandSheet(g, asOf || "2000-01-01", saved);
@@ -76,17 +76,17 @@ function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, re
 /** One staged record: a valid row's data, or an unreadable row's error. */
 export interface StagedRecord { n: number; line: number | null; data?: Record<string, unknown>; error?: string }
 export interface ParsedFile { name: string; export: ExportKey; kind: ExportKind; records: StagedRecord[]; valid: number; invalid: number; skipped: number; withIds: boolean; months: string[]; value: number; /** Rows dated after the cut-off, left out. */ afterCutoff?: number }
-export interface ParseResult { files: ParsedFile[]; locations: string[] }
+export interface ParseResult { files: ParsedFile[]; locations: string[]; /** Odoo's own location types, from the moves export. */ locationTypes?: LocationTypes }
 
 const cut = (s: string | undefined, n: number) => (s ?? "").slice(0, n);
 const lineOf = (g: Grid, row?: number) => (row === undefined ? null : row + 1 + (g.origin?.r ?? 0));
 
 /** Every row of every file, ready to stage. Valuation rows take their kind from the moves read in the same upload. */
-export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
+export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null; locationTypes?: LocationTypes }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
   const read: { f: (typeof files)[number]; g: Grid; r: Read; late: number }[] = [];
   for (const [i, f] of files.entries()) {
     const g = firstSheet(await readWorkbook(f.data, f.name));
-    const r = readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf, opts.timeZone ?? null);
+    const r = readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf, opts.timeZone ?? null, opts.locationTypes);
     // Layers and moves after the cut-off are left out; stock on hand is the count on the day it was exported.
     const c = opts.cutoff, n = r.layers.length + r.moves.length;
     if (c) { r.layers = r.layers.filter((l) => l.day <= c); r.moves = r.moves.filter((m) => m.day <= c); }
@@ -122,7 +122,8 @@ export async function parseFiles(files: { name: string; data: ArrayBuffer; expor
     };
   });
   const locations = [...new Set(allMoves.flatMap((m) => [m.from, m.to]))].filter((l) => l && (locationClass(l) !== "partner" && (locationClass(l) !== "virtual" || /rental|تأجير|إيجار|ايجار/i.test(l)))).sort();
-  return { files: out, locations };
+  const found = Object.assign({}, ...read.map((x) => x.r.locationTypes ?? {})) as LocationTypes;
+  return { files: out, locations, ...(Object.keys(found).length ? { locationTypes: found } : {}) };
 }
 
 export { KIND_EXPORT };

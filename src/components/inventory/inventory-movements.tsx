@@ -3,11 +3,19 @@ import { MOVE_KINDS } from "@/lib/engine/inventory";
 import { PageHeader } from "@/components/shell/page-header";
 import { useT } from "@/lib/i18n/use-t";
 import { InventoryPicker, NoInventory, useInventoryAnalysis } from "./common";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCompany } from "@/lib/company/context";
+import { LOCATION_TYPES, type LocationType } from "@/lib/ingest/inventory";
+import { saveInventorySettings } from "@/app/company/[id]/settings/actions";
 
 const q = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
 
 export function InventoryMovements() {
   const s = useInventoryAnalysis();
+  const c = useCompany();
+  const router = useRouter();
+  const [saving, setSaving] = useState<string | null>(null);
   const T = useT();
   const t = T.d.inv;
   const title = T.d.nav["inventory/movements"][1];
@@ -40,11 +48,19 @@ export function InventoryMovements() {
       <h3 className="mb-2 mt-10 text-lg font-normal">{t.locationsTitle}</h3>
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[480px]" data-testid="inv-locations">
-          <thead><tr><th className="!text-start">{t.location}</th><th>{t.inQ}</th><th>{t.outQ}</th><th>{t.net}</th></tr></thead>
+          <thead><tr><th className="!text-start">{t.location}</th><th className="!text-start">{t.countsAs}</th><th>{t.inQ}</th><th>{t.outQ}</th><th>{t.net}</th></tr></thead>
           <tbody>
             {locations.map((l) => (
               <tr key={l.loc} className="row">
                 <td className="!text-start">{l.loc}</td>
+                <td className="!text-start">
+                  {c.readOnly ? t.countsKinds[l.counts] : (
+                    <select value={l.counts} disabled={saving === l.loc} aria-label={`${t.countsAs}: ${l.loc}`} className="rounded border border-line px-1.5 py-0.5 text-[13px]"
+                      onChange={async (e) => { setSaving(l.loc); await setType(l.loc, e.target.value as LocationType); setSaving(null); }}>
+                      {LOCATION_TYPES.map((k) => <option key={k} value={k}>{t.countsKinds[k]}</option>)}
+                    </select>
+                  )}
+                </td>
                 <td className="num">{q(l.inQ)}</td>
                 <td className="num">{q(l.outQ)}</td>
                 <td className="num font-medium">{q(l.inQ - l.outQ)}</td>
@@ -53,6 +69,11 @@ export function InventoryMovements() {
           </tbody>
         </table>
       </div>
+      <p className="mt-2 text-xs text-mute">{t.countsNote}</p>
     </>
   );
+  async function setType(loc: string, type: LocationType) {
+    const r = await saveInventorySettings(c.id, { rentalLocation: c.inventorySettings?.rentalLocation ?? null, locationTypes: { [loc]: type } });
+    if (r.ok) router.refresh();
+  }
 }

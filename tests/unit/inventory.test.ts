@@ -82,7 +82,7 @@ describe("Inventory engine", () => {
     expect(a.bridge).toBeNull();
     expect(a.tieouts.map((t) => t.key)).toEqual(["rental_value"]);
     expect(a.movements).toEqual([{ p: "2026-09", kind: "receipt", q: 10 }, { p: "2026-09", kind: "delivery", q: 4 }]);
-    expect(a.locations.find((l) => l.loc === "WH/Stock")).toEqual({ loc: "WH/Stock", inQ: 10, outQ: 4 });
+    expect(a.locations.find((l) => l.loc === "WH/Stock")).toEqual({ loc: "WH/Stock", inQ: 10, outQ: 4, counts: "internal" });
   });
 
   it("checks stock value only when the valuation export starts at the first stock month", () => {

@@ -10,7 +10,7 @@ import type { ExportKey, SavedMapping } from "@/lib/ingest/odoo-templates";
 export interface StageJob {
   id: string;
   status: string;
-  options: { rentalLocation?: string | null; asOf?: string; timeZone?: string | null; cutoff?: string | null };
+  options: { rentalLocation?: string | null; asOf?: string; timeZone?: string | null; cutoff?: string | null; locationTypes?: Record<string, "internal" | "transit" | "rental" | "outside"> };
   files: { id: string; filename: string; export_key: string; storage_path: string; stored: boolean }[];
 }
 /** What the server needs from the database and storage (the signed-in person's own access). */
@@ -26,7 +26,7 @@ export async function readJobOnServer(db: StageDb, jobId: string, mappings: Reco
   if (!job || job.status !== "preparing") throw new Error("This import is no longer open.");
   if (!job.files.length || job.files.some((f) => !f.stored)) throw new Error("NOT_STORED: the original files are not all uploaded yet.");
   const files = await Promise.all(job.files.map(async (f) => ({ name: f.filename, data: await db.download(f.storage_path), export: f.export_key as ExportKey, mapping: mappings[f.id] })));
-  const parsed = await parseFiles(files, { rentalLocation: job.options.rentalLocation ?? null, asOf: job.options.asOf ?? "", timeZone: job.options.timeZone ?? null, cutoff: job.options.cutoff ?? null });
+  const parsed = await parseFiles(files, { rentalLocation: job.options.rentalLocation ?? null, asOf: job.options.asOf ?? "", timeZone: job.options.timeZone ?? null, cutoff: job.options.cutoff ?? null, locationTypes: job.options.locationTypes });
   return { job, parsed };
 }
 

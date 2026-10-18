@@ -6,7 +6,7 @@ import { str, type Grid } from "./extract";
  * field, and which fields an export must have. A company can point a field at another heading (its own export layout);
  * that choice is kept per export and used before the built-in headings.
  */
-export type Field = "id" | "updated" | "date" | "ref" | "product" | "code" | "name" | "category" | "lot" | "qty" | "unitValue" | "value" | "desc" | "landed" | "from" | "to" | "location" | "status" | "partner" | "uom" | "cost" | "type";
+export type Field = "id" | "updated" | "date" | "ref" | "product" | "code" | "name" | "category" | "lot" | "qty" | "unitValue" | "value" | "desc" | "landed" | "from" | "to" | "fromType" | "toType" | "location" | "status" | "partner" | "uom" | "cost" | "type";
 
 /** The headings Odoo 18 uses for each field (list-view labels, technical names of an import-compatible export, Arabic). */
 export const HEADINGS: [Field, RegExp][] = [
@@ -26,6 +26,8 @@ export const HEADINGS: [Field, RegExp][] = [
   ["landed", arRx(/^(landed cost|landed costs|stock_landed_cost_id|التكلفة الواصلة|التكاليف الواصلة)$/i)],
   ["from", arRx(/^(from|source location|location_id|من|الموقع المصدر|من موقع)$/i)],
   ["to", arRx(/^(to|destination location|location_dest_id|إلى|الى|الموقع الوجهة|إلى موقع)$/i)],
+  ["fromType", arRx(/^(source location type|from location type|source location\/location type|location_id\/usage|نوع الموقع المصدر)$/i)],
+  ["toType", arRx(/^(destination location type|to location type|destination location\/location type|location_dest_id\/usage|نوع الموقع الوجهة)$/i)],
   ["location", arRx(/^(location|الموقع)$/i)],
   ["status", arRx(/^(status|state|الحالة)$/i)],
   ["partner", arRx(/^(partner|contact|partner_id|الشريك|جهة الاتصال)$/i)],
@@ -62,7 +64,9 @@ export const ODOO_TEMPLATES: Record<ExportKey, OdooTemplate> = {
     fields: [ID, UPDATED, { field: "date", label: "Date", required: true }, { field: "product", label: "Product", required: true },
       { field: "from", label: "From", required: true }, { field: "to", label: "To", required: true }, { field: "qty", label: "Quantity", required: true },
       { field: "ref", label: "Reference" }, { field: "status", label: "Status", hint: "Only done moves are saved." }, { field: "lot", label: "Lot/serial number" },
-      { field: "uom", label: "Unit of measure" }, { field: "partner", label: "Partner" }],
+      { field: "uom", label: "Unit of measure" }, { field: "partner", label: "Partner" },
+      { field: "fromType", label: "Source location type", hint: "Odoo's location type: tells stock (internal, transit) from repair, loss or production locations." },
+      { field: "toType", label: "Destination location type" }],
   },
   "product.product": {
     key: "product.product", kind: "onhand", title: "Stock on hand (product variants)", where: "Inventory → Products → Product Variants",

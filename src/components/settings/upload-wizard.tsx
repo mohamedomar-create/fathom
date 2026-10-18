@@ -509,7 +509,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   }
 
   // 3 · Odoo Inventory exports: uploaded, read and saved as a background job (never read on this page's main thread).
-  if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} timeZone={company.timeZone ?? null} onBack={() => setScreen("get")} />;
+  if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} timeZone={company.timeZone ?? null} locationTypes={company.inventorySettings?.locationTypes} onBack={() => setScreen("get")} />;
 
   // 3 · Upload
   if (screen === "upload" || (!allGrids && screen !== "done")) {

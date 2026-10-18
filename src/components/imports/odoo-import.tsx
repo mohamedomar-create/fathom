@@ -1,4 +1,5 @@
 "use client";
+import type { LocationTypes } from "@/lib/ingest/inventory";
 import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { ODOO_TEMPLATES, type ExportKey, type Field, type SavedMapping } from "@/lib/ingest/odoo-templates";
@@ -22,7 +23,7 @@ const mb = (b: number) => `${(b / 1024 / 1024).toFixed(b < 10 * 1024 * 1024 ? 1 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 const EXPORTS = Object.values(ODOO_TEMPLATES);
 
-export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = null, onBack }: { companyId: string; rentalLocation: string | null; timeZone?: string | null; onBack?: () => void }) {
+export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = null, locationTypes, onBack }: { companyId: string; rentalLocation: string | null; timeZone?: string | null; locationTypes?: LocationTypes; onBack?: () => void }) {
   const [files, setFiles] = useState<File[]>([]);
   const [samples, setSamples] = useState<FileSample[] | null>(null);
   const [saved, setSaved] = useState<Partial<Record<ExportKey, SavedMapping>>>({});
@@ -87,7 +88,9 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
       for (const k of changed) if (saved[k]) await saveTemplate(companyId, k, saved[k]!).catch(() => undefined);
       if (hasMoves && rental !== savedRental) await saveInventorySettings(companyId, { rentalLocation: rental }).catch(() => undefined);
       const list = ready.map((s) => ({ file: files.find((f) => f.name === s.name)!, export: s.export!, mapping: saved[s.export!] }));
-      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone, ...(cutoff ? { cutoff } : {}) }, setProgress, resume ?? undefined);
+      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone, ...(cutoff ? { cutoff } : {}), ...(locationTypes && Object.keys(locationTypes).length ? { locationTypes } : {}) }, setProgress, resume ?? undefined)
+        // Odoo's own location types, when the moves export carries them, are kept for the Inventory pages.
+        .then(async ({ parsed }) => { if (parsed.locationTypes) await saveInventorySettings(companyId, { rentalLocation: rental, locationTypes: parsed.locationTypes }).catch(() => undefined); });
       setJobsKey((k) => k + 1);
     } catch (e) {
       setErr(importError(e)); setJobsKey((k) => k + 1);
