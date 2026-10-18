@@ -96,6 +96,7 @@ export type Database = {
       odoo_secret: { Args: { p_company: string }; Returns: string | null };
       odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
       odoo_claim_sync: { Args: { p_company: string }; Returns: boolean };
+      odoo_save: { Args: { p_company: string; p_url: string; p_db: string; p_login: string; p_key_enc: string | null; p_odoo_company_id: number; p_odoo_company_name: string; p_include_branches: boolean; p_months: number; p_version: string; p_key_expires_on: string | null }; Returns: undefined };
       leave_organisation: { Args: { p_org: string }; Returns: undefined };
       delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };
       delete_my_account: { Args: { p_email: string }; Returns: undefined };

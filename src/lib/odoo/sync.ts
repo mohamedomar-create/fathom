@@ -4,7 +4,7 @@ import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
 import { normLabel } from "@/lib/ingest/parse";
 import { GUARDED_MODELS, majorVersion, OdooClient, OdooError } from "./client";
-import { AccountRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, XmlRows } from "./schema";
+import { AccountRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, Version, XmlRows } from "./schema";
 import type { LedgerEntry } from "@/lib/ingest/extract";
 import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
 import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
@@ -28,7 +28,8 @@ export interface OdooProbe {
 async function accessRights(client: OdooClient): Promise<{ rights: OdooProbe["rights"]; canChange: string[] }> {
   const canChange: string[] = [];
   for (const model of GUARDED_MODELS) {
-    for (const op of ["create", "write", "unlink"] as const) {
+    // Every user may edit their own preferences, so for users only "create" tells a Settings admin apart.
+    for (const op of model === "res.users" ? ["create"] as const : ["create", "write", "unlink"] as const) {
       let yes: unknown;
       try { yes = await client.executeKw<unknown>(model, "check_access_rights", [op], { raise_exception: false }); }
       catch (e) {
@@ -44,14 +45,14 @@ async function accessRights(client: OdooClient): Promise<{ rights: OdooProbe["ri
 }
 
 export async function probe(client: OdooClient): Promise<OdooProbe> {
-  const v = await client.version();
+  const v = trust(Version, await client.version(), "version");
   const major = majorVersion(v.server_version_info, v.server_version);
   const uid = await client.authenticate();
   const rows = trust(CompanyRows, await client.executeKw("res.company", "search_read", [[]], { fields: ["name", "currency_id"], order: "id" }), "companies");
   const [me] = trust(UserRows, await client.executeKw("res.users", "read", [[uid]], { fields: ["name", "company_ids"] }), "user");
   const access = await accessRights(client);
   return {
-    version: String(v.server_version).slice(0, 40), major, uid, companies: rows.map((r) => ({ id: r.id, name: r.name, currency: r.currency_id ? r.currency_id[1] : null })),
+    version: v.server_version, major, uid, companies: rows.map((r) => ({ id: r.id, name: r.name, currency: r.currency_id ? r.currency_id[1] : null })),
     user: { name: me.name, companies: me.company_ids }, ...access,
   };
 }
@@ -100,7 +101,7 @@ function monthOfGroup(g: Group): string | null {
 }
 
 export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new Date()): Promise<SyncResult> {
-  const v = await client.version();
+  const v = trust(Version, await client.version(), "version");
   const major = majorVersion(v.server_version_info, v.server_version);
   await client.authenticate();
   const cid = opts.companyId;
@@ -150,7 +151,8 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
       moves.set(g.account_id[0], rec);
     }
   } catch (e) {
-    if (e instanceof OdooError && /month of a grouped/.test(e.message) === false && !/read_group|not.*(allowed|exist)|deprecated/i.test(e.detail ?? e.message)) throw e;
+    // Only Odoo saying read_group isn't available switches to reading lines; anything else (a bad answer, a bug) stops here.
+    if (!(e instanceof OdooError) || (/month of a grouped/.test(e.message) === false && !/read_group|not.*(allowed|exist)|deprecated/i.test(e.detail ?? e.message)) || /can't trust/.test(e.message)) throw e;
     // Fallback (e.g. Odoo 19 without public read_group): page through move lines and aggregate here.
     method = "search_read";
     opening.clear(); moves.clear();

@@ -62,6 +62,9 @@ async function audit(supabase: Supa, companyId: string, action: "test" | "sync" 
   if (error) console.error(JSON.stringify({ level: "error", context: "odoo_audit", code: error.code, message: error.message }));
 }
 
+/** What a key is bound to when encrypted: a copy moved to another company, server, database or login can't be decrypted. */
+const bindingOf = (companyId: string, url: string, db: string, login: string) => `odoo\n${companyId}\n${url}\n${db}\n${login}`;
+
 /** The stored (encrypted) key, read through the database function that checks the caller edits this company. */
 async function storedKey(supabase: Supa, companyId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("odoo_secret", { p_company: companyId });
@@ -81,6 +84,12 @@ async function reusableKey(supabase: Supa, companyId: string, url: string, db: s
   if (data.url !== url || data.db !== db || data.login !== login) throw new Error("Enter the API key again: the Odoo address, database or login changed.");
   return enc;
 }
+
+/** The saved key in plain text, only for the company, address, database and login it was saved for. */
+const openKey = (enc: string, companyId: string, url: string, db: string, login: string) => {
+  try { return decrypt(enc, bindingOf(companyId, url, db, login)); }
+  catch (e) { throw new Error(/again/.test((e as Error).message) ? (e as Error).message : "Enter the API key again: the saved key doesn't belong to this connection."); }
+};
 
 /** A client that talks only to the address that passed the public-internet check. */
 async function connect(rawUrl: string, db: string, login: string, key: string, deadline = Infinity) {
@@ -103,7 +112,7 @@ export async function testOdoo(input: z.input<typeof ConnSchema>): Promise<Resul
     if (await overLimit(supabase, user.id, v.companyId, "odoo_test_company")) throw new Error(TOO_MANY);
     const url = await assertPublicOdooUrl(v.url);
     const enc = v.apiKey ? null : await reusableKey(supabase, v.companyId, url, v.db, v.login);
-    const key = v.apiKey || (enc ? decrypt(enc) : "");
+    const key = v.apiKey || (enc ? openKey(enc, v.companyId, url, v.db, v.login) : "");
     if (!key) throw new Error("Enter the API key.");
     try {
       const p = await probe((await connect(url, v.db, v.login, key)).client);
@@ -135,16 +144,19 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
     const { supabase, user } = await guard(v.companyId, "admin");
     if (await overLimit(supabase, user.id, v.companyId, "odoo_test_company")) throw new Error(TOO_MANY);
     const url = await assertPublicOdooUrl(v.url);
-    const keyEnc = v.apiKey ? encrypt(v.apiKey) : await reusableKey(supabase, v.companyId, url, v.db, v.login);
-    if (!keyEnc) throw new Error("Enter the API key.");
+    const saved = v.apiKey ? null : await reusableKey(supabase, v.companyId, url, v.db, v.login);
+    const key = v.apiKey || (saved ? openKey(saved, v.companyId, url, v.db, v.login) : "");
+    if (!key) throw new Error("Enter the API key.");
     // Tested again here, on the server: what the browser showed is never trusted for the save.
-    const p = await probe((await connect(url, v.db, v.login, v.apiKey || decrypt(keyEnc))).client);
+    const p = await probe((await connect(url, v.db, v.login, key)).client);
     const verdict = connectionVerdict(p, v.odooCompanyId, v.includeBranches, v.acceptUnverified === true);
     if (!verdict.ok) { await audit(supabase, v.companyId, "refused", false, `save refused: ${verdict.reason} ${verdict.note}`); throw new Error(verdict.reason!); }
     const odooCompanyName = p.companies.find((c) => c.id === v.odooCompanyId)?.name ?? v.odooCompanyName;
-    const { error } = await supabase.from("odoo_connections").upsert({
-      company_id: v.companyId, url, db: v.db, login: v.login, api_key_enc: keyEnc, odoo_company_id: v.odooCompanyId, odoo_company_name: odooCompanyName,
-      include_branches: v.includeBranches, months_history: v.months, version: p.version, status: "saved", last_error: null, key_expires_on: v.keyExpiresOn ?? null,
+    // A new key is encrypted bound to this company and connection; no key keeps the saved one (the database clears it if
+    // the address, database or login changed).
+    const { error } = await supabase.rpc("odoo_save", {
+      p_company: v.companyId, p_url: url, p_db: v.db, p_login: v.login, p_key_enc: v.apiKey ? encrypt(v.apiKey, bindingOf(v.companyId, url, v.db, v.login)) : null,
+      p_odoo_company_id: v.odooCompanyId, p_odoo_company_name: odooCompanyName, p_include_branches: v.includeBranches, p_months: v.months, p_version: p.version, p_key_expires_on: v.keyExpiresOn ?? null,
     });
     if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
     if (p.rights !== "read") await audit(supabase, v.companyId, "test", true, `saved with unconfirmed rights, accepted by the admin. ${verdict.note}`);
@@ -185,7 +197,7 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     claimed = true;
     const enc = await storedKey(supabase, companyId);
     if (!enc) throw new Error("Enter the API key again in the Odoo connection, then save it.");
-    const { client } = await connect(conn.url, conn.db, conn.login, decrypt(enc), Date.now() + SYNC_BUDGET_MS);
+    const { client } = await connect(conn.url, conn.db, conn.login, openKey(enc, companyId, conn.url, conn.db, conn.login), Date.now() + SYNC_BUDGET_MS);
     // The company's account map: classes a person chose win over Odoo's account types.
     // The last import, so entries entered after it into days it covered (back-dated postings) are counted.
     const { data: last } = await supabase.from("imports").select("created_at, report").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
@@ -215,7 +227,8 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
       detail = ls.note;
       lines = ls.lines;
     } catch (e) { detail = `Sales and expense detail could not be synced (${e instanceof OdooError ? e.message : safeError(new DbError({ message: String((e as Error)?.message ?? e) }), "syncOdoo:lines")}). The figures were synced.`; }
-    await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version, sync_started_at: null }).eq("company_id", companyId);
+    const done = await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version.slice(0, 40), sync_started_at: null }).eq("company_id", companyId);
+    if (done.error) throw new DbError(done.error);
     claimed = false;
     await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
     await audit(supabase, companyId, "sync", true, `${res.periods[0]}–${res.periods[res.periods.length - 1]} · ${res.accounts.length} accounts · trial balance ${res.diagnostics.trialBalanceCheck}${detail ? ` · ${detail}` : ""}`, res.diagnostics.groups + lines);

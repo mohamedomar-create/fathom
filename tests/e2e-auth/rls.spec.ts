@@ -55,8 +55,10 @@ test("the Odoo API key can't be read back through the database API, even by the 
   const a = await user(api, "odooadmin");
   const [org] = await a.rows("organizations?select=id");
   const company = (await (await api.post(`${URL}/rest/v1/companies`, { headers: a.h, data: { org_id: org.id, name: "Odoo Keyed Co" } })).json())[0].id as string;
-  const saved = await api.post(`${URL}/rest/v1/odoo_connections`, { headers: { ...a.h, Prefer: "return=minimal" }, data: { company_id: company, url: "https://x.odoo.com", db: "x", login: "me@x", api_key_enc: "v1.secret" } });
-  expect(saved.status(), await saved.text()).toBe(201);
+  // No direct writes: a connection is saved only through odoo_save, by an admin, with a key the app encrypted.
+  expect((await api.post(`${URL}/rest/v1/odoo_connections`, { headers: a.h, data: { company_id: company, url: "https://evil.example", db: "x", login: "me@x", api_key_enc: "v2.a.b.c" } })).ok()).toBe(false);
+  const saved = await api.post(`${URL}/rest/v1/rpc/odoo_save`, { headers: a.h, data: { p_company: company, p_url: "https://x.odoo.com", p_db: "x", p_login: "me@x", p_key_enc: "v2.secret.t.c", p_odoo_company_id: 1, p_odoo_company_name: "X", p_include_branches: false, p_months: 25, p_version: "18.0", p_key_expires_on: null } });
+  expect(saved.ok(), await saved.text()).toBe(true);
   expect((await a.get(`odoo_connections?company_id=eq.${company}&select=api_key_enc`)).ok()).toBe(false);
   expect((await a.get(`odoo_connections?company_id=eq.${company}&select=*`)).ok()).toBe(false);
   expect(await a.rows(`odoo_connections?company_id=eq.${company}&select=url,has_key`)).toEqual([{ url: "https://x.odoo.com", has_key: true }]);

@@ -27,3 +27,19 @@ describe("encryption key", () => {
     expect(decrypt(encrypt("secret"))).toBe("secret");
   });
 });
+
+describe("a key is bound to where it was saved", () => {
+  const where = (url: string) => `company-1\n${url}\ndb\nme@x`;
+  it("decrypts only with the same binding: a copy pointed at another server fails", () => {
+    process.env.ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+    const t = encrypt("odoo-key", where("https://a.odoo.com"));
+    expect(t.startsWith("v2.")).toBe(true);
+    expect(decrypt(t, where("https://a.odoo.com"))).toBe("odoo-key");
+    expect(() => decrypt(t, where("https://evil.example"))).toThrow();
+    expect(() => decrypt(t, "company-2\nhttps://a.odoo.com\ndb\nme@x")).toThrow();
+  });
+  it("an unbound (older) value is refused where a binding is required", () => {
+    process.env.ENCRYPTION_KEY = Buffer.alloc(32, 9).toString("base64");
+    expect(() => decrypt(encrypt("odoo-key"), where("https://a.odoo.com"))).toThrow(/again/);
+  });
+});

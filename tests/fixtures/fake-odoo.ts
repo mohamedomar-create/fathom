@@ -60,7 +60,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /** late: an entry dated in August, posted (created) on 18 Oct 2026 after the last import. */
 /** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
 /** userCompanies: the companies the connected user may see. */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; rights?: "read" | "write" | "unknown"; userCompanies?: number[] } = {}) {
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.offBalance) {
     accs.push({ id: 900, code: "999100", name: "Petty cash (off balance)", cls: "cash", type: "off_balance" });
@@ -83,7 +83,7 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
         if (rights === "unknown" || (m === "has_access" && version < 18) || (m === "check_access_rights" && version >= 18)) {
           return json({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "AttributeError", message: `The method '${m}' does not exist on the model` } } });
         }
-        result = rights === "write" && model === "account.move";
+        result = (rights === "write" && model === "account.move") || (rights === "admin" && model === "res.users");
       } else if (model === "res.users") {
         if (m !== "read" || a[0][0] !== 7) throw new Error("only the user's own record");
         result = [{ id: 7, name: "iReport Reader", login: "me@x.com", company_ids: opts.userCompanies ?? [1] }];

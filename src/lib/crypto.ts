@@ -17,18 +17,25 @@ function key(): Buffer {
   return b;
 }
 
-/** AES-256-GCM. Output: v1.<iv>.<tag>.<ciphertext> (base64url). */
-export function encrypt(plain: string): string {
+/**
+ * AES-256-GCM. Output: v1.<iv>.<tag>.<ciphertext> (base64url), or v2.… when bound to a context (`aad`): a v2 value
+ * decrypts only with the same context, so a copy of it moved elsewhere (another company, another server) is useless.
+ */
+export function encrypt(plain: string, aad?: string): string {
   const iv = randomBytes(12);
   const c = createCipheriv("aes-256-gcm", key(), iv);
+  if (aad !== undefined) c.setAAD(Buffer.from(aad, "utf8"));
   const enc = Buffer.concat([c.update(plain, "utf8"), c.final()]);
-  return ["v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), enc.toString("base64url")].join(".");
+  return [aad !== undefined ? "v2" : "v1", iv.toString("base64url"), c.getAuthTag().toString("base64url"), enc.toString("base64url")].join(".");
 }
 
-export function decrypt(token: string): string {
+export function decrypt(token: string, aad?: string): string {
   const [v, iv, tag, data] = token.split(".");
-  if (v !== "v1" || !iv || !tag || !data) throw new Error("Unrecognised encrypted value");
+  if ((v !== "v1" && v !== "v2") || !iv || !tag || !data) throw new Error("Unrecognised encrypted value");
+  if (aad !== undefined && v !== "v2") throw new Error("Enter the API key again: it was saved before keys were tied to their connection.");
+  if (v === "v2" && aad === undefined) throw new Error("Unrecognised encrypted value");
   const d = createDecipheriv("aes-256-gcm", key(), Buffer.from(iv, "base64url"));
+  if (v === "v2") d.setAAD(Buffer.from(aad!, "utf8"));
   d.setAuthTag(Buffer.from(tag, "base64url"));
   return Buffer.concat([d.update(Buffer.from(data, "base64url")), d.final()]).toString("utf8");
 }

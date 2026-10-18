@@ -16,8 +16,8 @@ export const READ_MODELS: ReadonlySet<string> = new Set(["res.company", "res.use
  */
 export const RIGHTS_METHODS: ReadonlySet<string> = new Set(["check_access_rights", "has_access"]);
 const RIGHTS_OPS = new Set(["create", "write", "unlink"]);
-/** Accounting records a read-only user must not be able to create, change or delete. */
-export const GUARDED_MODELS = ["account.move", "account.account", "account.journal", "account.payment"] as const;
+/** Accounting records a read-only user must not be able to create, change or delete; and users (only Settings admins create them). */
+export const GUARDED_MODELS = ["account.move", "account.account", "account.journal", "account.payment", "res.users"] as const;
 
 /** Server-wide stop for every Odoo call (Vercel setting ODOO_SYNC_DISABLED=1). */
 export const odooDisabled = () => /^(1|true|yes)$/i.test(process.env.ODOO_SYNC_DISABLED ?? "");

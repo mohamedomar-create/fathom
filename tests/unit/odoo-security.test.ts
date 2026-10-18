@@ -73,6 +73,11 @@ describe("the connection itself", () => {
     expect(n).toBe(0);
   });
 
+  it("an old-style IPv6 address that embeds a private one is refused", async () => {
+    const { isPrivateAddress } = await import("@/lib/odoo/net");
+    expect([isPrivateAddress("::10.0.0.1"), isPrivateAddress("fec0::1"), isPrivateAddress("2a00:1450::1")]).toEqual([true, true, false]);
+  });
+
   it("only the standard https port", async () => {
     const pub = async () => [{ address: "8.8.8.8", family: 4 }];
     await expect(resolvePublicOdoo("https://x.odoo.com:8443", pub as never)).rejects.toThrow(/port/);
@@ -104,6 +109,12 @@ describe("the connected user is proven read-only", () => {
     expect(p.canChange).toContain("account.move");
   });
 
+  it("a Settings admin (can create users) is not read-only, even with read-only accounting", async () => {
+    const p = await probe(new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(17, { rights: "admin" }).fetch));
+    expect(p.rights).toBe("write");
+    expect(p.canChange).toEqual(["res.users"]);
+  });
+
   it("when Odoo won't answer the rights question, it is unknown, never assumed safe", async () => {
     const p = await probe(new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(17, { rights: "unknown" }).fetch));
     expect(p.rights).toBe("unknown");
@@ -125,6 +136,16 @@ describe("answers from Odoo are checked before use", () => {
       if (model === "account.move.line" && method === "read_group" && (body.result as unknown[]).length) (body.result as { balance: number }[])[0].balance = 1e18;
     }));
     await expect(syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" })).rejects.toThrow(/Odoo sent an answer iReport can't trust.*balance/);
+  });
+
+  it("an oversized version text is refused, never stored", async () => {
+    const f = fakeOdoo(17);
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", (async (u: string, init?: RequestInit) => {
+      const { params } = JSON.parse(String(init?.body));
+      if (params.method === "version") return new Response(JSON.stringify({ result: { server_version: "x".repeat(5000), server_version_info: [17] } }), { headers: { "content-type": "application/json" } });
+      return f.fetch(u, init);
+    }) as typeof fetch);
+    await expect(probe(c)).rejects.toThrow(/can't trust.*version/);
   });
 
   it("a text where an amount belongs stops the sync", async () => {

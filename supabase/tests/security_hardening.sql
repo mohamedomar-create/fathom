@@ -56,7 +56,9 @@ select pg_temp.check('signed-out caller may not count a user', pg_temp.err($q$se
 reset role;
 
 -- ---------------------------------------------------------------- 2. the Odoo key follows its Odoo
-select pg_temp.login('sa@x.test');
+-- As the database owner: since 0025 signed-in users change a connection only through odoo_save (tested there).
+reset role;
+select set_config('request.jwt.claims', '', false);
 update public.odoo_connections set status = 'saved' where company_id = (select co from ids);
 select pg_temp.check('other changes keep the key', (select api_key_enc from public.odoo_connections where company_id = (select co from ids)), 'ENC1');
 update public.odoo_connections set url = 'https://evil.example' where company_id = (select co from ids);
@@ -68,6 +70,8 @@ select pg_temp.check('a new login clears the key', (select api_key_enc from publ
 -- Everything since the books start: a sync may keep up to 20 years of months (migration 0024).
 update public.odoo_connections set months_history = 240 where company_id = (select co from ids);
 select pg_temp.check('a sync may keep 240 months', (select months_history::text from public.odoo_connections where company_id = (select co from ids)), '240');
+
+select pg_temp.login('sa@x.test');
 
 -- ---------------------------------------------------------------- 3. memberships
 select pg_temp.check('a member cannot add a membership directly',
