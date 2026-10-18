@@ -61,3 +61,27 @@ describe("stock", () => {
     expect(await firstStockDay(c)).toBe("2026-08-10");
   });
 });
+
+describe("journal lines, page by page (the first step of the stage)", async () => {
+  const { syncOdoo, syncLedgerLines } = await import("@/lib/odoo/sync");
+  const { ledgerPage, countLedger } = await import("@/lib/odoo/detail");
+  it("pages of revenue, cost and stock lines give the same sales, expense and stock lines as the one-request sync", async () => {
+    const client = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(17).fetch);
+    const opts = { companyId: 1, includeBranches: false, months: 25, end: "2026-09" };
+    const res = await syncOdoo(client, opts);
+    const whole = await syncLedgerLines(client, opts, res);
+    const accts = res.accounts.filter((a) => a.odoo_id !== null).map((a) => ({ odoo_id: a.odoo_id!, code: a.code, name: a.name, cls: a.cls }));
+    const range = { from: `${res.periods[0]}-01`, to: "2026-09-30" };
+    const c: DetailCtx = { client, companyId: 1, major: 17, includeBranches: false };
+    const total = await countLedger(c, accts, range);
+    const got = { sales: [] as unknown[], expenses: [] as unknown[], stock: [] as unknown[] };
+    for (let offset = 0; offset < total; offset += 7) {
+      const p = await ledgerPage(c, accts, range, offset, 7);
+      got.sales.push(...p.sales); got.expenses.push(...p.expenses); got.stock.push(...p.stock);
+    }
+    const sum = (ls: unknown[]) => Math.round((ls as { amount: number }[]).reduce((s, l) => s + l.amount, 0));
+    expect(got.sales.length).toBe(whole.sales.length);
+    expect(got.expenses.length).toBe(whole.expenses.length);
+    expect([sum(got.sales), sum(got.expenses)]).toEqual([sum(whole.sales), sum(whole.expenses)]);
+  });
+});

@@ -2,7 +2,7 @@
 import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, ShieldAlert, Unplug, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { disconnectOdoo, saveOdoo, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
+import { disconnectOdoo, saveOdoo, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
 import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
@@ -89,21 +89,27 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     }
     return "The detail sync took too many steps.";
   };
+  const stop = () => run("save", async () => {
+    const r = await stopOdooSync(companyId);
+    setMsg(r.ok ? { tone: "ok", text: "Sync stopped. What it already saved stays; press Sync now to run it again." } : { tone: "bad", text: r.error });
+    router.refresh();
+  });
   const syncDetail = () => run("sync", async () => {
     const err = await detail();
     setProgress(null);
-    setMsg(err ? { tone: "bad", text: err } : { tone: "ok", text: "Sales lines, stock moves, stock valuation and stock on hand synced from Odoo." });
+    setMsg(err ? { tone: "bad", text: err } : { tone: "ok", text: "Journal lines, sales lines, stock moves, stock valuation and stock on hand synced from Odoo." });
     router.refresh();
   });
   const sync = () => {
     if (hasData && !confirm("Syncing replaces the company's current financial data with the data from Odoo. Continue?")) return;
     run("sync", async () => {
+      setProgress("Balances…");
       const r = await syncOdooNow(companyId);
-      if (!r.ok) { setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
+      if (!r.ok) { setProgress(null); setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
       const d = r.data;
       const err = await detail();
       setProgress(null);
-      setMsg({ tone: err ? "bad" : "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.${err ? ` Sales and stock detail: ${err}` : " Sales lines and stock records synced too."}`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Off-balance but with entries (left out; map to Cash if real): ${d.offBalance.slice(0, 6).join(", ")}`] : []), d.detail ?? "Sales and Expenses were filled from the same entries."] });
+      setMsg({ tone: err ? "bad" : "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.${err ? ` Detail (journal lines, sales, stock): ${err}` : " Journal lines, sales lines and stock records synced too."}`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Typed off-balance in Odoo but holding entries (kept; confirm in Chart of accounts): ${d.offBalance.slice(0, 6).join(", ")}`] : []), ...(d.detail ? [d.detail] : [])] });
       router.refresh();
     });
   };
@@ -127,7 +133,8 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
             <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
               {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? (progress ?? "Syncing…") : "Sync now"}
             </button>
-            <button onClick={syncDetail} disabled={pending} className="rounded border border-brand-d px-3 py-2 text-sm text-brand-d disabled:opacity-60" data-testid="odoo-sync-detail">Sync sales &amp; stock only</button>
+            {connection?.status === "syncing" && !pending && <button onClick={stop} className="rounded border border-red px-3 py-2 text-sm text-red" data-testid="odoo-stop">Stop sync</button>}
+            <button onClick={syncDetail} disabled={pending} className="rounded border border-brand-d px-3 py-2 text-sm text-brand-d disabled:opacity-60" data-testid="odoo-sync-detail">Sync detail only</button>
             {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />Disconnect</button>}
           </div>
         )}

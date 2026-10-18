@@ -122,3 +122,16 @@ test("a company synced from Odoo copies the settings of its uploaded twin and is
   await expect(page.getByTestId("compare-books")).toContainText("Compared with Twin Uploaded");
   await expect(page.getByTestId("compare-books")).toContainText("Every class agrees within 1 EGP");
 });
+
+test("a sync left running (cut off by the server) can be stopped, and the stop is logged", async ({ page }) => {
+  const { execFileSync } = await import("node:child_process");
+  const sql = (q: string) => execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-qAtc", q]).toString().trim();
+  await signUp(page, { name: "Stop Admin", org: "Stop Advisory", email: newEmail("stop") });
+  const id = await createCompany(page, "Stuck Sync Co");
+  sql(`insert into public.odoo_connections (company_id, url, db, login, api_key_enc, odoo_company_id, odoo_company_name, status, sync_started_at) values ('${id}', 'https://x.odoo.com', 'x', 'reader@x', 'v2.a.b.c', 1, 'X Co', 'syncing', now() - interval '5 minutes')`);
+  await page.goto(`/company/${id}/settings/source-data?tab=odoo`);
+  await page.getByTestId("odoo-stop").click();
+  await expect(page.getByText("Sync stopped.")).toBeVisible();
+  expect(sql(`select status from public.odoo_connections where company_id = '${id}'`)).toBe("error");
+  await expect(page.getByTestId("odoo-log")).toContainText("sync stopped by hand");
+});

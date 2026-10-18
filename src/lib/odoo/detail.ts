@@ -3,8 +3,12 @@
 // uploads store, so the pages read a synced company exactly as an uploaded one. Reading only, every answer checked.
 import { z } from "zod";
 import { OdooClient, OdooError } from "./client";
-import { trust } from "./schema";
-import { seriesOf, splitLabel, NO_CUSTOMER, type SalesLine } from "@/lib/ingest/sales";
+import { DetailLines, trust } from "./schema";
+import type { ClassKey } from "@/lib/engine";
+import type { LedgerEntry } from "@/lib/ingest/extract";
+import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
+import { stockFromLedger, type StockLedgerLine } from "@/lib/ingest/inventory";
+import { salesFromLedger, seriesOf, splitLabel, NO_CUSTOMER, type SalesLine } from "@/lib/ingest/sales";
 import { layerKind, moveKind, splitProduct, usageType, type LocationTypes, type MoveKind } from "@/lib/ingest/inventory";
 
 const id = z.number().int().positive();
@@ -15,7 +19,7 @@ const stamp = z.string().regex(/^\d{4}-\d{2}-\d{2}/, "not a date").transform((s)
 const many = <T extends z.ZodTypeAny>(row: T) => z.array(row).max(10_000);
 
 export const PAGE = { sales: 5000, stock: 3000 } as const;
-export type Part = "sales" | "moves" | "valuation" | "onhand";
+export type Part = "ledger" | "sales" | "moves" | "valuation" | "onhand";
 
 export interface DetailCtx { client: OdooClient; companyId: number; major: number; includeBranches: boolean }
 const company = (c: DetailCtx) => (c.includeBranches ? ["company_id", "child_of", c.companyId] : ["company_id", "=", c.companyId]);
@@ -139,4 +143,36 @@ export async function onHand(c: DetailCtx, loc: { names: Map<number, string> }):
     if (rows.length < PAGE.stock) return out;
   }
   throw new OdooError("More stock-on-hand records than a sync reads. Upload the Stock export instead.");
+}
+
+/** A synced account the journal lines are read for: revenue and cost accounts (sales, expenses) and stock accounts. */
+export interface LedgerAccount { odoo_id: number; code: string; name: string; cls: ClassKey }
+const ledgerAccounts = (accts: LedgerAccount[]) => accts.filter((a) => a.cls === "revenue" || a.cls === "inventory" || EXPENSE_CLASSES.has(a.cls));
+const ledgerDomain = (c: DetailCtx, accts: LedgerAccount[], range: { from: string; to: string }) => [
+  ["parent_state", "=", "posted"], company(c), ["date", ">=", range.from], ["date", "<=", range.to], ["account_id", "in", ledgerAccounts(accts).map((a) => a.odoo_id)],
+];
+
+export async function countLedger(c: DetailCtx, accts: LedgerAccount[], range: { from: string; to: string }): Promise<number> {
+  if (!ledgerAccounts(accts).length) return 0;
+  return trust(z.number().int().min(0).max(100_000_000), await c.client.executeKw("account.move.line", "search_count", [ledgerDomain(c, accts, range)], { context: ctxOf(c) }), "journal line count");
+}
+
+/**
+ * One page of the posted journal lines on revenue, cost and stock accounts, as the General Ledger upload reads them:
+ * sales lines from revenue, expense lines from costs, stock postings from the stock accounts.
+ */
+export async function ledgerPage(c: DetailCtx, accts: LedgerAccount[], range: { from: string; to: string }, offset: number, limit: number = PAGE.sales): Promise<{ sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[]; read: number }> {
+  const use = ledgerAccounts(accts);
+  if (!use.length) return { sales: [], expenses: [], stock: [], read: 0 };
+  const page = trust(DetailLines, await c.client.executeKw("account.move.line", "search_read", [ledgerDomain(c, accts, range)], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit, offset, order: "id", context: ctxOf(c) }), "journal items");
+  const entries = new Map<number, LedgerEntry[]>();
+  for (const l of page) {
+    if (!l.account_id || !l.balance) continue;
+    const list = entries.get(l.account_id[0]) ?? [];
+    list.push({ day: l.date.slice(0, 10), period: l.date.slice(0, 7), ref: l.move_id ? l.move_id[1] : "", label: (l.name || "").trim(), partner: l.partner_id ? l.partner_id[1] : "", amount: l.balance });
+    entries.set(l.account_id[0], list);
+  }
+  const lines = (pick: (a: LedgerAccount) => boolean) => use.filter(pick).map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id) ?? [] }));
+  const core = lines((a) => a.cls !== "inventory");
+  return { sales: salesFromLedger(core), expenses: expensesFromLedger(core), stock: stockFromLedger(lines((a) => a.cls === "inventory")), read: page.length };
 }
