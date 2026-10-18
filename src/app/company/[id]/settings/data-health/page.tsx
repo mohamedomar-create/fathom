@@ -1,4 +1,8 @@
 import { loadCompanyBundle } from "@/lib/company/load";
+import { compareBooks, type BookDiff } from "@/lib/company/compare";
+import { compareWithOf } from "@/lib/company/time-zone";
+import { CLASS_LABEL } from "@/lib/ingest/classes";
+import type { ClassKey } from "@/lib/engine";
 import { loadVersion, KEEP_VERSIONS } from "@/lib/company/persist";
 import { checkKey, coverageOf, runChecks } from "@/lib/company/checks";
 import { statementOf } from "@/lib/company/import-plan";
@@ -62,6 +66,14 @@ export default async function DataHealthPage({ params, searchParams }: { params:
     }
   }
 
+  // A company that took its settings from another (its uploads of the same books) is compared with it, class by class.
+  const compareId = compareWithOf((await supabase.from("companies").select("kpi_config").eq("id", id).maybeSingle()).data?.kpi_config);
+  let comparison: { name: string; months: string[]; diffs: BookDiff[] } | null = null;
+  if (compareId) {
+    const { data: other } = await supabase.from("companies").select("name, data_version").eq("id", compareId).maybeSingle();
+    if (other) comparison = { name: other.name, ...compareBooks(current, await loadVersion(supabase, compareId, other.data_version)) };
+  }
+
   const currentImport = rows.find((r) => r.data_version === bundle.dataVersion && r.action === "import");
   const accepted = (((currentImport?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
   const acceptedKeys = new Set(accepted.map((a) => a.key));
@@ -93,6 +105,20 @@ export default async function DataHealthPage({ params, searchParams }: { params:
         coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}
         checks={checks} accepted={accepted} sources={sources} history={history}
       />
+      {comparison && (
+        <section className="mt-10" data-testid="compare-books">
+          <h2 className="mb-1 text-lg font-medium">Compared with {comparison.name}</h2>
+          <p className="mb-3 text-sm text-mute">{comparison.months.length ? `${comparison.months.length} months both companies hold, class by class. ${comparison.diffs.length ? `${comparison.diffs.length} difference${comparison.diffs.length > 1 ? "s" : ""} above 1 EGP, largest first.` : "Every class agrees within 1 EGP."}` : "The two companies hold no month in common yet."}</p>
+          {comparison.diffs.length > 0 && (
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-xs text-mute"><th className="py-1">Month</th><th>Class</th><th className="text-right">Here</th><th className="text-right">{comparison.name}</th><th className="text-right">Difference</th></tr></thead>
+              <tbody>{comparison.diffs.slice(0, 40).map((d) => (
+                <tr key={`${d.period}|${d.cls}`} className="border-t border-line"><td className="py-1">{d.period}</td><td>{CLASS_LABEL[d.cls as ClassKey] ?? d.cls}</td><td className="text-right tabular-nums">{Math.round(d.here).toLocaleString("en-GB")}</td><td className="text-right tabular-nums">{Math.round(d.there).toLocaleString("en-GB")}</td><td className="text-right tabular-nums">{Math.round(d.diff).toLocaleString("en-GB")}</td></tr>
+              ))}</tbody>
+            </table>
+          )}
+        </section>
+      )}
       <section className="mt-10">
         <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
         <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />

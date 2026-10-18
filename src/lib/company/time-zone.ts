@@ -39,7 +39,7 @@ export function openingAsAtOf(kpiConfig: unknown): string | null {
 }
 
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;
@@ -50,4 +50,10 @@ export function withTimeZone(kpiConfig: unknown, tz: string | null): Record<stri
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), timeZone: tz };
   return cfg;
+}
+
+/** The company this one took its settings from (the uploads of the same books), to compare figures with. */
+export function compareWithOf(kpiConfig: unknown): string | null {
+  const v = ((kpiConfig ?? {}) as Record<string, { compareWith?: unknown } | undefined>)[PROFILE_KEY]?.compareWith;
+  return typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null;
 }

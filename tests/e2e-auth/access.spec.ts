@@ -104,3 +104,21 @@ test("the Odoo tab: read-only setup steps, an admin's log of every change, and D
   await expect(page.getByTestId("odoo-log")).toContainText("Disconnected");
   expect(sql(`select count(*) from public.odoo_connections where company_id = '${id}'`)).toBe("0");
 });
+
+test("a company synced from Odoo copies the settings of its uploaded twin and is compared with it in Data health", async ({ page }) => {
+  test.slow();
+  await signUp(page, { name: "Copy Admin", org: "Copy Advisory", email: newEmail("copy") });
+  const uploaded = await createCompany(page, "Twin Uploaded");
+  await importFiles(page, uploaded, ["odoo-pl-bs.xlsx"]);
+  const live = await createCompany(page, "Twin Live");
+  await importFiles(page, live, ["odoo-pl-bs.xlsx"]);
+  await page.goto(`/company/${live}/settings/source-data?tab=odoo`);
+  await expect(page.getByTestId("odoo-copy-settings")).toContainText("learned no account classes");
+  await page.getByTestId("odoo-copy-from").selectOption({ label: "Twin Uploaded" });
+  page.once("dialog", (d) => d.accept());
+  await page.getByTestId("odoo-copy").click();
+  await expect(page.getByText(/Copied \d+ account class/)).toBeVisible();
+  await page.goto(`/company/${live}/settings/data-health`);
+  await expect(page.getByTestId("compare-books")).toContainText("Compared with Twin Uploaded");
+  await expect(page.getByTestId("compare-books")).toContainText("Every class agrees within 1 EGP");
+});

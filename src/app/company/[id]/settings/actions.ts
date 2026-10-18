@@ -378,8 +378,9 @@ export async function copyCompanySettings(companyId: string, fromId: string): Pr
     if (error) return { ok: false, error: dbError(error, "copyCompanySettings") };
   }
   const hasProfile = Object.keys(profile).length > 1 || profile.booksFromZero;
-  if (hasProfile) {
-    const { error } = await supabase.from("companies").update({ kpi_config: withProfile(target.kpi_config, profile) as Json }).eq("id", companyId);
+  {
+    // The source is remembered, so Data health compares this company's figures with it.
+    const { error } = await supabase.from("companies").update({ kpi_config: withProfile(target.kpi_config, { ...profile, compareWith: fromId }) as Json }).eq("id", companyId);
     if (error) return { ok: false, error: dbError(error, "copyCompanySettings") };
   }
   revalidatePath(`/company/${companyId}`, "layout");
