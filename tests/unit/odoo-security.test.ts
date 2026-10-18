@@ -209,3 +209,16 @@ describe("a sync whose balance sheet doesn't balance is never saved", async () =
     expect(msg).toMatch(/doesn't balance in \d+ month.*Nothing was saved/);
   });
 });
+
+describe("one Sync now counts once: the detail stage continues the balances' lock", async () => {
+  const { continuesChain } = await import("@/lib/odoo/policy");
+  const now = Date.parse("2026-10-18T20:10:00Z");
+  it("continues a lock the balances step refreshed in the last 2 minutes", () => {
+    expect(continuesChain("syncing", "2026-10-18T20:09:10Z", now)).toBe(true);
+  });
+  it("never continues a lock that is free, stale or missing", () => {
+    expect(continuesChain("ok", "2026-10-18T20:09:50Z", now)).toBe(false);
+    expect(continuesChain("syncing", "2026-10-18T20:07:00Z", now)).toBe(false);
+    expect(continuesChain("syncing", null, now)).toBe(false);
+  });
+});

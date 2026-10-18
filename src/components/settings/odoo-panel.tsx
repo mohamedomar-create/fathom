@@ -78,8 +78,9 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     });
   };
   /** Sales lines by product and the stock records, step by step (each step one page from Odoo). */
-  const detail = async (): Promise<string | null> => {
-    let at: DetailStepInput | undefined;
+  const detail = async (chained = false): Promise<string | null> => {
+    // Right after the balances, the first step continues their lock (one Sync now counts once).
+    let at: DetailStepInput | undefined = chained ? { part: "ledger", offset: 0, chained: true } : undefined;
     for (let i = 0; i < 2000; i++) {
       const r = await syncOdooDetail(companyId, at);
       if (!r.ok) return r.error;
@@ -107,7 +108,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
       const r = await syncOdooNow(companyId);
       if (!r.ok) { setProgress(null); setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
       const d = r.data;
-      const err = await detail();
+      const err = await detail(true);
       setProgress(null);
       setMsg({ tone: err ? "bad" : "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.${err ? ` Detail (journal lines, sales, stock): ${err}` : " Journal lines, sales lines and stock records synced too."}`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Typed off-balance in Odoo but holding entries (kept; confirm in Chart of accounts): ${d.offBalance.slice(0, 6).join(", ")}`] : []), ...(d.detail ? [d.detail] : [])] });
       router.refresh();

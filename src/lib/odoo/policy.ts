@@ -35,3 +35,14 @@ export function unbalancedSync(accounts: { code: string; name: string; cls: Clas
   if (!off.length) return null;
   return `The balance sheet from Odoo doesn't balance in ${off.length} month${off.length > 1 ? "s" : ""} (first: ${off[0].detail?.split(":")[1]?.split(".")[0]?.trim() ?? off[0].title}). Nothing was saved; an account is missing or placed outside the balance sheet. Check Chart of accounts.`;
 }
+
+/** How long a sync lock may go without a step before it counts as cut off. */
+export const STALE_MS = 2 * 60_000;
+
+/**
+ * The detail stage started right after the balances continues their lock (one Sync now counts once against the limits):
+ * only a lock that is held and was refreshed in the last 2 minutes.
+ */
+export function continuesChain(status: string | null | undefined, startedAt: string | null | undefined, now = Date.now()): boolean {
+  return status === "syncing" && !!startedAt && now - Date.parse(startedAt) < STALE_MS;
+}

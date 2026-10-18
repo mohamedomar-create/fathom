@@ -11,9 +11,9 @@ import type { ClassKey } from "@/lib/engine";
 import { trust, Version } from "@/lib/odoo/schema";
 import { mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
 import { INVENTORY_KEY } from "@/lib/company/config-keys";
-import { atLeast, connectionVerdict, unbalancedSync, type Role } from "@/lib/odoo/policy";
+import { atLeast, connectionVerdict, continuesChain, STALE_MS, unbalancedSync, type Role } from "@/lib/odoo/policy";
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
-import { limited, TOO_MANY } from "@/lib/rate-limit";
+import { limited } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
 import { booksStartOf, withProfile } from "@/lib/company/time-zone";
 import { probe, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
@@ -102,8 +102,6 @@ async function connect(rawUrl: string, db: string, login: string, key: string, d
   return { url: target.url, client: new OdooClient(target.url, db, login, key, pinnedFetch(target), 25_000, deadline) };
 }
 
-/** A sync claim with no step for this long was cut off (the server stops a request at 60 seconds): it may be taken over. */
-const STALE_MS = 2 * 60_000;
 
 /** Releases a claim left by a sync that was cut off, and says so in the log. */
 async function takeOverStale(supabase: Supa, companyId: string) {
@@ -126,9 +124,10 @@ export async function stopOdooSync(companyId: string): Promise<Result<true>> {
 }
 
 /** Both limits: the person's (20 an hour across test, save and sync) and the company's for this action. Fail closed. */
-async function overLimit(supabase: Supa, userId: string, companyId: string, scope: "odoo_test_company" | "odoo_sync_company" | null) {
-  if (await limited(supabase, "odoo", userId, true)) return true;
-  return scope ? limited(supabase, scope, companyId, true) : false;
+async function overLimit(supabase: Supa, userId: string, companyId: string, scope: "odoo_test_company" | "odoo_sync_company" | null): Promise<string | null> {
+  if (await limited(supabase, "odoo", userId, true)) return "You have reached the Odoo limit for one person (20 tests, saves and syncs an hour). Try again later this hour; nothing already synced is lost.";
+  if (scope && await limited(supabase, scope, companyId, true)) return scope === "odoo_sync_company" ? "This company's sync limit (6 syncs an hour) is used up. Try again later this hour; what is already synced stays." : "This company's test limit (10 an hour) is used up. Try again later this hour.";
+  return null;
 }
 
 export async function testOdoo(input: z.input<typeof ConnSchema>): Promise<Result<OdooProbe>> {
@@ -137,7 +136,7 @@ export async function testOdoo(input: z.input<typeof ConnSchema>): Promise<Resul
   const v = v0.data;
   try {
     const { supabase, user } = await guard(v.companyId, "editor");
-    if (await overLimit(supabase, user.id, v.companyId, "odoo_test_company")) throw new Error(TOO_MANY);
+    { const over = await overLimit(supabase, user.id, v.companyId, "odoo_test_company"); if (over) throw new Error(over); }
     const url = await assertPublicOdooUrl(v.url);
     const enc = v.apiKey ? null : await reusableKey(supabase, v.companyId, url, v.db, v.login);
     const key = v.apiKey || (enc ? openKey(enc, v.companyId, url, v.db, v.login) : "");
@@ -168,7 +167,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
   try {
     const v = SaveSchema.parse(input);
     const { supabase, user } = await guard(v.companyId, "admin");
-    if (await overLimit(supabase, user.id, v.companyId, "odoo_test_company")) throw new Error(TOO_MANY);
+    { const over = await overLimit(supabase, user.id, v.companyId, "odoo_test_company"); if (over) throw new Error(over); }
     const url = await assertPublicOdooUrl(v.url);
     const saved = v.apiKey ? null : await reusableKey(supabase, v.companyId, url, v.db, v.login);
     const key = v.apiKey || (saved ? openKey(saved, v.companyId, url, v.db, v.login) : "");
@@ -213,7 +212,7 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     const { data: conn, error: ce } = await supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, has_key").eq("company_id", companyId).maybeSingle();
     if (ce) { if (missingFn(ce)) throw new Error(DB_UPDATE); throw new DbError(ce); }
     if (!conn || !conn.odoo_company_id) throw new Error("Save the Odoo connection first.");
-    if (await overLimit(supabase, user.id, companyId, "odoo_sync_company")) throw new Error(TOO_MANY);
+    { const over = await overLimit(supabase, user.id, companyId, "odoo_sync_company"); if (over) throw new Error(over); }
     // The key is cleared whenever the address, database or login changes (migration 0016).
     if (!conn.has_key) throw new Error("Enter the API key again in the Odoo connection, then save it.");
     // One sync at a time: two at once could mix their ledger lines.
@@ -246,7 +245,9 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     // Journal lines (sales, expense and stock postings) follow in the step-by-step stage (syncOdooDetail), so this
     // request stays well inside the time limit.
     const detail: string | null = null;
-    const done = await supabase.from("odoo_connections").update({ status: "ok", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version.slice(0, 40), sync_started_at: null }).eq("company_id", companyId);
+    // The lock passes straight to the detail stage the browser starts next (one Sync now counts once); if it never starts,
+    // the lock is taken over after 2 minutes.
+    const done = await supabase.from("odoo_connections").update({ status: "syncing", last_error: detail, last_sync_at: new Date().toISOString(), version: res.diagnostics.version.slice(0, 40), sync_started_at: new Date().toISOString() }).eq("company_id", companyId);
     if (done.error) throw new DbError(done.error);
     claimed = false;
     // A books start proposed from Odoo's opening date is kept for the next syncs and uploads (the company had none).
@@ -267,6 +268,8 @@ const DetailStep = z.object({
   offset: z.number().int().min(0).max(50_000_000),
   total: z.number().int().min(0).max(50_000_000).optional(),
   batch: z.string().uuid().nullable().optional(),
+  /** The first step right after the balances: it continues their lock instead of counting a new sync. */
+  chained: z.boolean().optional(),
   /** The journal-lines step keeps three batches open: sales, expenses and stock postings. */
   batches: z.object({ sales: z.string().uuid().nullable(), expenses: z.string().uuid().nullable(), stock: z.string().uuid().nullable() }).optional(),
 });
@@ -301,11 +304,13 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
     await supabase.from("odoo_connections").update({ status, sync_started_at: null, ...(status === "error" ? { last_error: why } : {}) }).eq("company_id", companyId);
   };
   try {
-    const { data: conn, error: ce } = await supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, has_key, status").eq("company_id", companyId).maybeSingle();
+    const { data: conn, error: ce } = await supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, has_key, status, sync_started_at").eq("company_id", companyId).maybeSingle();
     if (ce) { if (missingFn(ce)) throw new Error(DB_UPDATE); throw new DbError(ce); }
     if (!conn?.odoo_company_id || !conn.has_key) throw new Error("Save the Odoo connection first.");
-    if (!parsed) {
-      if (await overLimit(supabase, user.id, companyId, "odoo_sync_company")) throw new Error(TOO_MANY);
+    if (parsed?.data.chained) {
+      if (!continuesChain(conn.status, conn.sync_started_at)) throw new Error("The balances finished too long ago to continue. Press Sync detail only.");
+    } else if (!parsed) {
+      { const over = await overLimit(supabase, user.id, companyId, "odoo_sync_company"); if (over) throw new Error(over); }
       await takeOverStale(supabase, companyId);
       const claim = await supabase.rpc("odoo_claim_sync", { p_company: companyId });
       if (claim.error) throw new DbError(claim.error);
