@@ -290,3 +290,29 @@ describe("opening balances uploaded on their own", () => {
     expect(c?.detail).toMatch(/Bank/);
   });
 });
+
+describe("opening balances against books loaded under other names (the main company, 18 Oct)", () => {
+  const opts = { mode: "merge" as const, slices: { PL: [], BS: ["2021-06"] }, booksStart: "2021-07-01", opening: { asAt: "2021-06-30" }, zeroMonths: [] };
+  const s = (o: Record<string, number>) => ({ sources: Object.fromEntries(Object.keys(o).map((p) => [p, "imp-old"])) });
+  const stored = [
+    acct("121211", "Bank Misr", "cash", { "2021-06": 50_000, "2021-07": 51_000 }, s({ "2021-06": 1, "2021-07": 1 })),
+    acct("xy", "opining balance", "other_equity", { "2021-06": 49_400, "2021-07": 49_400 }, s({ "2021-06": 1, "2021-07": 1 })),
+    acct("", "Retained earnings incl. profit to date", "retained_earnings", { "2021-06": 600, "2021-07": 1_600 }, s({ "2021-06": 1, "2021-07": 1 })),
+  ];
+  it("the same balances under another code split or another computed-earnings name are not a difference", () => {
+    const opening = [inc("121211", "Bank Misr", "cash", { "2021-06": 50_000 }), inc("", "xy opining balance", "other_equity", { "2021-06": 49_400 }), inc("", "Earnings to date (computed from P&L accounts)", "retained_earnings", { "2021-06": 600 })];
+    expect(planImport(stored, opening, opts).checks.filter((c) => c.severity === "block")).toEqual([]);
+  });
+  it("an account classed differently on each side (w.2 as a current asset or a liability) is the same debit balance, not a difference", () => {
+    const withW2 = [...stored, acct("w.2", "Stock Interim (Received)", "other_ca", { "2021-06": 10_000, "2021-07": 10_000 }, s({ "2021-06": 1, "2021-07": 1 }))];
+    const opening = [inc("121211", "Bank Misr", "cash", { "2021-06": 50_000 }), inc("", "xy opining balance", "other_equity", { "2021-06": 49_400 }), inc("", "Earnings to date (computed from P&L accounts)", "retained_earnings", { "2021-06": 600 }), inc("w.2", "Stock Interim (Received)", "other_cl", { "2021-06": -10_000 })];
+    expect(planImport(withW2, opening, opts).checks.filter((c) => c.severity === "block" && c.id === "continuity")).toEqual([]);
+  });
+
+  it("a real difference still stops the save, naming the account", () => {
+    const opening = [inc("121211", "Bank Misr", "cash", { "2021-06": 40_000 }), inc("", "xy opining balance", "other_equity", { "2021-06": 39_400 }), inc("", "Earnings to date (computed from P&L accounts)", "retained_earnings", { "2021-06": 600 })];
+    const c = planImport(stored, opening, opts).checks.find((x) => x.severity === "block" && x.id === "continuity");
+    expect(c?.detail).toMatch(/Bank Misr: 40,000 Dr here, 50,000 Dr loaded/);
+    expect(c?.detail).not.toMatch(/Retained|Earnings to date/);
+  });
+});

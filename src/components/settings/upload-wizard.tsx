@@ -920,7 +920,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : mode === "replace" && preview.hasData ? "Replace all and save" : "Save"} onNext={commit}
           disabled={saving || previewing || !canImport || needChoice || nothingNew} busy={previewing} nextTestId="commit-import"
-          hint={needChoice ? "Choose one first." : nothingNew ? "Nothing new to add." : undefined} />
+          hint={needChoice ? "Choose one first." : nothingNew ? "Nothing new to add." : !canImport ? (acceptOn ? "Write why it is right (at least 10 letters)." : "Something doesn't add up: see the box above, or tick Save anyway and give a reason.") : undefined} />
       </div>
     );
   }
@@ -970,7 +970,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {demo
         ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? `Fix the problems first: ${issues.find((i) => i.severity === "error")?.message ?? ""}`.trim() : rolesHint} />}
     </div>
   );
 }

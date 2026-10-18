@@ -140,12 +140,24 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   if (optsIn.opening) {
     const m0 = optsIn.opening.asAt.slice(0, 7);
     const zeroMonths = new Set((optsIn.zeroMonths ?? []).filter((p) => p > m0));
+    // Accounts are matched as an accountant reads them: by code and name together ("xy" + "opining balance" is
+    // "xy opining balance"), every retained-earnings line, computed or not, as one retained earnings figure, and by
+    // debit or credit balance, so an account classed differently on each side is not a difference in money.
+    const keyOf = (a: { code: string; name: string; cls: ClassKey }) => (a.cls === "retained_earnings" ? "retained earnings" : `${a.code} ${a.name}`.trim().toLowerCase().replace(/\s+/g, " "));
+    const at = (xs: { code: string; name: string; cls: ClassKey; amounts: Record<string, number> }[]) => {
+      const m = new Map<string, { label: string; v: number }>();
+      for (const a of xs) if (!isPL(a.cls) && a.amounts[m0] !== undefined) { const k = keyOf(a); const e = m.get(k) ?? { label: k === "retained earnings" ? "Retained earnings" : `${a.code ? `${a.code} ` : ""}${a.name}`, v: 0 }; e.v += toRaw(a.cls, a.amounts[m0]); m.set(k, e); }
+      return m;
+    };
+    const was = at(current), now = at(incoming);
     const off: string[] = [];
+    if (was.size) for (const k of new Set([...was.keys(), ...now.keys()])) {
+      const a = now.get(k)?.v ?? 0, b = was.get(k)?.v ?? 0;
+      const dc = (v: number) => `${Math.round(Math.abs(v)).toLocaleString("en-GB")}${Math.abs(v) < 0.5 ? "" : v > 0 ? " Dr" : " Cr"}`;
+      if (Math.abs(a - b) > 1) off.push(`${(now.get(k) ?? was.get(k))!.label}: ${dc(a)} here, ${dc(b)} loaded`);
+    }
     for (const n of incoming) {
       if (isPL(n.cls) || !n.amounts[m0]) continue;
-      const was = current.filter((a) => accountIdentity(a) === accountIdentity(n) && a.amounts[m0] !== undefined).reduce((s, a) => s + recast(a.cls, n.cls, a.amounts[m0]), 0);
-      const hadMonth = current.some((a) => !isPL(a.cls) && a.amounts[m0] !== undefined);
-      if (hadMonth && Math.abs(was - n.amounts[m0]) > 1) off.push(`${n.code ? `${n.code} ` : ""}${n.name}: ${Math.round(n.amounts[m0]).toLocaleString("en-GB")} here, ${Math.round(was).toLocaleString("en-GB")} loaded`);
       const ex = out.get(accountIdentity(n))!;
       for (const p of zeroMonths) {
         if (!current.some((a) => !isPL(a.cls) && a.amounts[p] !== undefined)) continue;

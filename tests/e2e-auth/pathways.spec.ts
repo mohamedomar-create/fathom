@@ -582,4 +582,15 @@ test("opening balances upload on their own, and a ledger without them starts fro
   await page.getByRole("button", { name: "Profit & Loss" }).click();
   await page.getByText("Balance Sheet", { exact: true }).last().click();
   await expect(page.getByTestId("bs-table").getByRole("row", { name: /Cash & Equivalents/ })).toContainText("60,000");
+
+  // A different opening for the same day is stopped, and the disabled Save says why.
+  const other = await xlsx("Opening balances", [["Code", "Account", "Debit", "Credit"], ["101000", "Bank", 40000, null], ["211000", "Suppliers", null, 5000], ["310000", "Share capital", null, 35000]]);
+  await startUpload(page, id, "opening");
+  await page.getByTestId("file-input").setInputFiles(other);
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("opening-as-at").locator("input").fill("2025-12");
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("accept-box")).toContainText("Bank: 40,000 Dr here, 50,000 Dr loaded");
+  await expect(page.getByTestId("commit-import")).toBeDisabled();
+  await expect(page.getByText("Something doesn't add up: see the box above, or tick Save anyway and give a reason.")).toBeVisible();
 });
