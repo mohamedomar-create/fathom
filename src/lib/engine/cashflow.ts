@@ -30,7 +30,7 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
   add("Cost of Sales", "LESS", -(P.cos - P.cos_depreciation), "Cost of sales excluding depreciation (a non-cash cost).");
   add("Expenses", "LESS", -(P.expenses - P.exp_depreciation + P.other_expenses), "Operating and other expenses excluding depreciation & amortisation.");
   add("Other Income", "ADD", P.other_income);
-  add("Cash Tax Paid", "LESS", -cashTax, "Tax expense less the increase in tax owed (or plus the decrease).");
+  add("Tax paid, net of the change in tax owed (incl. VAT)", "LESS", -cashTax, "Tax expense less the increase in tax owed, VAT included (or plus the decrease): positive when more tax was charged or collected than paid.");
   if (P.adjustments) add("Adjustments", "LESS", -P.adjustments, "Prior-period and one-off items booked in the P&L.");
   add("Change in Accounts Payable", "ADD", d("ap"));
   add("Change in Other Current Liabilities", "ADD", d("other_cl"));
@@ -50,7 +50,7 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
   add("FREE CASH FLOW", "TOTAL", fcf, "Operating cash flow less investment: cash available to pay lenders and owners.");
   const eqChange = d("retained_earnings") + d("other_equity") - P.retained_income;
   const fin: WaterfallRow[] = [
-    { label: "Net Interest Paid", sign: "LESS", value: -P.net_interest, info: "Interest expense less interest income." },
+    { label: P.net_interest < 0 ? "Net Interest Received" : "Net Interest Paid", sign: "LESS", value: -P.net_interest, info: "Interest expense less interest income." },
     { label: "Change in Other Non-Current Liabilities", sign: "ADD", value: d("other_ncl") },
     { label: "Dividends", sign: "LESS", value: -P.dividends },
     { label: "Owners' Capital and Other Equity Movements", sign: "ADD", value: eqChange, info: "Capital paid in or withdrawn, and equity movements that did not come from this period's profit." },
@@ -61,6 +61,8 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
   const unbal = target - ncfPre;
   if (Math.abs(unbal) > 0.5) add("Unreconciled Difference", "ADD", unbal, "The balance sheet does not balance in one of the two months, so this amount cannot be explained.");
   const ncf = ncfPre + (Math.abs(unbal) > 0.5 ? unbal : 0);
+  // Each line reads as its cash effect: cash in is ADD, cash out is LESS, whatever the line usually does.
+  for (const r of rows) if (r.sign !== "TOTAL") r.sign = r.value < 0 ? "LESS" : "ADD";
   add("CASH FLOW BEFORE BORROWING", "TOTAL", ncf, "Change in cash less change in borrowing: the cash the business made or used before new loans and repayments.");
   return {
     rows, ocf, fcf, ncf, unreconciled: Math.abs(unbal) > 0.5 ? unbal : 0,

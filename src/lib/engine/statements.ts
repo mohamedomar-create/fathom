@@ -51,3 +51,13 @@ export function averageBS(list: BSCalc[]): BSCalc {
   for (const k of Object.keys(list[0]) as (keyof BSCalc)[]) out[k] = list.reduce((s, b) => s + (b[k] as number), 0) / list.length;
   return out as unknown as BSCalc;
 }
+
+/** Bank-charge accounts the company placed under interest (Odoo shows them as operating expenses): the P&L says so. */
+export function bankChargesAsInterest(accounts: { name: string; cls: string }[]): string[] {
+  return accounts.filter((a) => a.cls === "interest_expenses" && /bank (charge|fee|commission)s?|مصروفات بنكية|عمولات بنكية|رسوم بنكية/i.test(a.name)).map((a) => a.name);
+}
+
+/** Retained earnings as Odoo shows them: earnings of prior years, and the current year's to date (the year's net income). */
+export function splitRetained(retained: number, ytdNetIncome: number): { prior: number; current: number } {
+  return { prior: retained - ytdNetIncome, current: ytdNetIncome };
+}

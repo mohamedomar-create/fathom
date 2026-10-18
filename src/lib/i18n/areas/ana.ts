@@ -75,6 +75,8 @@ export const ana = area(
     pl: "Profit & Loss", bs: "Balance Sheet", cf: "Cash Flow Statement", summary: "Summary", detailed: "Detailed", accountLines: "Account-level lines", needsAccounts: "Needs account-level data",
     prior: "Prior", lastYear: "Last year", variancePct: "Variance %", commonSize: "Common Size", ytd: "YTD", varianceCur: (cur: string) => `Variance ${cur}`,
     outOfBalance: (v: string) => `Out of balance by ${v}`,
+    rePrior: "Of which: earnings of prior years", reCurrent: "Of which: this year to date",
+    bankChargesNote: (names: string) => `${names}: shown under interest, as set in Chart of accounts. Odoo shows bank charges as operating expenses, so operating profit here is higher than Odoo's by that amount.`,
     // Source drawer
     whereFrom: (x: string) => `Where ${x} comes from`, whereFigure: "Where the figure comes from", closing: (m: string) => `Closing balance, ${m}`,
     accounts: (n: number) => `${n} account${n === 1 ? "" : "s"}`, total: "total", totalCap: "Total", cls: "Class", importedFrom: "Imported from",
@@ -149,6 +151,8 @@ export const ana = area(
     pl: "قائمة الدخل", bs: "الميزانية", cf: "قائمة التدفقات النقدية", summary: "مختصر", detailed: "تفصيلي", accountLines: "بنود على مستوى الحسابات", needsAccounts: "يحتاج بيانات على مستوى الحسابات",
     prior: "السابق", lastYear: "العام الماضي", variancePct: "الفرق %", commonSize: "النسبة من الإجمالي", ytd: "منذ بداية العام", varianceCur: (cur: string) => `الفرق ${cur}`,
     outOfBalance: (v: string) => `غير متوازنة بفرق ${v}`,
+    rePrior: "منها: أرباح سنوات سابقة", reCurrent: "منها: السنة الحالية حتى تاريخه",
+    bankChargesNote: (names: string) => `${names}: معروضة ضمن الفوائد كما في دليل الحسابات. يعرض Odoo الرسوم البنكية كمصروفات تشغيلية، لذا الربح التشغيلي هنا أعلى من Odoo بقيمتها.`,
     whereFrom: (x: string) => `من أين يأتي ${x}`, whereFigure: "من أين يأتي الرقم", closing: (m: string) => `الرصيد الختامي، ${m}`,
     accounts: (n: number) => `عدد الحسابات: ${n}`, total: "الإجمالي", totalCap: "الإجمالي", cls: "التصنيف", importedFrom: "مستورد من",
     demoData: "بيانات تجريبية", row: (n: number) => `صف ${n}`, monthsN: (n: number) => `${n} أشهر`, noAccounts: "لا توجد حسابات بمبلغ لهذا الرقم.",

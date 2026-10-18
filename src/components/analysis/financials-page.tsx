@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
+import { bankChargesAsInterest, splitRetained, bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -47,6 +47,7 @@ const BS_ROWS: BsRow[] = [
 
 export function FinancialsPage() {
   const c = useCompany();
+  const bankAsInterest = bankChargesAsInterest(c.accounts);
   const a = useAnalysis();
   const comments = useComments();
   const [view, setView] = useState<View>("pl");
@@ -112,6 +113,7 @@ export function FinancialsPage() {
               ])}
             </tbody>
           </table>
+          {bankAsInterest.length > 0 && <p className="mt-2 text-xs text-mute" data-testid="bank-charges-note">{t.bankChargesNote(bankAsInterest.join(", "))}</p>}
           <Notes findings={[]} comment={comments("pl")} />
         </div>
       )}
@@ -138,6 +140,12 @@ export function FinancialsPage() {
                     <td className={dv === null ? "text-mute" : ""}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0, "neutral")}
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
+                  ...(k === "retained_earnings" && v && a.view.bsAt === a.view.window.end ? (() => {
+                    const sp = splitRetained(v, a.view.ytd.net_income);
+                    return [[t.rePrior, sp.prior], [t.reCurrent, sp.current]].map(([l, x]) => (
+                      <tr key={l as string} className="row text-[12.5px] text-mute" data-testid="re-split"><td className="ps-6">{l}</td><td>{m(x as number)}</td><td /><td /><td /><td /><td /></tr>
+                    ));
+                  })() : []),
                   ...accts(classes, true).map((x) => (
                     <tr key={x.id} className="row text-[12.5px] text-mute"><td className="ps-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp, "neutral")}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
                   )),
