@@ -3,21 +3,57 @@ import { addMonths, daysIn, type ClassKey } from "@/lib/engine";
 import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
 import { normLabel } from "@/lib/ingest/parse";
-import { majorVersion, OdooClient, OdooError } from "./client";
+import { GUARDED_MODELS, majorVersion, OdooClient, OdooError } from "./client";
+import { AccountRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, XmlRows } from "./schema";
 import type { LedgerEntry } from "@/lib/ingest/extract";
 import { salesFromLedger, type SalesLine } from "@/lib/ingest/sales";
 import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
 import { stockFromLedger, type StockLedgerLine } from "@/lib/ingest/inventory";
 
 export interface OdooCompany { id: number; name: string; currency: string | null }
-export interface OdooProbe { version: string; major: number; uid: number; companies: OdooCompany[] }
+export interface OdooProbe {
+  version: string; major: number; uid: number; companies: OdooCompany[];
+  /** The connected Odoo user: its name and the companies it may see. */
+  user: { name: string; companies: number[] };
+  /** "read": Odoo confirms it can't create, change or delete accounting records; "write": it can; "unknown": Odoo didn't say. */
+  rights: "read" | "write" | "unknown";
+  /** The accounting models this user may change (create, write or delete). */
+  canChange: string[];
+}
+
+/**
+ * May this Odoo user create, change or delete accounting records? Asked with Odoo's own access check, which changes
+ * nothing: check_access_rights on Odoo 13–17, has_access from 18. An unanswered question is "unknown", never "safe".
+ */
+async function accessRights(client: OdooClient): Promise<{ rights: OdooProbe["rights"]; canChange: string[] }> {
+  const canChange: string[] = [];
+  for (const model of GUARDED_MODELS) {
+    for (const op of ["create", "write", "unlink"] as const) {
+      let yes: unknown;
+      try { yes = await client.executeKw<unknown>(model, "check_access_rights", [op], { raise_exception: false }); }
+      catch (e) {
+        if (!(e instanceof OdooError) || /rejected the login|switched off|took too long/.test(e.message)) throw e;
+        try { yes = await client.executeKw<unknown>(model, "has_access", [[], op]); }
+        catch (e2) { if (!(e2 instanceof OdooError) || /rejected the login|switched off|took too long/.test(e2.message)) throw e2; return { rights: "unknown", canChange }; }
+      }
+      if (typeof yes !== "boolean") return { rights: "unknown", canChange };
+      if (yes) { canChange.push(model); break; }
+    }
+  }
+  return { rights: canChange.length ? "write" : "read", canChange };
+}
 
 export async function probe(client: OdooClient): Promise<OdooProbe> {
   const v = await client.version();
   const major = majorVersion(v.server_version_info, v.server_version);
   const uid = await client.authenticate();
-  const rows = await client.executeKw<{ id: number; name: string; currency_id: [number, string] | false }[]>("res.company", "search_read", [[]], { fields: ["name", "currency_id"], order: "id" });
-  return { version: v.server_version, major, uid, companies: rows.map((r) => ({ id: r.id, name: r.name, currency: r.currency_id ? r.currency_id[1] : null })) };
+  const rows = trust(CompanyRows, await client.executeKw("res.company", "search_read", [[]], { fields: ["name", "currency_id"], order: "id" }), "companies");
+  const [me] = trust(UserRows, await client.executeKw("res.users", "read", [[uid]], { fields: ["name", "company_ids"] }), "user");
+  const access = await accessRights(client);
+  return {
+    version: String(v.server_version).slice(0, 40), major, uid, companies: rows.map((r) => ({ id: r.id, name: r.name, currency: r.currency_id ? r.currency_id[1] : null })),
+    user: { name: me.name, companies: me.company_ids }, ...access,
+  };
 }
 
 export interface SyncOptions {
@@ -73,15 +109,13 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   // ---- chart of accounts
   const acctDomain = major >= 18 ? [["company_ids", "in", [cid]]] : [["company_id", "=", cid]];
   const typeField = major >= 16 ? "account_type" : "user_type_id";
-  const accts = await client.executeKw<{ id: number; code: string | false; name: string; account_type?: string; user_type_id?: [number, string] | false }[]>(
-    "account.account", "search_read", [acctDomain], { fields: ["code", "name", typeField], context: ctx },
-  );
+  const accts = trust(AccountRows, await client.executeKw("account.account", "search_read", [acctDomain], { fields: ["code", "name", typeField], context: ctx }), "accounts");
   if (!accts.length) throw new OdooError("No accounts found for that company. Check the company selection and the user's access rights.");
   let typeOf: (a: (typeof accts)[number]) => string;
   if (major >= 16) typeOf = (a) => a.account_type ?? "";
   else {
     const typeIds = [...new Set(accts.map((a) => (a.user_type_id ? a.user_type_id[0] : 0)).filter(Boolean))];
-    const xml = await client.executeKw<{ res_id: number; name: string }[]>("ir.model.data", "search_read", [[["model", "=", "account.account.type"], ["res_id", "in", typeIds]]], { fields: ["res_id", "name"] });
+    const xml = trust(XmlRows, await client.executeKw("ir.model.data", "search_read", [[["model", "=", "account.account.type"], ["res_id", "in", typeIds]]], { fields: ["res_id", "name"], context: ctx }), "account types");
     const byId = new Map(xml.map((x) => [x.res_id, ODOO15_TYPE_MAP[x.name] ?? ""]));
     typeOf = (a) => (a.user_type_id ? byId.get(a.user_type_id[0]) ?? "" : "");
   }
@@ -103,9 +137,9 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   let method: "read_group" | "search_read" = "read_group";
   let groups = 0;
   try {
-    const og = await client.executeKw<Group[]>("account.move.line", "read_group", [[...base, ["date", "<", startDate]], ["balance:sum"], ["account_id"]], { lazy: false, context: ctx });
+    const og = trust(GroupRows, await client.executeKw("account.move.line", "read_group", [[...base, ["date", "<", startDate]], ["balance:sum"], ["account_id"]], { lazy: false, context: ctx }), "opening balances") as Group[];
     for (const g of og) if (g.account_id) opening.set(g.account_id[0], (opening.get(g.account_id[0]) ?? 0) + Number(g.balance || 0));
-    const mg = await client.executeKw<Group[]>("account.move.line", "read_group", [[...base, ["date", ">=", startDate], ["date", "<=", endDate]], ["balance:sum"], ["account_id", "date:month"]], { lazy: false, context: ctx });
+    const mg = trust(GroupRows, await client.executeKw("account.move.line", "read_group", [[...base, ["date", ">=", startDate], ["date", "<=", endDate]], ["balance:sum"], ["account_id", "date:month"]], { lazy: false, context: ctx }), "monthly balances") as Group[];
     groups = og.length + mg.length;
     for (const g of mg) {
       if (!g.account_id) continue;
@@ -122,9 +156,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     opening.clear(); moves.clear();
     const pageSize = 5000;
     for (let offset = 0; offset < 2_000_000; offset += pageSize) {
-      const lines = await client.executeKw<{ account_id: [number, string] | false; date: string; balance: number }[]>(
-        "account.move.line", "search_read", [[...base, ["date", "<=", endDate]]], { fields: ["account_id", "date", "balance"], limit: pageSize, offset, order: "id", context: ctx },
-      );
+      const lines = trust(BalanceLines, await client.executeKw("account.move.line", "search_read", [[...base, ["date", "<=", endDate]]], { fields: ["account_id", "date", "balance"], limit: pageSize, offset, order: "id", context: ctx }), "journal items");
       for (const l of lines) {
         if (!l.account_id) continue;
         const id = l.account_id[0];
@@ -189,7 +221,7 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   let latePostings: number | undefined;
   if (opts.since) {
     const at = new Date(opts.since.at).toISOString().slice(0, 19).replace("T", " ");
-    latePostings = await client.executeKw<number>("account.move.line", "search_count", [[...base, ["date", "<=", opts.since.through], ["create_date", ">", at]]], { context: ctx });
+    latePostings = trust(Count, await client.executeKw("account.move.line", "search_count", [[...base, ["date", "<=", opts.since.through], ["create_date", ">", at]]], { context: ctx }), "late postings");
     if (latePostings) notes.push(`${latePostings} posted line${latePostings > 1 ? "s" : ""} dated up to ${fmtDay(opts.since.through)} ${latePostings > 1 ? "were" : "was"} entered in Odoo after the last import (${fmtDay(at.slice(0, 10))}). They are in this sync; reports made from the last import missed them. Set a lock date in Odoo once a period is closed.`);
   }
   return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance, ...(latePostings !== undefined ? { latePostings } : {}) } };
@@ -217,13 +249,13 @@ export async function syncLedgerLines(client: OdooClient, opts: SyncOptions, res
   const fetch = async (accts: typeof core): Promise<{ lines: { code: string; name: string; cls: (typeof core)[number]["cls"]; excluded: boolean; entries: LedgerEntry[] }[]; count: number } | "too_many" | "too_slow"> => {
     const domain = [["parent_state", "=", "posted"], opts.includeBranches ? ["company_id", "child_of", cid] : ["company_id", "=", cid],
       ["date", ">=", `${first}-01`], ["date", "<=", `${last}-${String(daysIn(last)).padStart(2, "0")}`], ["account_id", "in", accts.map((a) => a.odoo_id!)]];
-    const count = await client.executeKw<number>("account.move.line", "search_count", [domain], { context: ctx });
+    const count = trust(Count, await client.executeKw("account.move.line", "search_count", [domain], { context: ctx }), "line count");
     if (count > MAX_SYNC_LINES) return "too_many";
     const entries = new Map<number, LedgerEntry[]>();
     const pageSize = 5000;
     for (let offset = 0; offset < count; offset += pageSize) {
       if (Date.now() - started > budgetMs) return "too_slow";
-      const page = await client.executeKw<Line[]>("account.move.line", "search_read", [domain], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit: pageSize, offset, order: "date, id", context: ctx });
+      const page: Line[] = trust(DetailLines, await client.executeKw("account.move.line", "search_read", [domain], { fields: ["account_id", "date", "move_id", "partner_id", "name", "balance"], limit: pageSize, offset, order: "date, id", context: ctx }), "journal items");
       for (const l of page) {
         if (!l.account_id || !l.balance) continue;
         const list = entries.get(l.account_id[0]) ?? [];

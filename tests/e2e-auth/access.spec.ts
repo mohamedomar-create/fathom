@@ -84,3 +84,23 @@ test("a user deletes their account and can no longer sign in", async ({ page }) 
   await signIn(page, email, PASSWORD);
   await expect(page.getByRole("status")).toContainText("The email or password is not right.");
 });
+
+test("the Odoo tab: read-only setup steps, an admin's log of every change, and Disconnect deletes the key", async ({ page }) => {
+  const { execFileSync } = await import("node:child_process");
+  const sql = (q: string) => execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-qAtc", q]).toString().trim();
+  await signUp(page, { name: "Odile Admin", org: "Odile Advisory", email: newEmail("odoo") });
+  const id = await createCompany(page, "Odoo Guarded Co");
+  await page.goto(`/company/${id}/settings/source-data?tab=odoo`);
+  await expect(page.getByText("iReport Reader")).toBeVisible();
+  await expect(page.getByTestId("odoo-not-ready")).toHaveCount(0);
+  // A connection saved earlier (written here straight to the database, as the save would).
+  sql(`insert into public.odoo_connections (company_id, url, db, login, api_key_enc, odoo_company_id, odoo_company_name, key_expires_on) values ('${id}', 'https://x.odoo.com', 'x', 'reader@x', 'v1.k', 1, 'X Co', current_date + 5)`);
+  await page.reload();
+  await expect(page.getByTestId("odoo-key-expiry")).toContainText("expires in 5 days");
+  await expect(page.getByTestId("odoo-log")).toContainText("Saved");
+  page.once("dialog", (d) => d.accept());
+  await page.getByTestId("odoo-disconnect").click();
+  await expect(page.getByText("Disconnected. The stored key was deleted.")).toBeVisible();
+  await expect(page.getByTestId("odoo-log")).toContainText("Disconnected");
+  expect(sql(`select count(*) from public.odoo_connections where company_id = '${id}'`)).toBe("0");
+});

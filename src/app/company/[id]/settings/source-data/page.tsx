@@ -14,13 +14,21 @@ export default async function SourceDataPage({ params, searchParams }: { params:
   const { tab = "upload", step } = await searchParams;
   const { supabase } = await getUser();
   const { role } = await loadCompanyBundle(id);
-  const [{ data: c }, { data: imports }, { data: odoo }, { data: batches }, { data: expBatches }] = await Promise.all([
+  const [{ data: c }, { data: imports }, { data: odoo, error: odooErr }, { data: batches }, { data: expBatches }, { data: audit }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source, kpi_config").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
-    supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, version, status, last_error, last_sync_at").eq("company_id", id).maybeSingle(),
+    supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, version, status, last_error, last_sync_at, has_key, key_expires_on").eq("company_id", id).maybeSingle(),
     supabase.from("sales_batches").select("periods").eq("company_id", id).eq("source", "file"),
     supabase.from("expense_batches").select("periods").eq("company_id", id).eq("source", "file"),
+    supabase.from("odoo_audit").select("id, user_id, action, ok, detail, rows_read, at").eq("company_id", id).order("at", { ascending: false }).limit(20),
   ]);
+  // Who did each logged Odoo action (members of the same organisation can see each other's profiles).
+  const who = [...new Set((audit ?? []).map((a) => a.user_id).filter((u): u is string => Boolean(u)))];
+  const { data: people } = who.length ? await supabase.from("profiles").select("id, email, full_name").in("id", who) : { data: [] };
+  const name = new Map((people ?? []).map((p) => [p.id, p.full_name || p.email]));
+  const odooLog = (audit ?? []).map((a) => ({ ...a, who: a.user_id ? name.get(a.user_id) ?? "a former member" : "—" }));
+  // The Odoo security update (migration 0025) adds the columns read above; until it runs, the connection stays closed.
+  const odooReady = !odooErr || odooErr.code !== "42703";
   // Months that already have sales from a file: a new sales file asks before replacing them.
   const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
@@ -45,7 +53,7 @@ export default async function SourceDataPage({ params, searchParams }: { params:
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data or change the Odoo connection. Ask an admin of the organisation for editor access.</p>
       ) : <>
       {tab === "upload" && c && <UploadWizard companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={step === "opening" || step === "sales" || step === "financials" || step === "expenses" || step === "inventory" ? step : undefined} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} />}
-      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} />}
+      {tab === "odoo" && c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} role={role === "admin" ? "admin" : "editor"} log={odooLog} ready={odooReady} />}
       </>}
     </div>
   );

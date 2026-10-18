@@ -26,7 +26,9 @@ export type ImportRow = { id: string; company_id: string; kind: string; filename
 export type OdooConnectionRow = {
   company_id: string; url: string; db: string; login: string; api_key_enc: string; odoo_company_id: number | null; odoo_company_name: string | null;
   include_branches: boolean; months_history: number; version: string | null; status: string; last_error: string | null; last_sync_at: string | null; updated_at: string;
+  has_key: boolean; key_expires_on: string | null; sync_started_at: string | null; created_at: string;
 }
+export type OdooAuditRow = { id: number; company_id: string; user_id: string | null; action: string; ok: boolean; detail: string | null; rows_read: number | null; at: string }
 export type CommentaryRow = { company_id: string; period_key: string; section: string; body: string; source: string; updated_by: string | null; updated_at: string }
 export type ReportRow = {
   id: string; company_id: string; title: string; period_type: string; period_end: string; sections: Json; status: string; share_token: string | null; expires_at: string | null;
@@ -61,6 +63,7 @@ export type Database = {
       account_balances: Table<AccountBalanceRow, "account_id" | "company_id" | "period" | "amount">;
       imports: Table<ImportRow, "company_id" | "kind">;
       odoo_connections: Table<OdooConnectionRow, "company_id" | "url" | "db" | "login" | "api_key_enc">;
+      odoo_audit: Table<OdooAuditRow, "company_id" | "action" | "ok">;
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
@@ -90,6 +93,9 @@ export type Database = {
       restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };
       hit_rate_limit: { Args: { p_key: string; p_window_s: number; p_max: number }; Returns: boolean };
       rate_limit_hit: { Args: { p_scope: string; p_subject: string }; Returns: boolean };
+      odoo_secret: { Args: { p_company: string }; Returns: string | null };
+      odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
+      odoo_claim_sync: { Args: { p_company: string }; Returns: boolean };
       leave_organisation: { Args: { p_org: string }; Returns: undefined };
       delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };
       delete_my_account: { Args: { p_email: string }; Returns: undefined };

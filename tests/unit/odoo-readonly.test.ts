@@ -7,7 +7,7 @@ describe("the Odoo connection is read-only", () => {
   const fetchImpl = (async (_u: string, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body));
     sent.push(`${body.params.service}.${body.params.method}${body.params.service === "object" ? ":" + body.params.args[4] : ""}`);
-    return new Response(JSON.stringify({ result: body.params.method === "authenticate" ? 7 : [] }), { status: 200 });
+    return new Response(JSON.stringify({ result: body.params.method === "authenticate" ? 7 : [] }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
   const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fetchImpl);
 

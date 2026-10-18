@@ -40,6 +40,8 @@ export async function resolvePublicOdoo(raw: string, resolve = lookup): Promise<
   try { u = new URL(raw.trim()); } catch { throw new Error("That doesn't look like a valid URL, e.g. https://yourcompany.odoo.com"); }
   if (u.protocol !== "https:") throw new Error("Use the https:// address of your Odoo.");
   if (u.username || u.password) throw new Error("Remove the username/password from the URL.");
+  // Odoo's API is served on the standard https port; any other port is refused (and dropped from the address).
+  if (u.port && u.port !== "443") throw new Error("Use your Odoo's standard https address, without a port number (e.g. https://yourcompany.odoo.com).");
   const host = u.hostname.replace(/^\[|\]$/g, "");
   if (host === "localhost" || host.endsWith(".local") || host.endsWith(".internal") || host.endsWith(".localhost")) throw new Error("Odoo must be reachable on the public internet.");
   const addrs = isIP(host) ? [{ address: host, family: isIP(host) }] : await resolve(host, { all: true }).catch(() => { throw new Error(`Could not find ${host}. Check the address.`); });

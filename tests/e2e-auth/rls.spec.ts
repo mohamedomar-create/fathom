@@ -28,7 +28,8 @@ test("a stranger's token reads and changes nothing in another organisation", asy
   const b = await user(api, "bob");
   for (const t of ["organizations", "companies", "source_accounts", "account_balances", "imports", "odoo_connections", "commentary", "reports", "invites"]) {
     const col = ["organizations"].includes(t) ? `id=eq.${org.id}` : t === "companies" ? `id=eq.${company}` : t === "invites" ? `org_id=eq.${org.id}` : `company_id=eq.${company}`;
-    expect(await b.rows(`${t}?${col}&select=*`), `${t} visible to a stranger`).toEqual([]);
+    // odoo_connections: every column but the encrypted key may be selected (migration 0025).
+    expect(await b.rows(`${t}?${col}&select=${t === "odoo_connections" ? "company_id,url" : "*"}`), `${t} visible to a stranger`).toEqual([]);
   }
   expect((await b.rows(`memberships?org_id=eq.${org.id}&select=*`))).toEqual([]);
 
@@ -48,4 +49,23 @@ test("a stranger's token reads and changes nothing in another organisation", asy
   expect(anon.status()).toBe(401);
   const pub = await api.post(`${URL}/rest/v1/rpc/get_published_report`, { headers: { apikey: KEY, Authorization: `Bearer ${KEY}`, "content-type": "application/json" }, data: { p_token: "x".repeat(40) } });
   expect(await pub.json()).toBeNull();
+});
+
+test("the Odoo API key can't be read back through the database API, even by the company's admin", async ({ request: api }) => {
+  const a = await user(api, "odooadmin");
+  const [org] = await a.rows("organizations?select=id");
+  const company = (await (await api.post(`${URL}/rest/v1/companies`, { headers: a.h, data: { org_id: org.id, name: "Odoo Keyed Co" } })).json())[0].id as string;
+  const saved = await api.post(`${URL}/rest/v1/odoo_connections`, { headers: { ...a.h, Prefer: "return=minimal" }, data: { company_id: company, url: "https://x.odoo.com", db: "x", login: "me@x", api_key_enc: "v1.secret" } });
+  expect(saved.status(), await saved.text()).toBe(201);
+  expect((await a.get(`odoo_connections?company_id=eq.${company}&select=api_key_enc`)).ok()).toBe(false);
+  expect((await a.get(`odoo_connections?company_id=eq.${company}&select=*`)).ok()).toBe(false);
+  expect(await a.rows(`odoo_connections?company_id=eq.${company}&select=url,has_key`)).toEqual([{ url: "https://x.odoo.com", has_key: true }]);
+  // The log records the save and cannot be written or erased through the API.
+  expect((await a.rows(`odoo_audit?company_id=eq.${company}&select=action`)).map((r) => r.action)).toEqual(["save"]);
+  expect((await api.post(`${URL}/rest/v1/odoo_audit`, { headers: a.h, data: { company_id: company, action: "sync", ok: true } })).ok()).toBe(false);
+  await api.delete(`${URL}/rest/v1/odoo_audit?company_id=eq.${company}`, { headers: a.h });
+  expect((await a.rows(`odoo_audit?company_id=eq.${company}&select=action`)).length).toBe(1);
+  // A stranger cannot ask for the key through the server-side function either.
+  const b = await user(api, "odoostranger");
+  expect((await api.post(`${URL}/rest/v1/rpc/odoo_secret`, { headers: b.h, data: { p_company: company } })).ok()).toBe(false);
 });

@@ -54,9 +54,13 @@ function match(l: Line, dom: unknown[]): boolean {
   });
 }
 
+const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+
 /** offBalance: an off-balance account that holds posted lines (petty cash kept off the books, a memo account). */
 /** late: an entry dated in August, posted (created) on 18 Oct 2026 after the last import. */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean } = {}) {
+/** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
+/** userCompanies: the companies the connected user may see. */
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; rights?: "read" | "write" | "unknown"; userCompanies?: number[] } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.offBalance) {
     accs.push({ id: 900, code: "999100", name: "Petty cash (off balance)", cls: "cash", type: "off_balance" });
@@ -74,7 +78,16 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
     else if (service === "common" && method === "authenticate") result = args[2] === "secret" ? 7 : false;
     else if (service === "object") {
       const [, , , model, m, a, kw] = args;
-      if (model === "res.company") result = [{ id: 1, name: "Sample Trading Co", currency_id: [1, "EGP"] }, { id: 2, name: "Other Co", currency_id: [1, "EGP"] }];
+      if (m === "check_access_rights" || m === "has_access") {
+        const rights = opts.rights ?? "read";
+        if (rights === "unknown" || (m === "has_access" && version < 18) || (m === "check_access_rights" && version >= 18)) {
+          return json({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "AttributeError", message: `The method '${m}' does not exist on the model` } } });
+        }
+        result = rights === "write" && model === "account.move";
+      } else if (model === "res.users") {
+        if (m !== "read" || a[0][0] !== 7) throw new Error("only the user's own record");
+        result = [{ id: 7, name: "iReport Reader", login: "me@x.com", company_ids: opts.userCompanies ?? [1] }];
+      } else if (model === "res.company") result = [{ id: 1, name: "Sample Trading Co", currency_id: [1, "EGP"] }, { id: 2, name: "Other Co", currency_id: [1, "EGP"] }];
       else if (model === "account.account") {
         const dom = a[0][0];
         if (version >= 18 && dom[0] !== "company_ids") throw new Error("v18 needs company_ids");
@@ -84,7 +97,7 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
       } else if (model === "ir.model.data") {
         result = Object.keys(V15).map((t, i) => ({ res_id: 500 + i, name: V15[t] }));
       } else if (model === "account.move.line" && m === "read_group") {
-        if (version >= 19) return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "AttributeError", message: "read_group is not allowed on this model; use formatted_read_group" } } }));
+        if (version >= 19) return json({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "AttributeError", message: "read_group is not allowed on this model; use formatted_read_group" } } });
         if (kw.lazy !== false) throw new Error("lazy must be false");
         const [dom, , groupby] = a;
         const sel = lines.filter((l) => match(l, dom));
@@ -112,7 +125,7 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
         result = sel.slice(kw.offset, kw.offset + kw.limit).map((l) => ({ account_id: [l.account, "x"], date: l.date, balance: l.balance, move_id: l.move ? [1, l.move] : false, partner_id: l.partner ? [2, l.partner] : false, name: "line" }));
       } else throw new Error(`unexpected ${model}.${m}`);
     }
-    return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
+    return json({ jsonrpc: "2.0", id: 1, result });
   };
   return { fetch: handler as unknown as typeof fetch, calls };
 }
