@@ -32,7 +32,8 @@ export interface InsightCtx {
   lang?: "en" | "ar";
 }
 
-const PRIOR_AR: Record<string, string> = { "last month": "الشهر السابق", "the prior quarter": "الربع السابق", "the prior year": "السنة السابقة" };
+const PRIOR_AR: Record<string, string> = { "last month": "الشهر السابق", "the prior quarter": "الربع السابق", "the prior year": "السنة السابقة",
+  "the same days last month": "الأيام نفسها من الشهر السابق", "the same days of the prior quarter": "الأيام نفسها من الربع السابق", "the same days of the prior year": "الأيام نفسها من السنة السابقة" };
 const PER_AR: Record<string, string> = { month: "شهر", quarter: "ربع", year: "سنة" };
 
 /** Rule-based findings in plain language, ranked by severity (port of the reference engine). */
@@ -132,7 +133,7 @@ export function insights(ctx: InsightCtx): Finding[] {
   if (cr != null && cr < 1) add(3, "risk", "kpis", L(`Current ratio ${fixed(cr, 2)}: short-term bills exceed short-term assets`, `نسبة التداول ${fixed(cr, 2)}: الالتزامات قصيرة الأجل تتجاوز الأصول قصيرة الأجل`), L("Risk of not meeting payments on time.", "خطر عدم السداد في المواعيد."));
   else if (cr != null && cr < 1.2) add(1, "watch", "kpis", L(`Current ratio only ${fixed(cr, 2)}`, `نسبة التداول ${fixed(cr, 2)} فقط`), L("Thin buffer for short-term bills.", "هامش ضيق لتغطية الالتزامات قصيرة الأجل."));
   const ic = K.int_cover;
-  if (ic != null && ic < 1.5) add(ic < 1 ? 3 : 2, "risk", "kpis", L(`Interest cover ${fixed(ic, 1)}x`, `تغطية الفوائد ${fixed(ic, 1)} مرة`), L("Operating profit barely covers interest cost.", "الربح التشغيلي بالكاد يغطي تكلفة الفوائد."));
+  if (ic != null && ic < 1.5) add(ic < 1 ? 3 : 2, "risk", "kpis", L(`Interest cover ${fixed(ic, 1)}x`, `تغطية الفوائد ${fixed(ic, 1)} مرة`), ic < 0 ? L("Operating loss: profit does not cover the interest at all.", "خسارة تشغيلية: الربح لا يغطي الفوائد إطلاقًا.") : L("Operating profit barely covers interest cost.", "الربح التشغيلي بالكاد يغطي تكلفة الفوائد."));
   if (B.te > 0 && B.debt / B.te > 1.5) add(2, "watch", "kpis", L(`Debt is ${fixed(B.debt / B.te, 1)}x equity`, `الديون ${fixed(B.debt / B.te, 1)} مرة من حقوق الملكية`), L("High borrowing relative to owners' capital.", "اقتراض مرتفع مقارنة برأس مال الملاك."));
   if (R && P.fixed_costs / R > 0.35) add(1, "watch", "profitability", L(`Fixed costs take ${fixed((P.fixed_costs / R) * 100, 0)}% of revenue`, `التكاليف الثابتة تستهلك ${fixed((P.fixed_costs / R) * 100, 0)}% من الإيرادات`), L("Costs that do not move with sales are what make slow months hurt.", "التكاليف التي لا تتحرك مع المبيعات هي ما يجعل الأشهر البطيئة مؤلمة."));
   const crit = ctx.critical ?? KPI_DEFS.filter((d) => d.importance === "Critical" && ctx.status[d.key] === false).map((d) => d.name);

@@ -61,6 +61,8 @@ export interface BankInputs {
   accounts?: LoanAccount[];
   /** The language to write in (English when not given). */
   lang?: "en" | "ar";
+  /** The company's tax rate (0.225): stands in for the tax charge when the books carry none. */
+  taxRate?: number | null;
 }
 
 /** The fields of an account line the bank view needs. */
@@ -150,7 +152,8 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   const principalSource: BankAssessment["principalSource"] = !principalEstimated ? "entered" : cp.amount > 0 ? "current_portion" : "estimate";
   const principal12m = principalSource === "entered" ? Math.max(0, inp.principal12m!) : principalSource === "current_portion" ? cp.amount : B.ltd / BANK_LIMITS.existingLoanYears;
   // The tax charge for the year stands in for the tax paid on it.
-  const taxCharge = Math.max(0, Pa.tax_expenses);
+  // Books without an income tax charge (Odoo posts none until the year end) still owe it: the profile rate on the profit.
+  const taxCharge = Pa.tax_expenses > 0 ? Pa.tax_expenses : Math.max(0, Pa.ebt) * (inp.taxRate ?? 0);
   const cashForDebt = Pa.ebitda - taxCharge;
   const service = interest + principal12m;
   const R = P.revenue;
@@ -202,7 +205,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
       key: "int_cover", group: "Repayment", name: "Interest cover", value: icr, unit: "x",
       band: interest > 0 ? up(icr, BANK_LIMITS.intCover, BANK_LIMITS.intCoverWatch) : "info", guide: `${BANK_LIMITS.intCover}x or more`,
       formula: "EBIT ÷ interest expense",
-      banker: interest > 0 ? `Operating profit pays the interest bill ${icr!.toFixed(1)} times. At today's Egyptian rates this falls quickly when you borrow more.` : "No interest expense in the period.",
+      banker: interest <= 0 ? "No interest expense in the period." : icr! < 0 ? "An operating loss: nothing is left to pay the interest, which is met from cash or more borrowing." : `Operating profit pays the interest bill ${icr!.toFixed(1)} times. At today's Egyptian rates this falls quickly when you borrow more.`,
       advice: icr !== null && icr < BANK_LIMITS.intCover ? "Show the cover after the new loan at the quoted rate, and what happens if rates rise 2 to 3 points." : "Keep it: it shows the business carries its interest comfortably.",
     },
     {
@@ -373,7 +376,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   if (debt > 0 && B.cash > 0.5 * debt && interest > 0) flag("cash_and_debt", "medium", L("High cash alongside borrowing", "نقدية مرتفعة بجانب الاقتراض"), L(`Cash ${m(B.cash)} against borrowing ${m(debt)}.`, `النقدية ${m(B.cash)} مقابل اقتراض ${m(debt)}.`), L("Be ready to explain why the cash is not used to cut debt (deposits held as security, customer advances, timing).", "كن مستعدًا لشرح سبب عدم استخدام النقدية لخفض الديون (ودائع كضمان، دفعات مقدمة من العملاء، توقيت)."));
   if (b.prior && b.prior.B.tax_liab > 0 && B.tax_liab > b.prior.B.tax_liab * 1.5 && B.tax_liab > 0.05 * B.tcl) flag("tax_build", "medium", L("Taxes payable building up", "تراكم الضرائب المستحقة"), L(`Tax liabilities ${m(B.tax_liab)}, up from ${m(b.prior.B.tax_liab)}.`, `الالتزامات الضريبية ${m(B.tax_liab)}، بعد أن كانت ${m(b.prior.B.tax_liab)}.`), L("Show the tax payment receipts after the period end; overdue taxes worry lenders.", "اعرض إيصالات سداد الضرائب بعد نهاية الفترة؛ الضرائب المتأخرة تقلق المقرضين."));
   if (P.dividends > 0 && debt > 0 && (lev === null || lev > BANK_LIMITS.debtEbitda)) flag("dividends", "medium", L("Distributions while debt is high", "توزيعات أرباح مع ديون مرتفعة"), L(`${m(P.dividends)} distributed with debt at ${lev === null ? "n/a" : lev.toFixed(1) + "x"} EBITDA.`, `وُزّع ${m(P.dividends)} والديون ${lev === null ? "غير متاحة" : lev.toFixed(1) + " مرة"} من الأرباح قبل الفوائد والضرائب والإهلاك.`), L("Expect a covenant restricting dividends; offering one yourself can win better terms.", "توقع شرطًا يقيد التوزيعات؛ وعرضه بنفسك قد يحقق شروطًا أفضل."));
-  if (b.covered < 12 && !b.annualColumn) flag("coverage", "medium", L(`Only ${b.covered} months of figures`, `أرقام ${b.covered} أشهر فقط`), L("Yearly figures are scaled up from the months held.", "الأرقام السنوية مقدّرة من الأشهر المتاحة."), L("Upload the last audited statements as well, so the bank sees full years.", "ارفع آخر قوائم مراجعة أيضًا، ليرى البنك سنوات كاملة."));
+  if (b.factor !== 1 && !b.annualColumn) flag("coverage", "medium", L(`Only ${Math.round(b.covered * 10) / 10} months of figures in the last year`, `أرقام ${Math.round(b.covered * 10) / 10} أشهر فقط في السنة الأخيرة`), L("Yearly figures are scaled up from the months held.", "الأرقام السنوية مقدّرة من الأشهر المتاحة."), L("Upload the last audited statements as well, so the bank sees full years.", "ارفع آخر قوائم مراجعة أيضًا، ليرى البنك سنوات كاملة."));
 
   const rate = inp.rate && inp.rate > 0 ? inp.rate / 100 : null;
   const avgDebt = b.avg("std") + b.avg("ltd");

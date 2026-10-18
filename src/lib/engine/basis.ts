@@ -64,7 +64,9 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   const partDay = !annualColumn && asOf && asOf.slice(0, 7) === end ? Number(asOf.slice(8)) : 0;
   const part = partDay > 0 && partDay < daysIn(end) ? partDay / daysIn(end) : 1;
   const covered = annualColumn ? 12 : used.length - 1 + part;
-  const factor = 12 / covered;
+  // Twelve months held with the last one still in progress are read as recorded, as Odoo reports them; only whole months
+  // missing are scaled up to a year.
+  const factor = !annualColumn && used.length === 12 && !gaps.length ? 1 : 12 / covered;
   const flows = sumPL(used.map((m) => m.pl));
   const P = plCalc(flows);
   const Pa = plCalc(Object.fromEntries(Object.entries(flows).map(([k, v]) => [k, (v ?? 0) * factor])));
@@ -85,7 +87,7 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
-    label: `${Math.ceil(covered)} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
+    label: `${part < 1 ? Math.round(covered * 10) / 10 : covered} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
     ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0).cfo : null,
   };
 }

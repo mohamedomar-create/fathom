@@ -97,3 +97,17 @@ describe("receipt cost sanity (register D29)", () => {
     expect(x.odd).toEqual(["2026-01"]);
   });
 });
+
+describe("days of stock, one formula (register D19)", () => {
+  it("average stock ÷ cost of sales × the days covered, a part month counted to its cut-off", () => {
+    const L: LayerRow[] = [
+      { p: "2026-09", kind: "receipt", code: "", product: "Mask", category: "", q: 10, v: 1000, n: 1 },
+      { p: "2026-10", kind: "receipt", code: "", product: "Mask", category: "", q: 20, v: 2000, n: 1 },
+      { p: "2026-10", kind: "delivery", code: "", product: "Mask", category: "", q: -5, v: -500, n: 1 },
+    ];
+    const d = summarizeInventory({ ...EMPTY_RECORDS, layers: L, meta: { withIds: false, kinds: ["valuation"], periods: [] } });
+    const a = inventoryAnalysis(d, { type: "month", end: "2026-10" }, 1, { ledger: { stock: null, cogs: null }, today: "2026-10-15" });
+    // Opening 1,000, closing 2,500: average 1,750; cost of sales 500 over 15 days.
+    expect(a.tiles.days).toBe(53);
+  });
+});

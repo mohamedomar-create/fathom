@@ -65,3 +65,13 @@ describe("a month still in progress", () => {
     expect(Math.round(b.Pa.revenue)).toBeGreaterThan(1_190_000);
   });
 });
+
+describe("a part month against the month before (register D21)", () => {
+  it("15 days of October at the same daily rate are compared with 15/30 of September: no false 'revenue down 50%'", () => {
+    const ms = [month("2026-08"), month("2026-09"), month("2026-10", 0.5)];
+    const a = analyze(ms, { type: "month", end: "2026-10" }, SET, { asOf: "2026-10-15" });
+    expect(a.view.prior!.P.revenue).toBe(50_000);
+    expect(a.view.prior!.label).toMatch(/same 15 days/);
+    expect(a.findings.some((f) => /Revenue (up|down)/.test(f.title))).toBe(false);
+  });
+});

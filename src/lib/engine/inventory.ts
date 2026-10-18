@@ -342,8 +342,12 @@ export function inventoryAnalysis(
     closing: r2(closingAt(end)),
   } : null;
   const cogs = hasValue ? r2(-byKind(["delivery", "customer_return"])) : null;
-  const daysWin = sum(periods, daysIn);
+  // Days covered: a part month counts to its cut-off (opts.today), as the KPIs do.
+  const cut = opts.today && opts.today.startsWith(end) ? Number(opts.today.slice(8)) : 0;
+  const daysWin = sum(periods, daysIn) - (cut > 0 && cut < daysIn(end) ? daysIn(end) - cut : 0);
   const value = bridge ? bridge.closing : null;
+  // Days of stock, as on the KPI and Banking pages: average stock (opening and each month end) ÷ cost of sales × days.
+  const avgStock = bridge ? (bridge.opening + sum(periods, closingAt)) / (periods.length + 1) : null;
 
   // ---- products
   const today = opts.today ?? `${end}-${String(daysIn(end)).padStart(2, "0")}`;
@@ -480,7 +484,7 @@ export function inventoryAnalysis(
 
   return {
     hasValue, hasMoves, partialValuation, label, position: pos.position,
-    tiles: { value, days: value !== null && cogs && cogs > 0 ? Math.round(value / (cogs / daysWin)) : null, cogs, slow, dead },
+    tiles: { value, days: avgStock !== null && avgStock >= 0 && cogs && cogs > 0 ? Math.round((avgStock / cogs) * daysWin) : null, cogs, slow, dead },
     bridge, products, movements: [...mv.values()].map((m) => ({ ...m, q: Math.round(m.q * 10000) / 10000 })), locations: [...locs.values()],
     tieouts, findings, headline,
   };

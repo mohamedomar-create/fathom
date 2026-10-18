@@ -2,7 +2,7 @@ import { breakeven } from "./breakeven";
 import { cashFlowStatement, cashWaterfall } from "./cashflow";
 import { insights, type Finding } from "./insights";
 import { computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
-import { daysIn, MONTH_ABBR } from "./format";
+import { addMonths, daysIn, MONTH_ABBR } from "./format";
 import { periodView, type PeriodSel, type PeriodView } from "./period";
 import { hasPL, type CompanySettings, type Comparison, type Importance, type MonthData } from "./types";
 
@@ -48,6 +48,8 @@ export function activeKpiDefs(settings: CompanySettings): KpiDef[] {
 }
 
 const PRIOR_LABEL = { month: "last month", quarter: "the prior quarter", year: "the prior year" } as const;
+const PART_PRIOR_LABEL = { month: "the same days last month", quarter: "the same days of the prior quarter", year: "the same days of the prior year" } as const;
+const SHIFT_MONTHS = { month: 1, quarter: 3, year: 12 } as const;
 
 export function analyze(
   months: MonthData[], sel: PeriodSel, settings: CompanySettings,
@@ -56,6 +58,7 @@ export function analyze(
   const view = periodView(months, sel, settings.fyStartMonth);
   // The books stop inside the last month: days-based measures (debtor, stock and supplier days) count the days covered.
   const end = view.window.end;
+  let partPrior = false;
   if (opts.asOf && opts.asOf.startsWith(end)) {
     const day = Number(opts.asOf.slice(8)), full = daysIn(end);
     if (day > 0 && day < full) {
@@ -65,6 +68,18 @@ export function analyze(
       // "Year 2026 (to Oct)" becomes "Year 2026 (to 10 Oct)"; a month gets "(to 10 Oct)".
       const label = /\(to [A-Z][a-z]{2}\)$/.test(view.window.label) ? view.window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${to})`) : `${view.window.label} (to ${to})`;
       view.window = { ...view.window, label };
+      // Compared like for like: the comparison periods' figures for the same share of their days (pro-rated), never a
+      // part month against a whole one.
+      const scale = (c: PeriodView["prior"], shift: number) => {
+        if (!c) return c;
+        const days = view.window.periods.reduce((s, p) => s + daysIn(addMonths(p, -shift)), 0);
+        const f = view.days / days;
+        const P = Object.fromEntries(Object.entries(c.P).map(([k, v]) => [k, typeof v === "number" ? v * f : v])) as typeof c.P;
+        return { ...c, P, label: `${c.label} (same ${day} days, pro-rated)` };
+      };
+      view.prior = scale(view.prior, SHIFT_MONTHS[sel.type]);
+      view.ly = scale(view.ly, 12);
+      partPrior = true;
     }
   }
   const { P, B } = view;
@@ -109,7 +124,7 @@ export function analyze(
   }
   const findings = insights({
     P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
-    cur: settings.currency, priorLabel: PRIOR_LABEL[sel.type], periodWord: sel.type,
+    cur: settings.currency, priorLabel: partPrior ? PART_PRIOR_LABEL[sel.type] : PRIOR_LABEL[sel.type], periodWord: sel.type,
     critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => (opts.kpiName ? opts.kpiName(r.def) : r.def.name)), lang: opts.lang,
   });
   return { view, settings, W, CF, K, targets, kpiRows, onTrack, offTrack, findings, breakeven: breakeven(P) };
