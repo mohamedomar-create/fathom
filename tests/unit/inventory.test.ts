@@ -38,6 +38,14 @@ describe("Inventory engine", () => {
     expect(a.tiles.cogs).toBe(1440);
   });
 
+  it("valuation without the moves history for a month: receipts may hold customer returns, and the page says so", () => {
+    const a = inventoryAnalysis(fifo(), SEP, 1, { ledger: { stock: null, cogs: null } });
+    expect(a.findings.find((f) => /moves history/i.test(f.title))?.text).toMatch(/Sep 2026/);
+    const withMoves = fifo();
+    withMoves.moves = data({ moves: [move("2026-09", "delivery", "P1", "WH/Stock", "Partners/Customers", 15)] }).moves;
+    expect(inventoryAnalysis(withMoves, SEP, 1, { ledger: { stock: null, cogs: null } }).findings.some((f) => /moves history/i.test(f.title))).toBe(false);
+  });
+
   it("cogsTiesToLedger", () => {
     const a = inventoryAnalysis(fifo(), SEP, 1, { ledger: { stock: { "2026-08": 0, "2026-09": 670 }, cogs: { "2026-09": 1440 } } });
     const t = (k: string) => a.tieouts.find((x) => x.key === k)!;

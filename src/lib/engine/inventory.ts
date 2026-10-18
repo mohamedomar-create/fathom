@@ -441,6 +441,15 @@ export function inventoryAnalysis(
         `المخزون يظهر ${f(t.module)} والحسابات ${f(t.ledger ?? 0)}: فرق ${f(t.diff ?? 0)}.${causes ? ` الأكبر: ${causes}.` : ""}`),
     });
   }
+  // A valuation row takes its kind from its move; without the moves history, a customer return booked on a receipt
+  // (WH/IN/…) reads as a purchase, so receipts and cost of sales are both overstated by the returns.
+  const noMoves = periods.filter((p) => win.some((l) => l.p === p && l.kind === "receipt") && !d.moves.months.includes(p));
+  if (noMoves.length) findings.push({
+    kind: "watch",
+    title: L(`Moves history missing for ${noMoves.length} month${noMoves.length > 1 ? "s" : ""}`, `سجل الحركات غير محمّل لعدد ${noMoves.length} من الشهور`),
+    text: L(`${noMoves.map(ml).join(", ")}: without Odoo's Moves History, goods returned by customers can't be told apart from goods bought, so receipts and cost of sales may both be overstated by the returns. Upload the Moves History for these months.`,
+      `${noMoves.map(ml).join("، ")}: بدون سجل الحركات من Odoo لا يمكن تمييز مرتجعات العملاء عن المشتريات، فقد تظهر المشتريات وتكلفة المبيعات أعلى بقيمة المرتجعات. حمّل سجل الحركات لهذه الشهور.`),
+  });
   const negative = d.onhand.filter((o) => o.qty < 0);
   if (negative.length) findings.push({
     kind: "risk",
