@@ -32,7 +32,7 @@ export const ar: Dict = {
     people: "إدارة المستخدمين",
     logout: "تسجيل الخروج",
   },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", banking: "البنوك" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -57,6 +57,10 @@ export const ar: Dict = {
     "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
     "inventory/movements": ["الحركات", "حركات المخزون"],
     "inventory/valuation": ["التقييم", "التقييم والمطابقة"],
+    payments: ["نظرة عامة", "المدفوعات والمستحقات"],
+    "payments/receivables": ["المستحقات", "مستحقات العملاء"],
+    "payments/payables": ["الموردون", "مستحقات الموردين"],
+    "payments/flows": ["المدفوعات", "المقبوضات والمدفوعات"],
     banking: ["الجاهزية البنكية", "الجاهزية للتمويل البنكي"],
   },
   settingsNav: {

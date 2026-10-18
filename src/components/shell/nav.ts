@@ -1,11 +1,11 @@
 import {
-  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins,
   type LucideIcon,
 } from "lucide-react";
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Starts a second group (a line above it in the rail). */ group?: boolean }
 
-export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "banking";
+export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -50,6 +50,14 @@ export const SECTORS: Sector[] = [
     ],
   },
   {
+    key: "payments", label: "Payments", items: [
+      { href: "payments", label: "Overview", title: "Payments Overview", icon: HandCoins },
+      { href: "payments/receivables", label: "Receivables", title: "Receivables", icon: Users },
+      { href: "payments/payables", label: "Payables", title: "Payables", icon: Truck },
+      { href: "payments/flows", label: "Payments", title: "Payments In and Out", icon: ArrowLeftRight },
+    ],
+  },
+  {
     key: "banking", label: "Banking", items: [
       { href: "banking", label: "Bank Readiness", title: "Bank Readiness", icon: Landmark },
     ],
@@ -60,6 +68,6 @@ export const SECTORS: Sector[] = [
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
   const first = r.split("/")[0];
-  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "banking" ? first : "financials";
+  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }

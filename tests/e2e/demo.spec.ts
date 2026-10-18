@@ -501,3 +501,21 @@ test("inventory pages show the demo stock and every tie-out green", async ({ pag
   await expect(page.getByTestId("stock-checks").getByTestId("tie-off")).toHaveCount(0);
   expect(errors).toEqual([]);
 });
+
+test("payments pages show the demo receivables, payables and payments, tied to the books", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.goto("/demo/payments");
+  await expect(page.getByTestId("payments-headline")).toContainText("Customers owe");
+  await expect(page.getByTestId("tieout-receivable")).toHaveAttribute("data-status", "ok");
+  await expect(page.getByTestId("tieout-payable")).toHaveAttribute("data-status", "ok");
+  await page.goto("/demo/payments/receivables");
+  await expect(page.getByTestId("ageing-table")).toContainText("Northside Hospital");
+  await page.getByTestId("partner-search").fill("river");
+  await expect(page.getByTestId("ageing-table").locator("tbody tr")).toHaveCount(1);
+  await page.goto("/demo/payments/payables");
+  await expect(page.getByTestId("ageing-table")).toContainText("Medline Supply");
+  await page.goto("/demo/payments/flows");
+  await expect(page.getByTestId("flows-journals")).toContainText("Bank");
+  expect(errors).toEqual([]);
+});

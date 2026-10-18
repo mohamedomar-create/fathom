@@ -79,3 +79,21 @@ describe("Payments engine", () => {
     expect(paymentsAnalysis(data(), SEP, 1, { accounts, control: { receivable: ["122100"] } }).tieouts.find((x) => x.side === "receivable")).toMatchObject({ status: "off", books: 900 });
   });
 });
+
+describe("Payments demo and summary parsing", async () => {
+  const { demoPayments } = await import("@/lib/company/demo-payments");
+  const { demoCompany } = await import("@/lib/company/demo");
+  const { parsePaymentsSummary } = await import("@/lib/company/payments-parse");
+  it("the demo ageing ties to the demo books, both sides", () => {
+    const c = demoCompany();
+    const d = demoPayments();
+    const a = paymentsAnalysis(d, { type: "month", end: d.aged.receivable!.asOf.slice(0, 7) }, 1, { accounts: c.accounts.filter((x) => x.cls === "ar" || x.cls === "ap") });
+    expect(a.tieouts.map((t) => t.status)).toEqual(["ok", "ok"]);
+    expect(a.receivable!.total).toBe(d.aged.receivable!.items.reduce((s, i) => Math.round((s + i.total) * 100) / 100, 0));
+  });
+  it("the database summary is read back exactly", () => {
+    const p = parsePaymentsSummary({ aged: { receivable: { as_of: "2026-09-30", buckets: ["At Date", "Older"], total: { amounts: [100, "50.5"], total: 150.5 }, findings: [{ id: "no_partner", message: "x" }], items: [["Northside", "INV/1", "", "2026-09-01", [100, 50.5], 150.5]] } }, payments: [["2026-09-05", "CIB/1", "CIB", "Manual", "Northside", "3000.00", "EGP", 3000, "in_process"], ["bad", "", "", "", "", 1, "", 1, "paid"]] });
+    expect(p.aged.receivable).toMatchObject({ asOf: "2026-09-30", total: { amounts: [100, 50.5], total: 150.5 }, items: [{ partner: "Northside", day: "2026-09-01", amounts: [100, 50.5], total: 150.5 }] });
+    expect(p.payments).toEqual([{ day: "2026-09-05", number: "CIB/1", journal: "CIB", method: "Manual", partner: "Northside", amount: 3000, currency: "EGP", amountCurrency: 3000, state: "in_process" }]);
+  });
+});

@@ -594,3 +594,34 @@ test("opening balances upload on their own, and a ledger without them starts fro
   await expect(page.getByTestId("commit-import")).toBeDisabled();
   await expect(page.getByText("Something doesn't add up: see the box above, or tick Save anyway and give a reason.")).toBeVisible();
 });
+
+test("Odoo's ageing reports and payments list become the Payments pages; the same date again replaces", async ({ page }) => {
+  test.setTimeout(120_000);
+  await signUp(page, { name: "Pay Owner", org: "Pay Advisory", email: newEmail("pay") });
+  const id = await createCompany(page, "Pay Co");
+  const upload = async () => {
+    await startUpload(page, id, "payments");
+    await page.getByTestId("file-input").setInputFiles([fixture("odoo-aged-receivable.xlsx"), fixture("odoo-aged-payable.xlsx"), fixture("odoo-payments.xlsx")]);
+    await expect(page.getByTestId("payments-check")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId("aged-receivable-total")).toHaveText("1,490.00");
+    await expect(page.getByTestId("aged-payable-total")).toHaveText("600.00");
+    await expect(page.getByTestId("payments-in")).toHaveText("3,790.00");
+    await expect(page.getByTestId("payments-out")).toHaveText("1,000.00");
+    await expect(page.getByTestId("payments-errors")).toHaveCount(0);
+    await page.getByTestId("save-payments").click();
+    await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  };
+  await upload();
+  await page.getByTestId("done-see").click();
+  await expect(page.getByTestId("payments-headline")).toContainText("Customers owe EGP 1,490");
+  await expect(page.getByTestId("tile-received")).toContainText("3,790");
+  // No accounts loaded yet: the tie-out says so instead of agreeing.
+  await expect(page.getByTestId("tieout-receivable")).toHaveAttribute("data-status", "no_books");
+  await page.goto(`/company/${id}/payments/receivables`);
+  await expect(page.getByTestId("ageing-table")).toContainText("Northside Hospital");
+  // The same files again replace what was saved, never add to it.
+  await upload();
+  await page.goto(`/company/${id}/payments`);
+  await expect(page.getByTestId("tile-owed")).toContainText("1,490");
+  await expect(page.getByTestId("tile-received")).toContainText("3,790");
+});

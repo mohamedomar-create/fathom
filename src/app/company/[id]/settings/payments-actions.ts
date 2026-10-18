@@ -5,6 +5,7 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
+import { controlAccountsOf, withProfile } from "@/lib/company/time-zone";
 
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -75,5 +76,26 @@ export async function addPaymentLines(companyId: string, batch: string, lines: z
     return { ok: true, saved: data as number };
   } catch (e) {
     return { ok: false, error: safeError(e, "addPaymentLines") };
+  }
+}
+
+/** The account(s) an ageing report is kept on, chosen once and remembered in the company profile (editors). */
+export async function saveControlAccounts(companyId: string, side: "receivable" | "payable", codes: string[]): Promise<{ ok: boolean; error?: string }> {
+  const v = z.object({ companyId: z.string().uuid(), side: z.enum(["receivable", "payable"]), codes: z.array(z.string().min(1).max(40)).max(20) }).safeParse({ companyId, side, codes });
+  if (!v.success) return { ok: false, error: "The accounts chosen are not valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+    if (e1) return { ok: false, error: dbError(e1, "saveControlAccounts") };
+    if (!row) return { ok: false, error: "You do not have permission to change this." };
+    const now = controlAccountsOf(row.kpi_config);
+    const { error, count } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { controlAccounts: { ...now, [side]: v.data.codes } }) as Json }, { count: "exact" }).eq("id", companyId);
+    if (error) return { ok: false, error: dbError(error, "saveControlAccounts") };
+    if (!count) return { ok: false, error: "You do not have permission to change this." };
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "saveControlAccounts") };
   }
 }

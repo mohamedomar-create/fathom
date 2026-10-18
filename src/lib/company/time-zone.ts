@@ -39,7 +39,7 @@ export function openingAsAtOf(kpiConfig: unknown): string | null {
 }
 
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] } }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;
@@ -56,4 +56,11 @@ export function withTimeZone(kpiConfig: unknown, tz: string | null): Record<stri
 export function compareWithOf(kpiConfig: unknown): string | null {
   const v = ((kpiConfig ?? {}) as Record<string, { compareWith?: unknown } | undefined>)[PROFILE_KEY]?.compareWith;
   return typeof v === "string" && /^[0-9a-f-]{36}$/i.test(v) ? v : null;
+}
+
+/** The accounts the company's ageing reports are kept on (its choice), by side; empty when none was chosen. */
+export function controlAccountsOf(kpiConfig: unknown): { receivable?: string[]; payable?: string[] } {
+  const v = ((kpiConfig ?? {}) as Record<string, { controlAccounts?: unknown } | undefined>)[PROFILE_KEY]?.controlAccounts as Record<string, unknown> | undefined;
+  const codes = (x: unknown) => (Array.isArray(x) ? x.filter((c): c is string => typeof c === "string" && c.length > 0 && c.length <= 40).slice(0, 20) : undefined);
+  return { ...(codes(v?.receivable)?.length ? { receivable: codes(v?.receivable) } : {}), ...(codes(v?.payable)?.length ? { payable: codes(v?.payable) } : {}) };
 }

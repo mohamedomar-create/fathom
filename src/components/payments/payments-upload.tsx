@@ -73,7 +73,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     <div data-testid="payments-upload">
       <WizardSteps at="upload" />
       <WizardTitle title="Upload your files" hint="Odoo's Aged Receivable, Aged Payable, and Customer / Vendor Payments: one file or several together." />
-      <button onClick={() => input.current?.click()} disabled={busy} className="flex w-full max-w-2xl flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line p-10 text-mute hover:border-brand" data-testid="drop">
+      <button onClick={() => input.current?.click()} disabled={busy} className="flex w-full max-w-2xl flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line p-10 text-mute hover:border-brand" data-testid="dropzone">
         <Upload className="h-8 w-8" />{busy ? "Reading…" : "Choose files"}
       </button>
       <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv" className="hidden" data-testid="file-input" onChange={(e) => onFiles([...(e.target.files ?? [])])} />

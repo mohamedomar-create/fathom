@@ -34,7 +34,7 @@ export const en = {
     people: "User management",
     logout: "Logout",
   },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", banking: "Banking" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -60,6 +60,10 @@ export const en = {
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
     "inventory/valuation": ["Valuation", "Valuation and Checks"],
+    payments: ["Overview", "Payments Overview"],
+    "payments/receivables": ["Receivables", "Receivables"],
+    "payments/payables": ["Payables", "Payables"],
+    "payments/flows": ["Payments", "Payments In and Out"],
     banking: ["Bank Readiness", "Bank Readiness"],
   } as Record<string, readonly [string, string]>,
   settingsNav: {

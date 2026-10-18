@@ -517,7 +517,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     const steps = kind === "opening"
       ? ["Open Odoo: Accounting → Reporting → General Ledger (or Trial Balance).", "Pick one day: from and to the day before your books start (e.g. 30/06/2021).", "Tick “Initial balance” if you see it. Click Export → Excel."]
       : kind === "payments"
-      ? ["Open Odoo: Accounting → Reporting → Aged Receivable. Pick the date (e.g. 30/09/2026). Click Export → Excel.", "Do the same for Aged Payable, on the same date.", "For payments: Accounting → Customers → Payments (and Vendors → Payments). Switch to the list view, tick the top box, then “Select all N records”. Click Export.", "Upload the files together."]
+      ? ["Open Odoo: Accounting → Reporting → Aged Receivable.", "Pick the date (e.g. 30/09/2026), then Export → Excel.", "Do the same for Aged Payable, on the same date.", "Payments: Accounting → Customers → Payments (and Vendors → Payments).", "In the list view, tick the top box, then “Select all N records”. Click Export.", "Upload the files together."]
       : kind === "inventory"
       ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then “Select all N records”.", "Click Export. Tick “I want to update data (import-compatible export)”.", "Add the ID field. Never External ID: Odoo would create records for it.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
