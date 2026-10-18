@@ -58,6 +58,14 @@ describe("Odoo connector", () => {
     check(res, 9);
   });
 
+  it("'everything since the books start' (240 months) syncs from the books start to the end, and the books agree", async () => {
+    const f = fakeOdoo(17);
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 240, end: "2026-09", booksStart: "2024-10-01" });
+    expect([res.periods[0], res.periods.at(-1), res.periods.length]).toEqual(["2024-10", "2026-09", 24]);
+    check(res, 14);
+  });
+
   it("falls back to search_read when read_group is unavailable (Odoo 19)", async () => {
     const f = fakeOdoo(19);
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);

@@ -5,13 +5,18 @@ import { useState, useTransition } from "react";
 import { saveOdoo, syncOdooNow, testOdoo } from "@/app/company/[id]/settings/odoo-actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
+import { mlabel } from "@/lib/engine";
+
+/** History "everything since the books start": the sync never reads months before it. */
+const ALL_MONTHS = 240;
+const monthLabel = (day: string) => mlabel(day.slice(0, 7));
 
 export interface OdooConn {
   url: string; db: string; login: string; odoo_company_id: number | null; odoo_company_name: string | null; include_branches: boolean;
   months_history: number; version: string | null; status: string; last_error: string | null; last_sync_at: string | null;
 }
 
-export function OdooPanel({ companyId, connection, hasData }: { companyId: string; connection: OdooConn | null; hasData: boolean }) {
+export function OdooPanel({ companyId, connection, hasData, booksStart = null }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null }) {
   const router = useRouter();
   const [url, setUrl] = useState(connection?.url ?? "");
   const [db, setDb] = useState(connection?.db ?? "");
@@ -20,7 +25,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
   const [probe, setProbe] = useState<OdooProbe | null>(null);
   const [company, setCompany] = useState<number | null>(connection?.odoo_company_id ?? null);
   const [branches, setBranches] = useState(connection?.include_branches ?? false);
-  const [months, setMonths] = useState(connection?.months_history ?? 25);
+  const [months, setMonths] = useState(connection?.months_history ?? (booksStart ? ALL_MONTHS : 25));
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[] } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
   const [pending, start] = useTransition();
   const [step, setStep] = useState<"idle" | "test" | "save" | "sync">("idle");
@@ -62,7 +67,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
             <PlugZap className="h-5 w-5 text-brand-d" />
             <div className="min-w-0 flex-1">
               <div className="font-medium">{connection!.odoo_company_name} · {connection!.url.replace("https://", "")}</div>
-              <div className="text-xs text-mute">{connection!.last_sync_at ? `Last synced ${new Date(connection!.last_sync_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "Not synced yet"} · {connection!.months_history} months{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
+              <div className="text-xs text-mute">{connection!.last_sync_at ? `Last synced ${new Date(connection!.last_sync_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "Not synced yet"} · {connection!.months_history === ALL_MONTHS ? "since the books start" : `${connection!.months_history} months`}{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
             </div>
             <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
               {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? "Syncing…" : "Sync now"}
@@ -89,6 +94,7 @@ export function OdooPanel({ companyId, connection, hasData }: { companyId: strin
             </label>
             <label><span className="label mb-1 block">History</span>
               <select className={field} value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+                {booksStart && <option value={ALL_MONTHS}>Everything since the books start ({monthLabel(booksStart)})</option>}
                 {[13, 25, 37, 49].map((m) => <option key={m} value={m}>{m - 1} months + current</option>)}
               </select>
             </label>

@@ -64,7 +64,8 @@ const SaveSchema = ConnSchema.extend({
   odooCompanyId: z.number().int().positive(),
   odooCompanyName: z.string().max(200),
   includeBranches: z.boolean(),
-  months: z.number().int().min(2).max(60),
+  // 240: everything since the company's books start (the sync never reads months before it).
+  months: z.number().int().min(2).max(240),
   version: z.string().max(40).optional(),
 });
 

@@ -65,6 +65,9 @@ update public.odoo_connections set url = 'https://b.odoo.com', api_key_enc = 'EN
 select pg_temp.check('a new address with a new key keeps the new key', (select api_key_enc from public.odoo_connections where company_id = (select co from ids)), 'ENC2');
 update public.odoo_connections set login = 'other@b' where company_id = (select co from ids);
 select pg_temp.check('a new login clears the key', (select api_key_enc from public.odoo_connections where company_id = (select co from ids)), '');
+-- Everything since the books start: a sync may keep up to 20 years of months (migration 0024).
+update public.odoo_connections set months_history = 240 where company_id = (select co from ids);
+select pg_temp.check('a sync may keep 240 months', (select months_history::text from public.odoo_connections where company_id = (select co from ids)), '240');
 
 -- ---------------------------------------------------------------- 3. memberships
 select pg_temp.check('a member cannot add a membership directly',
