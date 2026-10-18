@@ -84,7 +84,9 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
     else if (service === "common" && method === "authenticate") result = args[2] === "secret" ? 7 : false;
     else if (service === "object") {
       const [, , , model, m, a, kw] = args;
-      if (m === "check_access_rights" || m === "has_access") {
+      const detail = detailAnswer(model, m, a, kw, version);
+      if (detail !== undefined) result = detail;
+      else if (m === "check_access_rights" || m === "has_access") {
         const rights = opts.rights ?? "read";
         if (rights === "unknown" || (m === "has_access" && version < 18) || (m === "check_access_rights" && version >= 18)) {
           return json({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "AttributeError", message: `The method '${m}' does not exist on the model` } } });
@@ -136,4 +138,53 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
     return json({ jsonrpc: "2.0", id: 1, result });
   };
   return { fetch: handler as unknown as typeof fetch, calls };
+}
+
+// ---- sales and stock detail: a small, fully known set
+const LOCS = [
+  { id: 1, complete_name: "WH/Stock", usage: "internal" }, { id: 2, complete_name: "Partners/Vendors", usage: "supplier" },
+  { id: 3, complete_name: "Partners/Customers", usage: "customer" }, { id: 4, complete_name: "Virtual Locations/Inventory adjustment", usage: "inventory" },
+  { id: 5, complete_name: "Repair & Maintenance", usage: "inventory" },
+];
+const PRODUCTS = [{ id: 11, categ_id: [7, "All / Devices"] }, { id: 12, categ_id: [8, "All / Consumables"] }];
+const INV_LINES = [
+  { id: 1, date: "2026-09-03", move_id: [101, "INV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [11, "[P1] Oxygen Concentrator"], quantity: 2, balance: -50000, name: "x" },
+  { id: 2, date: "2026-09-03", move_id: [101, "INV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [12, "[P2] Nasal Cannula"], quantity: 10, balance: 0, name: "free" },
+  { id: 3, date: "2026-09-20", move_id: [102, "RINV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [11, "[P1] Oxygen Concentrator"], quantity: 1, balance: 25000, name: "return" },
+];
+const INVOICES = [{ id: 101, name: "INV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_invoice" }, { id: 102, name: "RINV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_refund" }];
+const MOVE_LINES = [
+  { id: 201, date: "2026-08-10 09:00:00", reference: "WH/IN/00001", product_id: [11, "[P1] Oxygen Concentrator"], lot_id: false, location_id: [2, "Partners/Vendors"], location_dest_id: [1, "WH/Stock"], quantity: 5, qty_done: 5, product_uom_id: [1, "Units"], picking_partner_id: [20, "Medline Supply"] },
+  { id: 202, date: "2026-09-03 10:00:00", reference: "WH/OUT/00001", product_id: [11, "[P1] Oxygen Concentrator"], lot_id: false, location_id: [1, "WH/Stock"], location_dest_id: [3, "Partners/Customers"], quantity: 2, qty_done: 2, product_uom_id: [1, "Units"], picking_partner_id: [9, "Northside Hospital"] },
+  { id: 203, date: "2026-09-25 10:00:00", reference: "WH/INT/00002", product_id: [12, "[P2] Nasal Cannula"], lot_id: false, location_id: [1, "WH/Stock"], location_dest_id: [5, "Repair & Maintenance"], quantity: 3, qty_done: 3, product_uom_id: [1, "Units"], picking_partner_id: false },
+];
+const STOCK_MOVES = [{ id: 301, location_id: [2, "Partners/Vendors"], location_dest_id: [1, "WH/Stock"], partner_id: [20, "Medline Supply"] }, { id: 302, location_id: [1, "WH/Stock"], location_dest_id: [3, "Partners/Customers"], partner_id: [9, "Northside Hospital"] }];
+const LAYERS = [
+  { id: 401, create_date: "2026-08-31 22:30:00", product_id: [11, "[P1] Oxygen Concentrator"], quantity: 5, unit_cost: 10000, value: 50000, description: "WH/IN/00001 - Oxygen Concentrator", reference: "WH/IN/00001", stock_move_id: [301, "x"], stock_landed_cost_id: false, account_move_id: [501, "STJ/2026/0001"] },
+  { id: 402, create_date: "2026-09-03 10:00:00", product_id: [11, "[P1] Oxygen Concentrator"], quantity: -2, unit_cost: 10000, value: -20000, description: "WH/OUT/00001", reference: "WH/OUT/00001", stock_move_id: [302, "x"], stock_landed_cost_id: false, account_move_id: [502, "STJ/2026/0002"] },
+  { id: 403, create_date: "2026-09-10 10:00:00", product_id: [11, "[P1] Oxygen Concentrator"], quantity: 0, unit_cost: 0, value: 1500, description: "Landed cost", reference: "LC/2026/0001", stock_move_id: false, stock_landed_cost_id: [601, "LC/2026/0001"], account_move_id: false },
+];
+const JOURNAL = [{ id: 501, date: "2026-08-31" }, { id: 502, date: "2026-09-03" }];
+const QUANTS = [{ id: 701, product_id: [11, "[P1] Oxygen Concentrator"], location_id: [1, "WH/Stock"], lot_id: false, quantity: 3, value: 31500 }];
+
+const page = <T,>(rows: T[], kw: Record<string, unknown>) => rows.slice(Number(kw.offset ?? 0), Number(kw.offset ?? 0) + Number(kw.limit ?? rows.length));
+const byIds = <T extends { id: number }>(rows: T[], ids: number[]) => rows.filter((r) => ids.includes(r.id));
+function needsCompany(dom: unknown[]) { if (!dom.some((d) => Array.isArray(d) && d[0] === "company_id")) throw new Error("every detail read is limited to the company"); }
+
+function detailAnswer(model: string, m: string, a: unknown[], kw: Record<string, unknown>, version: number): unknown {
+  if (model === "stock.location") return LOCS;
+  if (model === "product.product" && m === "read") return byIds(PRODUCTS, a[0] as number[]);
+  if (model === "account.move" && m === "read") return [...byIds(INVOICES, a[0] as number[]), ...byIds(JOURNAL, a[0] as number[])];
+  if (model === "stock.move" && m === "read") return byIds(STOCK_MOVES, a[0] as number[]);
+  if (model === "account.move.line" && (m === "search_read" || m === "search_count") && (a[0] as unknown[][]).some((d) => d[0] === "move_id.move_type")) {
+    needsCompany(a[0] as unknown[]);
+    if (!(a[0] as unknown[][]).some((d) => d[0] === (version >= 16 ? "display_type" : "exclude_from_invoice_tab"))) throw new Error("invoice lines only");
+    return m === "search_count" ? INV_LINES.length : page(INV_LINES, kw);
+  }
+  const table = model === "stock.move.line" ? MOVE_LINES : model === "stock.valuation.layer" ? LAYERS : model === "stock.quant" ? QUANTS : null;
+  if (!table) return undefined;
+  needsCompany(a[0] as unknown[]);
+  if (m === "search_count") return table.length;
+  if (kw.order === "date asc" || kw.order === "create_date asc") return table.slice(0, 1);
+  return page(table as unknown[], kw);
 }

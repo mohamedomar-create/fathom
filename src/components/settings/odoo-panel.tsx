@@ -2,7 +2,7 @@
 import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, ShieldAlert, Unplug, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { disconnectOdoo, saveOdoo, syncOdooNow, testOdoo } from "@/app/company/[id]/settings/odoo-actions";
+import { disconnectOdoo, saveOdoo, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
 import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
@@ -39,6 +39,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[] } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
   const [pending, start] = useTransition();
   const [step, setStep] = useState<"idle" | "test" | "save" | "sync">("idle");
+  const [progress, setProgress] = useState<string | null>(null);
   const saved = Boolean(connection?.odoo_company_id);
 
   const run = (s: typeof step, f: () => Promise<void>) => { setStep(s); setMsg(null); start(async () => { await f(); setStep("idle"); }); };
@@ -76,13 +77,33 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
       router.refresh();
     });
   };
+  /** Sales lines by product and the stock records, step by step (each step one page from Odoo). */
+  const detail = async (): Promise<string | null> => {
+    let at: DetailStepInput | undefined;
+    for (let i = 0; i < 2000; i++) {
+      const r = await syncOdooDetail(companyId, at);
+      if (!r.ok) return r.error;
+      setProgress(`${r.data.label}: ${r.data.done.toLocaleString("en-GB")} of ${r.data.total.toLocaleString("en-GB")}`);
+      if (!r.data.next) return null;
+      at = r.data.next;
+    }
+    return "The detail sync took too many steps.";
+  };
+  const syncDetail = () => run("sync", async () => {
+    const err = await detail();
+    setProgress(null);
+    setMsg(err ? { tone: "bad", text: err } : { tone: "ok", text: "Sales lines, stock moves, stock valuation and stock on hand synced from Odoo." });
+    router.refresh();
+  });
   const sync = () => {
     if (hasData && !confirm("Syncing replaces the company's current financial data with the data from Odoo. Continue?")) return;
     run("sync", async () => {
       const r = await syncOdooNow(companyId);
       if (!r.ok) { setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
       const d = r.data;
-      setMsg({ tone: "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Off-balance but with entries (left out; map to Cash if real): ${d.offBalance.slice(0, 6).join(", ")}`] : []), d.detail ?? "Sales and Expenses were filled from the same entries."] });
+      const err = await detail();
+      setProgress(null);
+      setMsg({ tone: err ? "bad" : "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.${err ? ` Sales and stock detail: ${err}` : " Sales lines and stock records synced too."}`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Off-balance but with entries (left out; map to Cash if real): ${d.offBalance.slice(0, 6).join(", ")}`] : []), d.detail ?? "Sales and Expenses were filled from the same entries."] });
       router.refresh();
     });
   };
@@ -104,8 +125,9 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
               <div className="text-xs text-mute">{connection!.last_sync_at ? `Last synced ${new Date(connection!.last_sync_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "Not synced yet"} · {connection!.months_history === ALL_MONTHS ? "since the books start" : `${connection!.months_history} months`}{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
             </div>
             <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
-              {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? "Syncing…" : "Sync now"}
+              {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? (progress ?? "Syncing…") : "Sync now"}
             </button>
+            <button onClick={syncDetail} disabled={pending} className="rounded border border-brand-d px-3 py-2 text-sm text-brand-d disabled:opacity-60" data-testid="odoo-sync-detail">Sync sales &amp; stock only</button>
             {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />Disconnect</button>}
           </div>
         )}

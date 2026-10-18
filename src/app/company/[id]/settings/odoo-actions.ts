@@ -5,7 +5,11 @@ import { decrypt, encrypt } from "@/lib/crypto";
 import { loadAccountMap } from "@/lib/company/account-map";
 import { saveCompanyData } from "@/lib/company/persist";
 import { runChecks } from "@/lib/company/checks";
-import { OdooClient, OdooError, odooDisabled } from "@/lib/odoo/client";
+import { majorVersion, OdooClient, OdooError, odooDisabled } from "@/lib/odoo/client";
+import { countPart, firstStockDay, layersPage, movesPage, onHand, PAGE, readLocations, salesPage } from "@/lib/odoo/detail";
+import { trust, Version } from "@/lib/odoo/schema";
+import { mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
+import { INVENTORY_KEY } from "@/lib/company/config-keys";
 import { atLeast, connectionVerdict, unbalancedSync, type Role } from "@/lib/odoo/policy";
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
@@ -241,4 +245,138 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     await audit(supabase, companyId, "sync", false, why);
     return fail(e);
   }
+}
+
+const DetailStep = z.object({
+  part: z.enum(["sales", "moves", "valuation", "onhand"]),
+  offset: z.number().int().min(0).max(50_000_000),
+  total: z.number().int().min(0).max(50_000_000).optional(),
+  batch: z.string().uuid().nullable().optional(),
+});
+export type DetailStepInput = z.infer<typeof DetailStep>;
+const NEXT_PART = { sales: "moves", moves: "valuation", valuation: "onhand", onhand: null } as const;
+const PART_LABEL = { sales: "Sales lines", moves: "Stock moves", valuation: "Stock valuation", onhand: "Stock on hand" } as const;
+/** Each step stops sending requests after this long, well inside the page's 60-second limit. */
+const STEP_BUDGET_MS = 40_000;
+
+/** Every month from one to another (YYYY-MM), at most the last 240. */
+function monthsBetween(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (let [y, m] = [Number(from.slice(0, 4)), Number(from.slice(5, 7))]; `${y}-${String(m).padStart(2, "0")}` <= to; m === 12 ? (y++, m = 1) : m++) out.push(`${y}-${String(m).padStart(2, "0")}`);
+  return out.slice(-240);
+}
+
+/**
+ * The detail behind the balances, in steps the browser calls one after another: sales lines by product, stock moves,
+ * stock valuation and stock on hand, each saved through the same functions as the uploads (sales replace the company's
+ * file sales; stock replaces all stock records), so a synced company reads like an uploaded one. One step reads one page;
+ * the first step takes the company's sync lock and the last releases it.
+ */
+export async function syncOdooDetail(companyId: string, input?: DetailStepInput): Promise<Result<{ next: DetailStepInput | null; label: string; done: number; total: number }>> {
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "That value isn't valid." };
+  const parsed = input === undefined ? null : DetailStep.safeParse(input);
+  if (parsed && !parsed.success) return { ok: false, error: "That value isn't valid." };
+  let ctx: Awaited<ReturnType<typeof guard>>;
+  try { ctx = await guard(companyId, "editor"); } catch (e) { return fail(e); }
+  const { supabase, user } = ctx;
+  const step: DetailStepInput = parsed?.data ?? { part: "sales", offset: 0 };
+  const release = async (status: "ok" | "error", why: string | null) => {
+    await supabase.from("odoo_connections").update({ status, sync_started_at: null, ...(status === "error" ? { last_error: why } : {}) }).eq("company_id", companyId);
+  };
+  try {
+    const { data: conn, error: ce } = await supabase.from("odoo_connections").select("url, db, login, odoo_company_id, odoo_company_name, include_branches, months_history, has_key, status").eq("company_id", companyId).maybeSingle();
+    if (ce) { if (missingFn(ce)) throw new Error(DB_UPDATE); throw new DbError(ce); }
+    if (!conn?.odoo_company_id || !conn.has_key) throw new Error("Save the Odoo connection first.");
+    if (!parsed) {
+      if (await overLimit(supabase, user.id, companyId, "odoo_sync_company")) throw new Error(TOO_MANY);
+      const claim = await supabase.rpc("odoo_claim_sync", { p_company: companyId });
+      if (claim.error) throw new DbError(claim.error);
+      if (claim.data !== true) throw new Error("A sync is already running for this company. Wait for it to finish (at most 15 minutes), then try again.");
+    } else if (conn.status !== "syncing") throw new Error("The detail sync was interrupted. Start it again.");
+    const enc = await storedKey(supabase, companyId);
+    if (!enc) throw new Error("Enter the API key again in the Odoo connection, then save it.");
+    const { client } = await connect(conn.url, conn.db, conn.login, openKey(enc, companyId, conn.url, conn.db, conn.login), Date.now() + STEP_BUDGET_MS);
+    const v = await probeVersion(client);
+    const d = { client, companyId: conn.odoo_company_id, major: v, includeBranches: conn.include_branches };
+    const { data: co } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+    const today = new Date().toISOString().slice(0, 10);
+    const end = today.slice(0, 7);
+    const start = booksStartOf(co?.kpi_config)?.slice(0, 7) ?? monthsBetween("2000-01", end).slice(-conn.months_history)[0];
+    const range = { from: `${start}-01`, to: `${end}-${String(new Date(Date.UTC(+end.slice(0, 4), +end.slice(5, 7), 0)).getUTCDate()).padStart(2, "0")}` };
+    const name = `${conn.odoo_company_name ?? "Odoo"} (live sync)`;
+    const inv = ((co?.kpi_config ?? {}) as Record<string, { rentalLocation?: string | null; locationTypes?: LocationTypes } | undefined>)[INVENTORY_KEY] ?? {};
+    const rental = inv.rentalLocation ?? null;
+    let total = step.total ?? 0, batch = step.batch ?? null, done = step.offset;
+
+    if (step.part === "sales") {
+      if (step.offset === 0) {
+        total = await countPart(d, "sales", range);
+        const b = await supabase.rpc("begin_sales_batch", { p_company: companyId, p_source: "file", p_periods: monthsBetween(start, end), p_filename: name, p_report: { kind: "odoo", mode: "all" } as Json, p_all: true });
+        if (b.error) throw new DbError(b.error);
+        batch = b.data as string;
+      }
+      const lines = total ? await salesPage(d, range, step.offset) : [];
+      if (lines.length) {
+        const r = await supabase.rpc("add_sales_lines", { p_batch: batch!, p_lines: lines as unknown as Json });
+        if (r.error) throw new DbError(r.error);
+      }
+      done = Math.min(total, step.offset + PAGE.sales);
+    } else if (step.part === "moves" || step.part === "valuation") {
+      const loc = await readLocations(d);
+      if (step.offset === 0) {
+        total = await countPart(d, step.part, range);
+        const first = (await firstStockDay(d)) ?? today;
+        const b = await supabase.rpc("begin_inventory_batch", { p_company: companyId, p_kind: step.part, p_periods: monthsBetween(first.slice(0, 7), end), p_filename: name, p_mode: "all", p_report: { kind: "odoo" } as Json });
+        if (b.error) throw new DbError(b.error);
+        batch = b.data as string;
+      }
+      const rows = total ? (step.part === "moves" ? await movesPage(d, range.to, step.offset, loc, rental) : await layersPage(d, range.to, step.offset, loc, rental)) : [];
+      if (rows.length) {
+        const r = await supabase.rpc(step.part === "moves" ? "add_stock_moves" : "add_stock_layers", { p_batch: batch!, p_rows: rows as unknown as Json });
+        if (r.error) throw new DbError(r.error);
+      }
+      done = Math.min(total, step.offset + PAGE.stock);
+      if (done >= total && batch) {
+        const f = await supabase.rpc("finish_inventory_batch", { p_batch: batch });
+        if (f.error) throw new DbError(f.error);
+      }
+      // Odoo's own location usage fills the company's location types (a person's choice is kept).
+      if (step.offset === 0) await supabase.from("companies").update({ kpi_config: { ...((co?.kpi_config ?? {}) as Record<string, unknown>), [INVENTORY_KEY]: { ...inv, locationTypes: mergeLocationTypes(inv.locationTypes ?? {}, loc.types, "export") } } as Json }).eq("id", companyId);
+    } else {
+      const loc = await readLocations(d);
+      const rows = await onHand(d, loc);
+      total = rows.length;
+      if (rows.length) {
+        const b = await supabase.rpc("begin_inventory_batch", { p_company: companyId, p_kind: "onhand", p_periods: [end], p_filename: name, p_mode: "replace", p_report: { kind: "odoo" } as Json });
+        if (b.error) throw new DbError(b.error);
+        for (let i = 0; i < rows.length; i += 20_000) {
+          const r = await supabase.rpc("set_stock_onhand", { p_batch: b.data as string, p_as_of: today, p_rows: rows.slice(i, i + 20_000) as unknown as Json });
+          if (r.error) throw new DbError(r.error);
+        }
+      }
+      done = total;
+    }
+
+    const label = PART_LABEL[step.part];
+    const finished = done >= total;
+    const nextPart = finished ? NEXT_PART[step.part] : step.part;
+    const next: DetailStepInput | null = nextPart ? (finished ? { part: nextPart, offset: 0 } : { part: step.part, offset: done, total, batch }) : null;
+    if (!next) {
+      await release("ok", null);
+      await audit(supabase, companyId, "sync", true, "sales lines, stock moves, stock valuation and stock on hand synced", total);
+      revalidatePath(`/company/${companyId}`, "layout");
+    }
+    return { ok: true, data: { next, label, done, total } };
+  } catch (e) {
+    const why = safeError(e, "syncOdooDetail").slice(0, 500);
+    await release("error", `Detail sync (${PART_LABEL[step.part]}): ${why}`);
+    await audit(supabase, companyId, "sync", false, `detail (${PART_LABEL[step.part]}): ${why}`);
+    return fail(e);
+  }
+}
+
+/** Odoo's major version, checked. */
+async function probeVersion(client: OdooClient): Promise<number> {
+  const v = trust(Version, await client.version(), "version");
+  return majorVersion(v.server_version_info, v.server_version);
 }
