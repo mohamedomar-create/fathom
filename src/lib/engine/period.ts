@@ -53,6 +53,8 @@ export function shiftWindow(w: Window, months: number): Window {
 export interface PeriodView {
   sel: PeriodSel;
   window: Window;
+  /** A part month compared like for like: the prior period with its last month cut to the same share of days (KPIs and alerts). */
+  likePrior?: { P: PLCalc; label: string } | null;
   /** Every month of the window has its P&L loaded (or one annual column covers the year). */
   complete: boolean;
   P: PLCalc;

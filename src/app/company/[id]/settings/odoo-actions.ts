@@ -10,6 +10,7 @@ import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
 import { probe, syncLedgerLines, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
+import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger, saveLedgerLines } from "@/lib/company/ledger-lines";
 import { getUser } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
@@ -129,11 +130,3 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
   }
 }
 
-/** The last day an import covered: its cut-off, its part-month day, or the end of its last month. */
-function sinceOf(at: string, report: unknown): { at: string; through: string } | undefined {
-  const r = (report ?? {}) as { cutoff?: string; asOf?: string; periods?: string[] };
-  const day = /^\d{4}-\d{2}-\d{2}$/;
-  const last = [...(Array.isArray(r.periods) ? r.periods : [])].sort().pop();
-  const through = r.cutoff && day.test(r.cutoff) ? r.cutoff : r.asOf && day.test(r.asOf) ? r.asOf : last ? `${last}-${String(new Date(Date.UTC(Number(last.slice(0, 4)), Number(last.slice(5)), 0)).getUTCDate()).padStart(2, "0")}` : null;
-  return through ? { at, through } : undefined;
-}

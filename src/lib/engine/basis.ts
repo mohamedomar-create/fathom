@@ -63,11 +63,14 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   // A part month (books to the 10th) covers that share of the month.
   const partDay = !annualColumn && asOf && asOf.slice(0, 7) === end ? Number(asOf.slice(8)) : 0;
   const part = partDay > 0 && partDay < daysIn(end) ? partDay / daysIn(end) : 1;
-  const covered = annualColumn ? 12 : used.length - 1 + part;
-  // Twelve months held with the last one still in progress are read as recorded, as Odoo reports them; only whole months
-  // missing are scaled up to a year.
-  const factor = !annualColumn && used.length === 12 && !gaps.length ? 1 : 12 / covered;
-  const flows = sumPL(used.map((m) => m.pl));
+  // Twelve months to a day inside the month: the rest of the month a year earlier is added at its share of days, so the
+  // figures are a true year as recorded (16 Oct 2025 – 15 Oct 2026), never 11.5 months scaled up.
+  const yearAgo = byPeriod.get(addMonths(end, -12));
+  const topUp = !annualColumn && part < 1 && used.length === 12 && !gaps.length && yearAgo && hasPL(yearAgo) ? yearAgo : null;
+  const covered = annualColumn ? 12 : used.length - 1 + part + (topUp ? 1 - part : 0);
+  const factor = 12 / covered;
+  const scaled = (pl: MonthData["pl"], f: number) => Object.fromEntries(Object.entries(pl).map(([k, v]) => [k, (v ?? 0) * f])) as MonthData["pl"];
+  const flows = sumPL([...used.map((m) => m.pl), ...(topUp ? [scaled(topUp.pl, 1 - part)] : [])]);
   const P = plCalc(flows);
   const Pa = plCalc(Object.fromEntries(Object.entries(flows).map(([k, v]) => [k, (v ?? 0) * factor])));
   const B = bsCalc(bsAt(end)?.bs ?? {});
@@ -83,11 +86,16 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   const priorHeld = sorted.filter((m) => m.period > addMonths(priorEnd, -12) && m.period <= priorEnd);
   const priorEndMonth = byPeriod.get(priorEnd);
   const priorOk = priorEndMonth && (priorHeld.length === 12 || isAnnualAt(held, priorEnd, fyStart));
-  const prior = priorOk ? { P: plCalc(sumPL((priorHeld.length === 12 ? priorHeld : [priorEndMonth]).map((m) => m.pl))), B: bsCalc(bsAt(priorEnd)?.bs ?? {}) } : null;
+  // The year before on the same days: its last month at the same share, the month before that year at the rest.
+  const priorTop = topUp ? byPeriod.get(addMonths(end, -24)) : undefined;
+  const priorPL = !priorOk ? null : priorHeld.length === 12 && topUp
+    ? (priorTop && hasPL(priorTop) ? sumPL([...priorHeld.map((m) => (m.period === priorEnd ? scaled(m.pl, part) : m.pl)), scaled(priorTop.pl, 1 - part)]) : null)
+    : sumPL((priorHeld.length === 12 ? priorHeld : [priorEndMonth]).map((m) => m.pl));
+  const prior = priorPL ? { P: plCalc(priorPL), B: bsCalc(bsAt(priorEnd)?.bs ?? {}) } : null;
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
-    label: `${part < 1 ? Math.round(covered * 10) / 10 : covered} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
+    label: `${Math.round(covered * 10) / 10} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
     ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0).cfo : null,
   };
 }

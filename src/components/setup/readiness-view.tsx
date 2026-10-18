@@ -38,8 +38,8 @@ export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData |
   const c = useCompany();
   return useMemo(() => readiness({
     months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
-    sales, expenses, inventory, accounts: c.accounts, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, sales, expenses, inventory]);
+    sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, sales, expenses, inventory]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {

@@ -4,6 +4,7 @@ import { insights, type Finding } from "./insights";
 import { computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
 import { addMonths, daysIn, MONTH_ABBR } from "./format";
 import { periodView, type PeriodSel, type PeriodView } from "./period";
+import { plCalc, sumPL } from "./statements";
 import { hasPL, type CompanySettings, type Comparison, type Importance, type MonthData } from "./types";
 
 export interface KpiRow {
@@ -68,18 +69,17 @@ export function analyze(
       // "Year 2026 (to Oct)" becomes "Year 2026 (to 10 Oct)"; a month gets "(to 10 Oct)".
       const label = /\(to [A-Z][a-z]{2}\)$/.test(view.window.label) ? view.window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${to})`) : `${view.window.label} (to ${to})`;
       view.window = { ...view.window, label };
-      // Compared like for like: the comparison periods' figures for the same share of their days (pro-rated), never a
-      // part month against a whole one.
-      const scale = (c: PeriodView["prior"], shift: number) => {
-        if (!c) return c;
-        const days = view.window.periods.reduce((s, p) => s + daysIn(addMonths(p, -shift)), 0);
-        const f = view.days / days;
-        const P = Object.fromEntries(Object.entries(c.P).map(([k, v]) => [k, typeof v === "number" ? v * f : v])) as typeof c.P;
-        return { ...c, P, label: `${c.label} (same ${day} days, pro-rated)` };
-      };
-      view.prior = scale(view.prior, SHIFT_MONTHS[sel.type]);
-      view.ly = scale(view.ly, 12);
-      partPrior = true;
+      // Compared like for like: the prior period with its last month cut to the same share of its days. The prior the
+      // pages show (statements, account rows, cash flow) stays whole, consistent with its balances.
+      const byP = new Map(months.map((x) => [x.period, x]));
+      const prior = view.window.periods.map((p) => addMonths(p, -SHIFT_MONTHS[sel.type]));
+      const last = prior[prior.length - 1];
+      if (prior.every((p) => byP.get(p) && hasPL(byP.get(p)!))) {
+        const f = day / daysIn(last);
+        const pls = prior.map((p) => { const pl = byP.get(p)!.pl; return p === last ? Object.fromEntries(Object.entries(pl).map(([k, v]) => [k, (v ?? 0) * f])) as typeof pl : pl; });
+        view.likePrior = { P: plCalc(sumPL(pls)), label: `${view.prior?.label ?? last} (same ${day} days, pro-rated)` };
+        partPrior = true;
+      }
     }
   }
   const { P, B } = view;
@@ -87,7 +87,7 @@ export function analyze(
   const B0 = view.missing.endBS ? null : view.B0;
   const W = B0 ? cashWaterfall(P, B, B0) : null;
   const CF = B0 ? cashFlowStatement(P, B, B0) : null;
-  const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: view.prior?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
+  const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: (view.likePrior ?? view.prior)?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
   // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
   const targets = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length);
   const comparison = opts.comparison ?? "target";
@@ -123,7 +123,7 @@ export function analyze(
     kpiRows.push({ def, value, compare, ok: st.ok, trend: cmp.trend, importance: settings.importance?.[def.key] ?? def.importance, alert });
   }
   const findings = insights({
-    P, B, Pprev: view.prior?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
+    P, B, Pprev: (view.likePrior ?? view.prior)?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
     cur: settings.currency, priorLabel: partPrior ? PART_PRIOR_LABEL[sel.type] : PRIOR_LABEL[sel.type], periodWord: sel.type,
     critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => (opts.kpiName ? opts.kpiName(r.def) : r.def.name)), lang: opts.lang,
   });

@@ -418,3 +418,8 @@ export function stockFromLedger(lines: { code: string; name: string; cls: string
   }
   return out;
 }
+
+/** The company's location types after new ones arrive: a person's choice replaces; Odoo's types from an export only fill gaps. */
+export function mergeLocationTypes(was: LocationTypes, next: LocationTypes, from: "person" | "export"): LocationTypes {
+  return from === "person" ? { ...was, ...next } : { ...next, ...was };
+}

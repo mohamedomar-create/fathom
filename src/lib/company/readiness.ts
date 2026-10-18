@@ -46,6 +46,8 @@ export interface ReadinessInput {
   inventory?: InventoryData | null;
   /** The accounts by code and name (the stock interim accounts feed the cost-of-sales check). */
   accounts?: { name: string; cls: string; amounts: Record<string, number> }[];
+  /** The company's location types (which locations hold stock). */
+  locationTypes?: Record<string, "internal" | "transit" | "rental" | "outside">;
   assumptions?: Assumptions;
   forecast?: ForecastDrivers;
   today?: string;
@@ -260,7 +262,7 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   items.push(item({ id: "ids", axis: "Odoo IDs", title: "Exported with Odoo's record IDs", completion: d.meta.withIds ? 100 : 0, accuracy: null,
     detail: d.meta.withIds ? "Every record carries its Odoo ID: duplicates are refused exactly." : "Records are matched by date, document, product and amounts instead of Odoo's ID.",
     fix: d.meta.withIds ? undefined : { what: "Export with Odoo IDs", how: "When exporting from Odoo, tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.", href: "settings/source-data?step=inventory" } }));
-  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }, x.accounts), x.fyStart, 12);
+  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }, x.accounts), x.fyStart, 12, x.locationTypes);
   for (const [key, axis, title] of TIE_NAMES) {
     const all = ties.filter((t) => t.key === key);
     if (!all.length) continue;

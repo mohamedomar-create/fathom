@@ -70,8 +70,10 @@ describe("a part month against the month before (register D21)", () => {
   it("15 days of October at the same daily rate are compared with 15/30 of September: no false 'revenue down 50%'", () => {
     const ms = [month("2026-08"), month("2026-09"), month("2026-10", 0.5)];
     const a = analyze(ms, { type: "month", end: "2026-10" }, SET, { asOf: "2026-10-15" });
-    expect(a.view.prior!.P.revenue).toBe(50_000);
-    expect(a.view.prior!.label).toMatch(/same 15 days/);
+    expect(a.view.likePrior!.P.revenue).toBe(50_000);
+    expect(a.view.likePrior!.label).toMatch(/same 15 days/);
+    // The prior period the pages show (statements, account rows, cash flow) stays whole and consistent with its balances.
+    expect(a.view.prior!.P.revenue).toBe(100_000);
     expect(a.findings.some((f) => /Revenue (up|down)/.test(f.title))).toBe(false);
   });
 });
@@ -82,5 +84,14 @@ describe("a large margin swing points at timing first (register D22)", () => {
     const a = analyze(ms, { type: "month", end: "2026-10" }, SET);
     const f = a.findings.find((x) => /Gross margin fell/.test(x.title))!;
     expect(f.text).toMatch(/delivered .* invoiced/);
+  });
+});
+
+describe("a part month in a quarter (review)", () => {
+  it("only the comparison's last month is pro-rated, not the whole quarter", () => {
+    const ms = [...["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"].map((p) => month(p)), month("2026-10", 0.5)];
+    // A year starting in September: the quarter so far is Sep – 15 Oct, against Jun – 15 Jul.
+    const a = analyze(ms, { type: "quarter", end: "2026-10" }, { ...SET, fyStartMonth: 9 }, { asOf: "2026-10-15" });
+    expect(Math.round(a.view.likePrior!.P.revenue)).toBe(Math.round(100_000 + 100_000 * 15 / 31));
   });
 });

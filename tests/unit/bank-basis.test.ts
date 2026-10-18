@@ -11,11 +11,17 @@ const month = (period: string, scale = 1): MonthData => ({
 const ms = [...Array.from({ length: 24 }, (_, i) => month(addMonths("2024-10", i))), month("2026-10", 0.5)];
 
 describe("the Banking basis", () => {
-  it("12 months to 15 Oct, the 15 days as recorded: figures are actual, not scaled up", () => {
+  it("12 months to 15 Oct are a true year: the rest of Oct 2025 is added at its share of days, never 11.5 months scaled up", () => {
     const b = twelveMonths(ms, "2026-10", 1, "2026-10-15");
     expect(b.factor).toBe(1);
-    expect(b.Pa.revenue).toBe(1_150_000);
-    expect(b.label).toBe("11.5 months to 15 Oct 2026");
+    expect(Math.round(b.Pa.revenue)).toBe(1_150_000 + Math.round(100_000 * 16 / 31));
+    expect(b.label).toBe("12 months to 15 Oct 2026");
+  });
+
+  it("the year before is taken on the same days, so a flat business shows no growth", () => {
+    const flat = [...Array.from({ length: 36 }, (_, i) => month(addMonths("2023-10", i))).filter((m) => m.period < "2026-10"), month("2026-10", 15 / 31)];
+    const b = twelveMonths(flat, "2026-10", 1, "2026-10-15");
+    expect(Math.round(b.Pa.revenue)).toBe(Math.round(b.prior!.P.revenue));
   });
 
   it("a gap of whole months is still scaled up to a year", () => {
@@ -40,6 +46,15 @@ describe("an operating loss is not 'barely covering' interest (register D30)", (
     expect(a.ratios.find((m) => m.key === "int_cover")!.banker).toMatch(/operating loss: nothing is left to pay the interest/i);
     const n = analyze(ls, { type: "month", end: "2026-09" }, { currency: "EGP", fyStartMonth: 1, taxRate: 0.225 });
     expect(n.findings.find((f) => /Interest cover/.test(f.title))!.text).toBe("Operating loss: profit does not cover the interest at all.");
+  });
+});
+
+describe("the stress test uses the same tax as the headline (review)", () => {
+  it("'As reported' DSCR equals the headline DSCR when the books carry no tax", async () => {
+    const { bankPack } = await import("@/lib/engine");
+    const p = bankPack(ms, "2026-09", { currency: "EGP", fyStartMonth: 1, taxRate: 0.225 }, {}, "Co");
+    const head = p.assessment.ratios.find((r) => r.key === "dscr")!.value;
+    expect(p.stress.scenarios[0].dscr).toBeCloseTo(head!, 6);
   });
 });
 

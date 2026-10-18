@@ -573,8 +573,9 @@ export function receiptCost(d: InventoryData, keys: string[], periods: string[])
 }
 
 /** Every tie-out, once per check and month, over the last n months with stock records (for readiness and Data health). */
-export function inventoryTieOuts(d: InventoryData, ledger: Ledger, fyStart: number, n = 12): TieOut[] {
+export function inventoryTieOuts(dIn: InventoryData, ledger: Ledger, fyStart: number, n = 12, types?: LocationTypes): TieOut[] {
   void fyStart;
+  const d = types && Object.keys(types).length ? { ...dIn, moves: { ...dIn.moves, types } } : dIn;
   const ix = indexStock(d);
   const months = [...new Set([...ix.months, ...d.moves.months])].sort().slice(-n);
   const out = monthTieOuts(d, ix, months, ledger);

@@ -111,3 +111,23 @@ describe("days of stock, one formula (register D19)", () => {
     expect(a.tiles.days).toBe(53);
   });
 });
+
+describe("location types kept (review)", () => {
+  it("Odoo's types from an export fill only locations the company has not set; the company's own choice replaces", async () => {
+    const { mergeLocationTypes } = await import("@/lib/ingest/inventory");
+    const was = { "WH/Workshop": "outside" as const };
+    expect(mergeLocationTypes(was, { "WH/Workshop": "internal", "WH/Stock": "internal" }, "export")).toEqual({ "WH/Workshop": "outside", "WH/Stock": "internal" });
+    expect(mergeLocationTypes(was, { "WH/Workshop": "internal" }, "person")).toEqual({ "WH/Workshop": "internal" });
+  });
+});
+
+describe("every page uses the company's location types (review)", () => {
+  it("the stock checks and readiness take the same types as the Inventory pages", async () => {
+    const { inventoryTieOuts } = await import("@/lib/engine/inventory");
+    const L: LayerRow[] = [{ p: "2026-09", kind: "receipt", code: "P1", product: "Mask", category: "", q: 5, v: 500, n: 1 }, { p: "2026-09", kind: "adjustment", code: "P1", product: "Mask", category: "", q: -2, v: -200, n: 1 }];
+    const M: MoveRow[] = [{ p: "2026-09", kind: "receipt", code: "P1", product: "Mask", from: "Partner Locations/Vendors", to: "WH/Stock", q: 5, n: 1 }, { p: "2026-09", kind: "internal", code: "P1", product: "Mask", from: "WH/Stock", to: "WH/Workshop", q: 2, n: 1 }];
+    const d = summarizeInventory({ ...EMPTY_RECORDS, layers: L, moves: M, meta: { withIds: false, kinds: ["valuation", "moves"], periods: ["2026-09"] } });
+    const t = inventoryTieOuts(d, { stock: null, cogs: null }, 1, 12, { "WH/Workshop": "outside" }).find((x) => x.key === "qty_valued");
+    expect(t).toMatchObject({ status: "ok" });
+  });
+});

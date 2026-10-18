@@ -133,7 +133,9 @@ export function stressTest(b: Basis, a: BankAssessment, inp: StressInputs): Stre
     const interest = Pa.interest_expenses + dInt;
     const ebitda = Pa.ebitda + dOp;
     const ebit = Pa.ebit + dOp;
-    const tax = Math.max(0, Pa.tax_expenses + inp.taxRate * (dOp - dInt));
+    // The same tax as the headline: the charge booked, or the profile rate on the profit when the books carry none.
+    const baseTax = Pa.tax_expenses > 0 ? Pa.tax_expenses : Math.max(0, Pa.ebt) * inp.taxRate;
+    const tax = Math.max(0, baseTax + inp.taxRate * (dOp - dInt));
     const service = interest + principal;
     const dscr = service > 0 ? (ebitda - tax) / service : null;
     return {

@@ -90,7 +90,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
       const list = ready.map((s) => ({ file: files.find((f) => f.name === s.name)!, export: s.export!, mapping: saved[s.export!] }));
       await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone, ...(cutoff ? { cutoff } : {}), ...(locationTypes && Object.keys(locationTypes).length ? { locationTypes } : {}) }, setProgress, resume ?? undefined)
         // Odoo's own location types, when the moves export carries them, are kept for the Inventory pages.
-        .then(async ({ parsed }) => { if (parsed.locationTypes) await saveInventorySettings(companyId, { rentalLocation: rental, locationTypes: parsed.locationTypes }).catch(() => undefined); });
+        .then(async ({ parsed }) => { if (parsed.locationTypes) await saveInventorySettings(companyId, { rentalLocation: rental, locationTypes: parsed.locationTypes, from: "export" }).catch(() => undefined); });
       setJobsKey((k) => k + 1);
     } catch (e) {
       setErr(importError(e)); setJobsKey((k) => k + 1);

@@ -141,7 +141,7 @@ export function FinancialsPage() {
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
                   ...(k === "retained_earnings" && v && a.view.bsAt === a.view.window.end ? (() => {
-                    const sp = splitRetained(v, a.view.ytd.net_income);
+                    const sp = splitRetained(v, a.view.ytd.retained_income);
                     return [[t.rePrior, sp.prior], [t.reCurrent, sp.current]].map(([l, x]) => (
                       <tr key={l as string} className="row text-[12.5px] text-mute" data-testid="re-split"><td className="ps-6">{l}</td><td>{m(x as number)}</td><td /><td /><td /><td /><td /></tr>
                     ));
