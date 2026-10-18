@@ -16,6 +16,7 @@ export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Pro
   wb.creator = "iReport";
   if (kind === "financials") financials(wb, o);
   else if (kind === "expenses") expenses(wb, o);
+  else if (kind === "opening") opening(wb, o);
   else sales(wb, o);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -174,5 +175,30 @@ function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
       if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
       if (c.key === "amount") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
     });
+  }
+}
+
+/** Opening balances: every account's balance the day before the books start, as debit or credit. */
+function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
+  readMe(wb, `iReport · Opening balances template${o.company ? ` · ${o.company}` : ""}`, [
+    ["Your balance sheet the day before your books start in iReport (for example 30/06/2021 when the books start on 1/7/2021).", "الميزانية في اليوم السابق لبداية الدفاتر في iReport (مثلًا ٣٠/٦/٢٠٢١ إذا بدأت الدفاتر في ١/٧/٢٠٢١)."],
+    ["HOW TO FILL IT", "طريقة الملء"],
+    ['1. Sheet "Opening balances": one row per account, starting in row 5: code, name, and the balance as Debit or Credit.', "١. ورقة Opening balances: صف لكل حساب بدءًا من الصف الخامس: الكود والاسم والرصيد مدين أو دائن."],
+    ["2. Assets in Debit; liabilities and equity in Credit. Total debit must equal total credit.", "٢. الأصول مدينة؛ الالتزامات وحقوق الملكية دائنة. يجب أن يتساوى إجمالي المدين والدائن."],
+    ["3. Upload it on the Opening balances card and choose the day the balances are at.", "٣. ارفعه من بطاقة الأرصدة الافتتاحية واختر تاريخ الأرصدة."],
+    [`Amounts in ${o.currency}, as plain numbers. Do not change the headings in row 4.`, "المبالغ أرقام فقط. لا تغيّر عناوين الصف الرابع."],
+  ]);
+  const ws = wb.addWorksheet("Opening balances", { views: [{ state: "frozen", ySplit: 4 }] });
+  ws.getCell("A1").value = "Opening balances";
+  ws.getCell("A1").font = { size: 14, bold: true, color: { argb: TEAL } };
+  ws.getCell("A2").value = `The balance of every account the day before your books start. Amounts in ${o.currency}. Total debit = total credit.`;
+  ws.getCell("A2").font = { size: 10, color: { argb: MUTE } };
+  const h = ws.getRow(4);
+  ["Code", "Account", "Debit", "Credit"].forEach((t, i) => { h.getCell(i + 1).value = t; ws.getColumn(i + 1).width = i === 1 ? 40 : 18; });
+  header(h);
+  for (let i = 0; i < 1000; i++) for (const c of [3, 4]) {
+    const cell = ws.getRow(5 + i).getCell(c);
+    cell.numFmt = NUM;
+    cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [0, 1e15], showErrorMessage: true, error: "A positive number: put credits in the Credit column." };
   }
 }

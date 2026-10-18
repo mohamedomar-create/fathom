@@ -73,7 +73,7 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null }): ImportPlan {
+export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null; opening?: { asAt: string } | null; zeroMonths?: string[] }): ImportPlan {
   // "add" reads the file exactly as a merge does, then leaves out the months already loaded.
   const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
   // Before the books start there is no trading: stored P&L months before it and balance sheets before the opening month go.
@@ -133,6 +133,29 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
     if (n.ref && !ex.refs?.new) ex.refs = { ...(ex.refs ?? {}), new: n.ref };
   }
 
+  // Opening balances uploaded on their own: balances later built from zero (no opening at the time) move by each
+  // account's opening; balances built on a file's own opening for that day must agree with it.
+  const shifted = new Set<string>();
+  const openingChecks: Check[] = [];
+  if (optsIn.opening) {
+    const m0 = optsIn.opening.asAt.slice(0, 7);
+    const zeroMonths = new Set((optsIn.zeroMonths ?? []).filter((p) => p > m0));
+    const off: string[] = [];
+    for (const n of incoming) {
+      if (isPL(n.cls) || !n.amounts[m0]) continue;
+      const was = current.filter((a) => accountIdentity(a) === accountIdentity(n) && a.amounts[m0] !== undefined).reduce((s, a) => s + recast(a.cls, n.cls, a.amounts[m0]), 0);
+      const hadMonth = current.some((a) => !isPL(a.cls) && a.amounts[m0] !== undefined);
+      if (hadMonth && Math.abs(was - n.amounts[m0]) > 1) off.push(`${n.code ? `${n.code} ` : ""}${n.name}: ${Math.round(n.amounts[m0]).toLocaleString("en-GB")} here, ${Math.round(was).toLocaleString("en-GB")} loaded`);
+      const ex = out.get(accountIdentity(n))!;
+      for (const p of zeroMonths) {
+        if (!current.some((a) => !isPL(a.cls) && a.amounts[p] !== undefined)) continue;
+        ex.amounts[p] = Math.round(((ex.amounts[p] ?? 0) + recast(n.cls, ex.cls, n.amounts[m0])) * 100) / 100;
+        shifted.add(p);
+      }
+    }
+    if (off.length) openingChecks.push({ id: "continuity", severity: "block", period: m0, statement: "BS", title: `${off.length} opening balance${off.length > 1 ? "s differ" : " differs"} from the books already loaded`, detail: `The months loaded after ${m0} were built on other opening balances: ${off.slice(0, 5).join("; ")}${off.length > 5 ? "…" : ""}. Correct the opening balances, or upload the ledger again after them.` });
+  }
+
   const accounts: VersionAccount[] = [];
   for (const a of out.values()) {
     const amounts = Object.fromEntries(Object.entries(a.amounts).map(([p, v]) => [p, Math.round(v * 100) / 100] as const).filter(([, v]) => v !== 0));
@@ -152,7 +175,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
     const cell: TimelineCell = { period: p };
     for (const st of ["PL", "BS"] as const) {
       const had = (st === "PL" ? curCov.pl : curCov.bs).has(p);
-      if (inc[st].has(p)) cell[st] = had ? "overwrite" : "new";
+      if (inc[st].has(p) || (st === "BS" && shifted.has(p))) cell[st] = had ? "overwrite" : "new";
       else if (had) cell[st] = opts.mode === "merge" && !beforeStart(st, p) ? "keep" : "remove";
     }
     timeline.push(cell);
@@ -169,7 +192,8 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   // Checks run on the merged result. In a merge, failures in months this file doesn't touch are existing issues and don't block it.
   const touched = new Set<string>();
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
-  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity] })
+  for (const p of shifted) touched.add(p);
+  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks, overlap };
 }

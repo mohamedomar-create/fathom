@@ -256,3 +256,37 @@ describe("books start (the main company went live on 1 Jul 2021)", () => {
     expect(plan.timeline.find((t) => t.period === "2021-06")).toMatchObject({ PL: "remove" });
   });
 });
+
+describe("opening balances uploaded on their own", () => {
+  // A ledger loaded with no opening balances: every balance was built from zero.
+  const zero = (src = "imp-zero"): VersionAccount[] => {
+    const s = (o: Record<string, number>) => ({ sources: Object.fromEntries(Object.keys(o).map((p) => [p, src])) });
+    const sales = { "2021-07": 500, "2021-08": 500 }, rent = { "2021-07": 200, "2021-08": 200 }, cash = { "2021-07": 300, "2021-08": 600 }, re = { "2021-07": 300, "2021-08": 600 };
+    return [acct("400000", "Sales", "revenue", sales, s(sales)), acct("610000", "Rent", "exp_fixed", rent, s(rent)), acct("101000", "Bank", "cash", cash, s(cash)), acct("999999", "Retained earnings", "retained_earnings", re, s(re))];
+  };
+  const opening = [inc("101000", "Bank", "cash", { "2021-06": 50_000 }), inc("122200", "Receivables", "ar", { "2021-06": 20_000 }), inc("211100", "Suppliers", "ap", { "2021-06": 5_000 }), inc("300000", "Opening equity", "other_equity", { "2021-06": 65_000 })];
+  const opts = { mode: "merge" as const, slices: { PL: [], BS: ["2021-06"] }, booksStart: "2021-07-01", opening: { asAt: "2021-06-30" } };
+
+  it("loaded after a ledger built from zero, every later balance moves by the opening, account by account", () => {
+    const plan = planImport(zero(), opening, { ...opts, zeroMonths: ["2021-07", "2021-08"] });
+    const at = (code: string) => plan.accounts.find((a) => a.code === code)!.amounts;
+    expect(at("101000")).toEqual({ "2021-06": 50_000, "2021-07": 50_300, "2021-08": 50_600 });
+    expect(at("122200")).toEqual({ "2021-06": 20_000, "2021-07": 20_000, "2021-08": 20_000 });
+    expect(at("300000")).toEqual({ "2021-06": 65_000, "2021-07": 65_000, "2021-08": 65_000 });
+    expect(at("400000")).toEqual({ "2021-07": 500, "2021-08": 500 });
+    expect(plan.timeline.find((t) => t.period === "2021-07")).toMatchObject({ BS: "overwrite", PL: "keep" });
+    expect(plan.checks.filter((c) => c.severity === "block")).toEqual([]);
+  });
+
+  it("months built on a file's own opening balances are not moved", () => {
+    const plan = planImport(zero("imp-file"), opening, { ...opts, zeroMonths: [] });
+    expect(plan.accounts.find((a) => a.code === "101000")!.amounts["2021-07"]).toBe(300);
+  });
+
+  it("an opening different from the one a loaded ledger already brought for that day is stopped, naming the accounts", () => {
+    const cur = [...zero("imp-file"), acct("101000", "Bank", "cash", { "2021-06": 49_000 }, { sources: { "2021-06": "imp-file" } })];
+    const plan = planImport(cur, opening, { ...opts, zeroMonths: [] });
+    const c = plan.checks.find((x) => x.severity === "block" && x.id === "continuity");
+    expect(c?.detail).toMatch(/Bank/);
+  });
+});

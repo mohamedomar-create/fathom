@@ -35,6 +35,8 @@ export const PlanSchema = z.object({
   openingFrom: Period.nullable().default(null),
   // The day the company's books start in Odoo: everything before it is the opening balance (stored months before it go).
   booksStart: z.string().regex(/^\d{4}-\d{2}-01$/).nullable().default(null),
+  // Opening balances uploaded on their own: the balance sheet at this month end.
+  opening: z.object({ asAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).nullable().default(null),
 });
 export const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),

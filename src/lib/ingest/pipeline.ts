@@ -6,6 +6,7 @@ import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./clas
 import { CLASS_LABEL } from "./classes";
 import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type LedgerEntry, type RawLine, type SheetLayout } from "./extract";
+import { readOpeningSheet } from "./opening";
 import { applyBooksStart, openingAccountPostings, openingPostingsDetail, suggestBooksStart, type BooksStart } from "./books-start";
 import { fmtDay, partialDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
@@ -649,6 +650,37 @@ export function ingest(grids: Grid[], opts: IngestOptions, overrides: Overrides 
   const { raw, issues } = extractAll(grids, overrides, opts.today, opts.cutoff);
   return runIngest(raw, issues, opts);
 }
+
+/**
+ * Opening balances as their own upload: the balance sheet at a month end (`asAt`), the day before the books start. A
+ * ledger or trial balance gives each account's balance up to that day; a plain sheet of accounts with debit and credit is
+ * taken as at that day. Only that month's balance sheet is kept: P&L balances in the file (depreciation posted before
+ * go-live) are closed into retained earnings.
+ */
+export function ingestOpening(grids: Grid[], opts: IngestOptions & { asAt: string }, overrides: Overrides = {}): IngestResult {
+  const month = opts.asAt.slice(0, 7);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(opts.asAt) || Number(opts.asAt.slice(8)) !== daysIn(month)) throw new Error(`Opening balances are the balance sheet at a month end: ${opts.asAt} is not one.`);
+  const { raw, issues } = extractAll(grids, overrides, opts.today, opts.asAt);
+  // Sheets no reader recognised may be plain lists of balances (Code | Account | Debit | Credit).
+  const read = new Set(raw.map((r) => r.sheet));
+  const plain = grids.filter((g) => !read.has(g.name)).flatMap((g) => { const ls = readOpeningSheet(g); if (ls.length) { issues.warnings = issues.warnings.filter((w) => !w.includes(`'${g.name}'`)); const l = issues.layouts.find((x) => x.sheet === g.name); if (l) { l.kind = "list"; l.source = "Opening balances"; l.lines = ls.length; } } return ls; });
+  const atDay = [...raw, ...plain].map((r): RawLine => {
+    if (r.kind !== "movement") return { ...r, values: r.values[month] !== undefined ? { [month]: r.values[month] } : {} };
+    const bal = r.opening + Object.entries(r.values).filter(([p]) => p <= month).reduce((s, [, v]) => s + v, 0);
+    const { entries, ...rest } = r; void entries;
+    return { ...rest, opening: 0, values: Math.abs(bal) > 0.004 ? { [month]: bal } : {}, closing: bal };
+  });
+  const res = runIngest(atDay, issues, { ...opts, cutoff: undefined, booksStart: undefined });
+  const plTotal = res.lines.filter((l) => l.cls && isPL(l.cls) && !l.excluded).reduce((s, l) => s + (CREDIT_CLASSES.has(l.cls!) ? 1 : -1) * (l.values[month] ?? 0), 0);
+  const lines = res.lines.map((l) => (l.cls && isPL(l.cls) ? { ...l, values: {} } : l));
+  const notes = [...res.issues.notes.filter((n) => !/opening balances are stored|Retained earnings include profit to date/.test(n))];
+  if (Math.abs(plTotal) > 0.004) notes.push(`P&L balances in the file (${(-plTotal).toLocaleString("en-GB", { maximumFractionDigits: 2 })} net ${plTotal < 0 ? "cost" : "profit"}, such as depreciation posted before the books started) are closed into opening retained earnings.`);
+  notes.push(`Stored as the balance sheet at ${fmtDay(opts.asAt)}: the opening balances. The books start on ${fmtDay(nextDayOf(opts.asAt))}.`);
+  const start = nextDayOf(opts.asAt);
+  return { ...res, lines, periods: [], slices: { PL: [], BS: [month] }, ranges: {}, openingFrom: null, openingMonth: month, issues: { ...res.issues, notes }, booksStart: { ...res.booksStart, applied: start } };
+}
+
+const nextDayOf = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 
 /** Merge mapped lines into accounts for storage (same code+name+class are combined). */
 export function toAccountInputs(res: IngestResult) {

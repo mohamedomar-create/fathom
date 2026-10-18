@@ -22,7 +22,7 @@ export function templateHref(kind: TemplateKind, c: { name: string; settings: { 
   return `/api/templates/${kind}?${q}`;
 }
 
-const TEMPLATE_NAME: Record<TemplateKind, string> = { financials: "monthly financials template", sales: "sales template", expenses: "expenses template" };
+const TEMPLATE_NAME: Record<TemplateKind, string> = { financials: "monthly financials template", sales: "sales template", expenses: "expenses template", opening: "opening balances template" };
 
 export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; compact?: boolean }) {
   const c = useCompany();

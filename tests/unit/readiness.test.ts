@@ -43,13 +43,19 @@ describe("data readiness", () => {
     expect(r.fix).toBeUndefined();
   });
 
+  it("no opening balances: balances are treated as zero, said plainly, with the opening balances upload offered", () => {
+    const o = financialsReadiness(company(ps("2026-01", 12))).items.find((i) => i.id === "opening")!;
+    expect(o.detail).toBe("None loaded: balances start from zero at Jan 2026. Upload opening balances if the company had balances before.");
+    expect(o.fix).toMatchObject({ what: "Upload opening balances (the balance sheet at 31 Dec 2025)", template: "opening", href: "settings/source-data?tab=upload&step=opening" });
+  });
+
   it("names what is missing: months, the opening balance and a gap, each with what to upload", () => {
     const months = ps("2026-04", 9).filter((p) => p !== "2026-08");
     const r = financialsReadiness(company(months));
     const it = (id: string) => r.items.find((i) => i.id === id)!;
     expect(it("pl").completion).toBe(Math.round((8 / 12) * 100));
     expect(it("opening").status).toBe("missing");
-    expect(it("opening").fix?.what).toContain("Apr 2026");
+    expect(it("opening").fix?.what).toContain("31 Mar 2026");
     expect(it("gaps").detail).toContain("1 month is missing");
     expect(it("pl").fix?.template).toBe("financials");
     expect(r.completion).toBeLessThan(100);

@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upl
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
-import { extractAll, materialUnmapped, rememberKey, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import { extractAll, ingestOpening, materialUnmapped, rememberKey, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
 import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
 import { expenseIssues, financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
@@ -57,8 +57,8 @@ import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
 import { suggestBooksStart } from "@/lib/ingest/books-start";
 import { fmtDay } from "@/lib/ingest/odoo";
 
-type Kind = "accounts" | "sales" | "expenses" | "inventory";
-const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
+type Kind = "opening" | "accounts" | "sales" | "expenses" | "inventory";
+const KIND_WORD: Record<Kind, string> = { opening: "an opening balances", accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
 
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
@@ -67,10 +67,10 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
+  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<SaveMode | null>(null);
@@ -82,7 +82,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [guesses, setGuesses] = useState<RoleGuess[]>([]);
   const [roles, setRoles] = useState<Record<string, SheetRole>>({});
   const [rolesOk, setRolesOk] = useState(false);
-  const roleOf = useCallback((sheet: string): SheetRole => roles[sheet] ?? guesses.find((x) => x.sheet === sheet)?.role ?? "summary", [roles, guesses]);
+  // On the opening balances card every sheet is read as accounts (a plain list of balances looks like a summary).
+  const roleOf = useCallback((sheet: string): SheetRole => (kind === "opening" ? "statement" : roles[sheet] ?? guesses.find((x) => x.sheet === sheet)?.role ?? "summary"), [roles, guesses, kind]);
   const sheetsAs = useCallback((r: SheetRole) => { const gs = (allGrids ?? []).filter((g) => roleOf(g.name) === r); return gs.length ? gs : null; }, [allGrids, roleOf]);
   const grids = useMemo(() => sheetsAs("statement"), [sheetsAs]);
   const [overrides, setOverrides] = useState<Overrides>({});
@@ -92,6 +93,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
   // The books start: the person's choice ("" = none), else the company's, else the day after Odoo's opening entry.
   const [startChoice, setStartChoice] = useState<string | undefined>(undefined);
+  // Opening balances upload: the month end the balances are at (the person's choice, else read from the file).
+  const [asAtChoice, setAsAtChoice] = useState<string | undefined>(undefined);
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
   const [saving, start] = useTransition();
   const [mode, setMode] = useState<ImportMode>("merge");
@@ -128,7 +131,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const allSales = useMemo(() => [...(salesRead?.lines ?? []), ...cashRead.sales, ...bankRead.sales], [salesRead, cashRead, bankRead]);
   const allExp = useMemo(() => [...(expRead?.lines ?? []), ...cashRead.expenses, ...bankRead.expenses], [expRead, cashRead, bankRead]);
   const hasBooks = cashRead.layouts.length + bankRead.layouts.length > 0;
-  const rolesNeed = !!allGrids && needsConfirm(guesses, roles);
+  const rolesNeed = !!allGrids && kind !== "opening" && needsConfirm(guesses, roles);
   // The workbook as a whole: the owner's own summary figures against what was read from every tab, and copied tabs.
   const tie = useMemo(() => cashRead.layouts.length ? workbookTie({
     grids: allGrids ?? [], layouts: cashRead.layouts, sales: allSales, expenses: allExp,
@@ -192,11 +195,17 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [res, ingestErr, raw, booksStart]: [IngestResult | null, string | null, RawLine[], string | null] = useMemo(() => {
     if (!grids) return [null, null, [], null];
     try {
+      if (kind === "opening") {
+        const { raw } = extractAll(grids, overrides);
+        const asAt = asAtChoice ?? openingDayOf(raw);
+        const r = ingestOpening(grids, { ...opts, mapping, asAt }, overrides);
+        return [r, null, raw, r.booksStart.applied];
+      }
       const { raw, issues } = extractAll(grids, overrides, undefined, opts.cutoff);
       const start = startChoice !== undefined ? startChoice || null : savedStart ?? suggestBooksStart(raw).suggested;
       return [runIngest(raw, issues, { ...opts, mapping, ...(start ? { booksStart: start } : {}) }), null, raw, start];
     } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", [], null]; }
-  }, [grids, overrides, opts, mapping, startChoice, savedStart]);
+  }, [grids, overrides, opts, mapping, startChoice, savedStart, kind, asAtChoice]);
 
   // The cut-off: what the person chose, or else the last day anything in the file is dated.
   const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines)].filter((d): d is string => !!d).sort().pop());
@@ -219,6 +228,24 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {savedStart && booksStart !== savedStart ? ` The company's books start is ${fmtDay(savedStart)}.` : ""}
       </span>
     </label>
+  );
+  const asAtDay = kind === "opening" && booksStart ? dayBefore(booksStart) : null;
+  const asAtField = asAtDay && (
+    <label className="mb-4 flex flex-wrap items-center gap-2 text-sm" data-testid="opening-as-at">
+      <span className="font-medium">Balances at the end of</span>
+      <input type="month" value={asAtDay.slice(0, 7)} onChange={(e) => { if (/^\d{4}-\d{2}$/.test(e.target.value)) { setAsAtChoice(monthEndOf(e.target.value)); setPreview(null); } }} className="rounded border border-line px-1.5 py-0.5" />
+      <span className="text-mute">Your opening balances: the balance sheet at {fmtDay(asAtDay)}. The books start the next day, {fmtDay(booksStart!)}.</span>
+    </label>
+  );
+  const dateFields = kind === "opening" ? asAtField : <>{cutoffField}{startField}</>;
+  // No opening balances loaded and none in this file: balances start from zero (allowed, and said plainly).
+  const firstMonth = res?.openingFrom ?? null;
+  const openingLoaded = !!firstMonth && company.accounts.some((a) => !isPL(a.cls) && a.amounts[addMonths(firstMonth, -1)] !== undefined);
+  const zeroNotice = kind === "accounts" && firstMonth && !openingLoaded && (
+    <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg border border-amber bg-amber/10 px-4 py-3 text-[14px]" data-testid="zero-opening">
+      No opening balances are loaded: balances start from zero at {mlabel(firstMonth)}. Upload opening balances first if the company had balances before.
+      <button onClick={() => reset("opening")} className="rounded bg-ink px-3 py-1 text-sm text-white" data-testid="upload-opening">Upload opening balances</button>
+    </p>
   );
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
@@ -367,7 +394,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
       if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} account${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
     }
-    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom, booksStart };
+    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom, booksStart, opening: kind === "opening" && asAtDay ? { asAt: asAtDay } : null };
   }
 
   async function runPreview(m: ImportMode = mode) {
@@ -379,7 +406,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       if (!out.ok) { setErr(out.error); return; }
       setPreview(out.data); setScreen("save"); setAcceptOn(false);
       // The file repeats loaded months with the very same figures: adding only the new months is the safe default.
-      if (!modeChosen && m === "merge" && out.data.overlap.length && out.data.overlap.every((o) => o.same)) { setMode("add"); setModeChosen(true); void runPreview("add"); }
+      if (kind !== "opening" && !modeChosen && m === "merge" && out.data.overlap.length && out.data.overlap.every((o) => o.same)) { setMode("add"); setModeChosen(true); void runPreview("add"); }
     } catch (e) {
       console.error("preview failed", e);
       setErr(`The import could not be checked (${(e as Error).message || "network error"}).`);
@@ -461,7 +488,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const expToSave = allExp.filter((l) => expMode !== "new" || !expensesLoaded.includes(l.period));
   const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
-  const found: Record<Kind, boolean> = { accounts: !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts };
+  const found: Record<Kind, boolean> = { opening: kind === "opening" && !!res, accounts: kind !== "opening" && !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts };
   const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses", "inventory"] as Kind[]).find((k) => found[k]) ?? null : null;
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
@@ -472,7 +499,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <div data-testid="wiz-what">
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
-        <div className="grid max-w-5xl gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => { setKind("opening"); setScreen("get"); }} testId="pick-opening" />
           <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
           <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
           <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
@@ -484,7 +512,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
 
   // 2 · Get your file
   if (screen === "get") {
-    const steps = kind === "inventory"
+    const steps = kind === "opening"
+      ? ["Open Odoo: Accounting → Reporting → General Ledger (or Trial Balance).", "Pick one day: from and to the day before your books start (e.g. 30/06/2021).", "Tick “Initial balance” if you see it. Click Export → Excel."]
+      : kind === "inventory"
       ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then “Select all N records”.", "Click Export. Tick “I want to update data (import-compatible export)”.", "Add the ID field. Never External ID: Odoo would create records for it.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
       ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Tick the top box, then “Select all N records” (not just this page). Click Export."]
@@ -494,7 +524,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="wiz-get">
         <WizardSteps at="get" />
-        <WizardTitle title={kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
+        <WizardTitle title={kind === "opening" ? "Get your opening balances" : kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
         {kind === "expenses" && (
           <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg bg-green-bg px-4 py-3 text-[15px] text-green-d" data-testid="expenses-in-ledger">
             Your General Ledger already has your expenses.
@@ -517,7 +547,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           ) : (
           <section className="rounded-xl border border-line p-5" data-testid="get-template">
             <h3 className="mb-3 text-lg font-medium">No Odoo? Use our template</h3>
-            <TemplateButton kind={kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : "financials"} />
+            <TemplateButton kind={kind === "opening" ? "opening" : kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : "financials"} />
             <ul className="mt-3 space-y-1.5 text-[15px] text-mute"><li>Fill it in. Save it.</li><li>One number in each box.</li></ul>
           </section>
           )}
@@ -536,7 +566,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="wiz-upload">
         <WizardSteps at="upload" />
-        <WizardTitle title="Upload your file" hint={kind === "inventory" ? "Your Odoo Inventory exports: one sheet, or several together." : kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
+        <WizardTitle title="Upload your file" hint={kind === "opening" ? "Your opening balances: Odoo's General Ledger or Trial Balance for the opening day, or our template." : kind === "inventory" ? "Your Odoo Inventory exports: one sheet, or several together." : kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
         <div
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); const fs = Array.from(e.dataTransfer.files); if (fs.length) onFiles(fs); }}
@@ -574,7 +604,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
             : kind === "expenses"
               ? <a href={`${company.basePath}/expenses`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my expenses</a>
               : <a href={`${company.basePath}/summary`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my reports</a>}
-          <button onClick={() => reset(kind === "accounts" ? "sales" : "accounts")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "accounts" ? "Upload sales next" : "Upload accounts next"}</button>
+          <button onClick={() => reset(kind === "accounts" ? "sales" : "accounts")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "accounts" ? "Upload sales next" : kind === "opening" ? "Upload your General Ledger next" : "Upload accounts next"}</button>
         </div>
       </div>
     );
@@ -705,7 +735,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="check" />
         <WizardTitle title="Check your money in and out" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : rolesBlock ? "Check what each sheet is, then confirm." : "All good. Look, then press Next."} />
         {fileLine}
-        {cutoffField}{startField}
+        {dateFields}
         {rolesPanel}
         {cashRead.layouts.length > 0 && (
           <div className="mb-4 flex max-w-5xl flex-wrap gap-x-6 gap-y-2 text-[13px]" data-testid="book-rules">
@@ -774,7 +804,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your expenses" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
-        {cutoffField}{startField}
+        {dateFields}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="expenses-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -820,7 +850,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your sales" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
-        {cutoffField}{startField}
+        {dateFields}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="sales-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -859,17 +889,18 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // 5 · Save (accounts)
   if (screen === "save" && preview) {
     const canImport = !blocking.length || (acceptOn && reason.trim().length >= 10);
-    const needChoice = overlap.length > 0 && !modeChosen && !allSame;
+    const needChoice = kind !== "opening" && overlap.length > 0 && !modeChosen && !allSame;
     const nothingNew = mode === "add" && !newMonths.length;
     return (
       <div data-testid="timeline-step">
         <WizardSteps at="save" />
         <WizardTitle title="Save your data" hint={`This file has ${monthsText([...new Set([...res.slices.PL, ...res.slices.BS])].sort())}.`} />
-        {overlap.length > 0 && (
+        {kind === "opening" && <p className="text-[15px]" data-testid="opening-save-note">Saved as your opening balances. Months before them are removed; balances loaded from zero after them move by the opening amounts (see month by month).</p>}
+        {kind !== "opening" && overlap.length > 0 && (
           <Duplicates months={overlapMonths} same={allSame} newMonths={newMonths} chosen={modeChosen || allSame ? (mode === "add" ? "add" : mode === "merge" ? "merge" : null) : null}
             onAdd={() => choose("add")} onReplace={() => choose("merge")} onReplaceAll={() => choose("replace")} replaceAll={mode === "replace"} />
         )}
-        {!overlap.length && <p className="text-[15px]" data-testid="all-new">All these months are new. Nothing is replaced.</p>}
+        {kind !== "opening" && !overlap.length && <p className="text-[15px]" data-testid="all-new">All these months are new. Nothing is replaced.</p>}
         {blocking.length > 0 && (
           <div className="mt-4 rounded-lg border-2 border-red/50 p-4 text-[14px]" data-testid="accept-box">
             <p className="mb-2 font-medium">Something doesn&apos;t add up.</p>
@@ -901,13 +932,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <WizardTitle title="Check your data" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
       {wrong}
       {fileLine}
+      {zeroNotice}
       {rolesPanel}
       <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3">
-        <Stat label="Months" value={String(res.periods.length)} sub={res.periods.length ? monthsText(res.periods) : ""} />
+        {kind === "opening" ? <Stat label="Balance sheet at" value={res.slices.BS[0] ? mlabel(res.slices.BS[0]) : "–"} sub="opening balances" /> : <Stat label="Months" value={String(res.periods.length)} sub={res.periods.length ? monthsText(res.periods) : ""} />}
         <Stat label="Balanced?" value={maxImb < 1 ? "Yes ✓" : "No"} sub={maxImb < 1 ? undefined : `out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} testId="balanced" />
         <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="problems" />
       </div>
-      {cutoffField}{startField}
+      {dateFields}
       {box}
       {more(<>
         <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
@@ -938,7 +970,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {demo
         ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || !res.periods.length || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? "Fix the problems first." : rolesHint} />}
     </div>
   );
 }
@@ -1025,4 +1057,19 @@ function readBooks<O, L>(gs: Grid[] | null, ov: Record<string, O>, read: (g: Gri
     for (const x of r.sales) out.sales.push(x); for (const x of r.expenses) out.expenses.push(x); out.layouts.push(r.layout);
   }
   return out;
+}
+
+/** A month end ("2021-06-30") from a month ("2021-06"). */
+function monthEndOf(month: string): string {
+  const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0));
+  return d.toISOString().slice(0, 10);
+}
+const dayBefore = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
+/** The day an opening balances file is at: Odoo's opening entry on a month end, else the month end of its last entry. */
+function openingDayOf(raw: RawLine[]): string {
+  const s = suggestBooksStart(raw);
+  if (s.suggested) return dayBefore(s.suggested);
+  const days = raw.flatMap((r) => (r.entries ?? []).map((e) => e.day)).sort();
+  const last = days[days.length - 1] ?? new Date().toISOString().slice(0, 10);
+  return monthEndOf(days.length ? last.slice(0, 7) : addMonths(last.slice(0, 7), -1));
 }

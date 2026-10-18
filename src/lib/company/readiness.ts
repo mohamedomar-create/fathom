@@ -110,8 +110,8 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
   else items.push(item({
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: openOk ? 100 : 0, accuracy: openOk ? (openBal ? 100 : 0) : null,
-    detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `Not loaded: ${mlabel(first)} has no cash flow without it.`,
-    fix: openOk ? undefined : { what: `Add opening balances: General Ledger from ${first ? mlabel(first) : "the first month"} with "Initial balance"`, how: "In Odoo, tick Initial balance. In our template, fill the first column.", template: "financials", href: "settings/source-data" },
+    detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `None loaded: balances start from zero at ${mlabel(first)}. Upload opening balances if the company had balances before.`,
+    fix: openOk ? undefined : { what: `Upload opening balances${first ? ` (the balance sheet at ${monthEndLabel(addMonths(first, -1))})` : ""}`, how: "On the Opening balances card: Odoo's General Ledger or Trial Balance for that one day, or our template.", template: "opening", href: "settings/source-data?tab=upload&step=opening" },
   }));
   if (pl.length) {
     const span = monthIndex(pl[pl.length - 1].period) - monthIndex(pl[0].period) + 1;
@@ -322,4 +322,10 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
 
 export function readiness(x: ReadinessInput): SectorReadiness[] {
   return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), bankingReadiness(x), forecastReadiness(x)];
+}
+
+/** "31 Dec 2025" for the month "2025-12". */
+function monthEndLabel(p: string): string {
+  const d = new Date(Date.UTC(Number(p.slice(0, 4)), Number(p.slice(5)), 0));
+  return `${d.getUTCDate()} ${mlabel(p)}`;
 }

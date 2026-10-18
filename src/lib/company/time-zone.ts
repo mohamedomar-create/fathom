@@ -32,8 +32,14 @@ export function booksStartOf(kpiConfig: unknown): string | null {
   return typeof v === "string" && /^\d{4}-\d{2}-01$/.test(v) ? v : null;
 }
 
+/** The day the company's opening balances are at ("2021-06-30"), when they were uploaded on their own. */
+export function openingAsAtOf(kpiConfig: unknown): string | null {
+  const v = ((kpiConfig ?? {}) as Record<string, { openingAsAt?: unknown } | undefined>)[PROFILE_KEY]?.openingAsAt;
+  return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+}
+
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;

@@ -529,3 +529,57 @@ test("uploading the same cash book again leaves nothing behind in the month an e
   await expect(page.getByTestId("tile-costs")).toContainText("40,950");
   await expect(page.getByTestId("expenses-reconciled")).toBeVisible();
 });
+
+/** Opening balances on their own card; a ledger after them continues from them; without them, balances start from zero, said plainly. */
+test("opening balances upload on their own, and a ledger without them starts from zero with a notice", async ({ page }) => {
+  test.setTimeout(240_000);
+  const xlsx = async (name: string, rows: (string | number | null)[][]) => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(name);
+    rows.forEach((r) => ws.addRow(r));
+    return { name: `${name}.xlsx`, mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) };
+  };
+  const opening = await xlsx("Opening balances", [["Code", "Account", "Debit", "Credit"], ["101000", "Bank", 50000, null], ["211000", "Suppliers", null, 5000], ["310000", "Share capital", null, 45000]]);
+  const ledger = await xlsx("General Ledger", [
+    [null, null, "From 01/01/2026\nto 01/31/2026"], [],
+    ["Code", "Account Name", "Date", "Communication", "Partner", "Currency", "Debit", "Credit", "Balance"],
+    ["101000", "Bank", null, null, null, null, 10000, null, 10000], [null, "INV/2026/0001", "01/15/2026", "Sale", "Client", null, 10000, null, null], [null, "Total 101000 Bank", null, null, null, null, 10000, null, 10000],
+    ["400000", "Sales", null, null, null, null, null, 10000, -10000], [null, "INV/2026/0001", "01/15/2026", "Sale", "Client", null, null, 10000, null], [null, "Total 400000 Sales", null, null, null, null, null, 10000, -10000],
+  ]);
+  await signUp(page, { name: "Opening Owner", org: "Opening Advisory", email: newEmail("opening") });
+
+  // A company with no opening balances: the ledger is allowed, and the check says balances start from zero.
+  const zero = await createCompany(page, "Zero Co");
+  await startUpload(page, zero);
+  await page.getByTestId("file-input").setInputFiles(ledger);
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("zero-opening")).toContainText("balances start from zero at Jan 2026");
+
+  // Opening balances first, on their own card, at 31 Dec 2025.
+  const id = await createCompany(page, "Opening Co");
+  await startUpload(page, id, "opening");
+  await page.getByTestId("file-input").setInputFiles(opening);
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("opening-as-at").locator("input").fill("2025-12");
+  await expect(page.getByTestId("opening-as-at")).toContainText("31 Dec 2025");
+  await expect(page.getByTestId("balanced")).toContainText("Yes");
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("opening-save-note")).toBeVisible();
+  await page.getByTestId("commit-import").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+
+  // The ledger after them continues from them: no zero notice, and January's cash is 50,000 + 10,000.
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(ledger);
+  await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("zero-opening")).toHaveCount(0);
+  await page.getByTestId("continue-timeline").click();
+  await expect(page.getByTestId("timeline-step")).toBeVisible();
+  await page.getByTestId("commit-import").click();
+  await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
+  await page.goto(`/company/${id}/analysis/financials`);
+  await page.getByTestId("period-picker").waitFor();
+  await page.getByRole("button", { name: "Profit & Loss" }).click();
+  await page.getByText("Balance Sheet", { exact: true }).last().click();
+  await expect(page.getByTestId("bs-table").getByRole("row", { name: /Cash & Equivalents/ })).toContainText("60,000");
+});

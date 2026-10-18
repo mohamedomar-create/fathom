@@ -5,8 +5,8 @@ import { CLASS_LABEL } from "@/lib/ingest/classes";
  * iReport's own input templates: one layout per kind of data, read exactly (no guessing). Each sheet carries a marker
  * in its first cell so the importer recognises it, and every account row says which iReport class it belongs to.
  */
-export type TemplateKind = "financials" | "sales" | "expenses";
-export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales", "expenses"];
+export type TemplateKind = "financials" | "sales" | "expenses" | "opening";
+export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales", "expenses", "opening"];
 
 export const MARK_PREFIX = "iReport template";
 export const MARK = {

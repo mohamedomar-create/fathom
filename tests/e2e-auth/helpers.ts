@@ -57,7 +57,7 @@ export async function createCompany(page: Page, name: string) {
 }
 
 /** Opens the upload, step by step, up to the drop box: what (accounts or sales) → get file → upload. */
-export async function startUpload(page: Page, companyId: string, kind: "accounts" | "sales" | "expenses" | "inventory" = "accounts", step?: "financials" | "sales" | "expenses" | "inventory") {
+export async function startUpload(page: Page, companyId: string, kind: "opening" | "accounts" | "sales" | "expenses" | "inventory" = "accounts", step?: "financials" | "sales" | "expenses" | "inventory") {
   await page.goto(`/company/${companyId}/settings/source-data${step ? `?step=${step}` : ""}`);
   await page.waitForLoadState("networkidle");
   // A click before the page has hydrated is lost: try again until the next screen shows.

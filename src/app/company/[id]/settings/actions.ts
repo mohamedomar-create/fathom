@@ -6,7 +6,8 @@ import { LOCATION_TYPES, mergeLocationTypes, type LocationTypes } from "@/lib/in
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { checkKey, type Check } from "@/lib/company/checks";
 import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/lib/company/import-schema";
-import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell } from "@/lib/company/import-plan";
+import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell, type VersionAccount } from "@/lib/company/import-plan";
+import { isPL } from "@/lib/company/build";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
 import { clearedNotice } from "@/lib/company/ledger-tie";
@@ -24,6 +25,25 @@ export interface AcceptedItem { key: string; title: string; period?: string; rea
 export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[] }
 type Plan = z.output<typeof PlanSchema>;
 
+/** How an import's balances began: its own opening balances, the loaded ones, zero, or an opening balances upload. */
+type OpeningBasis = "file" | "loaded" | "zero" | "opening";
+function basisOf(report: unknown): OpeningBasis | null {
+  const r = (report ?? {}) as { openingBasis?: OpeningBasis; checks?: { id?: string; severity?: string }[] };
+  if (r.openingBasis) return r.openingBasis;
+  // Imports saved before the basis was recorded: the check they carried says whether balances started from zero.
+  return r.checks?.some((c) => c.id === "opening" && c.severity === "warn") ? "zero" : null;
+}
+
+/** Balance-sheet months whose figures were built from zero (no opening balances when they were loaded). */
+async function zeroBasedMonths(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, current: VersionAccount[]): Promise<string[]> {
+  const byImport = new Map<string, Set<string>>();
+  for (const a of current) if (!isPL(a.cls)) for (const [p, id] of Object.entries(a.sources ?? {})) if (id) (byImport.get(id) ?? byImport.set(id, new Set()).get(id)!).add(p);
+  if (!byImport.size) return [];
+  const { data, error } = await supabase.from("imports").select("id, report").eq("company_id", companyId).in("id", [...byImport.keys()]);
+  if (error) throw new Error(error.message);
+  return [...new Set((data ?? []).filter((i) => basisOf(i.report) === "zero").flatMap((i) => [...byImport.get(i.id)!]))].sort();
+}
+
 /** Current data version, its accepted issues and notes, then the merged plan for this upload. */
 async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], d: Plan) {
   const { data: c, error } = await supabase.from("companies").select("data_version, notes").eq("id", d.companyId).single();
@@ -33,8 +53,15 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
     supabase.from("imports").select("report").eq("company_id", d.companyId).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart });
+  const zeroMonths = d.opening ? await zeroBasedMonths(supabase, d.companyId, current) : [];
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths });
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
+}
+
+function openingBasisOf(opening: Plan["opening"], checks: Check[]): OpeningBasis {
+  if (opening) return "opening";
+  const o = checks.find((c) => c.id === "opening");
+  return o?.severity === "warn" ? "zero" : o?.severity === "info" ? "loaded" : "file";
 }
 
 export async function previewImport(input: z.input<typeof PlanSchema>): Promise<{ ok: true; data: PreviewResult } | { ok: false; error: string }> {
@@ -84,7 +111,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     if (d.mode === "add" && !touched.PL.length && !touched.BS.length) return { ok: false, error: "Nothing new to add: every month in this file is already loaded." };
     const { version } = await saveCompanyData(supabase, d.companyId, plan.accounts, {
       kind: "upload", filename: d.filename,
-      report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,
+      report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300), openingBasis: openingBasisOf(d.opening, plan.checks) } as unknown as Json,
     }, allNotes);
     // The person's class choices become the company's account map: the next upload and every Odoo sync keep them.
     await rememberClasses(supabase, d.companyId, rememberedEntries(d.report.mapping, d.accounts));
@@ -92,11 +119,12 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     const { error: eStamp } = await supabase.rpc("restamp_expense_classes", { p_company: d.companyId });
     if (eStamp) console.error("commitImport: expense classes", eStamp.message);
     await supabase.from("companies").update({ source: "upload" }).eq("id", d.companyId).neq("source", "odoo");
-    // The books start confirmed on this upload is the company's from now on (the next upload and the Odoo sync use it).
-    if (d.booksStart) {
+    // The books start confirmed on this upload is the company's from now on (the next upload and the Odoo sync use it);
+    // an opening balances upload also records the day its balances are at.
+    if (d.booksStart || d.opening) {
       const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", d.companyId).maybeSingle();
-      if (row && booksStartOf(row.kpi_config) !== d.booksStart) {
-        const { error: eStart } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { booksStart: d.booksStart }) as Json }).eq("id", d.companyId);
+      if (row && (booksStartOf(row.kpi_config) !== d.booksStart || d.opening)) {
+        const { error: eStart } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { ...(d.booksStart ? { booksStart: d.booksStart } : {}), ...(d.opening ? { openingAsAt: d.opening.asAt } : {}) }) as Json }).eq("id", d.companyId);
         if (eStart) console.error("commitImport: books start", eStart.message);
       }
     }
