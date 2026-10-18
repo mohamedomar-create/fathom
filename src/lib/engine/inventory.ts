@@ -390,7 +390,7 @@ export function inventoryAnalysis(
     if (!inWin.has(f.p)) continue;
     if (!counts.has(f.loc)) counts.set(f.loc, locationTypeOf(f.loc, d.moves.rentalLocs, d.moves.types));
     const c = counts.get(f.loc);
-    if (!c || (c === "rental" && !d.moves.types?.[f.loc])) continue;
+    if (!c) continue;
     const l = locs.get(f.loc) ?? { loc: f.loc, inQ: 0, outQ: 0, counts: c };
     l.inQ += f.inQ; l.outQ += f.outQ; locs.set(f.loc, l);
   }
