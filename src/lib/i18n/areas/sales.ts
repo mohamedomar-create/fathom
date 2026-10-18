@@ -13,7 +13,7 @@ export const sales = area(
     fromAcc: "These sales come from your P&L. To see customers and products, upload your General Ledger or sales file.",
     vs: (x: string) => `vs ${x}`, noComparison: "no comparison loaded",
     cls: "Class", abcTitle: "A: the products making the first 80% of sales; B: the next 15%; C: the rest", salesCol: "Sales", share: "Share", change: "Change",
-    quantity: "Quantity", invoicesCol: "Invoices", margin: "Margin", topOf: (max: number, n: number) => `Showing the top ${max} of ${n}.`,
+    quantity: "Units (free incl.)", invoicesCol: "Invoices", margin: "Margin", topOf: (max: number, n: number) => `Showing the top ${max} of ${n}.`,
     headlineAcc: (name: string, total: string, when: string, growth: string | null) => `${name} sold ${total} in ${when}${growth ?? ""}, from the revenue in the P&L.`,
     growthPart: (up: boolean, g: string, word: string) => `, ${up ? "up" : "down"} ${g}% on ${word}`,
     headline: (name: string, total: string, when: string, growth: string | null, invoices: number, customers: number, cat: string | null) =>
@@ -60,7 +60,7 @@ export const sales = area(
     fromAcc: "هذه المبيعات من قائمة الدخل. لترى العملاء والمنتجات، ارفع دفتر الأستاذ العام أو ملف المبيعات.",
     vs: (x: string) => `مقابل ${x}`, noComparison: "لا توجد مقارنة محمّلة",
     cls: "الفئة", abcTitle: "أ: المنتجات التي تكوّن أول 80% من المبيعات؛ ب: الـ 15% التالية؛ ج: الباقي", salesCol: "المبيعات", share: "الحصة", change: "التغير",
-    quantity: "الكمية", invoicesCol: "الفواتير", margin: "الهامش", topOf: (max: number, n: number) => `عرض أكبر ${max} من ${n}.`,
+    quantity: "الكمية (شاملة المجاني)", invoicesCol: "الفواتير", margin: "الهامش", topOf: (max: number, n: number) => `عرض أكبر ${max} من ${n}.`,
     headlineAcc: (name: string, total: string, when: string, growth: string | null) => `باعت ${name} بقيمة ${total} في ${when}${growth ?? ""}، من الإيرادات في قائمة الدخل.`,
     growthPart: (up: boolean, g: string, word: string) => `، ${up ? "بارتفاع" : "بانخفاض"} ${g}% عن ${word}`,
     headline: (name: string, total: string, when: string, growth: string | null, invoices: number, customers: number, cat: string | null) =>

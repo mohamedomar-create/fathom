@@ -193,7 +193,9 @@ function readList(ctx: Ctx, fields: (SalesField | null)[]) {
       else ctx.marks[i] = { role: "unused", note: `no amount in "${heads[cAmt]}"` };
       continue;
     }
-    if (amount === 0) { ctx.marks[i] = { role: "unused", note: "the amount is 0" }; continue; }
+    // A line with no amount still moved goods when it has a quantity (free of charge with a sale): kept for its units.
+    const free = amount === 0 && col("qty") >= 0 && !!cleanNum(x[col("qty")]);
+    if (amount === 0 && !free) { ctx.marks[i] = { role: "unused", note: "the amount is 0" }; continue; }
     const day = cDate >= 0 ? parseDay(x[cDate], order) : null;
     const period = day?.slice(0, 7) ?? (cDate >= 0 ? parsePeriod(x[cDate], order) : null) ?? (cPer >= 0 ? parsePeriod(x[cPer]) : null);
     if (!period) {

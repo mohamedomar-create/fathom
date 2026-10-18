@@ -45,6 +45,16 @@ describe("reading a sales export", () => {
     expect(r?.lines.map((l) => l.amount)).toEqual([10000]);
   });
 
+  it("a free line (no amount, a quantity) is kept for its units; a line with neither is left out (register D09)", () => {
+    const r = readSalesGrid({ name: "Invoice Analysis", rows: [
+      ["Invoice Date", "Number", "Partner", "Product", "Quantity", "Untaxed Total"],
+      ["15/01/2026", "INV/2026/0001", "Clinic A", "Concentrator", 1, 20000],
+      ["15/01/2026", "INV/2026/0001", "Clinic A", "Mask", 4, 0],
+      ["15/01/2026", "INV/2026/0001", "Clinic A", "Note", null, 0],
+    ] });
+    expect(r?.lines.map((l) => [l.product, l.qty, l.amount])).toEqual([["Concentrator", 1, 20000], ["Mask", 4, 0]]);
+  });
+
   it("an Odoo Invoice Analysis list, untaxed amounts preferred, cost from margin", () => {
     const r = readSalesGrid({ name: "Invoice Analysis", rows: [
       ["Invoice Date", "Number", "Partner", "Product", "Product Category", "Salesperson", "Quantity", "Untaxed Total", "Total", "Margin"],

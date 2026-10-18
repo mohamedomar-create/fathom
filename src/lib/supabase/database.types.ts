@@ -84,6 +84,7 @@ export type Database = {
       accept_pending_invites: { Args: Record<string, never>; Returns: number };
       get_published_report: { Args: { p_token: string }; Returns: Json };
       reclassify_accounts: { Args: { p_company: string; p_changes: Json }; Returns: number };
+      restamp_expense_classes: { Args: { p_company: string }; Returns: number };
       replace_company_data: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: number };
       save_company_version: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: Json };
       restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };

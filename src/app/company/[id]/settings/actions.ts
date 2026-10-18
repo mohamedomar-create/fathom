@@ -88,6 +88,9 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     }, allNotes);
     // The person's class choices become the company's account map: the next upload and every Odoo sync keep them.
     await rememberClasses(supabase, d.companyId, rememberedEntries(d.report.mapping, d.accounts));
+    // Expense lines of earlier months follow those choices too (migration 0022).
+    const { error: eStamp } = await supabase.rpc("restamp_expense_classes", { p_company: d.companyId });
+    if (eStamp) console.error("commitImport: expense classes", eStamp.message);
     await supabase.from("companies").update({ source: "upload" }).eq("id", d.companyId).neq("source", "odoo");
     revalidatePath(`/company/${d.companyId}`, "layout");
     return { ok: true, version };
@@ -286,6 +289,9 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   if (error) return { ok: false, error: dbError(error, "reclassify") };
   // Kept in the company's account map, so the next upload or Odoo sync does not undo it.
   await rememberClasses(supabase, companyId, (cur ?? []).map((a) => ({ key: rememberKey({ code: a.code, label: a.name }), cls: ok.data[a.id] as ClassKey, name: a.name })));
+  // Stored expense lines take the new class too (migration 0022; until it is applied the call fails harmlessly).
+  const { error: e2 } = await supabase.rpc("restamp_expense_classes", { p_company: companyId });
+  if (e2) console.error("reclassify: expense classes", e2.message);
   // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the new P&L lose them.
   let notice: string | null = null;
   try {
