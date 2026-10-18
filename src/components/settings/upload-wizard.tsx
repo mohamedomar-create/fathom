@@ -50,6 +50,7 @@ import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
+import { PaymentsUpload } from "@/components/payments/payments-upload";
 import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
@@ -57,8 +58,8 @@ import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
 import { suggestBooksStart } from "@/lib/ingest/books-start";
 import { fmtDay } from "@/lib/ingest/odoo";
 
-type Kind = "opening" | "accounts" | "sales" | "expenses" | "inventory";
-const KIND_WORD: Record<Kind, string> = { opening: "an opening balances", accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
+type Kind = "opening" | "accounts" | "sales" | "expenses" | "inventory" | "payments";
+const KIND_WORD: Record<Kind, string> = { opening: "an opening balances", accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock", payments: "a receivables and payments" };
 
 const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero", "account_rollforward", "cross_check", "future_dated", "partial_month"]);
 
@@ -67,10 +68,10 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
+  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<SaveMode | null>(null);
@@ -488,7 +489,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const expToSave = allExp.filter((l) => expMode !== "new" || !expensesLoaded.includes(l.period));
   const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
-  const found: Record<Kind, boolean> = { opening: kind === "opening" && !!res, accounts: kind !== "opening" && !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts };
+  const found: Record<Kind, boolean> = { opening: kind === "opening" && !!res, accounts: kind !== "opening" && !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts, payments: false };
   const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses", "inventory"] as Kind[]).find((k) => found[k]) ?? null : null;
 
   if (pdfJob) return <PdfRead companyId={companyId} files={pdfJob.files} onDone={pdfDone} onCancel={() => { setPdfJob(null); setFiles([]); }} />;
@@ -499,12 +500,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <div data-testid="wiz-what">
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
-        <div className="grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => { setKind("opening"); setScreen("get"); }} testId="pick-opening" />
           <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
           <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
           <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
           <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => { setKind("inventory"); setScreen("get"); }} testId="pick-inventory" />
+          {!demo && <ChoiceCard icon="🤝" title="Receivables and payments" sub="Odoo's ageing reports and payments: who owes what, who paid." onClick={() => { setKind("payments"); setScreen("get"); }} testId="pick-payments" />}
         </div>
       </div>
     );
@@ -514,6 +516,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   if (screen === "get") {
     const steps = kind === "opening"
       ? ["Open Odoo: Accounting → Reporting → General Ledger (or Trial Balance).", "Pick one day: from and to the day before your books start (e.g. 30/06/2021).", "Tick “Initial balance” if you see it. Click Export → Excel."]
+      : kind === "payments"
+      ? ["Open Odoo: Accounting → Reporting → Aged Receivable. Pick the date (e.g. 30/09/2026). Click Export → Excel.", "Do the same for Aged Payable, on the same date.", "For payments: Accounting → Customers → Payments (and Vendors → Payments). Switch to the list view, tick the top box, then “Select all N records”. Click Export.", "Upload the files together."]
       : kind === "inventory"
       ? ["Open Odoo: Inventory → Reporting → Valuation (also Moves History, and Stock).", "Switch to the list view. Tick the top box, then “Select all N records”.", "Click Export. Tick “I want to update data (import-compatible export)”.", "Add the ID field. Never External ID: Odoo would create records for it.", "Add the “Last Updated on” column if you can.", "Do the same for Moves History and Product Variants.", "Upload the files together."]
       : kind === "sales"
@@ -524,7 +528,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="wiz-get">
         <WizardSteps at="get" />
-        <WizardTitle title={kind === "opening" ? "Get your opening balances" : kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
+        <WizardTitle title={kind === "opening" ? "Get your opening balances" : kind === "payments" ? "Get your receivables and payments" : kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
         {kind === "expenses" && (
           <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg bg-green-bg px-4 py-3 text-[15px] text-green-d" data-testid="expenses-in-ledger">
             Your General Ledger already has your expenses.
@@ -559,6 +563,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   }
 
   // 3 · Odoo Inventory exports: uploaded, read and saved as a background job (never read on this page's main thread).
+  if (kind === "payments" && !demo) return <PaymentsUpload companyId={companyId} basePath={company.basePath} onBack={() => setScreen("get")} />;
   if (kind === "inventory" && !demo) return <OdooImport companyId={companyId} rentalLocation={company.inventorySettings?.rentalLocation ?? null} timeZone={company.timeZone ?? null} locationTypes={company.inventorySettings?.locationTypes} onBack={() => setScreen("get")} />;
 
   // 3 · Upload
