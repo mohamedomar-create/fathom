@@ -195,3 +195,17 @@ describe("when a connection may be saved", async () => {
     expect([atLeast("admin", "admin"), atLeast("editor", "admin"), atLeast("editor", "editor"), atLeast("viewer", "editor"), atLeast(null, "viewer")]).toEqual([true, false, true, false, false]);
   });
 });
+
+describe("a sync whose balance sheet doesn't balance is never saved", async () => {
+  const { unbalancedSync } = await import("@/lib/odoo/policy");
+  const { syncOdoo: sync } = await import("@/lib/odoo/sync");
+  it("a full sync balances: nothing to refuse", async () => {
+    const res = await sync(new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(17, { custody: true }).fetch), { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    expect(unbalancedSync(res.accounts)).toBeNull();
+  });
+  it("an account missing from the balance sheet is refused, naming the months and the difference", async () => {
+    const res = await sync(new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(17).fetch), { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    const msg = unbalancedSync(res.accounts.filter((a) => a.code !== "121000"));
+    expect(msg).toMatch(/doesn't balance in \d+ month.*Nothing was saved/);
+  });
+});

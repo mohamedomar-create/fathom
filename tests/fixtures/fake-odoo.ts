@@ -60,8 +60,14 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /** late: an entry dated in August, posted (created) on 18 Oct 2026 after the last import. */
 /** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
 /** userCompanies: the companies the connected user may see. */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
+/** custody: an employee's petty-cash custody account typed off-balance (as at the main company), coded next to the cash accounts. */
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
   const { accs, lines } = buildLedger();
+  if (opts.custody) {
+    accs.push({ id: 901, code: "101400", name: "Hossam Hassan", cls: "cash", type: "off_balance" });
+    const bank = accs.find((a) => a.code === "101100")!.id;
+    lines.push({ account: 901, date: `${months[1].period}-05`, balance: 5000, company: 1 }, { account: bank, date: `${months[1].period}-05`, balance: -5000, company: 1 });
+  }
   if (opts.offBalance) {
     accs.push({ id: 900, code: "999100", name: "Petty cash (off balance)", cls: "cash", type: "off_balance" });
     lines.push({ account: 900, date: `${months[2].period}-12`, balance: 4500, company: 1 }, { account: 900, date: `${months[2].period}-12`, balance: -4500, company: 1 });

@@ -6,7 +6,7 @@ import { loadAccountMap } from "@/lib/company/account-map";
 import { saveCompanyData } from "@/lib/company/persist";
 import { runChecks } from "@/lib/company/checks";
 import { OdooClient, OdooError, odooDisabled } from "@/lib/odoo/client";
-import { atLeast, connectionVerdict, type Role } from "@/lib/odoo/policy";
+import { atLeast, connectionVerdict, unbalancedSync, type Role } from "@/lib/odoo/policy";
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
@@ -207,6 +207,8 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");
     // Debits must equal credits across everything read: an unbalanced answer is not saved.
     if (Math.abs(res.diagnostics.trialBalanceCheck) > 1) throw new Error(`Odoo's entries don't balance (difference ${res.diagnostics.trialBalanceCheck.toLocaleString("en-GB")}). Nothing was saved; check the company selection and the user's access.`);
+    const unbalanced = unbalancedSync(res.accounts);
+    if (unbalanced) throw new Error(unbalanced);
     await saveCompanyData(supabase, companyId, res.accounts, {
       kind: "odoo", filename: `${conn.odoo_company_name ?? "Odoo"} (${res.diagnostics.version})`,
       // Live sync is authoritative and replaces everything; its checks are recorded and shown, never blocking.

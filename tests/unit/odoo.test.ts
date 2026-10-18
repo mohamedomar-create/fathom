@@ -31,12 +31,23 @@ describe("Odoo connector", () => {
     });
   }
 
-  it("an off-balance account with posted lines is named, never dropped silently", async () => {
+  it("an off-balance account with posted lines is kept (by its name) and named, never dropped", async () => {
     const f = fakeOdoo(17, { offBalance: true });
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
     const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
     expect(res.diagnostics.offBalance).toEqual(["999100 Petty cash (off balance)"]);
-    expect(res.notes.join(" ")).toMatch(/999100 Petty cash \(off balance\).*off-balance.*Map it to Cash/);
+    expect(res.accounts.find((a) => a.code === "999100")?.cls).toBe("cash");
+    expect(res.notes.join(" ")).toMatch(/999100 Petty cash \(off balance\).*kept as Cash/);
+  });
+
+  it("an employee's custody account typed off-balance is kept with its chart neighbours, so the balance sheet still balances", async () => {
+    const f = fakeOdoo(17, { custody: true });
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    const acc = res.accounts.find((a) => a.code === "101400");
+    expect(acc?.cls).toBe("cash");
+    expect(res.notes.join(" ")).toMatch(/101400 Hossam Hassan.*kept as Cash.*101/);
+    check(res);
   });
 
   it("entries posted after the last import but dated inside months already imported are counted and named", async () => {

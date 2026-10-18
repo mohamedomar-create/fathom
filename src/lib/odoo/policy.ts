@@ -1,6 +1,8 @@
 // When a live Odoo connection may be saved, judged on what Odoo itself reported at the test. Checked on the server at
 // save time (the browser's copy of the test is never trusted).
 import type { OdooProbe } from "./sync";
+import type { ClassKey } from "@/lib/engine";
+import { runChecks } from "@/lib/company/checks";
 
 export type Role = "admin" | "editor" | "viewer";
 const RANK: Record<Role, number> = { viewer: 0, editor: 1, admin: 2 };
@@ -22,4 +24,14 @@ export function connectionVerdict(p: Pick<OdooProbe, "rights" | "canChange" | "u
   const others = p.user.companies.filter((c) => c !== odooCompanyId);
   if (others.length && !includeBranches) warnings.push(`This Odoo user can also see ${others.map((c) => p.companies.find((x) => x.id === c)?.name ?? `#${c}`).join(", ")}. Only the chosen company is read.`);
   return { ok: true, reason: null, note, warnings };
+}
+
+/**
+ * A sync is refused when its balance sheet doesn't balance in any month: with every account in, debits equal credits, so
+ * a difference means an account was left out or placed outside the balance sheet. Null when it balances.
+ */
+export function unbalancedSync(accounts: { code: string; name: string; cls: ClassKey; amounts: Record<string, number> }[]): string | null {
+  const off = runChecks({ accounts: accounts.map((a, i) => ({ ...a, id: String(i) })) }).filter((c) => c.id === "bs_balance" && c.severity === "block");
+  if (!off.length) return null;
+  return `The balance sheet from Odoo doesn't balance in ${off.length} month${off.length > 1 ? "s" : ""} (first: ${off[0].detail?.split(":")[1]?.split(".")[0]?.trim() ?? off[0].title}). Nothing was saved; an account is missing or placed outside the balance sheet. Check Chart of accounts.`;
 }

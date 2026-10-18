@@ -2,6 +2,7 @@ import { fmtDay } from "@/lib/ingest/odoo";
 import { addMonths, daysIn, type ClassKey } from "@/lib/engine";
 import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
+import { CLASS_LABEL } from "@/lib/ingest/classes";
 import { normLabel } from "@/lib/ingest/parse";
 import { GUARDED_MODELS, majorVersion, OdooClient, OdooError } from "./client";
 import { AccountRows, BalanceLines, CompanyRows, Count, DetailLines, GroupRows, trust, UserRows, Version, XmlRows } from "./schema";
@@ -82,6 +83,24 @@ export interface SyncResult {
   periods: string[];
   notes: string[];
   diagnostics: { version: string; major: number; accounts: number; groups: number; method: "read_group" | "search_read"; trialBalanceCheck: number; unmapped: string[]; offBalance?: string[]; latePostings?: number };
+}
+
+/** Names of petty-cash and custody accounts (English and Arabic). */
+const PETTY = /petty|custody|imprest|عهد[ةه]|نثري|سلف[ةه]?/i;
+
+/** The class most accounts sharing the longest code prefix (3+ digits) with this one have, if they agree. */
+function neighbourClass(code: string, all: { code: string; c: { cls: ClassKey | null } }[]): { cls: ClassKey; prefix: string } | null {
+  if (!/^\d{4,}$/.test(code)) return null;
+  for (let n = code.length - 1; n >= 3; n--) {
+    const prefix = code.slice(0, n);
+    const counts = new Map<ClassKey, number>();
+    for (const o of all) if (o.code !== code && o.c.cls && o.code.startsWith(prefix)) counts.set(o.c.cls, (counts.get(o.c.cls) ?? 0) + 1);
+    if (!counts.size) continue;
+    const [best, n1] = [...counts.entries()].sort((x, y) => y[1] - x[1])[0];
+    const total = [...counts.values()].reduce((x, y) => x + y, 0);
+    return n1 / total >= 0.6 ? { cls: best, prefix } : null;
+  }
+  return null;
 }
 
 type Group = { account_id: [number, string] | false; balance: number; __range?: Record<string, { from: string; to: string }>; __domain?: unknown[]; [k: string]: unknown };
@@ -183,28 +202,47 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   let plRun = 0;
   const plMoves: Record<string, number> = {};
   let tb = 0;
-  for (const a of accts) {
+  // Every account's class: a person's choice, else Odoo's account type.
+  const classed = accts.map((a) => {
     const type = typeOf(a);
     const code = typeof a.code === "string" ? a.code.trim() : "";
     const chosen = opts.classes?.[code ? `#${code}` : normLabel(a.name)];
-    const c = chosen ? { cls: chosen as ClassKey, conf: 1 } : classFromOdooType(type, a.name);
+    return { a, type, code, chosen: Boolean(chosen), c: chosen ? { cls: chosen as ClassKey, conf: 1 } : classFromOdooType(type, a.name) };
+  });
+  const kept: string[] = [];
+  for (const k of classed) {
+    if (k.c.cls) continue;
+    const op = opening.get(k.a.id) ?? 0;
+    if (op === 0 && !Object.values(moves.get(k.a.id) ?? {}).some((x) => x !== 0)) continue;
+    // A balance is never dropped: debits equal credits only with every account in. An account Odoo can't place (typed
+    // off-balance, or no type) takes the class of its neighbours in the chart, else what its name says, else a suspense
+    // line on the side its balance is on; each one is named for the accountant to confirm.
+    const near = neighbourClass(k.code, classed);
+    const byName = classFromOdooType("", k.a.name).cls;
+    const total = op + Object.values(moves.get(k.a.id) ?? {}).reduce((x, y) => x + y, 0);
+    const cls: ClassKey = (k.type === "off_balance" && PETTY.test(k.a.name) ? "cash" : null) ?? near?.cls ?? (byName && !isPL(byName) ? byName : null) ?? (total >= 0 ? "other_ca" : "other_cl");
+    k.c = { cls, conf: 0.5 };
+    kept.push(`${`${k.code} ${k.a.name}`.trim()} kept as ${CLASS_LABEL[cls]}${near && !(k.type === "off_balance" && PETTY.test(k.a.name)) ? ` (like the accounts ${near.prefix}… next to it in the chart)` : ""}`);
+  }
+  for (const { a, type, chosen, c } of classed) {
     const op = opening.get(a.id) ?? 0;
     const mv = moves.get(a.id) ?? {};
     const hasData = op !== 0 || Object.values(mv).some((x) => x !== 0);
     tb += op + Object.values(mv).reduce((s, x) => s + x, 0);
-    if (!c.cls) { if (hasData) (type === "off_balance" ? offBalance : unmapped).push(`${a.code || ""} ${a.name}`.trim()); continue; }
-    if (!hasData) continue;
+    if (hasData && (type === "off_balance" || !type) && c.conf === 0.5) (type === "off_balance" ? offBalance : unmapped).push(`${a.code || ""} ${a.name}`.trim());
+    if (!hasData || !c.cls) continue;
+    const cls = c.cls;
     const amounts: Record<string, number> = {};
-    if (isPL(c.cls)) {
+    if (isPL(cls)) {
       plRun += op;
-      for (const p of periods) { const x = mv[p] ?? 0; if (x) { amounts[p] = toNatural(c.cls, x); plMoves[p] = (plMoves[p] ?? 0) + x; } }
+      for (const p of periods) { const x = mv[p] ?? 0; if (x) { amounts[p] = toNatural(cls, x); plMoves[p] = (plMoves[p] ?? 0) + x; } }
     } else {
       let run = op;
       // The balance before the first month is stored as the month before it, so the first month has a cash flow.
-      if (Math.abs(run) > 0.004) amounts[openingP] = toNatural(c.cls, run);
-      for (const p of periods) { run += mv[p] ?? 0; if (Math.abs(run) > 0.004) amounts[p] = toNatural(c.cls, run); }
+      if (Math.abs(run) > 0.004) amounts[openingP] = toNatural(cls, run);
+      for (const p of periods) { run += mv[p] ?? 0; if (Math.abs(run) > 0.004) amounts[p] = toNatural(cls, run); }
     }
-    out.push({ code: a.code || "", name: a.name, cls: c.cls, amounts, odoo_id: a.id, odoo_type: type || null, confidence: c.conf, mapped_by: chosen ? "user" : "auto" });
+    out.push({ code: a.code || "", name: a.name, cls, amounts, odoo_id: a.id, odoo_type: type || null, confidence: c.conf, mapped_by: chosen ? "user" : "auto" });
   }
   // Odoo never closes P&L accounts: carry all earnings to date into retained earnings.
   const re: Record<string, number> = {};
@@ -216,9 +254,9 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
     `Synced from Odoo ${v.server_version}: posted entries only, ${opts.includeBranches ? "including branches" : "this company only"}.`,
     "Retained earnings include profit to date computed from the P&L accounts (Odoo does not close P&L accounts into equity).",
   ];
-  if (unmapped.length) notes.push(`${unmapped.length} account(s) with balances had no recognised type and were left out: ${unmapped.slice(0, 5).join(", ")}${unmapped.length > 5 ? "…" : ""}.`);
-  // An off-balance account that holds posted entries is often a real one typed wrongly (petty cash kept "off the books").
-  if (offBalance.length) notes.push(`${offBalance.join(", ")}: typed off-balance in Odoo but ${offBalance.length > 1 ? "they hold" : "it holds"} posted entries, left out like every off-balance account. This looks like a real account (e.g. petty cash). Map it to Cash in Chart of accounts if it is one.`);
+  // An account Odoo types off-balance (or not at all) that holds posted entries is a real one (petty cash custody kept
+  // "off the books"): kept, so the balance sheet balances, and named for the accountant to confirm in Chart of accounts.
+  if (kept.length) notes.push(`${kept.join("; ")}. ${kept.length > 1 ? "These accounts are" : "This account is"} typed off-balance or have no type in Odoo but hold posted entries; confirm the class in Chart of accounts.`);
   // Back-dated postings: entered after the last import into days it had already covered, so the reports made from it missed them.
   let latePostings: number | undefined;
   if (opts.since) {
