@@ -1,6 +1,7 @@
 import { addMonths, bsCalc, cashFlowByMonth, COSTS_DEFINITION, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, isCostLine, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
 import { inventoryLedger, inventoryTieOuts, type InventoryData } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
+import { paymentsAnalysis, type PaymentsData, type Side } from "@/lib/engine/payments";
 import type { TemplateKind } from "@/lib/templates/spec";
 import type { Check } from "./checks";
 
@@ -8,7 +9,7 @@ import type { Check } from "./checks";
  * How ready each sector's data is: what is loaded (completion) and how much of it passes the accounting checks
  * (accuracy), item by item, each with exactly what to upload or enter and how.
  */
-export type ReadinessSector = "financials" | "sales" | "expenses" | "inventory" | "banking" | "forecast";
+export type ReadinessSector = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "forecast";
 export type ItemStatus = "done" | "partial" | "missing";
 
 export interface ReadinessFix {
@@ -45,12 +46,14 @@ export interface ReadinessInput {
   expenses?: ExpensesData | null;
   inventory?: InventoryData | null;
   /** The accounts by code and name (the stock interim accounts feed the cost-of-sales check). */
-  accounts?: { name: string; cls: string; amounts: Record<string, number> }[];
+  accounts?: { code?: string; name: string; cls: string; amounts: Record<string, number> }[];
   /** The company's location types (which locations hold stock). */
   locationTypes?: Record<string, "internal" | "transit" | "rental" | "outside">;
   assumptions?: Assumptions;
   forecast?: ForecastDrivers;
   today?: string;
+  /** The ageing reports and payments, with the control accounts the company chose (the Payments sector shows only when given). */
+  payments?: { data: PaymentsData; control?: Partial<Record<Side, string[]>> };
   /** The company said its books start from zero (nothing before the first month), so no opening balance is due. */
   booksFromZero?: boolean;
 }
@@ -274,6 +277,31 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   return { key: "inventory", label: "Inventory", ...summarise(items), items };
 }
 
+/** Receivables and payables: each ageing report loaded and agreeing with its control account at its date, and the payments list loaded. */
+export function paymentsReadiness(x: ReadinessInput): SectorReadiness {
+  const d = x.payments?.data ?? { aged: {}, payments: [] };
+  const FIX: ReadinessFix = { what: "", how: "Odoo: Accounting → Reporting → Aged Receivable / Aged Payable, and Customers / Vendors → Payments. Export to Excel.", href: "settings/source-data?step=payments" };
+  const last = Object.values(d.aged).map((a) => a!.asOf).sort().pop() ?? d.payments.map((p) => p.day).sort().pop();
+  const a = paymentsAnalysis(d, { type: "month", end: (last ?? "2000-01").slice(0, 7) }, x.fyStart, {
+    accounts: (x.accounts ?? []).filter((c) => c.cls === "ar" || c.cls === "ap").map((c) => ({ code: c.code ?? "", name: c.name, cls: c.cls, amounts: c.amounts })),
+    control: x.payments?.control,
+  });
+  const items: ReadinessItem[] = [];
+  for (const [side, title] of [["receivable", "Aged Receivable, tied to the books"], ["payable", "Aged Payable, tied to the books"]] as const) {
+    const t = a.tieouts.find((v) => v.side === side);
+    const name = side === "receivable" ? "Aged Receivable" : "Aged Payable";
+    const n = (v: number) => v.toLocaleString("en-US", { maximumFractionDigits: 2 });
+    items.push(item({ id: `aged_${side}`, axis: side === "receivable" ? "Receivables" : "Payables", title, completion: t ? 100 : 0,
+      accuracy: !t || t.status === "no_books" ? null : t.status === "ok" ? 100 : 0,
+      detail: !t ? `No ${name} yet.` : t.status === "no_books" ? `Loaded as of ${t.asOf}; no balance in the books for that month to check it against.`
+        : t.status === "ok" ? `As of ${t.asOf}, ${n(t.ageing)} agrees with ${t.account}.` : `As of ${t.asOf}, ${n(t.ageing)} differs from the books by ${n(t.diff!)} (${t.account || "no account chosen"}).`,
+      fix: !t ? { ...FIX, what: `Upload Odoo's ${name}` } : t.status === "off" ? { what: "Find the difference", how: "On the Payments page, check the account the ageing is kept on, then the documents.", href: "payments" } : undefined }));
+  }
+  items.push(item({ id: "payments", axis: "Payments", title: "Customer and vendor payments", completion: d.payments.length ? 100 : 0, accuracy: null,
+    detail: d.payments.length ? `${d.payments.length} payments loaded.` : "No payments yet.", fix: d.payments.length ? undefined : { ...FIX, what: "Upload Odoo's Customer and Vendor Payments" } }));
+  return { key: "payments", label: "Payments", ...summarise(items), items };
+}
+
 export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const pl = plMonths(x.months);
   const a = x.assumptions ?? {};
@@ -321,7 +349,7 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
 }
 
 export function readiness(x: ReadinessInput): SectorReadiness[] {
-  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), bankingReadiness(x), forecastReadiness(x)];
+  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), ...(x.payments ? [paymentsReadiness(x)] : []), bankingReadiness(x), forecastReadiness(x)];
 }
 
 /** "31 Dec 2025" for the month "2025-12". */

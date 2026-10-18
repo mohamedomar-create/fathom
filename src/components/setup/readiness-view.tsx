@@ -12,6 +12,7 @@ import { runChecks } from "@/lib/company/checks";
 import { readiness, type ReadinessItem, type ReadinessSector, type SectorReadiness } from "@/lib/company/readiness";
 import type { ExpensesData, SalesData } from "@/lib/engine";
 import type { InventoryData } from "@/lib/engine/inventory";
+import type { PaymentsBundle } from "@/lib/company/payments-load";
 import type { TemplateKind } from "@/lib/templates/spec";
 import { RadarChart, RadarLegend } from "@/components/charts/radar-chart";
 import { cn } from "@/lib/cn";
@@ -34,12 +35,13 @@ export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; 
 }
 
 /** All sectors' readiness for the company (checks, sales and expense lines, and stock included when available). */
-export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null, inventory?: InventoryData | null): SectorReadiness[] {
+export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null, inventory?: InventoryData | null, payments?: PaymentsBundle | null): SectorReadiness[] {
   const c = useCompany();
   return useMemo(() => readiness({
     months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
     sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, sales, expenses, inventory]);
+    payments: payments ?? undefined,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, sales, expenses, inventory, payments]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {

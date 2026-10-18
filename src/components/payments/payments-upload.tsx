@@ -16,7 +16,6 @@ const CHUNK = 3000;
  */
 export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: string; basePath: string; onBack: () => void }) {
   const [grids, setGrids] = useState<Grid[] | null>(null);
-  const [names, setNames] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -31,7 +30,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     setBusy(true);
     try {
       const gs = await readWorkbooks(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() }))));
-      setGrids(gs); setNames(fs.map((f) => f.name));
+      setGrids(gs);
     } catch (e) { setErr((e as Error).message || "The files could not be read."); }
     finally { setBusy(false); }
   }
@@ -48,7 +47,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
       }
       const ls = plan.payments.lines;
       if (ls.length) {
-        const b = await startPaymentBatch(companyId, plan.payments.periods, names.join(", ").slice(0, 300));
+        const b = await startPaymentBatch(companyId, plan.payments.periods, plan.payments.sheets.join(", ").slice(0, 300));
         if (!b.ok) throw new Error(b.error);
         for (let i = 0; i < ls.length; i += CHUNK) {
           const part = ls.slice(i, i + CHUNK).map((l) => ({ day: l.day, period: l.period, number: l.number, journal: l.journal, method: l.method, partner: l.partner, direction: l.direction, amount: l.amount, currency: l.currency, amount_currency: l.amountCurrency, state: l.state }));
@@ -113,7 +112,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
         </div>
       )}
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
-      <WizardNav onBack={() => { setGrids(null); setNames([]); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0} nextTestId="save-payments" />
+      <WizardNav onBack={() => setGrids(null)} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0} nextTestId="save-payments" />
     </div>
   );
 }

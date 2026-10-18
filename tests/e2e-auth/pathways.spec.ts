@@ -624,4 +624,18 @@ test("Odoo's ageing reports and payments list become the Payments pages; the sam
   await page.goto(`/company/${id}/payments`);
   await expect(page.getByTestId("tile-owed")).toContainText("1,490");
   await expect(page.getByTestId("tile-received")).toContainText("3,790");
+  // Data setup: loaded (with no accounts yet there is nothing to check it against).
+  await page.goto(`/company/${id}/settings/data-setup`);
+  await expect(page.getByTestId("step-payments")).toHaveAttribute("data-status", "done");
+  // Data health lists the payments upload and both ageing reports, once each; removing the payments takes them out.
+  await page.goto(`/company/${id}/settings/data-health`);
+  const rows = page.getByTestId("line-upload");
+  await expect(rows).toHaveCount(3);
+  await expect(page.getByTestId("line-uploads")).toContainText("Aged Receivable as of 2026-09-30");
+  page.once("dialog", (d) => d.accept());
+  await rows.filter({ hasNotText: "Aged" }).getByTestId("remove-line-upload").click();
+  await expect(rows).toHaveCount(2);
+  await page.goto(`/company/${id}/payments`);
+  await expect(page.getByTestId("tile-owed")).toContainText("1,490");
+  await expect(page.getByTestId("tile-received")).not.toContainText("3,790");
 });

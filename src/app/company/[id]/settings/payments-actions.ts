@@ -99,3 +99,20 @@ export async function saveControlAccounts(companyId: string, side: "receivable" 
     return { ok: false, error: safeError(e, "saveControlAccounts") };
   }
 }
+
+/** Removes one payments upload, or one ageing report, with every line it holds (Data health; editors). */
+export async function removePaymentsUpload(companyId: string, kind: "payments" | "aged", id: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const v = z.object({ companyId: z.string().uuid(), kind: z.enum(["payments", "aged"]), id: z.string().uuid() }).safeParse({ companyId, kind, id });
+  if (!v.success) return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const { data, error } = await supabase.from(kind === "payments" ? "payment_batches" : "aged_reports").delete().eq("id", id).eq("company_id", companyId).select("id");
+    if (error) return { ok: false, error: dbError(error, "removePaymentsUpload") };
+    if (!data?.length) return { ok: false, error: "Only editors can remove uploads." };
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "removePaymentsUpload") };
+  }
+}

@@ -5,6 +5,7 @@ import { useCompany } from "@/lib/company/context";
 import { mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
 import { useInventoryData } from "@/lib/company/inventory-context";
 import type { InventoryState } from "@/lib/company/inventory-wire";
+import type { PaymentsBundle } from "@/lib/company/payments-load";
 import type { ItemStatus, SectorReadiness } from "@/lib/company/readiness";
 import { SectorPanel, TemplateButton, useReadiness } from "./readiness-view";
 import { DataMap } from "./data-map";
@@ -21,11 +22,11 @@ const sectorStatus = (r: SectorReadiness | undefined): ItemStatus => (!r ? "miss
  * The guided way in: each step says what to provide, why, and how (an Odoo export or iReport's template),
  * with its status from the data already loaded. Below, every sector's readiness radar.
  */
-export function DataSetup({ sales, expenses = null, inventory: state = null }: { sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryState | null }) {
+export function DataSetup({ sales, expenses = null, inventory: state = null, payments = null }: { sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryState | null; payments?: PaymentsBundle | null }) {
   const parsed = useInventoryData(state);
   const inventory = state ? parsed : null;
   const c = useCompany();
-  const all = useReadiness(sales, expenses, inventory);
+  const all = useReadiness(sales, expenses, inventory, payments);
   const by = (k: SectorReadiness["key"]) => all.find((r) => r.key === k);
   const fin = by("financials");
   const upload = (step: string) => `${c.basePath}/settings/source-data?step=${step}`;
@@ -66,17 +67,23 @@ export function DataSetup({ sales, expenses = null, inventory: state = null }: {
       actions: <Link href={upload("inventory")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-inventory">Upload</Link>,
     },
     {
-      n: 7, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
+      n: 7, title: "Receivables, payables & payments (optional)", status: sectorStatus(by("payments")), testId: "step-payments",
+      why: "Who owes you, whom you owe, and how old it is, checked against your accounts.",
+      how: <>From Odoo: Accounting → Reporting → Aged Receivable and Aged Payable (same date) → Export; and Customers / Vendors → Payments → list view → Select all → Export.</>,
+      actions: <Link href={upload("payments")} className="rounded bg-brand-d px-4 py-2 text-sm text-white" data-testid="upload-payments-step">Upload</Link>,
+    },
+    {
+      n: 8, title: "Bank details", status: sectorStatus(by("banking")), testId: "step-banking",
       why: "Your loans, your rate, and what you want to borrow.",
       actions: <Link href={`${c.basePath}/banking`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 8, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
+      n: 9, title: "Forecast settings", status: sectorStatus(by("forecast")), testId: "step-forecast",
       why: "Check the numbers we guessed, then press Save.",
       actions: <Link href={`${c.basePath}/analysis/forecast`} className="rounded bg-brand-d px-4 py-2 text-sm text-white">Open</Link>,
     },
     {
-      n: 9, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
+      n: 10, title: "Your targets", status: c.settings.targets && Object.keys(c.settings.targets).length ? "done" : "partial", testId: "step-targets",
       why: "Pick 3 to 5 goals, like sales or profit.",
       actions: <Link href={`${c.basePath}/settings/targets`} className="text-sm text-brand-d underline">Set</Link>,
     },

@@ -23,13 +23,16 @@ export default async function DataHealthPage({ params, searchParams }: { params:
   const { imported } = await searchParams;
   const { supabase } = await getUser();
   const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses, { data: profiles }] = await Promise.all([
+  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
     loadVersion(supabase, id, bundle.dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     loadInventory(id), loadExpenses(id),
     supabase.from("input_profiles").select("kind, sheet, headings, read, ignored, history, updated_at").eq("company_id", id).order("kind"),
+    // Payments uploads and ageing reports (none before the database has the Payments tables).
+    supabase.from("payment_batches").select("id, filename, periods, created_at").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
+    supabase.from("aged_reports").select("id, side, as_of, filename, created_at").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
   ]);
   // Each export's remembered layout (none before the database has the table).
   const layouts: LayoutRow[] = (profiles ?? []).map((p) => ({
@@ -40,12 +43,14 @@ export default async function DataHealthPage({ params, searchParams }: { params:
   const lineUploads: LineUpload[] = [
     ...(salesFiles ?? []).map((b) => ({ id: b.id, kind: "sales" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
     ...(expenseFiles ?? []).map((b) => ({ id: b.id, kind: "expenses" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
-  ].sort((a, b) => b.at.localeCompare(a.at)).flatMap((u, _i, all) => {
+    ...(paymentFiles ?? []).map((b) => ({ id: b.id, kind: "payments" as const, file: b.filename, periods: b.periods ?? [], at: b.created_at })),
+  ].sort((a, b) => b.at.localeCompare(a.at)).flatMap((u, _i, all): LineUpload[] => {
     // A newer file replaced the older one's months (their lines are gone): show each upload with the months it still holds.
     const newer = all.filter((x) => x.kind === u.kind && x.at > u.at).flatMap((x) => x.periods);
     const left = u.periods.filter((p) => !newer.includes(p));
     return left.length ? [{ ...u, periods: left }] : [];
-  });
+  }).concat((agedFiles ?? []).map((r) => ({ id: r.id, kind: "aged" as const, file: r.filename, periods: [r.as_of.slice(0, 7)], at: r.created_at, asOf: r.as_of, side: r.side as "receivable" | "payable" })))
+    .sort((a, b) => b.at.localeCompare(a.at));
   const rows = imports ?? [];
   const people = new Map<string, string>();
   const ids = [...new Set(rows.map((r) => r.created_by).filter(Boolean) as string[])];
