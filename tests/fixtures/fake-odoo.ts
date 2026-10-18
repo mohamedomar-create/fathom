@@ -16,7 +16,7 @@ const V15: Record<string, string> = Object.fromEntries(Object.entries({
   expense_direct_cost: "data_account_type_direct_costs", expense: "data_account_type_expenses",
 }));
 
-interface Line { account: number; date: string; balance: number; company: number; move?: string; partner?: string }
+interface Line { account: number; date: string; balance: number; company: number; move?: string; partner?: string; created?: string }
 
 export function buildLedger() {
   const accs = accounts.filter((a) => a.cls !== "retained_earnings").map((a, i) => ({ id: 100 + i, code: a.code, name: a.name, cls: a.cls, type: TYPE[a.cls]! }));
@@ -48,19 +48,22 @@ function match(l: Line, dom: unknown[]): boolean {
     if (f === "parent_state") return true;
     if (f === "company_id") return op === "=" ? l.company === v : op === "child_of" ? l.company === v : false;
     if (f === "account_id" && op === "in") return (v as number[]).includes(l.account);
+    if (f === "create_date") return op === ">" && (l.created ?? "2020-01-01 00:00:00") > (v as string);
     if (f === "date") return op === "<" ? l.date < (v as string) : op === ">=" ? l.date >= (v as string) : op === "<=" ? l.date <= (v as string) : false;
     throw new Error(`unexpected domain ${f}`);
   });
 }
 
 /** offBalance: an off-balance account that holds posted lines (petty cash kept off the books, a memo account). */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean } = {}) {
+/** late: an entry dated in August, posted (created) on 18 Oct 2026 after the last import. */
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.offBalance) {
     accs.push({ id: 900, code: "999100", name: "Petty cash (off balance)", cls: "cash", type: "off_balance" });
     lines.push({ account: 900, date: `${months[2].period}-12`, balance: 4500, company: 1 }, { account: 900, date: `${months[2].period}-12`, balance: -4500, company: 1 });
     lines.push({ account: 900, date: `${months[3].period}-03`, balance: 1200, company: 1 });
   }
+  if (opts.late) lines.push({ account: accs[0].id, date: "2026-08-15", balance: 6000, company: 1, created: "2026-10-18 06:36:00" }, { account: accs[1].id, date: "2026-08-15", balance: -6000, company: 1, created: "2026-10-18 06:36:00" });
   const calls: string[] = [];
   const handler = async (_url: string | URL | Request, init?: RequestInit) => {
     const { params } = JSON.parse(String(init!.body));

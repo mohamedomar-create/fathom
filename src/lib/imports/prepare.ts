@@ -75,22 +75,26 @@ function readKind(g: Grid, kind: ExportKind, saved: SavedMapping | undefined, re
 
 /** One staged record: a valid row's data, or an unreadable row's error. */
 export interface StagedRecord { n: number; line: number | null; data?: Record<string, unknown>; error?: string }
-export interface ParsedFile { name: string; export: ExportKey; kind: ExportKind; records: StagedRecord[]; valid: number; invalid: number; skipped: number; withIds: boolean; months: string[]; value: number }
+export interface ParsedFile { name: string; export: ExportKey; kind: ExportKind; records: StagedRecord[]; valid: number; invalid: number; skipped: number; withIds: boolean; months: string[]; value: number; /** Rows dated after the cut-off, left out. */ afterCutoff?: number }
 export interface ParseResult { files: ParsedFile[]; locations: string[] }
 
 const cut = (s: string | undefined, n: number) => (s ?? "").slice(0, n);
 const lineOf = (g: Grid, row?: number) => (row === undefined ? null : row + 1 + (g.origin?.r ?? 0));
 
 /** Every row of every file, ready to stage. Valuation rows take their kind from the moves read in the same upload. */
-export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
-  const read: { f: (typeof files)[number]; g: Grid; r: Read }[] = [];
+export async function parseFiles(files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null }, progress?: (done: number, of: number) => void): Promise<ParseResult> {
+  const read: { f: (typeof files)[number]; g: Grid; r: Read; late: number }[] = [];
   for (const [i, f] of files.entries()) {
     const g = firstSheet(await readWorkbook(f.data, f.name));
-    read.push({ f, g, r: readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf, opts.timeZone ?? null) });
+    const r = readKind(g, ODOO_TEMPLATES[f.export].kind, f.mapping, opts.rentalLocation, opts.asOf, opts.timeZone ?? null);
+    // Layers and moves after the cut-off are left out; stock on hand is the count on the day it was exported.
+    const c = opts.cutoff, n = r.layers.length + r.moves.length;
+    if (c) { r.layers = r.layers.filter((l) => l.day <= c); r.moves = r.moves.filter((m) => m.day <= c); }
+    read.push({ f, g, r, late: n - r.layers.length - r.moves.length });
     progress?.(i + 1, files.length);
   }
   const allMoves = read.flatMap((x) => x.r.moves);
-  const out: ParsedFile[] = read.map(({ f, g, r }) => {
+  const out: ParsedFile[] = read.map(({ f, g, r, late }) => {
     const kind = ODOO_TEMPLATES[f.export].kind;
     const rows: { line: number | null; data?: Record<string, unknown>; error?: string }[] = [];
     if (kind === "valuation") {
@@ -114,7 +118,7 @@ export async function parseFiles(files: { name: string; data: ArrayBuffer; expor
     const months = [...new Set([...r.layers, ...r.moves].map((x) => x.period))].sort();
     return {
       name: f.name, export: f.export, kind, records: rows.map((x, k) => ({ n: k + 1, ...x })), valid: rows.length - r.issues.length, invalid: r.issues.length,
-      skipped: r.skipped, withIds: r.withIds, months, value: Math.round(r.layers.reduce((s, l) => s + l.value, 0) * 100) / 100,
+      skipped: r.skipped, withIds: r.withIds, months, value: Math.round(r.layers.reduce((s, l) => s + l.value, 0) * 100) / 100, ...(late ? { afterCutoff: late } : {}),
     };
   });
   const locations = [...new Set(allMoves.flatMap((m) => [m.from, m.to]))].filter((l) => l && (locationClass(l) !== "partner" && (locationClass(l) !== "virtual" || /rental|تأجير|إيجار|ايجار/i.test(l)))).sort();

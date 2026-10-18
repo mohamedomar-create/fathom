@@ -7,7 +7,7 @@ import type { Grid } from "@/lib/ingest/extract";
 export type WorkerRequest =
   | { id: number; type: "read"; files: { name: string; data: ArrayBuffer }[] }
   | { id: number; type: "sample"; files: { name: string; data: ArrayBuffer; export?: ExportKey | null }[]; saved: Partial<Record<ExportKey, SavedMapping>> }
-  | { id: number; type: "parse"; files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[]; opts: { rentalLocation: string | null; asOf: string } };
+  | { id: number; type: "parse"; files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[]; opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null } };
 export type WorkerResponse =
   | { id: number; type: "read"; grids: Grid[] }
   | { id: number; type: "sample"; samples: FileSample[] }
@@ -57,7 +57,7 @@ export async function sampleInWorker(files: File[], saved: Partial<Record<Export
   return (await run<Extract<WorkerResponse, { type: "sample" }>>({ type: "sample", files: data, saved })).samples;
 }
 
-export async function parseInWorker(files: { file: File; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string }, onProgress?: (done: number, of: number) => void): Promise<ParseResult> {
+export async function parseInWorker(files: { file: File; export: ExportKey; mapping?: SavedMapping }[], opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null }, onProgress?: (done: number, of: number) => void): Promise<ParseResult> {
   const data = await Promise.all(files.map(async (f) => ({ name: f.file.name, data: await f.file.arrayBuffer(), export: f.export, mapping: f.mapping })));
   return (await run<Extract<WorkerResponse, { type: "parse" }>>({ type: "parse", files: data, opts }, onProgress)).result;
 }

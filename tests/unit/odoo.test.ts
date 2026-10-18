@@ -39,6 +39,16 @@ describe("Odoo connector", () => {
     expect(res.notes.join(" ")).toMatch(/999100 Petty cash \(off balance\).*off-balance.*Map it to Cash/);
   });
 
+  it("entries posted after the last import but dated inside months already imported are counted and named", async () => {
+    const f = fakeOdoo(17, { late: true });
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09", since: { at: "2026-10-17T12:00:00.000Z", through: "2026-09-30" } });
+    expect(res.diagnostics.latePostings).toBe(2);
+    expect(res.notes.join(" ")).toMatch(/2 posted lines dated up to 30 Sep 2026 were entered in Odoo after the last import \(17 Oct 2026\)/);
+    const plain = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09" });
+    expect(plain.diagnostics.latePostings).toBeUndefined();
+  });
+
   it("falls back to search_read when read_group is unavailable (Odoo 19)", async () => {
     const f = fakeOdoo(19);
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);

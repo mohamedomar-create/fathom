@@ -31,6 +31,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
   const [screen, setScreen] = useState<"upload" | "check" | "save" | "running">("upload");
   const [mode, setMode] = useState<ImportMode | null>(null);
   const [rental, setRental] = useState<string | null>(savedRental);
+  const [cutoff, setCutoff] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
@@ -86,7 +87,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
       for (const k of changed) if (saved[k]) await saveTemplate(companyId, k, saved[k]!).catch(() => undefined);
       if (hasMoves && rental !== savedRental) await saveInventorySettings(companyId, { rentalLocation: rental }).catch(() => undefined);
       const list = ready.map((s) => ({ file: files.find((f) => f.name === s.name)!, export: s.export!, mapping: saved[s.export!] }));
-      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone }, setProgress, resume ?? undefined);
+      await startImport(companyId, mode, list, { rentalLocation: rental, asOf: today(), timeZone, ...(cutoff ? { cutoff } : {}) }, setProgress, resume ?? undefined);
       setJobsKey((k) => k + 1);
     } catch (e) {
       setErr(importError(e)); setJobsKey((k) => k + 1);
@@ -159,6 +160,13 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
               <option value="">Found by Odoo’s rental location (“Virtual Locations/Rental”)</option>
               {[...new Set([...(rental ? [rental] : []), ...locations])].map((l) => <option key={l} value={l}>{l}</option>)}
             </select>
+          </label>
+        )}
+        {stockFiles.length > 0 && (
+          <label className="mt-5 flex max-w-5xl flex-wrap items-center gap-2 text-[14px]" data-testid="stock-cutoff">
+            Cut-off date
+            <input type="date" value={cutoff} onChange={(e) => setCutoff(/^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value : "")} className="rounded border border-line px-2 py-1 text-[13px]" />
+            <span className="text-mute">Optional. Layers and moves dated after it are left out. Stock on hand is the count on the day it was exported.</span>
           </label>
         )}
         {repeated && <p className="mt-4 max-w-5xl rounded bg-red-bg px-3 py-2 text-sm text-red">Two files are the same kind of export. Import one of each at a time.</p>}

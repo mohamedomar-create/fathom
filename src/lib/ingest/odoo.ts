@@ -30,7 +30,7 @@ const PERIOD_WORDS = arRx(/(الحركة|حركة|خلال|الفترة|فترة
 const hn = (v: Cell) => normAr(str(v));
 
 interface Ctx {
-  g: { name: string }; rows: Cell[][]; num: Num; ov: SheetOverride; layout: SheetLayout; issues: ExtractIssues; today: string;
+  g: { name: string }; rows: Cell[][]; num: Num; ov: SheetOverride; layout: SheetLayout; issues: ExtractIssues; today: string; cutoff?: string;
   /** The heading row as read (two-row and combined headings resolved) and the group labels above each column. */
   head: string[]; above: string[];
   /** Last of the code and name columns: amounts are to its right. */
@@ -68,7 +68,7 @@ function headings(rows: Cell[][], r: number): { head: string[]; above: string[] 
   return { head, above };
 }
 
-export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string, attempt: () => Tr): RawLine[] | null {
+export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string, attempt: () => Tr, cutoff?: string): RawLine[] | null {
   for (let r = 0; r < Math.min(rows.length, 12); r++) {
     const { head: cells, above } = headings(rows, r);
     const cCode = cells.findIndex((x) => CODE_HDR.test(x));
@@ -77,7 +77,7 @@ export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][],
     const cName = NAME_HDR.test(cells[cCode + 1] ?? "") ? cCode + 1 : cCode > 0 && NAME_HDR.test(cells[cCode - 1] ?? "") ? cCode - 1 : -1;
     if (cName < 0) continue;
     const last = Math.max(cCode, cName);
-    const ctx: Ctx = { g, rows, num, ov, layout, issues, today, head: cells, above, last, tr: attempt() };
+    const ctx: Ctx = { g, rows, num, ov, layout, issues, today, cutoff, head: cells, above, last, tr: attempt() };
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/i.test(x));
     const debits = cells.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
     // A heading row that turns out not to be one of these layouts (e.g. the group row above Debit/Credit) lets the next row try.
@@ -106,7 +106,7 @@ function noteHeadings(layout: SheetLayout, row: Cell[], used: number[]) {
   layout.headings = row.flatMap((v, col) => { const header = str(v).trim(); return header && !months.has(col) && !headerPeriod(header) ? [{ col, header: header.slice(0, 80), used: used.includes(col) }] : []; });
 }
 
-function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
+function ledger({ g, rows, num, ov, layout, issues, today, cutoff: chosen, tr }: Ctx, r: number, cCode: number, cName: number, cDate: number, cDeb: number, cCred: number, cPartner: number, cLabel: number): RawLine[] | null {
   if (cCred < 0) return null;
   const found = detectDateOrder(rows.slice(r + 1).map((row) => row[cDate]));
   const order: DateOrder = ov.dateOrder ?? found.order ?? "dmy";
@@ -115,9 +115,11 @@ function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number,
   layout.headerRow = r;
   noteHeadings(layout, rows[r], [cCode, cName, cDate, cDeb, cCred, cPartner, cLabel].filter((c) => c >= 0));
   const title = titlePeriod(rows, r);
-  layout.asOf = partialDay(title?.endDay);
-  // Entries dated after the report's end (or after today) are left out, as Odoo's own reports for the period do; they are listed below.
-  const cutoff = title?.endDay ?? today;
+  // Entries dated after the report's end (or after today, or after the cut-off the person chose) are left out, as Odoo's own reports for the period do; they are listed below.
+  const end = title?.endDay ?? today;
+  const cutoff = chosen && chosen < end ? chosen : end;
+  const byChoice = cutoff === chosen && cutoff !== end;
+  let lastDay = "";
   const late: { acc: string; ref: string; day: string; amt: number }[] = [];
   type Acc = RawLine & { initial: boolean; moves: number };
   const accounts: Acc[] = [];
@@ -142,7 +144,8 @@ function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number,
     const p = parsePeriod(date, order);
     if (p) {
       const day = parseDay(date, order);
-      if (day && day > cutoff) { late.push({ acc: cur.label, ref: name, day, amt: dc(row) }); cur.closing = (cur.closing ?? 0) - dc(row); mark(tr, i, { role: "unused", note: `dated after ${fmtDay(cutoff)}, outside the report's period` }); continue; }
+      if (day && day > cutoff) { late.push({ acc: cur.label, ref: name, day, amt: dc(row) }); cur.closing = (cur.closing ?? 0) - dc(row); mark(tr, i, { role: "unused", note: byChoice ? `dated after the cut-off, ${fmtDay(cutoff)}` : `dated after ${fmtDay(cutoff)}, outside the report's period` }); continue; }
+      if (day && day > lastDay) lastDay = day;
       const errs = tr.errs.length;
       const amt = (amount(tr, num, rows, i, cDeb) ?? 0) - (amount(tr, num, rows, i, cCred) ?? 0);
       cur.values[p] = (cur.values[p] ?? 0) + amt; cur.moves++;
@@ -154,9 +157,11 @@ function ledger({ g, rows, num, ov, layout, issues, today, tr }: Ctx, r: number,
   }
   // An account without an "Initial Balance" row still has one when its heading balance differs from its movements (e.g. undistributed profits).
   for (const a of accounts) if (!a.initial) a.opening = (a.closing ?? 0) - Object.values(a.values).reduce((s, v) => s + v, 0);
+  // A part month is "to" its cut-off, or else to the last day anything was posted: a report run "to 17 Oct" with nothing after the 16th covers the 16th.
+  layout.asOf = partialDay(byChoice ? cutoff : partialDay(title?.endDay) && lastDay < title!.endDay! && lastDay.slice(0, 7) === title!.endDay!.slice(0, 7) ? lastDay : title?.endDay);
   if (late.length) {
     const days = [...new Set(late.map((l) => l.day))].sort();
-    (issues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} entr${late.length > 1 ? "ies are" : "y is"} dated after ${fmtDay(cutoff)}`, detail: `Left out, as Odoo's reports for the period do: ${late.slice(0, 4).map((l) => `${l.ref} on ${fmtDay(l.day)} (${l.acc}, ${Math.abs(l.amt).toLocaleString("en-GB", { maximumFractionDigits: 2 })})`).join("; ")}${late.length > 4 ? "…" : ""}. ${days[0] > today ? "They are in the future, so the date is probably a typing error: correct it in Odoo and export again." : "Export a later period to include them."}` });
+    (issues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} entr${late.length > 1 ? "ies are" : "y is"} dated after ${fmtDay(cutoff)}`, detail: `${byChoice ? "Left out by the cut-off date: " : "Left out, as Odoo's reports for the period do: "}${late.slice(0, 4).map((l) => `${l.ref} on ${fmtDay(l.day)} (${l.acc}, ${Math.abs(l.amt).toLocaleString("en-GB", { maximumFractionDigits: 2 })})`).join("; ")}${late.length > 4 ? "…" : ""}. ${byChoice ? "Move the cut-off date to include them." : days[0] > today ? "They are in the future, so the date is probably a typing error: correct it in Odoo and export again." : "Export a later period to include them."}` });
   }
   const out: RawLine[] = accounts.filter((a) => Math.abs(a.opening) > 0.004 || Object.keys(a.values).length).map((a) => { const { initial, moves, ...line } = a; void initial; void moves; return line; });
   return out.length ? out : null;

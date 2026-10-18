@@ -6,7 +6,7 @@ import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./clas
 import { CLASS_LABEL } from "./classes";
 import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type LedgerEntry, type RawLine, type SheetLayout } from "./extract";
-import { fmtDay } from "./odoo";
+import { fmtDay, partialDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normAr, normLabel } from "./parse";
 
@@ -22,6 +22,9 @@ export interface IngestOptions {
   mapping: Record<string, ClassKey | "">;
   /** "YYYY-MM-DD"; entries after it are future-dated and a month that contains it is partial (defaults to the real date). */
   today?: string;
+  /** The date the books are closed to ("2026-10-15"): rows dated after it, and months after its month, are left out, and
+   *  the last month is labelled to it. */
+  cutoff?: string;
 }
 
 export interface IngestLine {
@@ -68,6 +71,8 @@ export interface IngestResult {
   layouts: SheetLayout[];
   /** Last day the latest month covers, when it is a part month ("2026-10-10"). */
   asOf: string | null;
+  /** The last day any entry in the file is dated (up to the cut-off): the cut-off date offered by default. */
+  lastDay: string | null;
   /** Lines read from the file but not imported, by key: why (a total iReport works out itself, a parent account, a check sheet). */
   removed: Record<string, string>;
 }
@@ -91,9 +96,9 @@ function continuous(ps: string[]) {
 
 export type ExtractResult = { skippedCols: string[]; warnings: string[]; layouts?: SheetLayout[]; controls?: ControlRow[]; checks?: Check[] };
 
-export function extractAll(grids: Grid[], overrides: Overrides = {}, today?: string) {
+export function extractAll(grids: Grid[], overrides: Overrides = {}, today?: string, cutoff?: string) {
   const issues: Required<ExtractResult> = { skippedCols: [], warnings: [], layouts: [], controls: [], checks: [] };
-  const raw = grids.flatMap((g) => extractGrid(g, issues, overrides[g.name], today));
+  const raw = grids.flatMap((g) => extractGrid(g, issues, overrides[g.name], today, cutoff));
   return { raw, issues };
 }
 
@@ -122,7 +127,11 @@ function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
   return roles;
 }
 
-export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
+export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
+  const { lines: rawIn, late, lastDay } = applyCutoff(rawAll, opts.cutoff);
+  if (late.length && opts.cutoff && !(extractIssues.checks ?? []).some((c) => c.id === "future_dated")) {
+    (extractIssues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} row${late.length > 1 ? "s" : ""} after the cut-off ${fmtDay(opts.cutoff)}`, detail: `Left out: ${late.slice(0, 4).map((e) => `${e.ref || e.label} on ${fmtDay(e.day)} (${Math.abs(e.amount).toLocaleString("en-GB", { maximumFractionDigits: 2 })})`).join("; ")}${late.length > 4 ? "…" : ""}.` });
+  }
   const roles = sheetRoles(rawIn, extractIssues.layouts ?? []);
   const issues = { warnings: [...extractIssues.warnings], notes: [] as string[], flips: [] as string[], subtotals: [] as string[], skippedCols: [...extractIssues.skippedCols] };
   // Parent accounts printed with codes (1 → 11 → 1101) are headings: drop them before anything is summed.
@@ -543,7 +552,11 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
   const today = opts.today ?? isoToday();
   const layoutsAll = extractIssues.layouts ?? [];
   const lastP = periods[periods.length - 1];
-  const asOf = layoutsAll.find((l) => l.role !== "check" && l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? layoutsAll.find((l) => l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? (lastP && today.startsWith(lastP) ? today : undefined);
+  // The cut-off decides when there is one; otherwise the report's own end date, and for the month still running the last
+  // entry in the file (never the day of the upload, when the file has entries).
+  const lastInP = lastDay && lastP && lastDay.startsWith(lastP) ? lastDay : undefined;
+  const asOf = opts.cutoff && lastP && opts.cutoff.startsWith(lastP) ? partialDay(opts.cutoff)
+    : layoutsAll.find((l) => l.role !== "check" && l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? layoutsAll.find((l) => l.asOf?.startsWith(lastP ?? "-"))?.asOf ?? (lastP && today.startsWith(lastP) ? partialDay(lastInP ?? today) : undefined);
   if (asOf && lastP) fileChecks.push({ id: "partial_month", severity: "warn", period: lastP, title: `Part month: figures to ${Number(asOf.slice(8))} ${monthName(lastP).split(" ")[0]}`, detail: `The figures stop on ${fmtDay(asOf)}, so ${monthName(lastP)} covers ${Number(asOf.slice(8))} of ${daysIn(lastP)} days. Comparisons with full months will look low; they are labelled as part month.` });
 
   const months = buildMonths(result.filter((l) => !l.excluded && l.cls).map((l) => ({ id: l.key, code: l.code, name: l.name, cls: l.cls!, amounts: l.values })));
@@ -565,10 +578,39 @@ export function runIngest(rawIn: RawLine[], extractIssues: ExtractResult, opts: 
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : []), ...(openingMonth ? [openingMonth] : [])])].filter((p) => kept.includes(p)).sort(),
     },
-    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, removed,
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, lastDay, removed,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
     openingMonth,
   };
+}
+
+/**
+ * The rows a cut-off leaves out: entries dated after it (their amounts taken off their month and off the closing balance
+ * the file prints), and any month after its month. The lines read are never changed (a re-read with another cut-off
+ * starts from them again).
+ */
+function applyCutoff(raw: RawLine[], cutoff?: string): { lines: RawLine[]; late: LedgerEntry[]; lastDay: string | null } {
+  const late: LedgerEntry[] = [];
+  let lastDay: string | null = null;
+  const lines = raw.map((r) => {
+    if (!cutoff) {
+      for (const e of r.entries ?? []) if (!lastDay || e.day > lastDay) lastDay = e.day;
+      return r;
+    }
+    const month = cutoff.slice(0, 7);
+    const values = { ...r.values };
+    let closing = r.closing;
+    const entries = (r.entries ?? []).filter((e) => {
+      if (e.day <= cutoff) { if (!lastDay || e.day > lastDay) lastDay = e.day; return true; }
+      late.push(e);
+      if (e.period in values) values[e.period] -= e.amount;
+      if (closing !== undefined) closing -= e.amount;
+      return false;
+    });
+    for (const p of Object.keys(values)) if (p > month) { if (closing !== undefined && !r.entries?.length) closing -= values[p]; delete values[p]; }
+    return { ...r, values, ...(r.closing !== undefined ? { closing } : {}), ...(r.entries ? { entries } : {}) };
+  });
+  return { lines, late, lastDay };
 }
 
 function sys(key: string, name: string, cls: ClassKey, values: Record<string, number>): IngestLine {
@@ -589,7 +631,7 @@ function rawBalance(r: RawLine, periods: string[]): Record<string, number> {
 }
 
 export function ingest(grids: Grid[], opts: IngestOptions, overrides: Overrides = {}): IngestResult {
-  const { raw, issues } = extractAll(grids, overrides, opts.today);
+  const { raw, issues } = extractAll(grids, overrides, opts.today, opts.cutoff);
   return runIngest(raw, issues, opts);
 }
 

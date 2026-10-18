@@ -456,7 +456,7 @@ const NOTHING_FOUND = (name: string) =>
 
 export const isoToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 
-export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}, today = isoToday()): RawLine[] {
+export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = {}, today = isoToday(), cutoff?: string): RawLine[] {
   // The person's corrections (retyped cells, rows left out) apply to a copy; the trace and errors index the sheet as uploaded.
   const fixed = applyFixes(g.rows, ov);
   const { rows, rowNo, colNo } = trimGrid(fixed);
@@ -492,7 +492,7 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
     return done("columns", t.lines);
   }
   // Known exports first: Odoo's General Ledger, Trial Balance and statements are read by their exact layout.
-  const odoo = extractOdoo(g, rows, num, ov, layout, issues, today, attempt);
+  const odoo = extractOdoo(g, rows, num, ov, layout, issues, today, attempt, cutoff);
   if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" ? "ledger" : "trial-balance", odoo);
   layout.columns = []; layout.source = undefined; layout.asOf = undefined; layout.dates = undefined; layout.headerRow = null;
   const found = findHeader(rows);

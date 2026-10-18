@@ -55,4 +55,18 @@ describe("the background reader", () => {
     expect(m.records[0].data).toMatchObject({ odoo_key: "sml_1", kind: "supplier_return", from_loc: "WH/Stock" });
     expect(v.months).toEqual(["2026-09"]);
   });
+
+  it("with a cut-off date, stock layers and moves dated after it are left out and counted", async () => {
+    const late = [...VAL.slice(0, 3), ["svl_late", "2026-10-17 08:00:00", "2026-10-16", "[P1] Mask", 1, "WH/IN/L", 40]];
+    const moves = [...MOVES, ["sml_2", "2026-10-16", "[P1] Mask", "Partner Locations/Vendors", "WH/Stock", 1, "WH/IN/L", "done"]];
+    const r = await parseFiles([
+      { name: "v.xlsx", data: await xlsx(late), export: "stock.valuation.layer" },
+      { name: "m.xlsx", data: await xlsx(moves), export: "stock.move.line" },
+    ], { rentalLocation: null, asOf: "2026-10-18", cutoff: "2026-10-15" });
+    const [v, m] = r.files;
+    expect(v.records.map((x) => x.data?.odoo_key)).toEqual(["svl_1", "svl_2"]);
+    expect([v.afterCutoff, m.afterCutoff]).toEqual([1, 1]);
+    expect(v.value).toBe(200);
+    expect(m.records.map((x) => x.data?.odoo_key)).toEqual(["sml_1"]);
+  });
 });

@@ -59,7 +59,8 @@ describe("Odoo exports of an Egyptian company (General Ledger, Trial Balance, P&
     expect(fut.severity).toBe("warn");
     expect(fut.detail).toMatch(/31 Dec 2026/);
     expect(res.periods).not.toContain("2026-12");
-    expect(res.asOf).toBe("2026-10-10");
+    // The report runs "to 10 Oct" but nothing is posted after the 7th: the label says what the books hold.
+    expect(res.asOf).toBe("2026-10-07");
     expect(res.checks.find((c) => c.id === "partial_month")).toMatchObject({ period: "2026-10", severity: "warn" });
   });
 

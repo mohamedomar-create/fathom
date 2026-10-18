@@ -1,3 +1,4 @@
+import { fmtDay } from "@/lib/ingest/odoo";
 import { addMonths, daysIn, type ClassKey } from "@/lib/engine";
 import { isPL, toNatural } from "@/lib/company/build";
 import { classFromOdooType, ODOO15_TYPE_MAP } from "@/lib/ingest/classify";
@@ -28,6 +29,8 @@ export interface SyncOptions {
   end?: string;
   /** The company's account map ("#code" or normalised name → class): a person's choice beats Odoo's account type. */
   classes?: Record<string, ClassKey | "">;
+  /** The last import: when it ran (ISO time) and the last day it covered. Entries entered after it but dated on or before that day are counted. */
+  since?: { at: string; through: string };
 }
 
 export interface SyncedAccount {
@@ -39,7 +42,7 @@ export interface SyncResult {
   accounts: SyncedAccount[];
   periods: string[];
   notes: string[];
-  diagnostics: { version: string; major: number; accounts: number; groups: number; method: "read_group" | "search_read"; trialBalanceCheck: number; unmapped: string[]; offBalance?: string[] };
+  diagnostics: { version: string; major: number; accounts: number; groups: number; method: "read_group" | "search_read"; trialBalanceCheck: number; unmapped: string[]; offBalance?: string[]; latePostings?: number };
 }
 
 type Group = { account_id: [number, string] | false; balance: number; __range?: Record<string, { from: string; to: string }>; __domain?: unknown[]; [k: string]: unknown };
@@ -178,7 +181,14 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
   if (unmapped.length) notes.push(`${unmapped.length} account(s) with balances had no recognised type and were left out: ${unmapped.slice(0, 5).join(", ")}${unmapped.length > 5 ? "…" : ""}.`);
   // An off-balance account that holds posted entries is often a real one typed wrongly (petty cash kept "off the books").
   if (offBalance.length) notes.push(`${offBalance.join(", ")}: typed off-balance in Odoo but ${offBalance.length > 1 ? "they hold" : "it holds"} posted entries, left out like every off-balance account. This looks like a real account (e.g. petty cash). Map it to Cash in Chart of accounts if it is one.`);
-  return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance } };
+  // Back-dated postings: entered after the last import into days it had already covered, so the reports made from it missed them.
+  let latePostings: number | undefined;
+  if (opts.since) {
+    const at = new Date(opts.since.at).toISOString().slice(0, 19).replace("T", " ");
+    latePostings = await client.executeKw<number>("account.move.line", "search_count", [[...base, ["date", "<=", opts.since.through], ["create_date", ">", at]]], { context: ctx });
+    if (latePostings) notes.push(`${latePostings} posted line${latePostings > 1 ? "s" : ""} dated up to ${fmtDay(opts.since.through)} ${latePostings > 1 ? "were" : "was"} entered in Odoo after the last import (${fmtDay(at.slice(0, 10))}). They are in this sync; reports made from the last import missed them. Set a lock date in Odoo once a period is closed.`);
+  }
+  return { accounts: out, periods, notes, diagnostics: { version: v.server_version, major, accounts: accts.length, groups, method, trialBalanceCheck: Math.round(tb * 100) / 100, unmapped, offBalance, ...(latePostings !== undefined ? { latePostings } : {}) } };
 }
 
 export interface SyncedLines { sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[]; lines: number; note: string | null }

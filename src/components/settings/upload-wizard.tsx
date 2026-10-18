@@ -53,6 +53,7 @@ import { OdooImport } from "@/components/imports/odoo-import";
 import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
+import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
@@ -98,11 +99,15 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // Sales exports (invoice lines or a pivot) uploaded alongside, or instead of, the accounting files.
   const salesGrids = useMemo(() => sheetsAs("sales"), [sheetsAs]);
   const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
-  const salesRead = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
+  const salesFile = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
+  const salesCut = useMemo(() => cutRead(salesFile, opts.cutoff), [salesFile, opts.cutoff]);
+  const salesRead = salesCut.read;
   // Purchases (vendor bills, the expenses template) uploaded alongside, or instead of, the accounting files.
   const expGrids = useMemo(() => sheetsAs("bills"), [sheetsAs]);
   const [expOv, setExpOv] = useState<Record<string, ExpenseOverride>>({});
-  const expRead = useMemo(() => (expGrids ? readExpenses(expGrids, expOv) : null), [expGrids, expOv]);
+  const expFile = useMemo(() => (expGrids ? readExpenses(expGrids, expOv) : null), [expGrids, expOv]);
+  const expCut = useMemo(() => cutRead(expFile, opts.cutoff), [expFile, opts.cutoff]);
+  const expRead = expCut.read;
   // Cash books and bank statements give both: money out (expenses) and money in (sales).
   const [cashOv, setCashOv] = useState<Record<string, CashOverride>>({});
   const [bankOv, setBankOv] = useState<Record<string, BankOverride>>({});
@@ -183,11 +188,20 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [res, ingestErr, raw]: [IngestResult | null, string | null, RawLine[]] = useMemo(() => {
     if (!grids) return [null, null, []];
     try {
-      const { raw, issues } = extractAll(grids, overrides);
+      const { raw, issues } = extractAll(grids, overrides, undefined, opts.cutoff);
       return [runIngest(raw, issues, { ...opts, mapping }), null, raw];
     } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", []]; }
   }, [grids, overrides, opts, mapping]);
 
+  // The cut-off: what the person chose, or else the last day anything in the file is dated.
+  const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines)].filter((d): d is string => !!d).sort().pop());
+  const cutoffField = cutoffDay && (
+    <label className="mb-4 flex flex-wrap items-center gap-2 text-sm" data-testid="cutoff">
+      <span className="font-medium">Cut-off date</span>
+      <input type="date" value={cutoffDay} onChange={(e) => { setOpts({ ...opts, cutoff: /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value : undefined }); setPreview(null); }} className="rounded border border-line px-1.5 py-0.5" />
+      <span className="text-mute">Nothing dated after it is read. Use the date your books are closed to.</span>
+    </label>
+  );
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
   const fileChecks = useMemo(() => {
@@ -210,12 +224,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   useEffect(() => { if (done && !demo && fingerprints.length) void saveLayouts(companyId, fingerprints); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
   const issues = useMemo(() => [
     ...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : []),
+    ...([["sales", salesCut.late], ["expenses", expCut.late]] as const).filter(([, late]) => late.length && opts.cutoff).map(([k, late]) => ({ id: `cutoff:${k}`, severity: "check" as const, sheet: late[0].src?.sheet ?? "", message: cutoffMessage(late, opts.cutoff!), fix: "settings" as const })),
     ...bookIssues([...cashRead.layouts, ...bankRead.layouts]),
     ...[...cashRead.failed.map((n) => ({ n, what: "a cash book" })), ...bankRead.failed.map((n) => ({ n, what: "a bank statement" }))].map(({ n, what }) => ({ id: `role:${n}`, severity: "check" as const, sheet: n, message: `${n.split(" › ").pop()} could not be read as ${what}. Change what it is under "Your sheets".`, fix: "settings" as const })),
     ...sheetIssues(guesses, (sh) => IMPORTED.has(roleOf(sh))),
     ...(tie ? tieMessages(tie).map((m, i) => ({ id: `tie:${m.sheet}:${m.row ?? ""}:${m.col ?? ""}:${i}`, severity: m.severity, sheet: m.sheet, row: m.row, col: m.col, message: m.message, fix: (m.row !== undefined ? "cell" : "settings") as "cell" | "settings" })) : []),
     ...(demo ? [] : layoutIssues(fingerprints, savedLayouts ?? {}, layoutOk)),
-  ], [res, fileChecks, salesRead, expRead, cashRead, bankRead, guesses, roleOf, tie, demo, fingerprints, savedLayouts, layoutOk]);
+  ], [res, fileChecks, salesRead, expRead, salesCut, expCut, opts.cutoff, cashRead, bankRead, guesses, roleOf, tie, demo, fingerprints, savedLayouts, layoutOk]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
@@ -364,7 +379,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       try {
         const out = await commitImport({
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
-          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(cutoffDay ? { cutoff: cutoffDay } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
@@ -670,6 +685,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="check" />
         <WizardTitle title="Check your money in and out" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : rolesBlock ? "Check what each sheet is, then confirm." : "All good. Look, then press Next."} />
         {fileLine}
+        {cutoffField}
         {rolesPanel}
         {cashRead.layouts.length > 0 && (
           <div className="mb-4 flex max-w-5xl flex-wrap gap-x-6 gap-y-2 text-[13px]" data-testid="book-rules">
@@ -738,6 +754,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your expenses" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
+        {cutoffField}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="expenses-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -783,6 +800,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your sales" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
+        {cutoffField}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="sales-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -869,6 +887,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <Stat label="Balanced?" value={maxImb < 1 ? "Yes ✓" : "No"} sub={maxImb < 1 ? undefined : `out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} testId="balanced" />
         <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="problems" />
       </div>
+      {cutoffField}
       {box}
       {more(<>
         <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
@@ -968,6 +987,16 @@ function downloadDiagnostic(d: Diagnostic) {
 }
 
 /** Reads every cash book (or bank statement) with the person's corrections: its money out, money in, and layouts. */
+const lastDayOf = (lines?: { day: string | null }[]) => lines?.reduce<string | undefined>((m, l) => (l.day && (!m || l.day > m) ? l.day : m), undefined);
+/** A sales or expenses file with the lines after the cut-off set aside; each sheet's count and total follow. */
+function cutRead<L extends SalesLine | ExpenseLine, Y extends { sheet: string; lines: number; total: number }>(r: { lines: L[]; layouts: Y[] } | null, cutoff: string | undefined) {
+  if (!r || !cutoff) return { read: r, late: [] as L[] };
+  const { kept, late } = cutLines(r.lines, cutoff);
+  if (!late.length) return { read: r, late };
+  const layouts = r.layouts.map((y) => { const out = late.filter((l) => l.src?.sheet === y.sheet); return { ...y, lines: y.lines - out.length, total: y.total - out.reduce((a, l) => a + l.amount, 0) }; });
+  return { read: { ...r, lines: kept, layouts }, late };
+}
+
 function readBooks<O, L>(gs: Grid[] | null, ov: Record<string, O>, read: (g: Grid, o?: O) => { sales: SalesLine[]; expenses: ExpenseLine[]; layout: L } | null) {
   const out = { sales: [] as SalesLine[], expenses: [] as ExpenseLine[], layouts: [] as L[], failed: [] as string[] };
   for (const g of gs ?? []) {

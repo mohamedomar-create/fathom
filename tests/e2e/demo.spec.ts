@@ -79,6 +79,8 @@ test("an Odoo ledger, trial balance and P&L uploaded together: the ledger is imp
   await expect(reading).toContainText("Odoo General Ledger");
   await expect(page.getByTestId("check-only")).toHaveCount(2);
   await expect(page.getByTestId("date-order").first()).toContainText("month first");
+  // The cut-off is the last day anything is posted (7 Oct), never the report's end, the export day or today.
+  await expect(page.getByTestId("cutoff").locator("input")).toHaveValue("2026-10-07");
   await expect(page.getByTestId("review")).toContainText(/Trial Balance' covers several months in one total, so it was used to check the import instead of being imported: all \d+ account figures agree/);
   // Small unclassified lines are listed under "Left out", where a class can still be given.
   await page.getByTestId("reading-tab-out").click();

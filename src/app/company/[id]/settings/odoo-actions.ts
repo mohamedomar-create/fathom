@@ -97,12 +97,16 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     if (!conn.api_key_enc) throw new Error("Enter the API key again in the Odoo connection, then save it.");
     const { client } = await connect(conn.url, conn.db, conn.login, decrypt(conn.api_key_enc));
     // The company's account map: classes a person chose win over Odoo's account types.
-    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history, classes: await loadAccountMap(supabase, companyId) });
+    // The last import, so entries entered after it into days it covered (back-dated postings) are counted.
+    const { data: last } = await supabase.from("imports").select("created_at, report").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const since = last ? sinceOf(last.created_at, last.report) : undefined;
+    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history, classes: await loadAccountMap(supabase, companyId), since });
+    const late = res.diagnostics.latePostings ? [{ id: "continuity" as const, severity: "warn" as const, title: `${res.diagnostics.latePostings} posted line${res.diagnostics.latePostings > 1 ? "s" : ""} entered after the last import`, detail: res.notes[res.notes.length - 1] }] : [];
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");
     await saveCompanyData(supabase, companyId, res.accounts, {
       kind: "odoo", filename: `${conn.odoo_company_name ?? "Odoo"} (${res.diagnostics.version})`,
       // Live sync is authoritative and replaces everything; its checks are recorded and shown, never blocking.
-      report: { kind: "odoo", mode: "replace", periods: res.periods, slices: { PL: res.periods, BS: res.periods }, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics, checks: runChecks({ accounts: res.accounts }).filter((c) => c.severity !== "info").slice(0, 300) } as unknown as Json,
+      report: { kind: "odoo", mode: "replace", periods: res.periods, slices: { PL: res.periods, BS: res.periods }, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics, checks: [...late, ...runChecks({ accounts: res.accounts }).filter((c) => c.severity !== "info")].slice(0, 300) } as unknown as Json,
     }, res.notes);
     // The same posted lines feed Sales and Expenses: a sync replaces everything, so earlier ledger lines go first.
     let detail: string | null = null;
@@ -123,4 +127,13 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     await supabase.from("odoo_connections").update({ status: "error", last_error: safeError(e, "syncOdoo").slice(0, 500) }).eq("company_id", companyId);
     return fail(e);
   }
+}
+
+/** The last day an import covered: its cut-off, its part-month day, or the end of its last month. */
+function sinceOf(at: string, report: unknown): { at: string; through: string } | undefined {
+  const r = (report ?? {}) as { cutoff?: string; asOf?: string; periods?: string[] };
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  const last = [...(Array.isArray(r.periods) ? r.periods : [])].sort().pop();
+  const through = r.cutoff && day.test(r.cutoff) ? r.cutoff : r.asOf && day.test(r.asOf) ? r.asOf : last ? `${last}-${String(new Date(Date.UTC(Number(last.slice(0, 4)), Number(last.slice(5)), 0)).getUTCDate()).padStart(2, "0")}` : null;
+  return through ? { at, through } : undefined;
 }
