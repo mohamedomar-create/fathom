@@ -6,6 +6,7 @@ import { chartHints, classify, CONTRA_REVENUE, type ClassifyHints } from "./clas
 import { CLASS_LABEL } from "./classes";
 import { dropParentAccounts } from "./hierarchy";
 import { extractGrid, isoToday, type ControlRow, type Grid, type Overrides, type LedgerEntry, type RawLine, type SheetLayout } from "./extract";
+import { applyBooksStart, openingAccountPostings, openingPostingsDetail, suggestBooksStart, type BooksStart } from "./books-start";
 import { fmtDay, partialDay } from "./odoo";
 import type { Check, ControlTotal } from "@/lib/company/checks";
 import { normAr, normLabel } from "./parse";
@@ -25,6 +26,8 @@ export interface IngestOptions {
   /** The date the books are closed to ("2026-10-15"): rows dated after it, and months after its month, are left out, and
    *  the last month is labelled to it. */
   cutoff?: string;
+  /** The day the company's books start in Odoo ("2021-07-01"): everything dated before it is the opening balance. */
+  booksStart?: string;
 }
 
 export interface IngestLine {
@@ -75,6 +78,8 @@ export interface IngestResult {
   lastDay: string | null;
   /** Lines read from the file but not imported, by key: why (a total iReport works out itself, a parent account, a check sheet). */
   removed: Record<string, string>;
+  /** The books start offered from Odoo's opening entry, and the one used for this read. */
+  booksStart: BooksStart;
 }
 
 const COSTS = new Set<ClassKey>(["cos_variable", "cos_fixed", "cos_depreciation", "exp_variable", "exp_fixed", "exp_depreciation", "other_expenses", "interest_expenses", "tax_expenses", "adjustments", "dividends"]);
@@ -128,7 +133,10 @@ function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
 }
 
 export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts: IngestOptions): IngestResult {
-  const { lines: rawIn, late, lastDay } = applyCutoff(rawAll, opts.cutoff);
+  const { lines: rawCut, late, lastDay } = applyCutoff(rawAll, opts.cutoff);
+  const offered = suggestBooksStart(rawCut);
+  const { lines: rawIn, entries: beforeStart } = applyBooksStart(rawCut, opts.booksStart);
+  const booksStart: BooksStart = { ...offered, applied: opts.booksStart ?? null, entries: beforeStart };
   if (late.length && opts.cutoff && !(extractIssues.checks ?? []).some((c) => c.id === "future_dated")) {
     (extractIssues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} row${late.length > 1 ? "s" : ""} after the cut-off ${fmtDay(opts.cutoff)}`, detail: `Left out: ${late.slice(0, 4).map((e) => `${e.ref || e.label} on ${fmtDay(e.day)} (${Math.abs(e.amount).toLocaleString("en-GB", { maximumFractionDigits: 2 })})`).join("; ")}${late.length > 4 ? "…" : ""}.` });
   }
@@ -568,6 +576,13 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
   }
   const pick = (k: "revenue" | "cash" | "assets") => Object.fromEntries(months.filter((m) => periods.includes(m.period)).map((m) => [m.period, k === "revenue" ? m.pl.revenue ?? 0 : k === "cash" ? m.bs.cash ?? 0 : bsCalc(m.bs).ta]));
   const movPL = mov.some((l) => isPL(l.cls!)), movBS = mov.length > 0;
+  if (opts.booksStart) {
+    const EQUITY = new Set<ClassKey>(["other_equity", "retained_earnings"]);
+    const clsOf = new Map(lines.map((l) => [l.r.key, l.cls]));
+    const found = openingAccountPostings(rawIn.map((r) => ({ ...r, entries: rawCut.find((x) => x.key === r.key)?.entries })), opts.booksStart, (r) => EQUITY.has(clsOf.get(r.key) as ClassKey));
+    if (found) fileChecks.push({ id: "opening_account_postings", severity: "warn", title: `${found.entries.length} entr${found.entries.length > 1 ? "ies" : "y"} posted to the opening balance after the books started`, detail: openingPostingsDetail(found) });
+    if (beforeStart) issues.notes.push(`${beforeStart.toLocaleString("en-GB")} entries dated before ${fmtDay(opts.booksStart)} (Odoo's opening entry${offered.day ? ` of ${fmtDay(offered.day)}` : ""} and anything posted before it) are read as the opening balance${openingMonth ? `: the balance sheet at the end of ${monthName(openingMonth)}` : ""}. Trading starts in ${monthName(opts.booksStart.slice(0, 7))}.`);
+  }
   return {
     lines: result, periods,
     kind: mov.length && nat.length ? "mixed" : mov.length ? "movement" : "natural",
@@ -578,7 +593,7 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : []), ...(openingMonth ? [openingMonth] : [])])].filter((p) => kept.includes(p)).sort(),
     },
-    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, lastDay, removed,
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, lastDay, removed, booksStart,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
     openingMonth,
   };

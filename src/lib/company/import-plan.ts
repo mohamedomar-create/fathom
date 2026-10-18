@@ -73,9 +73,13 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(current: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null }): ImportPlan {
+export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null }): ImportPlan {
   // "add" reads the file exactly as a merge does, then leaves out the months already loaded.
   const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
+  // Before the books start there is no trading: stored P&L months before it and balance sheets before the opening month go.
+  const startPL = optsIn.booksStart ? optsIn.booksStart.slice(0, 7) : null;
+  const beforeStart = (st: Statement, p: string) => !!startPL && p < (st === "PL" ? startPL : addMonths(startPL, -1));
+  const current = startPL ? currentIn.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => !beforeStart(statementOf(a.cls), p))) })) : currentIn;
   const seeded = seedOpening(current, incomingIn, opts);
   const derived = deriveRanges(current, seeded.incoming, opts);
   const rangeChecks: Check[] = [...derived.rangeChecks, ...seeded.checks];
@@ -141,7 +145,7 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
   }
 
   // timeline and before/after for overwritten months
-  const curCov = coverageOf(current);
+  const curCov = coverageOf(currentIn);
   const all = [...curCov.range, ...inc.PL, ...inc.BS].sort();
   const timeline: TimelineCell[] = [];
   if (all.length) for (let p = all[0]; p <= all[all.length - 1]; p = addMonths(p, 1)) {
@@ -149,11 +153,11 @@ export function planImport(current: VersionAccount[], incomingIn: IncomingAccoun
     for (const st of ["PL", "BS"] as const) {
       const had = (st === "PL" ? curCov.pl : curCov.bs).has(p);
       if (inc[st].has(p)) cell[st] = had ? "overwrite" : "new";
-      else if (had) cell[st] = opts.mode === "merge" ? "keep" : "remove";
+      else if (had) cell[st] = opts.mode === "merge" && !beforeStart(st, p) ? "keep" : "remove";
     }
     timeline.push(cell);
   }
-  const before = new Map(buildMonths(current.map(asLine)).map((m) => [m.period, m]));
+  const before = new Map(buildMonths(currentIn.map(asLine)).map((m) => [m.period, m]));
   const after = new Map(buildMonths(accounts.map(asLine)).map((m) => [m.period, m]));
   const diffs: MonthDiff[] = [];
   for (const c of timeline) {

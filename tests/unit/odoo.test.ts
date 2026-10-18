@@ -49,6 +49,15 @@ describe("Odoo connector", () => {
     expect(plain.diagnostics.latePostings).toBeUndefined();
   });
 
+  it("a books start inside the months asked for: nothing before it is a month, and the books still agree", async () => {
+    const f = fakeOdoo(17);
+    const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);
+    const res = await syncOdoo(c, { companyId: 1, includeBranches: false, months: 25, end: "2026-09", booksStart: "2026-01-01" });
+    expect(res.periods[0]).toBe("2026-01");
+    expect(res.accounts.flatMap((a) => Object.keys(a.amounts)).filter((p) => p < "2025-12")).toEqual([]);
+    check(res, 9);
+  });
+
   it("falls back to search_read when read_group is unavailable (Odoo 19)", async () => {
     const f = fakeOdoo(19);
     const c = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", f.fetch);

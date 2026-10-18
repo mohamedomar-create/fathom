@@ -9,6 +9,7 @@ import { OdooClient } from "@/lib/odoo/client";
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
+import { booksStartOf } from "@/lib/company/time-zone";
 import { probe, syncLedgerLines, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
 import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger, saveLedgerLines } from "@/lib/company/ledger-lines";
@@ -101,7 +102,9 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     // The last import, so entries entered after it into days it covered (back-dated postings) are counted.
     const { data: last } = await supabase.from("imports").select("created_at, report").eq("company_id", companyId).order("created_at", { ascending: false }).limit(1).maybeSingle();
     const since = last ? sinceOf(last.created_at, last.report) : undefined;
-    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history, classes: await loadAccountMap(supabase, companyId), since });
+    // Months before the company's books start are its opening balance, never months.
+    const { data: co } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
+    const res = await syncOdoo(client, { companyId: conn.odoo_company_id, includeBranches: conn.include_branches, months: conn.months_history, classes: await loadAccountMap(supabase, companyId), since, booksStart: booksStartOf(co?.kpi_config) });
     const late = res.diagnostics.latePostings ? [{ id: "continuity" as const, severity: "warn" as const, title: `${res.diagnostics.latePostings} posted line${res.diagnostics.latePostings > 1 ? "s" : ""} entered after the last import`, detail: res.notes[res.notes.length - 1] }] : [];
     if (res.periods.length < 1 || res.accounts.length < 2) throw new Error("Odoo returned no posted entries for that company and period.");
     await saveCompanyData(supabase, companyId, res.accounts, {

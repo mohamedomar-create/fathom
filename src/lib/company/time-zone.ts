@@ -26,8 +26,14 @@ export function booksFromZeroOf(kpiConfig: unknown): boolean {
   return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;
 }
 
+/** The day the company's books start in Odoo ("2021-07-01"): everything dated before it is the opening balance. */
+export function booksStartOf(kpiConfig: unknown): string | null {
+  const v = ((kpiConfig ?? {}) as Record<string, { booksStart?: unknown } | undefined>)[PROFILE_KEY]?.booksStart;
+  return typeof v === "string" && /^\d{4}-\d{2}-01$/.test(v) ? v : null;
+}
+
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;

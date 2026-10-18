@@ -15,7 +15,7 @@ import { rememberKey } from "@/lib/ingest/pipeline";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
-import { validTimeZone, withProfile, withTimeZone } from "@/lib/company/time-zone";
+import { booksStartOf, validTimeZone, withProfile } from "@/lib/company/time-zone";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -33,7 +33,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
     supabase.from("imports").select("report").eq("company_id", d.companyId).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom });
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart });
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
 }
 
@@ -92,6 +92,14 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     const { error: eStamp } = await supabase.rpc("restamp_expense_classes", { p_company: d.companyId });
     if (eStamp) console.error("commitImport: expense classes", eStamp.message);
     await supabase.from("companies").update({ source: "upload" }).eq("id", d.companyId).neq("source", "odoo");
+    // The books start confirmed on this upload is the company's from now on (the next upload and the Odoo sync use it).
+    if (d.booksStart) {
+      const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", d.companyId).maybeSingle();
+      if (row && booksStartOf(row.kpi_config) !== d.booksStart) {
+        const { error: eStart } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { booksStart: d.booksStart }) as Json }).eq("id", d.companyId);
+        if (eStart) console.error("commitImport: books start", eStart.message);
+      }
+    }
     revalidatePath(`/company/${d.companyId}`, "layout");
     return { ok: true, version };
   } catch (e) {
@@ -153,6 +161,7 @@ const ProfileSchema = z.object({
   industry: z.string().max(120).nullable(),
   ai_context: z.object({ goals: z.string().max(2000), strategy: z.string().max(2000), market: z.string().max(2000), position: z.string().max(2000), other: z.string().max(2000) }),
   time_zone: z.string().max(64).refine(validTimeZone, "Choose a time zone from the list").nullable().optional(),
+  books_start: z.string().regex(/^\d{4}-\d{2}-01$/, "Choose the month the books start").nullable().optional(),
 });
 
 export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise<{ ok: boolean; error?: string }> {
@@ -162,11 +171,11 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   if (!user) return { ok: false, error: "Please sign in again." };
   // The time zone is kept with the company's other settings (kpi_config), never overwriting them.
   let kpi: Json | undefined;
-  if (v.data.time_zone !== undefined) {
+  if (v.data.time_zone !== undefined || v.data.books_start !== undefined) {
     const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", v.data.companyId).maybeSingle();
     if (e1) return { ok: false, error: dbError(e1, "saveProfile") };
     if (!row) return { ok: false, error: "You do not have permission to change this." };
-    kpi = withTimeZone(row.kpi_config, v.data.time_zone) as Json;
+    kpi = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}) }) as Json;
   }
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,

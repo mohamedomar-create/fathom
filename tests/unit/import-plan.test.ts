@@ -243,3 +243,16 @@ describe("continuity with the months already loaded", () => {
     expect(plan.checks.filter((c) => c.id === "continuity")).toEqual([]);
   });
 });
+
+describe("books start (the main company went live on 1 Jul 2021)", () => {
+  it("a merge drops stored months before the books start: P&L before it, balance sheets before the month before it", () => {
+    const cur = books(["2021-01", "2021-02", "2021-06", "2021-07"]);
+    const next = books(["2021-06", "2021-07", "2021-08"], "x").map((a) => inc(a.code, a.name, a.cls, Object.fromEntries(Object.entries(a.amounts).filter(([p]) => p >= (a.cls === "revenue" || a.cls === "exp_fixed" ? "2021-07" : "2021-06")))));
+    const plan = planImport(cur, next, { mode: "merge", slices: { PL: ["2021-07", "2021-08"], BS: ["2021-06", "2021-07", "2021-08"] }, booksStart: "2021-07-01" });
+    const months = new Set(plan.accounts.flatMap((a) => Object.keys(a.amounts)));
+    expect([...months].sort()).toEqual(["2021-06", "2021-07", "2021-08"]);
+    expect(plan.accounts.find((a) => a.code === "400000")!.amounts["2021-06"]).toBeUndefined();
+    expect(plan.timeline.find((t) => t.period === "2021-01")).toMatchObject({ PL: "remove", BS: "remove" });
+    expect(plan.timeline.find((t) => t.period === "2021-06")).toMatchObject({ PL: "remove" });
+  });
+});

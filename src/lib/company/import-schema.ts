@@ -33,6 +33,8 @@ export const PlanSchema = z.object({
   extra: z.array(CheckSchema).max(5000).default([]),
   ranges: z.record(Period, z.number().int().min(1).max(MAX_MONTHS)).default({}),
   openingFrom: Period.nullable().default(null),
+  // The day the company's books start in Odoo: everything before it is the opening balance (stored months before it go).
+  booksStart: z.string().regex(/^\d{4}-\d{2}-01$/).nullable().default(null),
 });
 export const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),

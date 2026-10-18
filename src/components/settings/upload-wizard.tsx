@@ -54,6 +54,8 @@ import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, 
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
 import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
+import { suggestBooksStart } from "@/lib/ingest/books-start";
+import { fmtDay } from "@/lib/ingest/odoo";
 
 type Kind = "accounts" | "sales" | "expenses" | "inventory";
 const KIND_WORD: Record<Kind, string> = { accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock" };
@@ -65,7 +67,7 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [] }: { companyId: string; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "financials" | "sales" | "expenses" | "inventory"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
   const [kind, setKind] = useState<Kind | null>(setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "financials" ? "accounts" : null);
@@ -88,6 +90,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
+  // The books start: the person's choice ("" = none), else the company's, else the day after Odoo's opening entry.
+  const [startChoice, setStartChoice] = useState<string | undefined>(undefined);
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
   const [saving, start] = useTransition();
   const [mode, setMode] = useState<ImportMode>("merge");
@@ -185,13 +189,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   }
 
   // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
-  const [res, ingestErr, raw]: [IngestResult | null, string | null, RawLine[]] = useMemo(() => {
-    if (!grids) return [null, null, []];
+  const [res, ingestErr, raw, booksStart]: [IngestResult | null, string | null, RawLine[], string | null] = useMemo(() => {
+    if (!grids) return [null, null, [], null];
     try {
       const { raw, issues } = extractAll(grids, overrides, undefined, opts.cutoff);
-      return [runIngest(raw, issues, { ...opts, mapping }), null, raw];
-    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", []]; }
-  }, [grids, overrides, opts, mapping]);
+      const start = startChoice !== undefined ? startChoice || null : savedStart ?? suggestBooksStart(raw).suggested;
+      return [runIngest(raw, issues, { ...opts, mapping, ...(start ? { booksStart: start } : {}) }), null, raw, start];
+    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", [], null]; }
+  }, [grids, overrides, opts, mapping, startChoice, savedStart]);
 
   // The cut-off: what the person chose, or else the last day anything in the file is dated.
   const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines)].filter((d): d is string => !!d).sort().pop());
@@ -200,6 +205,19 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <span className="font-medium">Cut-off date</span>
       <input type="date" value={cutoffDay} onChange={(e) => { setOpts({ ...opts, cutoff: /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value : undefined }); setPreview(null); }} className="rounded border border-line px-1.5 py-0.5" />
       <span className="text-mute">Nothing dated after it is read. Use the date your books are closed to.</span>
+    </label>
+  );
+  // Shown when the file holds Odoo's opening entry, or the company has a books start: everything before it is the opening balance.
+  const openingDay = res?.booksStart.day ?? null;
+  const startField = res && (booksStart || openingDay || savedStart) && (
+    <label className="mb-4 flex flex-wrap items-center gap-2 text-sm" data-testid="books-start">
+      <span className="font-medium">Books start</span>
+      <input type="month" value={booksStart?.slice(0, 7) ?? ""} onChange={(e) => { setStartChoice(/^\d{4}-\d{2}$/.test(e.target.value) ? `${e.target.value}-01` : ""); setPreview(null); }} className="rounded border border-line px-1.5 py-0.5" />
+      <span className="text-mute">
+        {booksStart ? `Everything dated before ${fmtDay(booksStart)} is the opening balance${res.booksStart.entries ? ` (${res.booksStart.entries.toLocaleString("en-GB")} entries)` : ""}; trading starts that month.` : "Not set: every month in the file is read as trading."}
+        {openingDay && !savedStart ? ` Odoo's opening entry is dated ${fmtDay(openingDay)}.` : ""}
+        {savedStart && booksStart !== savedStart ? ` The company's books start is ${fmtDay(savedStart)}.` : ""}
+      </span>
     </label>
   );
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
@@ -349,7 +367,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
       if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} account${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
     }
-    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom };
+    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom, booksStart };
   }
 
   async function runPreview(m: ImportMode = mode) {
@@ -390,8 +408,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         // Lines taken from an earlier ledger never outlive the months they came from: the months this import replaces
         // (all of them for "replace all") lose theirs first, even when this file (a Trial Balance, a P&L) has no lines.
         const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
-        if (mode !== "add") {
-          const cleared = await clearLedgerLines(companyId, mode === "replace" ? "all" : touchedPL);
+        // Months before the books start are not trading: the ledger lines saved for them earlier go too.
+        const preStart = booksStart && mode !== "replace" ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
+        if (mode !== "add" || preStart.length) {
+          const cleared = await clearLedgerLines(companyId, mode === "replace" ? "all" : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])]);
           if (!cleared.ok) { setErr(`The figures were saved, but older ledger lines could not be cleared: ${cleared.error}`); return; }
         }
         const loadedSales = new Set(salesLoaded);
@@ -685,7 +705,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="check" />
         <WizardTitle title="Check your money in and out" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : rolesBlock ? "Check what each sheet is, then confirm." : "All good. Look, then press Next."} />
         {fileLine}
-        {cutoffField}
+        {cutoffField}{startField}
         {rolesPanel}
         {cashRead.layouts.length > 0 && (
           <div className="mb-4 flex max-w-5xl flex-wrap gap-x-6 gap-y-2 text-[13px]" data-testid="book-rules">
@@ -754,7 +774,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your expenses" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
-        {cutoffField}
+        {cutoffField}{startField}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="expenses-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -800,7 +820,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardTitle title="Check your sales" hint={errorCount ? `${errorCount} problem${errorCount > 1 ? "s" : ""}. Fix ${errorCount > 1 ? "them" : "it"} on the right.` : "All good. Look, then press Next."} />
         {wrong}
         {fileLine}
-        {cutoffField}
+        {cutoffField}{startField}
         {rolesPanel}
         <div className="mb-4 grid max-w-3xl grid-cols-3 gap-3" data-testid="sales-preview">
           <Stat label="Months" value={String(ps.length)} sub={ps.length ? monthsText(ps) : ""} />
@@ -887,7 +907,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <Stat label="Balanced?" value={maxImb < 1 ? "Yes ✓" : "No"} sub={maxImb < 1 ? undefined : `out by ${money(maxImb, currency)}`} tone={maxImb < 1 ? "ok" : "bad"} testId="balanced" />
         <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="problems" />
       </div>
-      {cutoffField}
+      {cutoffField}{startField}
       {box}
       {more(<>
         <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />

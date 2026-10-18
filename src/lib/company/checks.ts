@@ -9,7 +9,7 @@ export type CheckSeverity = "block" | "warn" | "info";
 export const CHECK_IDS = [
   "bs_balance", "control_total", "tb_zero", "unmapped", "duplicate", "multi_month",
   "re_rollforward", "cash_flow", "gap", "statement_mismatch", "sign", "opening",
-  "account_rollforward", "cross_check", "future_dated", "partial_month", "contra_balance", "continuity", "review",
+  "account_rollforward", "cross_check", "future_dated", "partial_month", "contra_balance", "continuity", "review", "opening_account_postings",
 ] as const;
 export type CheckId = (typeof CHECK_IDS)[number];
 
@@ -20,7 +20,7 @@ const LAYER: Record<CheckId, CheckLayer> = {
   tb_zero: "file", duplicate: "file", unmapped: "file", control_total: "file", cross_check: "file", future_dated: "file", partial_month: "file", multi_month: "file",
   bs_balance: "identities", re_rollforward: "identities", cash_flow: "identities", account_rollforward: "identities", sign: "identities", contra_balance: "identities", statement_mismatch: "identities",
   gap: "continuity", opening: "continuity", continuity: "continuity",
-  review: "review",
+  review: "review", opening_account_postings: "review",
 };
 export const checkLayer = (id: CheckId): CheckLayer => LAYER[id];
 

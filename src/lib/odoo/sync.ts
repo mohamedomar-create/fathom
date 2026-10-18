@@ -31,6 +31,8 @@ export interface SyncOptions {
   classes?: Record<string, ClassKey | "">;
   /** The last import: when it ran (ISO time) and the last day it covered. Entries entered after it but dated on or before that day are counted. */
   since?: { at: string; through: string };
+  /** The day the company's books start ("2021-07-01"): months before it are never read as months, only as the opening balance. */
+  booksStart?: string | null;
 }
 
 export interface SyncedAccount {
@@ -86,8 +88,10 @@ export async function syncOdoo(client: OdooClient, opts: SyncOptions, now = new 
 
   // ---- periods
   const endP = opts.end ?? `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const startP = addMonths(endP, -(opts.months - 1));
-  const periods = Array.from({ length: opts.months }, (_, i) => addMonths(startP, i));
+  const asked = addMonths(endP, -(opts.months - 1));
+  const startP = opts.booksStart && opts.booksStart.slice(0, 7) > asked && opts.booksStart.slice(0, 7) <= endP ? opts.booksStart.slice(0, 7) : asked;
+  const periods: string[] = [];
+  for (let p = startP; p <= endP; p = addMonths(p, 1)) periods.push(p);
   const startDate = `${startP}-01`;
   const endDate = `${endP}-${String(daysIn(endP)).padStart(2, "0")}`;
   const companyLeaf = opts.includeBranches ? ["company_id", "child_of", cid] : ["company_id", "=", cid];

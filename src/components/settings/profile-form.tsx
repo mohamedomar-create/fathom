@@ -6,7 +6,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null }
+export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null }
 /** Every time zone the browser knows, the company's own first if the list lacks it. */
 const zones = (own: string | null | undefined) => {
   const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Africa/Cairo", "UTC"];
@@ -20,7 +20,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand disabled:bg-band";
   const save = () => start(async () => {
-    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}) });
+    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}), ...(v.books_start !== undefined ? { books_start: v.books_start || null } : {}) });
     setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save" });
     if (r.ok) router.refresh();
   });
@@ -47,6 +47,9 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
             {zones(v.time_zone).map((z) => <option key={z} value={z}>{z.replace(/_/g, " ")}</option>)}
           </select>
           <span className="mt-1 block text-[12.5px] text-mute">Set this only if your Odoo exports show times in UTC (a delivery done at 11 pm in Cairo shows as 9 pm). Stock records then move to the day they happened in this time zone, which must be the day their journal entry carries.</span></label>
+        <label><span className="label mb-1 block">Books start in Odoo</span>
+          <input disabled={readOnly} type="month" className={field} value={v.books_start?.slice(0, 7) ?? ""} onChange={(e) => setV({ ...v, books_start: /^\d{4}-\d{2}$/.test(e.target.value) ? `${e.target.value}-01` : null })} data-testid="books-start-profile" />
+          <span className="mt-1 block text-[12.5px] text-mute">Everything dated before it (Odoo&apos;s opening entry included) is the opening balance. Empty: every month is trading.</span></label>
         <label><span className="label mb-1 block">Industry</span><input disabled={readOnly} className={field} value={v.industry ?? ""} onChange={(e) => setV({ ...v, industry: e.target.value })} placeholder="e.g. Medical devices distribution" /></label>
       </section>
       <section>
