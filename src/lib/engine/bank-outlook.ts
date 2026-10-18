@@ -1,8 +1,8 @@
 import { BANK_LIMITS, bankAssessment, type BankAssessment, type BankInputs, type BankRatio, type LoanAccount } from "./bank";
 import { twelveMonths, type Basis } from "./basis";
-import { addMonths, mlabel, money, pct } from "./format";
+import { addMonths, daysIn, mlabel, money, pct } from "./format";
 import { REQUEST_LABEL, type Assumptions, type RequestType } from "./real-profit";
-import type { MonthData } from "./types";
+import { hasPL, type MonthData } from "./types";
 import { monthLabel } from "@/lib/i18n";
 
 type Lang = "en" | "ar";
@@ -341,8 +341,24 @@ export interface BankPack {
   memo: string;
 }
 
+/**
+ * Banking reads a calendar year, 1 Jan to 31 Dec, whatever month is selected: the latest December on or before it whose
+ * month is complete. Null when that year is not held in full (all twelve months, or one annual column); the selected
+ * period is then used.
+ */
+export function bankYearEnd(months: MonthData[], end: string, asOf?: string | null, fyStart = 1): string | null {
+  const y = Number(end.slice(0, 4));
+  const inProgress = !!asOf && asOf.slice(0, 7) === end && Number(asOf.slice(8)) < daysIn(end);
+  const dec = end.slice(5) === "12" && !inProgress ? end : `${y - 1}-12`;
+  if (!months.some((m) => m.period === dec && hasPL(m))) return null;
+  const b = twelveMonths(months, dec, fyStart);
+  return b.annualColumn || (b.covered === 12 && !b.gaps.length) ? dec : null;
+}
+
 export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
   const cur = settings.currency;
+  const yearEnd = bankYearEnd(months, end, asOf, settings.fyStartMonth);
+  if (yearEnd) { end = yearEnd; asOf = null; }
   const basis = twelveMonths(months, end, settings.fyStartMonth, asOf);
   const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang, taxRate: settings.taxRate };
   const assessment = bankAssessment(basis, inputs, cur);

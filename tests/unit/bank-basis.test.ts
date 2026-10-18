@@ -70,3 +70,38 @@ describe("no raw decimals in text (register D26)", () => {
     expect(texts.filter((t) => /\d\.\d{4,}/.test(t))).toEqual([]);
   });
 });
+
+describe("Banking always reads a calendar year, 1 Jan to 31 Dec (owner's rule)", () => {
+  const settings = { currency: "EGP", fyStartMonth: 1, taxRate: 0.225 };
+  it("books to 15 Oct 2026: the basis is Jan – Dec 2025, as recorded", async () => {
+    const { bankPack } = await import("@/lib/engine");
+    const p = bankPack(ms, "2026-10", settings, {}, "Co", undefined, "en", "2026-10-15");
+    expect(p.basis).toMatchObject({ start: "2025-01", end: "2025-12", covered: 12, factor: 1, label: "12 months to Dec 2025" });
+    expect(Math.round(p.basis.P.revenue)).toBe(1_200_000);
+    expect(p.trend.years.at(-1)!.end).toBe("2025-12");
+  });
+
+  it("December itself selected and complete: that year", async () => {
+    const { bankPack } = await import("@/lib/engine");
+    expect(bankPack(ms, "2025-12", settings, {}, "Co").basis.end).toBe("2025-12");
+  });
+
+  it("December in progress counts as not yet complete: the year before", async () => {
+    const { bankYearEnd } = await import("@/lib/engine");
+    const long = Array.from({ length: 36 }, (_, i) => month(addMonths("2023-01", i)));
+    expect(bankYearEnd(long, "2025-12", "2025-12-15")).toBe("2024-12");
+    expect(bankYearEnd(long, "2025-12")).toBe("2025-12");
+  });
+
+  it("books start inside the year (Aug 2025): no complete calendar year, so the selected period is used", async () => {
+    const { bankPack } = await import("@/lib/engine");
+    const late = ms.filter((m) => m.period >= "2025-08");
+    expect(bankPack(late, "2026-09", settings, {}, "Co").basis.end).toBe("2026-09");
+  });
+
+  it("no December held before the selected month: the selected period is used, as before", async () => {
+    const { bankPack } = await import("@/lib/engine");
+    const short = ms.filter((m) => m.period >= "2026-02");
+    expect(bankPack(short, "2026-10", settings, {}, "Co", undefined, "en", "2026-10-15").basis.end).toBe("2026-10");
+  });
+});
