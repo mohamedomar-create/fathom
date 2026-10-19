@@ -2,7 +2,7 @@
 // payment with its journal, partner, amount signed in the company's currency (positive received, negative paid) and state.
 // Posted payments are read; drafts and cancelled ones are left out and named; every row is accounted for.
 import { arRx, cleanNum, detectDateOrder, normAr, parseStampDay, type Cell } from "./parse";
-import type { Grid } from "./extract";
+import type { Grid, LedgerEntry } from "./extract";
 
 export type PaymentState = "paid" | "in_process";
 export interface PaymentLine {
@@ -11,7 +11,10 @@ export interface PaymentLine {
   /** In the company's currency, signed: positive received, negative paid. */
   amount: number;
   currency: string; amountCurrency: number; state: PaymentState; row: number;
+  /** From the General Ledger: what the other side of the journal entry was, and its class (key). */
+  kind?: PaymentKind; counter?: string;
 }
+export type PaymentKind = "customers" | "suppliers" | "transfer" | "other";
 export interface PaymentFinding { id: "left_out" | "in_process" | "no_partner"; message: string }
 export interface PaymentsRead {
   lines: PaymentLine[];
@@ -146,4 +149,59 @@ export function readPayments(g: Grid, opts: { currency?: string } = {}): Payment
   const anon = lines.filter((l) => !l.partner);
   if (anon.length) findings.push({ id: "no_partner", message: `${anon.length} payment${anon.length > 1 ? "s have" : " has"} no customer or vendor (${fmt(anon.reduce((s, l) => s + l.amount, 0))}).` });
   return { lines, skipped, errors, findings };
+}
+
+/**
+ * Payments in and out from the General Ledger: every entry on a bank or cash account, named by the other side of its own
+ * journal entry (same reference, same day). Receivables (cheques cleared from Notes Receivable included) are customers,
+ * payables are suppliers, only cash accounts is a transfer between own accounts, anything else is named by its class.
+ * moves (account → month → movement), when given, must equal what the lines add up to: every bank entry counted.
+ */
+export function paymentsFromLedger(
+  lines: { code: string; name: string; cls: string | null; excluded: boolean; system?: boolean; entries?: LedgerEntry[] }[],
+  moves?: Record<string, Record<string, number>>,
+): { lines: PaymentLine[]; errors: string[] } {
+  const used = lines.filter((l) => !l.excluded && !l.system && l.entries?.length);
+  const others = new Map<string, { cls: string; amount: number }[]>();
+  for (const l of used) if (l.cls !== "cash") for (const e of l.entries!) {
+    const k = `${e.ref}|${e.day}`;
+    (others.get(k) ?? others.set(k, []).get(k)!).push({ cls: l.cls ?? "", amount: e.amount });
+  }
+  const out: PaymentLine[] = [];
+  const sums = new Map<string, Record<string, number>>();
+  for (const l of used.filter((x) => x.cls === "cash")) {
+    const account = [l.code, l.name].filter(Boolean).join(" ");
+    for (const e of l.entries!) {
+      if (!e.amount) continue;
+      const side = others.get(`${e.ref}|${e.day}`) ?? [];
+      const by = new Map<string, number>();
+      for (const o of side) by.set(o.cls, (by.get(o.cls) ?? 0) + Math.abs(o.amount));
+      const top = [...by].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const kind: PaymentKind = !top ? "transfer" : top === "ar" ? "customers" : top === "ap" ? "suppliers" : "other";
+      const amount = r2(e.amount);
+      out.push({ day: e.day, period: e.period, number: e.ref, journal: account, method: "", partner: e.partner, direction: amount < 0 ? "out" : "in",
+        amount, currency: "", amountCurrency: amount, state: "paid", row: 0, kind, counter: top ?? "" });
+      const m = sums.get(account) ?? sums.set(account, {}).get(account)!;
+      m[e.period] = r2((m[e.period] ?? 0) + amount);
+    }
+  }
+  const errors: string[] = [];
+  if (moves) for (const [account, ms] of Object.entries(moves)) for (const [p, want] of Object.entries(ms)) {
+    const got = sums.get(account)?.[p] ?? 0;
+    if (Math.abs(got - want) > 0.005) errors.push(`${account}, ${p}: its entries add up to ${fmt(got)}, the account moved ${fmt(want)}.`);
+  }
+  return { lines: out, errors };
+}
+
+/** Each bank and cash account's movement per month, from its month-end balances (the first month is its opening). */
+export function ledgerCashMoves(lines: { code: string; name: string; cls: string | null; excluded: boolean; system?: boolean; values?: Record<string, number> }[]): Record<string, Record<string, number>> {
+  const out: Record<string, Record<string, number>> = {};
+  for (const l of lines) {
+    if (l.cls !== "cash" || l.excluded || l.system || !l.values) continue;
+    const ps = Object.keys(l.values).sort();
+    const m: Record<string, number> = {};
+    for (let i = 1; i < ps.length; i++) m[ps[i]] = r2(l.values[ps[i]] - l.values[ps[i - 1]]);
+    if (ps.length > 1) out[[l.code, l.name].filter(Boolean).join(" ")] = m;
+  }
+  return out;
 }
