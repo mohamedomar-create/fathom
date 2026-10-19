@@ -2,7 +2,8 @@
 import { parseFiles, sampleFile } from "./prepare";
 import { readWorkbooks } from "@/lib/ingest/read";
 import { planPaymentsUpload } from "@/lib/ingest/payments-upload";
-import { handleSheets, keepSheets, type WorkerRequest, type WorkerResponse } from "./worker-client";
+import { handleSheets, keepSheets } from "./sheets-store";
+import type { WorkerRequest, WorkerResponse } from "./worker-protocol";
 
 /** Reads uploads off the page's main thread, so the page never freezes on a large export. */
 const post = (m: WorkerResponse, transfer: Transferable[] = []) => (self as unknown as DedicatedWorkerGlobalScope).postMessage(m, transfer);
