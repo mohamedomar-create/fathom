@@ -160,7 +160,7 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
               <FixLine item={next} basePath={c.basePath} />
             </div>
           )}
-          <Link href={`${c.basePath}/settings/data-setup`} className="text-sm text-brand-d underline" data-testid="readiness-setup-link">See every step</Link>
+          <Link href={`${c.basePath}/data`} className="text-sm text-brand-d underline" data-testid="readiness-setup-link">See every step</Link>
         </div>
       )}
     </div>

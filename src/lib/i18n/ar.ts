@@ -20,6 +20,7 @@ export const ar: Dict = {
     allCompanies: "كل الشركات ←",
     demoCompany: "شركة تجريبية",
     reports: "التقارير",
+    data: "البيانات",
     settings: "الإعدادات",
     sections: "الأقسام",
     reportsTip: "إنشاء تقرير / تنزيل PDF",

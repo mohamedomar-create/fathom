@@ -111,8 +111,56 @@ test("a General Ledger upload fills Payments in and out from its bank and cash e
   await expect(page.getByTestId("flows-kinds")).toContainText("Suppliers");
   await expect(page.getByTestId("flows-journals")).toContainText("121221 CIB Bank EGP");
   // Data health lists them as the General Ledger's.
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   await expect(page.getByTestId("line-uploads")).toContainText("Payments (General Ledger)");
+});
+
+/** The Data section: one sequence. The General Ledger is the record; the Trial Balance only checks it and changes nothing. */
+test("the Data steps: General Ledger, then a Trial Balance check that agrees and leaves the books unchanged; old Settings links redirect", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Steps Owner", org: "Steps Advisory", email: newEmail("steps") });
+  const id = await createCompany(page, "Steps Co");
+  // A new company lands on the steps: the ledger to do, everything after it locked.
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("step-ledger")).toHaveAttribute("data-status", "todo");
+  await expect(page.getByTestId("step-tb")).toHaveAttribute("data-status", "locked");
+  await importFiles(page, id, ["egypt-odoo-general-ledger.xlsx"]);
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("step-ledger")).not.toHaveAttribute("data-status", "todo");
+  await expect(page.getByTestId("step-tb")).toHaveAttribute("data-status", "todo");
+  const before = await page.goto(`/company/${id}/analysis/financials`).then(() => page.getByTestId("period-picker").innerText());
+  // The Trial Balance step opens the uploader set to it: read as a check, nothing saved as figures.
+  await page.goto(`/company/${id}/data`);
+  await page.getByTestId("step-tb-go").click();
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/data/upload\\?step=tb`));
+  await expect(page.getByTestId("wiz-get")).toContainText("Trial Balance");
+  await page.getByTestId("wiz-next").click();
+  await page.getByTestId("file-input").setInputFiles(fixture("egypt-odoo-trial-balance.xlsx"));
+  await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByTestId("tb-agrees")).toBeVisible();
+  await page.getByTestId("keep-tb-check").click();
+  await expect(page.getByTestId("done-step")).toContainText("Nothing in the books was changed");
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("step-tb")).toHaveAttribute("data-status", "verified");
+  await expect(page.getByTestId("step-review")).not.toHaveAttribute("data-status", "locked");
+  // The books are as the ledger made them: same months, one import only.
+  await page.goto(`/company/${id}/analysis/financials`);
+  await expect(page.getByTestId("period-picker")).toHaveText(before);
+  await page.goto(`/company/${id}/data/checks`);
+  await expect(page.getByTestId("history").locator("tbody tr")).toHaveCount(1);
+  // The same Trial Balance dropped on the general uploader is also read as a check, never as a second copy.
+  await startUpload(page, id);
+  await page.getByTestId("file-input").setInputFiles(fixture("egypt-odoo-trial-balance.xlsx"));
+  await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
+  // The old Settings pages lead to the Data section.
+  await page.goto(`/company/${id}/settings/data-setup`);
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/data$`));
+  await page.goto(`/company/${id}/settings/source-data?step=sales`);
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/data/upload\\?step=sales`));
+  await page.goto(`/company/${id}/settings/source-data?tab=odoo`);
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/data/odoo`));
+  await page.goto(`/company/${id}/settings/data-health`);
+  await expect(page).toHaveURL(new RegExp(`/company/${id}/data/checks`));
 });
 
 /** Lines from a ledger follow the accounts: replacing everything with a P&L and balance sheet clears them, and Sales falls back to revenue by account. */
@@ -130,6 +178,10 @@ test("replacing a ledger with a P&L and balance sheet clears its sales and expen
 
   await startUpload(page, id);
   await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
+  // The books come from the ledger, so a P&L and balance sheet is read as a check first; replacing is asked for on purpose.
+  await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
+  await page.getByTestId("use-as-figures-box").locator("summary").click();
+  await page.getByTestId("use-as-figures").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("continue-timeline").click();
   await expect(page.getByTestId("timeline-step")).toBeVisible();
@@ -145,7 +197,7 @@ test("replacing a ledger with a P&L and balance sheet clears its sales and expen
   await page.goto(`/company/${id}/expenses`);
   await expect(page.getByTestId("expenses-headline")).toBeVisible();
   await expect(page.getByTestId("no-expense-lines")).toBeVisible();
-  await page.goto(`/company/${id}/settings/data-setup`);
+  await page.goto(`/company/${id}/data`);
   await expect(page.getByTestId("map-accounts-sales")).toHaveAttribute("data-on", "1");
   await expect(page.getByTestId("map-row-ledger")).toHaveCount(0);
 });
@@ -227,7 +279,7 @@ test("an Odoo vendor bills export becomes expenses by supplier", async ({ page }
 
   // The upload is listed in Data health and can be taken out again.
   page.on("dialog", (d) => d.accept());
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   await expect(page.getByTestId("line-upload")).toHaveCount(1);
   await page.getByTestId("remove-line-upload").click();
   await expect(page.getByTestId("line-upload")).toHaveCount(0, { timeout: 15_000 });
@@ -333,7 +385,7 @@ test("filled templates import exactly, and mistakes are listed before anything i
   await expect(page.getByTestId("import-readiness")).toBeVisible();
   await expect(page.getByTestId("ready-item-financials-opening")).toHaveAttribute("data-status", "done");
   // The correction is kept with the import.
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   const fixes = page.getByTestId("history-fixes").first();
   await fixes.locator("summary").click();
   await expect(fixes).toContainText("P&L, row 11, column E set to 5,000 (was 'five thousand')");
@@ -358,7 +410,7 @@ test("filled templates import exactly, and mistakes are listed before anything i
   await page.getByTestId("sales-next").click();
   await page.getByTestId("save-sales").click();
   await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
-  await page.goto(`/company/${id}/settings/data-setup`);
+  await page.goto(`/company/${id}/data`);
   await expect(page.getByTestId("ready-item-sales-reconciled")).toHaveAttribute("data-status", "done");
 });
 
@@ -413,7 +465,7 @@ test("a company's export layout is remembered; changed columns stop the upload u
   await page.getByTestId("layout-confirm").click();
   await expect(page.getByTestId("sales-next")).toBeEnabled();
   // Data health lists the remembered layout and the columns it reads (the confirmed change is saved only with the upload).
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   await expect(page.getByTestId("export-layout").first()).toContainText("Sales list");
   await expect(page.getByTestId("export-layout").first()).toContainText("Read: Invoice Date, Number, Partner");
   await expect(page.getByTestId("export-layout").first()).not.toContainText("ignored");
@@ -643,10 +695,10 @@ test("Odoo's ageing reports and payments list become the Payments pages; the sam
   await expect(page.getByTestId("tile-owed")).toContainText("1,490");
   await expect(page.getByTestId("tile-received")).toContainText("3,790");
   // Data setup: loaded (with no accounts yet there is nothing to check it against).
-  await page.goto(`/company/${id}/settings/data-setup`);
-  await expect(page.getByTestId("step-payments")).toHaveAttribute("data-status", "done");
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("step-ageing")).toHaveAttribute("data-status", "done");
   // Data health lists the payments upload and both ageing reports, once each; removing the payments takes them out.
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   const rows = page.getByTestId("line-upload");
   await expect(rows).toHaveCount(3);
   await expect(page.getByTestId("line-uploads")).toContainText("Aged Receivable as of 2026-09-30");
@@ -659,7 +711,7 @@ test("Odoo's ageing reports and payments list become the Payments pages; the sam
   await expect(page.getByTestId("tile-received")).toContainText("not loaded");
   await page.goto(`/company/${id}/payments/flows`);
   await expect(page.getByTestId("no-payments-list")).toBeVisible();
-  await expect(page.getByTestId("upload-payments-list")).toHaveAttribute("href", `/company/${id}/settings/source-data?step=payments`);
+  await expect(page.getByTestId("upload-payments-list")).toHaveAttribute("href", `/company/${id}/data/upload?step=payments`);
   // A file that is neither an ageing report nor a payments list is named with why, and saving needs a tick.
   await startUpload(page, id, "payments");
   await page.getByTestId("file-input").setInputFiles([fixture("odoo-aged-payable.xlsx"), fixture("odoo-vendor-bills.xlsx")]);

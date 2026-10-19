@@ -14,7 +14,7 @@ export function IconRail() {
   const pathname = usePathname();
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
-  if (pathname.includes("/settings") || pathname.includes("/reports")) return null;
+  if (pathname.includes("/settings") || pathname.includes("/reports") || /\/data(\/|$)/.test(pathname)) return null;
   const sector = sectorOf(pathname.slice(c.basePath.length));
   const items = sector.items;
   return (

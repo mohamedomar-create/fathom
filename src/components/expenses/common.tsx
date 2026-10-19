@@ -58,7 +58,7 @@ export function NoExpenses() {
       <Receipt className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
       <h2 className="text-2xl font-light">{t.noExpenses}</h2>
       <p className="mt-2 text-mute">{t.noExpensesText}</p>
-      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data?step=financials`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.uploadGl}</Link>}
+      {!c.readOnly && <Link href={`${c.basePath}/data/upload?step=financials`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.uploadGl}</Link>}
     </div>
   );
 }
@@ -70,7 +70,7 @@ export function NoLines({ compact }: { compact?: boolean }) {
   return (
     <div className={cn("flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-brand/50 bg-brand-bg/10 px-4 py-3 text-[14px]", compact ? "" : "my-6")} data-testid="no-expense-lines">
       <span>{t.noLines}</span>
-      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data?step=expenses`} className="inline-flex items-center gap-1.5 rounded bg-brand-d px-3 py-1.5 text-sm text-white"><Upload className="h-3.5 w-3.5" />{t.upload}</Link>}
+      {!c.readOnly && <Link href={`${c.basePath}/data/upload?step=expenses`} className="inline-flex items-center gap-1.5 rounded bg-brand-d px-3 py-1.5 text-sm text-white"><Upload className="h-3.5 w-3.5" />{t.upload}</Link>}
     </div>
   );
 }

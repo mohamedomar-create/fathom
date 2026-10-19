@@ -1,4 +1,5 @@
 import { isPL } from "./build";
+import { addMonths } from "@/lib/engine";
 import type { ClassKey } from "@/lib/engine";
 
 // Two companies of the same books (one synced from Odoo, one from uploads) side by side: each class's total in every
@@ -38,9 +39,11 @@ type Acct = { code: string; name: string; cls: string; amounts: Record<string, n
  * A Trial Balance checked against the books, account by account, in every month the file covers (natural signs on both
  * sides). Accounts are matched by code, or by name when they have none; an account on one side only counts as zero on
  * the other. A month is compared only for the statement the file has for it: a Trial Balance's opening column carries
- * balances, no profit and loss. Nothing is saved: the books stay as the General Ledger made them.
+ * balances, no profit and loss. A P&L column covering several months (Odoo's year-to-date Trial Balance: `ranges` gives
+ * the months it covers, ending at its period) is compared with the books' months added up. Nothing is saved: the books
+ * stay as the General Ledger made them.
  */
-export function compareTrialBalance(file: Acct[], books: Acct[]): { months: string[]; diffs: TbDiff[] } {
+export function compareTrialBalance(file: Acct[], books: Acct[], ranges: Record<string, number> = {}): { months: string[]; diffs: TbDiff[] } {
   // Odoo shows profit to date as an "undistributed profits" account, the books compute it: equity is compared in total.
   const EQUITY = "Equity: retained earnings and other equity (in total)";
   const isEquity = (a: Acct) => a.cls === "retained_earnings" || a.cls === "other_equity";
@@ -65,7 +68,8 @@ export function compareTrialBalance(file: Acct[], books: Acct[]): { months: stri
   const diffs: TbDiff[] = [];
   for (const p of months) for (const k of new Set([...f.keys(), ...b.keys()])) {
     if (!has.has(`${p}|${stmt(clsOf.get(k) ?? "")}`)) continue;
-    const x = r2(b.get(k)?.amounts[p] ?? 0), y = r2(f.get(k)?.amounts[p] ?? 0);
+    const span = stmt(clsOf.get(k) ?? "") === "PL" ? Math.max(1, ranges[p] ?? 1) : 1;
+    const x = r2(Array.from({ length: span }, (_, i) => b.get(k)?.amounts[addMonths(p, -i)] ?? 0).reduce((t, v) => t + v, 0)), y = r2(f.get(k)?.amounts[p] ?? 0);
     if (Math.abs(x - y) > 1) diffs.push({ period: p, account: (b.get(k) ?? f.get(k))!.label, books: x, file: y, diff: r2(x - y) });
   }
   return { months, diffs: diffs.sort((u, v) => u.period.localeCompare(v.period) || u.account.localeCompare(v.account)) };

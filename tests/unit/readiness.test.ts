@@ -46,7 +46,7 @@ describe("data readiness", () => {
   it("no opening balances: balances are treated as zero, said plainly, with the opening balances upload offered", () => {
     const o = financialsReadiness(company(ps("2026-01", 12))).items.find((i) => i.id === "opening")!;
     expect(o.detail).toBe("None loaded: balances start from zero at Jan 2026. Upload opening balances if the company had balances before.");
-    expect(o.fix).toMatchObject({ what: "Upload opening balances (the balance sheet at 31 Dec 2025)", template: "opening", href: "settings/source-data?tab=upload&step=opening" });
+    expect(o.fix).toMatchObject({ what: "Upload opening balances (the balance sheet at 31 Dec 2025)", template: "opening", href: "data/upload?step=opening" });
   });
 
   it("names what is missing: months, the opening balance and a gap, each with what to upload", () => {

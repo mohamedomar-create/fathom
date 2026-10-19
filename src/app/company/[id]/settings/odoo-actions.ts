@@ -118,7 +118,7 @@ export async function stopOdooSync(companyId: string): Promise<Result<true>> {
     const { supabase } = await guard(companyId, "editor");
     await supabase.from("odoo_connections").update({ status: "error", sync_started_at: null, last_error: "Sync stopped." }).eq("company_id", companyId);
     await audit(supabase, companyId, "sync", false, "sync stopped by hand");
-    revalidatePath(`/company/${companyId}/settings/source-data`);
+    revalidatePath(`/company/${companyId}/data/odoo`);
     return { ok: true, data: true };
   } catch (e) { return fail(e); }
 }
@@ -185,7 +185,7 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
     });
     if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
     if (verdict.warnings.length) await audit(supabase, v.companyId, "test", true, `saved with warnings: ${verdict.warnings.join(" ")} ${verdict.note}`);
-    revalidatePath(`/company/${v.companyId}/settings/source-data`);
+    revalidatePath(`/company/${v.companyId}/data/odoo`);
     return { ok: true, data: true };
   } catch (e) { return fail(e); }
 }
@@ -197,7 +197,7 @@ export async function disconnectOdoo(companyId: string): Promise<Result<true>> {
     const { supabase } = await guard(companyId, "admin");
     const { error } = await supabase.from("odoo_connections").delete().eq("company_id", companyId);
     if (error) throw new DbError(error);
-    revalidatePath(`/company/${companyId}/settings/source-data`);
+    revalidatePath(`/company/${companyId}/data/odoo`);
     return { ok: true, data: true };
   } catch (e) { return fail(e); }
 }

@@ -39,6 +39,7 @@ import { guessRoles, IMPORTED, needsConfirm, type RoleGuess, type SheetRole } fr
 import { cashAccounts, cashCostColumns, ownerNetFormula, readCashBook, type CashLayout, type CashOverride } from "@/lib/ingest/cashbook";
 import { tieMessages, workbookTie } from "@/lib/ingest/workbook";
 import { WorkbookTieout } from "@/components/upload/workbook-tieout";
+import { TbVerify } from "@/components/data/tb-verify";
 import { CashPL } from "@/components/upload/cash-pl";
 import { readBankStatement, type BankLayout, type BankOverride } from "@/lib/ingest/bank";
 import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
@@ -70,15 +71,18 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null }: { companyId: string; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false }: { companyId: string; ledgerLoaded?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" ? "accounts" : null);
+  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" || setupStep === "tb" ? "accounts" : null);
   const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<SaveMode | null>(null);
   const [expMode, setExpMode] = useState<SaveMode | null>(null);
   const [done, setDone] = useState<{ what: string } | null>(null);
+  const [checked, setChecked] = useState(false);
+  // The person chose, on purpose, to save a summary report as figures although the books come from a ledger.
+  const [asFigures, setAsFigures] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
   const [allGrids, setAllGrids] = useState<Grid[] | null>(null);
@@ -250,6 +254,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <button onClick={() => reset("opening")} className="rounded bg-ink px-3 py-1 text-sm text-white" data-testid="upload-opening">Upload opening balances</button>
     </p>
   );
+  // The books come from a General Ledger and this file isn't one: a Trial Balance or statement is read as a check only.
+  const ledgerFile = !!res?.layouts.some((l) => l.kind === "ledger");
+  const verifyOnly = kind === "accounts" && !!res && !ledgerFile && !asFigures && (setupStep === "tb" || ledgerLoaded);
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
   const fileChecks = useMemo(() => {
@@ -427,7 +434,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       try {
         const out = await commitImport({
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
-          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(cutoffDay ? { cutoff: cutoffDay } : {}), ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
+          report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(cutoffDay ? { cutoff: cutoffDay } : {}), source: ledgerFile ? "ledger" as const : "summary" as const, ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
@@ -536,11 +543,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       ? ["Open Odoo: Invoicing → Reporting → Invoice Analysis.", "Switch to the list view.", "Tick the top box, then “Select all N records” (not just this page). Click Export."]
       : kind === "expenses"
         ? ["Open Odoo: Accounting → Reporting → Invoice Analysis.", "Filter: Vendor Bills. Switch to the list view.", "Select all lines. Click Export."]
-        : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: start of the year to today.", "Tick “Initial balance”. Click Export → Excel."];
+        : setupStep === "tb"
+          ? ["Open Odoo: Accounting → Reporting → Trial Balance.", "Pick the same dates as your General Ledger.", "Add a column per month if you can (Comparison). Click Export → Excel."]
+          : ["Open Odoo: Accounting → Reporting → General Ledger.", "Pick dates: from your books start to today.", "Tick “Initial balance”. Click Export → Excel."];
     return (
       <div data-testid="wiz-get">
         <WizardSteps at="get" />
-        <WizardTitle title={kind === "opening" ? "Get your opening balances" : kind === "payments" ? "Get your receivables and payments" : kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : "Use Odoo, or our template."} />
+        <WizardTitle title={kind === "opening" ? "Get your opening balances" : kind === "payments" ? "Get your receivables and payments" : kind === "inventory" ? "Get your stock files" : kind === "sales" ? "Get your sales file" : kind === "expenses" ? "Get your expenses file" : setupStep === "tb" ? "Get your Trial Balance" : "Get your accounts file"} hint={kind === "inventory" ? "From Odoo Inventory." : setupStep === "tb" ? "Read as a check against your books. Nothing in it is saved as figures." : "Use Odoo, or our template."} />
         {kind === "expenses" && (
           <p className="mb-4 flex max-w-4xl flex-wrap items-center gap-3 rounded-lg bg-green-bg px-4 py-3 text-[15px] text-green-d" data-testid="expenses-in-ledger">
             Your General Ledger already has your expenses.
@@ -610,18 +619,20 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="done" />
         <div className="mb-6 flex items-center gap-4 rounded-xl bg-green-bg p-6 text-green-d">
           <CheckCircle2 className="h-12 w-12 shrink-0" />
-          <div><div className="text-2xl font-medium">Saved!</div><div className="text-[15px]">{done.what.replace(/\.$/, "")}.</div></div>
+          <div><div className="text-2xl font-medium">{checked ? "Checked" : "Saved!"}</div><div className="text-[15px]">{done.what.replace(/\.$/, "")}.</div></div>
         </div>
-        {kind === "accounts" && <ImportReadiness />}
+        {kind === "accounts" && !checked && <ImportReadiness />}
         <div className="flex flex-wrap gap-3">
-          {kind === "inventory"
+          {checked
+            ? <a href={`${company.basePath}/data`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">Back to the data steps</a>
+            : kind === "inventory"
             ? <a href={`${company.basePath}/inventory`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my stock</a>
             : kind === "sales"
             ? <a href={`${company.basePath}/sales`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my sales</a>
             : kind === "expenses"
               ? <a href={`${company.basePath}/expenses`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my expenses</a>
               : <a href={`${company.basePath}/summary`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my reports</a>}
-          <button onClick={() => reset(kind === "accounts" ? "sales" : "accounts")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "accounts" ? "Upload sales next" : kind === "opening" ? "Upload your General Ledger next" : "Upload accounts next"}</button>
+          {!checked && <button onClick={() => reset(kind === "accounts" ? "sales" : "accounts")} className="rounded-md border border-brand-d px-6 py-3 font-medium text-brand-d" data-testid="done-next">{kind === "accounts" ? "Upload sales next" : kind === "opening" ? "Upload your General Ledger next" : "Upload accounts next"}</button>}
         </div>
       </div>
     );
@@ -901,6 +912,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardNav onBack={() => setScreen("upload")} />
       </div>
     );
+  }
+
+  // A Trial Balance, P&L or balance sheet when the books already come from a General Ledger: a check, never a second
+  // copy of the figures (the ledger is the book of record).
+  if (verifyOnly) {
+    return <TbVerify companyId={companyId} fileName={files.map((f) => f.name).join(" + ") || "file"} file={toAccountInputs(res)} ranges={res.ranges} books={company.accounts} currency={currency} demo={demo}
+      onBack={() => setScreen("upload")} onDone={(what) => { setChecked(true); setDone({ what }); setScreen("done"); router.refresh(); }} onUseAsFigures={() => setAsFigures(true)} />;
   }
 
   // 5 · Save (accounts)

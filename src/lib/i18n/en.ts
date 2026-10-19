@@ -22,6 +22,7 @@ export const en = {
     allCompanies: "All companies →",
     demoCompany: "Demo company",
     reports: "Reports",
+    data: "Data",
     settings: "Settings",
     sections: "Sections",
     reportsTip: "Create a report / download PDF",

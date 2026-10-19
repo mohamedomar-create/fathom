@@ -26,3 +26,15 @@ describe("books start setting", () => {
     expect(booksStartOf(withProfile(cfg, { booksStart: null }))).toBeNull();
   });
 });
+
+describe("the last Trial Balance check, kept in the profile", () => {
+  it("is kept with when, which file, the months and the differences, and read back safely", async () => {
+    const { tbCheckOf, withProfile } = await import("@/lib/company/time-zone");
+    const check = { at: "2026-10-19T10:00:00.000Z", file: "tb.xlsx", months: ["2026-09"], diffs: [{ period: "2026-09", account: "211100 Suppliers", books: 300, file: 0, diff: 300 }] };
+    const cfg = withProfile({ other: 1 }, { tbCheck: check });
+    expect(tbCheckOf(cfg)).toEqual(check);
+    expect((cfg as Record<string, unknown>).other).toBe(1);
+    expect(tbCheckOf({})).toBeNull();
+    expect(tbCheckOf(withProfile({}, { tbCheck: { at: "x", file: 3, months: "no", diffs: null } as never }))).toBeNull();
+  });
+});

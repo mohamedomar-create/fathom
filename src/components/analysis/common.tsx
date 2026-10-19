@@ -71,7 +71,7 @@ export function MissingData({ view, basePath, need }: { view: PeriodView; basePa
       <div className="mb-1 font-medium">{blocking ? t.dataNeeded : t.partLoaded}</div>
       <ul className="list-disc space-y-0.5 ps-5">{items.map((t) => <li key={t}>{t}</li>)}</ul>
       <p className="mt-2 text-mute">{t.bestFix}</p>
-      <a href={`${basePath}/settings/source-data`} className="mt-2 inline-block rounded bg-brand-d px-3 py-1.5 text-white" data-testid="missing-upload">{t.uploadData}</a>
+      <a href={`${basePath}/data`} className="mt-2 inline-block rounded bg-brand-d px-3 py-1.5 text-white" data-testid="missing-upload">{t.uploadData}</a>
     </div>
   );
 }

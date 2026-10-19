@@ -52,7 +52,7 @@ export function BankPage() {
         <span className="flex items-center gap-1.5"><BandChip band="strong" /> {res.counts.strong}</span>
         <span className="flex items-center gap-1.5"><BandChip band="watch" /> {res.counts.watch}</span>
         <span className="flex items-center gap-1.5"><BandChip band="weak" /> {res.counts.weak}</span>
-        <Link href={`${c.basePath}/settings/source-data`} className="ms-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />{t.uploadAudited}</Link>
+        <Link href={`${c.basePath}/data`} className="ms-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />{t.uploadAudited}</Link>
       </div>
 
       <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
@@ -88,7 +88,7 @@ export function BankPage() {
       <H2>{t.threeYear}</H2>
       <p className="mb-4 text-sm text-mute">{t.threeYearText}</p>
       <div className="overflow-x-auto"><TrendTable trend={trend} cur={cur} /></div>
-      {trend.years.length < 3 && <p className="mt-2 text-sm text-mute" data-testid="trend-note">{t.onlyYears(trend.years.length)}<Link href={`${c.basePath}/settings/source-data`} className="text-brand-d underline">{t.uploadEarlier}</Link>{t.toShow}</p>}
+      {trend.years.length < 3 && <p className="mt-2 text-sm text-mute" data-testid="trend-note">{t.onlyYears(trend.years.length)}<Link href={`${c.basePath}/data`} className="text-brand-d underline">{t.uploadEarlier}</Link>{t.toShow}</p>}
       {trend.years.length > 1 && <p className="mt-2 text-xs text-mute">{t.earlierEstimated}</p>}
 
       <H2>{t.stress}</H2>

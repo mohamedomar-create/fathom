@@ -1,11 +1,6 @@
-import { DataSetup } from "@/components/setup/data-setup";
-import { loadSales } from "@/lib/company/sales-load";
-import { loadExpenses } from "@/lib/company/expenses-load";
-import { loadInventory } from "@/lib/company/inventory-load";
-import { loadPayments } from "@/lib/company/payments-load";
+import { redirect } from "next/navigation";
 
-export default async function DataSetupPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const [sales, expenses, inventory, payments] = await Promise.all([loadSales(id), loadExpenses(id), loadInventory(id), loadPayments(id)]);
-  return <DataSetup sales={sales} expenses={expenses} inventory={inventory} payments={payments} />;
+/** Moved: the Data section's Steps. */
+export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+  redirect(`/company/${(await params).id}/data`);
 }

@@ -10,7 +10,7 @@ export function ImportReadiness() {
   return (
     <div className="mb-8" data-testid="import-readiness">
       <h2 className="mb-1 text-xl font-light">Data accuracy result</h2>
-      <p className="mb-3 text-sm text-mute">What this import gives the Financials sector, checked item by item. Anything below 100% says exactly what to upload next. <Link href={`${c.basePath}/settings/data-setup`} className="text-brand-d underline">All sectors</Link></p>
+      <p className="mb-3 text-sm text-mute">What this import gives the Financials sector, checked item by item. Anything below 100% says exactly what to upload next. <Link href={`${c.basePath}/data`} className="text-brand-d underline">All sectors</Link></p>
       <SectorPanel r={fin} basePath={c.basePath} />
     </div>
   );

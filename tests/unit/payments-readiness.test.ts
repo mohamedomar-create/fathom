@@ -20,7 +20,7 @@ describe("Payments readiness", () => {
     expect(r.key).toBe("payments");
     expect(r.completion).toBe(0);
     expect(r.items.map((i) => i.id)).toEqual(["aged_receivable", "aged_payable", "payments"]);
-    expect(r.items.every((i) => i.status === "missing" && i.fix?.href === "settings/source-data?step=payments")).toBe(true);
+    expect(r.items.every((i) => i.status === "missing" && i.fix?.href === "data/upload?step=payments")).toBe(true);
   });
 
   it("both ageing reports tied to the books and payments loaded: done, 100% accurate", () => {

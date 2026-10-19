@@ -6,14 +6,11 @@ import { cn } from "@/lib/cn";
 import { useDict } from "@/lib/i18n/context";
 
 const ITEMS = [
-  { n: 1, href: "data-setup", label: "Data Setup", sub: "Step by step, templates, readiness" },
-  { n: 2, href: "source-data", label: "Source Data", sub: "Upload or connect Odoo" },
-  { n: 3, href: "data-health", label: "Data Health", sub: "Months, checks, history & undo" },
-  { n: 4, href: "profile", label: "Company Profile", sub: "Currency, year, tax, AI context" },
-  { n: 5, href: "chart-of-accounts", label: "Chart of Accounts", sub: "Mapping & behaviour" },
-  { n: 6, href: "kpis", label: "KPIs", sub: "Choose & rank KPIs" },
-  { n: 7, href: "targets", label: "Targets", sub: "Monthly targets" },
-  { n: 8, href: "alerts", label: "Alerts", sub: "Thresholds" },
+  { n: 1, href: "profile", label: "Company Profile", sub: "Currency, year, tax, AI context" },
+  { n: 2, href: "chart-of-accounts", label: "Chart of Accounts", sub: "Mapping & behaviour" },
+  { n: 3, href: "kpis", label: "KPIs", sub: "Choose & rank KPIs" },
+  { n: 4, href: "targets", label: "Targets", sub: "Monthly targets" },
+  { n: 5, href: "alerts", label: "Alerts", sub: "Thresholds" },
 ];
 
 export function SettingsNav() {

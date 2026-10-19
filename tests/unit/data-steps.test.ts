@@ -42,6 +42,13 @@ describe("data steps", () => {
     expect(dataSteps(s).find((x) => x.id === "review")!.status).toBe("verified");
   });
 
+  it("a sub-ledger loaded before the General Ledger is shown as loaded, not checked, never as locked", () => {
+    const st = dataSteps({ ...empty, ageing: [{ side: "payable", asOf: "2026-09-30", status: "no_books" }] }).find((x) => x.id === "ageing")!;
+    expect(st.status).toBe("done");
+    expect(st.detail).toMatch(/not checked yet: load the General Ledger/i);
+    expect(st.action).not.toBeNull();
+  });
+
   it("books that start from zero need no opening balances", () => {
     expect(dataSteps({ ...empty, booksFromZero: true }).find((x) => x.id === "opening")!.status).toBe("done");
   });
@@ -93,5 +100,21 @@ describe("Trial Balance equity", () => {
     expect(compareTrialBalance(tb, books).diffs).toEqual([]);
     const off = compareTrialBalance([{ ...tb[0], amounts: { "2026-09": 700 } }, tb[1]], books).diffs;
     expect(off).toEqual([{ period: "2026-09", account: "Equity: retained earnings and other equity (in total)", books: 1000, file: 900, diff: 100 }]);
+  });
+});
+
+describe("Trial Balance columns that cover several months", () => {
+  it("a year-to-date P&L column is compared with the books' months added up; balances stay at the month end", async () => {
+    const { compareTrialBalance } = await import("@/lib/company/compare");
+    const books: A[] = [
+      { code: "410000", name: "Revenues", cls: "revenue", amounts: { "2026-08": 100, "2026-09": 200, "2026-10": 300 } },
+      { code: "121221", name: "CIB Bank", cls: "cash", amounts: { "2026-10": 900 } },
+    ];
+    const tb: A[] = [
+      { code: "410000", name: "Revenues", cls: "revenue", amounts: { "2026-10": 600 } },
+      { code: "121221", name: "CIB Bank", cls: "cash", amounts: { "2026-10": 900 } },
+    ];
+    expect(compareTrialBalance(tb, books, { "2026-10": 3 }).diffs).toEqual([]);
+    expect(compareTrialBalance(tb, books).diffs).toEqual([{ period: "2026-10", account: "410000 Revenues", books: 300, file: 600, diff: -300 }]);
   });
 });

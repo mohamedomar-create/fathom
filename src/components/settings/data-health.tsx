@@ -99,7 +99,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
       )}
 
       {!coverage.range.length ? (
-        <p className="text-mute">No financial data yet. <Link className="text-brand-d underline" href={`/company/${companyId}/settings/source-data`}>Upload an Odoo export</Link>.</p>
+        <p className="text-mute">No financial data yet. <Link className="text-brand-d underline" href={`/company/${companyId}/data`}>Upload an Odoo export</Link>.</p>
       ) : (
         <section>
           <h2 className="mb-1 text-lg font-medium">Months</h2>

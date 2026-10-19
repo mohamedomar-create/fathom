@@ -5,7 +5,7 @@ import { createCompany, importFiles, newEmail, requireLocalStack, signUp } from 
 requireLocalStack();
 
 const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend", "expenses", "expenses/accounts", "expenses/suppliers", "expenses/trend"];
-const SETTINGS = ["settings/data-setup", "settings/profile", "settings/source-data", "settings/data-health", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
+const SETTINGS = ["data", "settings/profile", "data/upload", "data/checks", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
 const ACCOUNT = ["/companies", "/dashboard", "/account", "/admin/organisation", "/admin/people"];
 
 test("every signed-in page opens cleanly, with data and without", async ({ page }) => {

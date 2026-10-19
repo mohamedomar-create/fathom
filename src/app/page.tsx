@@ -31,7 +31,7 @@ export default async function Home() {
           <p className="mt-5 max-w-lg text-lg text-mute">{d.heroText}</p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link href="/demo/summary" className="inline-flex items-center gap-2 rounded bg-brand-d px-5 py-3 font-medium text-white hover:brightness-110" data-testid="cta-demo">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4" /></Link>
-            <Link href="/demo/settings/source-data" className="inline-flex items-center gap-2 rounded border border-line px-5 py-3 font-medium hover:bg-band">{d.tryFile}</Link>
+            <Link href="/demo/data" className="inline-flex items-center gap-2 rounded border border-line px-5 py-3 font-medium hover:bg-band">{d.tryFile}</Link>
           </div>
           <p className="mt-3 text-xs text-mute">{d.tryNote}</p>
         </div>

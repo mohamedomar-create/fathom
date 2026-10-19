@@ -40,7 +40,10 @@ export function dataSteps(s: DataStatus): DataStep[] {
   const gl = s.ledger;
   const locked = !gl;
   const after = (st: Omit<DataStep, "status" | "action" | "detail"> & { status: StepStatus; detail: string; action: DataStep["action"] }): DataStep =>
-    locked ? { ...st, status: "locked", detail: "After the General Ledger: it is what this is checked against.", action: null } : st;
+    !locked ? st
+      // Loaded before the ledger: kept and shown, but nothing to check it against yet.
+      : st.status !== "todo" && st.id !== "review" ? { ...st, status: "done", detail: `${st.detail.replace(/\s*$/, "")} Not checked yet: load the General Ledger first.` }
+      : { ...st, status: "locked", detail: "After the General Ledger: it is what this is checked against.", action: null };
   const steps: DataStep[] = [];
 
   steps.push({ id: "setup", n: 1, title: "Company and period", role: "Settings", status: s.booksStart ? "done" : "todo",

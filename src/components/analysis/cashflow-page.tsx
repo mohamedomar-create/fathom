@@ -37,7 +37,7 @@ export function CashflowPage() {
           {W.unreconciled !== 0 && (
             <div className="mb-5 rounded-md border border-red/50 bg-red-bg px-4 py-3 text-sm" role="alert" data-testid="cash-unreconciled">
               <b>{t.unexplained(money(W.unreconciled, cur))}</b>{t.unexplainedWhy(a.view.window.end === a.view.window.start)}
-              {t.openHealth[0]}<a className="underline" href={`${c.basePath}/settings/data-health`}>{t.openHealth[1]}</a>{t.openHealth[2]}
+              {t.openHealth[0]}<a className="underline" href={`${c.basePath}/data/checks`}>{t.openHealth[1]}</a>{t.openHealth[2]}
             </div>
           )}
           <div className="mb-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

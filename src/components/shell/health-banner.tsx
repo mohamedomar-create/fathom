@@ -11,9 +11,9 @@ export function HealthBanner() {
   const d = useDict();
   const path = usePathname();
   const n = c.health?.failing ?? 0;
-  if (!n || path.includes("/settings/")) return null;
+  if (!n || path.includes("/settings/") || path.includes("/data")) return null;
   return (
-    <Link prefetch={false} href={`${c.basePath}/settings/data-health`} className="mt-3 flex items-center gap-2 rounded-md bg-red-bg px-4 py-2 text-[13px] text-red hover:underline no-print" data-testid="health-banner">
+    <Link prefetch={false} href={`${c.basePath}/data/checks`} className="mt-3 flex items-center gap-2 rounded-md bg-red-bg px-4 py-2 text-[13px] text-red hover:underline no-print" data-testid="health-banner">
       <AlertTriangle className="h-4 w-4 shrink-0" />
       {d.health(n)}
     </Link>

@@ -52,13 +52,13 @@ export async function createCompany(page: Page, name: string) {
   await page.getByRole("button", { name: /Odoo export \(Excel \/ CSV\)/ }).click();
   await page.getByLabel("Company name").fill(name);
   await page.getByRole("button", { name: "Create company" }).click();
-  await expect(page).toHaveURL(/\/company\/[0-9a-f-]{36}\/settings\/source-data/);
-  return page.url().match(/\/company\/([0-9a-f-]{36})\//)![1];
+  await expect(page).toHaveURL(/\/company\/[0-9a-f-]{36}\/data/);
+  return page.url().match(/\/company\/([0-9a-f-]{36})/)![1];
 }
 
 /** Opens the upload, step by step, up to the drop box: what (accounts or sales) → get file → upload. */
 export async function startUpload(page: Page, companyId: string, kind: "opening" | "accounts" | "sales" | "expenses" | "inventory" | "payments" = "accounts", step?: "financials" | "sales" | "expenses" | "inventory" | "payments") {
-  await page.goto(`/company/${companyId}/settings/source-data${step ? `?step=${step}` : ""}`);
+  await page.goto(`/company/${companyId}/data/upload${step ? `?step=${step}` : ""}`);
   await page.waitForLoadState("networkidle");
   // A click before the page has hydrated is lost: try again until the next screen shows.
   await expect(async () => {

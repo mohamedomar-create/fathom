@@ -45,7 +45,7 @@ test("an invited viewer sees the company read-only, the last admin cannot delete
   await expect(viewer.getByTestId("save-forecast")).toHaveCount(0);
   await viewer.goto(`/company/${id}/reports`);
   await expect(viewer.getByTestId("create-report")).toHaveCount(0);
-  await viewer.goto(`/company/${id}/settings/source-data`);
+  await viewer.goto(`/company/${id}/data/upload`);
   await expect(viewer.getByTestId("view-only")).toBeVisible();
   await expect(viewer.getByTestId("file-input")).toHaveCount(0);
 
@@ -90,7 +90,7 @@ test("the Odoo tab: read-only setup steps, an admin's log of every change, and D
   const sql = (q: string) => execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-qAtc", q]).toString().trim();
   await signUp(page, { name: "Odile Admin", org: "Odile Advisory", email: newEmail("odoo") });
   const id = await createCompany(page, "Odoo Guarded Co");
-  await page.goto(`/company/${id}/settings/source-data?tab=odoo`);
+  await page.goto(`/company/${id}/data/odoo`);
   await expect(page.getByText("iReport Reader")).toBeVisible();
   await expect(page.getByTestId("odoo-not-ready")).toHaveCount(0);
   // A connection saved earlier (written here straight to the database, as the save would).
@@ -112,13 +112,13 @@ test("a company synced from Odoo copies the settings of its uploaded twin and is
   await importFiles(page, uploaded, ["odoo-pl-bs.xlsx"]);
   const live = await createCompany(page, "Twin Live");
   await importFiles(page, live, ["odoo-pl-bs.xlsx"]);
-  await page.goto(`/company/${live}/settings/source-data?tab=odoo`);
+  await page.goto(`/company/${live}/data/odoo`);
   await expect(page.getByTestId("odoo-copy-settings")).toContainText("learned no account classes");
   await page.getByTestId("odoo-copy-from").selectOption({ label: "Twin Uploaded" });
   page.once("dialog", (d) => d.accept());
   await page.getByTestId("odoo-copy").click();
   await expect(page.getByText(/Copied \d+ account class/)).toBeVisible();
-  await page.goto(`/company/${live}/settings/data-health`);
+  await page.goto(`/company/${live}/data/checks`);
   await expect(page.getByTestId("compare-books")).toContainText("Compared with Twin Uploaded");
   await expect(page.getByTestId("compare-books")).toContainText("Every class agrees within 1 EGP");
 });
@@ -129,7 +129,7 @@ test("a sync left running (cut off by the server) can be stopped, and the stop i
   await signUp(page, { name: "Stop Admin", org: "Stop Advisory", email: newEmail("stop") });
   const id = await createCompany(page, "Stuck Sync Co");
   sql(`insert into public.odoo_connections (company_id, url, db, login, api_key_enc, odoo_company_id, odoo_company_name, status, sync_started_at) values ('${id}', 'https://x.odoo.com', 'x', 'reader@x', 'v2.a.b.c', 1, 'X Co', 'syncing', now() - interval '5 minutes')`);
-  await page.goto(`/company/${id}/settings/source-data?tab=odoo`);
+  await page.goto(`/company/${id}/data/odoo`);
   await page.getByTestId("odoo-stop").click();
   await expect(page.getByText("Sync stopped.")).toBeVisible();
   expect(sql(`select status from public.odoo_connections where company_id = '${id}'`)).toBe("error");

@@ -52,7 +52,7 @@ export function NoSales() {
         <li><b className="font-semibold">{t.glTip[0]}</b>{t.glTip[1]}</li>
         <li><b className="font-semibold">{t.analysisTip[0]}</b>{t.analysisTip[1]}</li>
       </ul>
-      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.uploadSales}</Link>}
+      {!c.readOnly && <Link href={`${c.basePath}/data`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.uploadSales}</Link>}
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function FromAccountsNote({ page }: { page?: "customers" | "products" }) 
   return (
     <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-dashed border-brand/50 bg-brand-bg/10 px-4 py-3 text-[14px]" data-testid="sales-from-accounts">
       <span>{page === "customers" ? t.fromAccCustomers : page === "products" ? t.fromAccProducts : t.fromAcc}</span>
-      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data?step=financials`} className="rounded bg-brand-d px-3 py-1.5 text-sm text-white">{t.upload}</Link>}
+      {!c.readOnly && <Link href={`${c.basePath}/data/upload?step=financials`} className="rounded bg-brand-d px-3 py-1.5 text-sm text-white">{t.upload}</Link>}
     </div>
   );
 }

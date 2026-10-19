@@ -49,7 +49,7 @@ test("goalseek lever changes move the NOW marker", async ({ page }) => {
 
 /** The upload, step by step: what → get file → upload. */
 async function toUpload(page: import("@playwright/test").Page, kind: "accounts" | "sales" | "expenses" = "accounts") {
-  await page.goto("/demo/settings/source-data");
+  await page.goto("/demo/data/upload");
   await expect(page.getByTestId("wiz-steps")).toHaveAttribute("data-at", "what");
   await page.getByTestId(`pick-${kind}`).click();
   await expect(page.getByTestId("get-odoo")).toContainText(kind === "sales" ? "Invoice Analysis" : kind === "expenses" ? "Vendor Bills" : "General Ledger");
@@ -178,7 +178,7 @@ test("app routes require sign-in", async ({ page }) => {
 test("data health shows loaded months, checks and sources", async ({ page }) => {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
-  await page.goto("/demo/settings/data-health");
+  await page.goto("/demo/data/checks");
   await expect(page.getByTestId("health-calendar")).toBeVisible();
   await expect(page.getByTestId("failed-count")).toContainText("0");
   const cell = page.locator('[data-status="ok"]').first();
@@ -282,7 +282,8 @@ test("the report includes the forecast", async ({ page }) => {
 
 test("the sector tabs switch the side rail, and the old bank address still works", async ({ page }) => {
   await page.goto("/demo/summary");
-  // Phones get the sectors as chips above the page; wider screens as tabs in the top bar.
+  // Phones get the sectors as chips above the page; wider screens as tabs in the top bar (wait for either to render).
+  await expect(page.getByTestId("tab-sales").or(page.getByTestId("sector-sales")).first()).toBeVisible();
   const desktop = await page.getByTestId("tab-sales").isVisible();
   if (desktop) await expect(page.getByTestId("tab-financials")).toHaveAttribute("aria-current", "page");
   await page.getByTestId(desktop ? "tab-sales" : "sector-sales").click();
@@ -352,9 +353,9 @@ test("cash flow shows each month and the change in cash", async ({ page }) => {
   await expect(page.getByTestId("cash-monthly-table").locator("tbody tr").first()).toBeVisible();
 });
 
-test("data setup lists each step and each sector's readiness, with templates to download", async ({ page }) => {
-  await page.goto("/demo/settings/data-setup");
-  await expect(page.getByTestId("step-financials")).toBeVisible();
+test("the Data section lists each step in order and each sector's readiness, with templates to download", async ({ page }) => {
+  await page.goto("/demo/data");
+  await expect(page.getByTestId("step-ledger")).toBeVisible();
   await expect(page.getByTestId("radar-financials")).toBeVisible();
   await expect(page.getByTestId("readiness-sales")).toBeVisible();
   // One upload feeds every sector it can: the accounts reach all five, the ledger's lines reach Expenses.
@@ -460,7 +461,7 @@ test("Arabic: Bank readiness, Real profit, Forecast and Goalseek read in Arabic"
 });
 
 test("inventory upload: each sheet goes to Inventory only", async ({ page }) => {
-  await page.goto("/demo/settings/source-data");
+  await page.goto("/demo/data/upload");
   await page.getByTestId("pick-inventory").click();
   await expect(page.getByTestId("get-odoo")).toContainText("import-compatible export");
   await page.getByTestId("wiz-next").click();
@@ -496,7 +497,7 @@ test("inventory pages show the demo stock and every tie-out green", async ({ pag
   await expect(table.getByTestId("tie-ok").first()).toBeVisible();
   await expect(table.getByTestId("tie-off")).toHaveCount(0);
   // Data health shows the same checks.
-  await page.goto("/demo/settings/data-health");
+  await page.goto("/demo/data/checks");
   await expect(page.getByTestId("stock-checks").getByTestId("tie-ok").first()).toBeVisible();
   await expect(page.getByTestId("stock-checks").getByTestId("tie-off")).toHaveCount(0);
   expect(errors).toEqual([]);

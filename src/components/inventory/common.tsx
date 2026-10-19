@@ -76,7 +76,7 @@ export function NoInventory() {
       <Boxes className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
       <h2 className="text-2xl font-light">{t.noStock}</h2>
       <p className="mt-2 text-mute">{t.noStockText}</p>
-      {!c.readOnly && <Link href={`${c.basePath}/settings/source-data?step=inventory`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.upload}</Link>}
+      {!c.readOnly && <Link href={`${c.basePath}/data/upload?step=inventory`} className="mt-6 inline-block rounded bg-brand-d px-5 py-2.5 font-medium text-white">{t.upload}</Link>}
     </div>
   );
 }

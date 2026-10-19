@@ -156,6 +156,6 @@ test("stock imports run as background jobs: sample first, then checked and saved
   await page.goto(`/company/${id}/inventory/products`);
   await expect(page.getByTestId("inv-products")).toContainText("[P1]");
   // Data health lists the imports.
-  await page.goto(`/company/${id}/settings/data-health`);
+  await page.goto(`/company/${id}/data/checks`);
   await expect(page.getByTestId("import-job")).toHaveCount(4);
 });

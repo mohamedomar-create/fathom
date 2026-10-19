@@ -63,7 +63,7 @@ const status = (c: number, a: number | null): ItemStatus => (c >= 100 && (a === 
 const item = (i: Omit<ReadinessItem, "status">): ReadinessItem => ({ ...i, status: status(i.completion, i.accuracy) });
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
-const GL_FIX: ReadinessFix = { what: "Upload your General Ledger for this year", how: "Odoo: Accounting → Reporting → General Ledger → Export. Or use our template.", template: "financials", href: "settings/source-data" };
+const GL_FIX: ReadinessFix = { what: "Upload your General Ledger for this year", how: "Odoo: Accounting → Reporting → General Ledger → Export. Or use our template.", template: "financials", href: "data/upload?step=financials" };
 
 function summarise(items: ReadinessItem[]): { completion: number; accuracy: number | null } {
   const completion = Math.round(items.reduce((s, i) => s + i.completion, 0) / Math.max(1, items.length));
@@ -99,8 +99,8 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "bs", axis: "Balance sheets", title: "A balance sheet at every month end",
     completion: pl.length ? pct(withBS.length / last12.length) : 0, accuracy: withBS.length ? pct(balanced.length / withBS.length) : null,
     detail: !pl.length ? "No months loaded." : `${withBS.length} of ${last12.length} months have a balance sheet; ${balanced.length} of them balance.`,
-    fix: withBS.length < last12.length ? { what: "Upload a balance sheet for each month", how: GL_FIX.how, template: "financials", href: "settings/source-data" }
-      : balanced.length < withBS.length ? { what: "Fix the months that don't balance", how: "Data health shows which months, and by how much.", href: "settings/data-health" } : undefined,
+    fix: withBS.length < last12.length ? { what: "Upload a balance sheet for each month", how: GL_FIX.how, template: "financials", href: "data/upload?step=financials" }
+      : balanced.length < withBS.length ? { what: "Fix the months that don't balance", how: "Data health shows which months, and by how much.", href: "data/checks" } : undefined,
   }));
   const first = pl[0]?.period;
   const open = first ? by.get(addMonths(first, -1)) : undefined;
@@ -114,7 +114,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: openOk ? 100 : 0, accuracy: openOk ? (openBal ? 100 : 0) : null,
     detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `None loaded: balances start from zero at ${mlabel(first)}. Upload opening balances if the company had balances before.`,
-    fix: openOk ? undefined : { what: `Upload opening balances${first ? ` (the balance sheet at ${monthEndLabel(addMonths(first, -1))})` : ""}`, how: "On the Opening balances card: Odoo's General Ledger or Trial Balance for that one day, or our template.", template: "opening", href: "settings/source-data?tab=upload&step=opening" },
+    fix: openOk ? undefined : { what: `Upload opening balances${first ? ` (the balance sheet at ${monthEndLabel(addMonths(first, -1))})` : ""}`, how: "On the Opening balances card: Odoo's General Ledger or Trial Balance for that one day, or our template.", template: "opening", href: "data/upload?step=opening" },
   }));
   if (pl.length) {
     const span = monthIndex(pl[pl.length - 1].period) - monthIndex(pl[0].period) + 1;
@@ -123,7 +123,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "gaps", axis: "No gaps", title: "Every month between the first and the latest",
       completion: pct(1 - gaps / Math.max(1, span)), accuracy: null,
       detail: gaps ? `${gaps} month${gaps === 1 ? " is" : "s are"} missing inside the range loaded.` : "No missing months.",
-      fix: gaps ? { ...GL_FIX, what: "Upload the missing months", href: "settings/data-health" } : undefined,
+      fix: gaps ? { ...GL_FIX, what: "Upload the missing months", href: "data/checks" } : undefined,
     }));
     const today = x.today ?? isoToday();
     const behind = monthIndex(today.slice(0, 7)) - monthIndex(pl[pl.length - 1].period);
@@ -139,7 +139,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "cash", axis: "Cash reconciles", title: "Cash flow explains the change in cash every month",
       completion: pct(cf.rows.length / Math.max(1, last12.length)), accuracy: cf.rows.length ? pct(clean / cf.rows.length) : null,
       detail: cf.rows.length ? `${clean} of ${cf.rows.length} months reconcile to the cent.` : "Needs a balance sheet for each month and the month before.",
-      fix: cf.rows.length && clean < cf.rows.length ? { what: "Fix the months where cash doesn't add up", how: "Data health shows the month and the amount.", href: "settings/data-health" } : undefined,
+      fix: cf.rows.length && clean < cf.rows.length ? { what: "Fix the months where cash doesn't add up", how: "Data health shows the month and the amount.", href: "data/checks" } : undefined,
     }));
   }
   return { key: "financials", label: "Financials", ...summarise(items), items };
@@ -147,7 +147,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
 
 export function salesReadiness(x: ReadinessInput): SectorReadiness {
   const s = x.sales;
-  const SALES_FIX: ReadinessFix = { what: "Upload your sales", how: "Odoo: Invoicing → Reporting → Invoice Analysis → list view → Export. Or use our template.", template: "sales", href: "settings/source-data" };
+  const SALES_FIX: ReadinessFix = { what: "Upload your sales", how: "Odoo: Invoicing → Reporting → Invoice Analysis → list view → Export. Or use our template.", template: "sales", href: "data/upload?step=sales" };
   const months = s ? [...new Set(s.customers.map((r) => r.p))].sort() : [];
   const items: ReadinessItem[] = [];
   if (!s || !months.length) {
@@ -191,7 +191,7 @@ const costsOf = (m: MonthData) => COST_CLASSES.reduce((t, k) => t + ((m.pl as Re
 
 export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   const e = x.expenses;
-  const FIX: ReadinessFix = { what: "Upload your General Ledger", how: "Odoo: Accounting → Reporting → General Ledger → Export. Its cost lines show who you pay.", template: "financials", href: "settings/source-data?step=financials" };
+  const FIX: ReadinessFix = { what: "Upload your General Ledger", how: "Odoo: Accounting → Reporting → General Ledger → Export. Its cost lines show who you pay.", template: "financials", href: "data/upload?step=financials" };
   const months = e ? expenseMonths(e) : [];
   const items: ReadinessItem[] = [];
   if (!e || !months.length) {
@@ -249,9 +249,14 @@ const TIE_NAMES: [TieOut["key"], string, string][] = [
 ];
 
 /** Stock: what is loaded (valuation, moves, on hand, with Odoo IDs) and, per check, how many months agree with the accounts (last 12 months with stock records). */
+/** The stock tie-outs, month by month, against the accounts (the same checks the Inventory pages show). */
+export function inventoryTies(x: ReadinessInput) {
+  return x.inventory ? inventoryTieOuts(x.inventory, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }, x.accounts), x.fyStart, 12, x.locationTypes) : [];
+}
+
 export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   const d = x.inventory;
-  const FIX: ReadinessFix = { what: "Upload the stock valuation", how: STOCK_EXPORT, href: "settings/source-data?step=inventory" };
+  const FIX: ReadinessFix = { what: "Upload the stock valuation", how: STOCK_EXPORT, href: "data/upload?step=inventory" };
   const items: ReadinessItem[] = [];
   if (!d || (!d.layers.length && !d.moves.months.length && !d.onhand.length)) {
     items.push(item({ id: "valuation", axis: "Valuation", title: "Stock records (optional)", completion: 0, accuracy: null, detail: "No stock records yet. Inventory pages need Odoo's stock valuation.", fix: FIX }));
@@ -264,8 +269,8 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   loaded("onhand", "On hand", "Stock on hand (the closing count)", d.onhand.length > 0, "Upload stock on hand");
   items.push(item({ id: "ids", axis: "Odoo IDs", title: "Exported with Odoo's record IDs", completion: d.meta.withIds ? 100 : 0, accuracy: null,
     detail: d.meta.withIds ? "Every record carries its Odoo ID: duplicates are refused exactly." : "Records are matched by date, document, product and amounts instead of Odoo's ID.",
-    fix: d.meta.withIds ? undefined : { what: "Export with Odoo IDs", how: "When exporting from Odoo, tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.", href: "settings/source-data?step=inventory" } }));
-  const ties = inventoryTieOuts(d, inventoryLedger(x.months, x.expenses ?? { suppliers: [] }, x.accounts), x.fyStart, 12, x.locationTypes);
+    fix: d.meta.withIds ? undefined : { what: "Export with Odoo IDs", how: "When exporting from Odoo, tick “I want to update data (import-compatible export)” and add the ID field (the database ID). Do not add External ID: Odoo would create new records to make those IDs.", href: "data/upload?step=inventory" } }));
+  const ties = inventoryTies(x);
   for (const [key, axis, title] of TIE_NAMES) {
     const all = ties.filter((t) => t.key === key);
     if (!all.length) continue;
@@ -277,15 +282,21 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
   return { key: "inventory", label: "Inventory", ...summarise(items), items };
 }
 
+/** Each ageing report against its control account at its date (the same tie-out the Payments pages show). */
+export function agedTieouts(x: ReadinessInput) {
+  const d = x.payments?.data ?? { aged: {}, payments: [] };
+  const last = Object.values(d.aged).map((a) => a!.asOf).sort().pop() ?? d.payments.map((p) => p.day).sort().pop();
+  return paymentsAnalysis(d, { type: "month", end: (last ?? "2000-01").slice(0, 7) }, x.fyStart, {
+    accounts: (x.accounts ?? []).filter((c) => c.cls === "ar" || c.cls === "ap").map((c) => ({ code: c.code ?? "", name: c.name, cls: c.cls, amounts: c.amounts })),
+    control: x.payments?.control,
+  }).tieouts;
+}
+
 /** Receivables and payables: each ageing report loaded and agreeing with its control account at its date, and the payments list loaded. */
 export function paymentsReadiness(x: ReadinessInput): SectorReadiness {
   const d = x.payments?.data ?? { aged: {}, payments: [] };
-  const FIX: ReadinessFix = { what: "", how: "Odoo: Accounting → Reporting → Aged Receivable / Aged Payable, and Customers / Vendors → Payments. Export to Excel.", href: "settings/source-data?step=payments" };
-  const last = Object.values(d.aged).map((a) => a!.asOf).sort().pop() ?? d.payments.map((p) => p.day).sort().pop();
-  const a = paymentsAnalysis(d, { type: "month", end: (last ?? "2000-01").slice(0, 7) }, x.fyStart, {
-    accounts: (x.accounts ?? []).filter((c) => c.cls === "ar" || c.cls === "ap").map((c) => ({ code: c.code ?? "", name: c.name, cls: c.cls, amounts: c.amounts })),
-    control: x.payments?.control,
-  });
+  const FIX: ReadinessFix = { what: "", how: "Odoo: Accounting → Reporting → Aged Receivable / Aged Payable, and Customers / Vendors → Payments. Export to Excel.", href: "data/upload?step=payments" };
+  const a = { tieouts: agedTieouts(x) };
   const items: ReadinessItem[] = [];
   for (const [side, title] of [["receivable", "Aged Receivable, tied to the books"], ["payable", "Aged Payable, tied to the books"]] as const) {
     const t = a.tieouts.find((v) => v.side === side);
@@ -310,7 +321,7 @@ export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const hist = annualYears >= 3 ? 1 : Math.max(pl.length / 24, annualYears / 3);
   items.push(item({ id: "history", axis: "History", title: "Two years of months, or three audited years", completion: pct(hist), accuracy: null,
     detail: `${pl.length} months${annualYears ? ` (${annualYears} annual)` : ""} loaded. Banks look at 2–3 years.`,
-    fix: hist < 1 ? { what: "Add earlier years", how: "Upload each year's General Ledger, or audited statements (PDF works).", template: "financials", href: "settings/source-data" } : undefined }));
+    fix: hist < 1 ? { what: "Add earlier years", how: "Upload each year's General Ledger, or audited statements (PDF works).", template: "financials", href: "data/upload?step=financials" } : undefined }));
   const last = [...x.months].filter(hasBS).sort((p, q) => p.period.localeCompare(q.period)).pop();
   const debt = last ? bsCalc(last.bs).debt : 0;
   const hasNum = (v: unknown) => typeof v === "number" && Number.isFinite(v);

@@ -41,7 +41,7 @@ function NoPayments() {
       <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
       <h2 className="text-2xl font-light">No receivables or payments yet</h2>
       <p className="mt-2 text-mute">Upload Odoo&apos;s Aged Receivable, Aged Payable and Customer / Vendor Payments.</p>
-      {!c.readOnly && <a href={`${c.basePath}/settings/source-data?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments">Upload them</a>}
+      {!c.readOnly && <a href={`${c.basePath}/data/upload?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments">Upload them</a>}
     </div>
   );
 }
@@ -54,7 +54,7 @@ function NoPaymentsList() {
       <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
       <h2 className="text-2xl font-light">No payments list loaded yet</h2>
       <p className="mt-2 text-mute">Your ageing reports are loaded. Payments in and out come from a separate Odoo export: Accounting → Customers → Payments, and Vendors → Payments. In the list view, tick the top box, then “Select all N records”, then Export.</p>
-      {!c.readOnly && <a href={`${c.basePath}/settings/source-data?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments-list">Upload payments</a>}
+      {!c.readOnly && <a href={`${c.basePath}/data/upload?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments-list">Upload payments</a>}
     </div>
   );
 }

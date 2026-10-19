@@ -18,12 +18,13 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
   const rel = pathname.slice(c.basePath.length);
-  const elsewhere = rel.startsWith("/reports") || rel.startsWith("/settings");
+  const elsewhere = rel.startsWith("/reports") || rel.startsWith("/settings") || rel.startsWith("/data");
   const here = sectorOf(rel).key;
   const tabs = [
     ...SECTORS.map((s) => ({ key: s.key as string, href: `${c.basePath}/${s.items[0].href}`, label: d.sectors[s.key], keepQuery: true, active: !elsewhere && here === s.key })),
     { key: "reports", href: `${c.basePath}/reports`, label: d.shell.reports, keepQuery: false, active: rel.startsWith("/reports") },
-    { key: "settings", href: `${c.basePath}/settings/data-setup`, label: d.shell.settings, keepQuery: false, active: rel.startsWith("/settings") },
+    { key: "data", href: `${c.basePath}/data`, label: d.shell.data, keepQuery: false, active: rel.startsWith("/data") },
+    { key: "settings", href: `${c.basePath}/settings/profile`, label: d.shell.settings, keepQuery: false, active: rel.startsWith("/settings") },
   ];
   return (
     <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-3 text-[13px] text-[#ddd] no-print">

@@ -75,7 +75,7 @@ export default async function CompaniesPage() {
                 <div className="mt-4 flex gap-2 border-t border-line pt-3 text-sm">
                   <Link href={`/company/${c.id}/summary`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><BarChart3 className="h-4 w-4 text-brand-d" />{t.analysis}</Link>
                   <Link href={`/company/${c.id}/reports`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><FileText className="h-4 w-4 text-brand-d" />{t.reports}</Link>
-                  <Link href={`/company/${c.id}/settings/source-data`} className="ms-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band"><Settings className="h-4 w-4" />{t.settings}</Link>
+                  <Link href={`/company/${c.id}/data`} className="ms-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band"><Settings className="h-4 w-4" />{t.settings}</Link>
                 </div>
               </div>
             );

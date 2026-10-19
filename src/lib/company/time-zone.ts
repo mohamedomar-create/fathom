@@ -39,7 +39,7 @@ export function openingAsAtOf(kpiConfig: unknown): string | null {
 }
 
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] } }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] }; tbCheck?: TbCheck | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;
@@ -63,4 +63,16 @@ export function controlAccountsOf(kpiConfig: unknown): { receivable?: string[]; 
   const v = ((kpiConfig ?? {}) as Record<string, { controlAccounts?: unknown } | undefined>)[PROFILE_KEY]?.controlAccounts as Record<string, unknown> | undefined;
   const codes = (x: unknown) => (Array.isArray(x) ? x.filter((c): c is string => typeof c === "string" && c.length > 0 && c.length <= 40).slice(0, 20) : undefined);
   return { ...(codes(v?.receivable)?.length ? { receivable: codes(v?.receivable) } : {}), ...(codes(v?.payable)?.length ? { payable: codes(v?.payable) } : {}) };
+}
+
+/** A Trial Balance read against the books (never saved as data): when, which file, the months compared, the differences. */
+export interface TbCheck { at: string; file: string; months: string[]; diffs: { period: string; account: string; books: number; file: number; diff: number }[] }
+
+/** The last Trial Balance check kept for the company, or null when none was kept (or what is kept is not one). */
+export function tbCheckOf(kpiConfig: unknown): TbCheck | null {
+  const v = ((kpiConfig ?? {}) as Record<string, { tbCheck?: unknown } | undefined>)[PROFILE_KEY]?.tbCheck as Partial<TbCheck> | undefined;
+  if (!v || typeof v.at !== "string" || typeof v.file !== "string" || !Array.isArray(v.months) || !Array.isArray(v.diffs)) return null;
+  const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
+  const diffs = v.diffs.filter((d) => d && typeof d.period === "string" && typeof d.account === "string" && num(d.books) && num(d.file) && num(d.diff));
+  return { at: v.at, file: v.file, months: v.months.filter((m): m is string => typeof m === "string"), diffs };
 }

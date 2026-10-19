@@ -46,6 +46,8 @@ export const ImportSchema = PlanSchema.extend({
     asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     // The cut-off date chosen on the Check step: nothing dated after it was read.
     cutoff: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    // Where the figures came from: a General Ledger (the book of record) or a summary report (TB, P&L, balance sheet).
+    source: z.enum(["ledger", "summary"]).optional(),
     // Figures read from PDF pages: how many pages, and how many figures the person corrected before importing.
     pdf: z.object({ pages: z.number().int().min(0).max(1000), corrected: z.number().int().min(0).max(100000), flagged: z.number().int().min(0).max(100000) }).optional(),
     // Corrections made in the upload's reading box: retyped cells and rows left out, with what the file held.

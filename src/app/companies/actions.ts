@@ -41,7 +41,7 @@ export async function createCompany(formData: FormData): Promise<{ error: string
   }).select("id").single();
   if (error) return { error: dbError(error, "createCompany") };
   revalidatePath("/companies");
-  redirect(`/company/${data.id}/settings/source-data${v.source === "odoo" ? "?tab=odoo" : ""}`);
+  redirect(`/company/${data.id}/data${v.source === "odoo" ? "/odoo" : ""}`);
 }
 
 export async function createDemoCompany(): Promise<{ error: string } | void> {
