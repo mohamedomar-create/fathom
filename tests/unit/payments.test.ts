@@ -19,6 +19,50 @@ function customers(): Grid {
   ] };
 }
 
+/** The same payments as exported from the list view's Export dialog, with the fields picked by hand. */
+describe("reading the Export dialog's payments (Payments (account.payment).xlsx)", () => {
+  const want = [["CIB/2026/1066", "in", 3500, "2026-09", "paid"], ["PM/2026/0001", "out", -1200, "2026-09", "in_process"]];
+  const rows = (h: string[], recv: string, send: string) => [h,
+    [d("2026-09-30"), "CIB/2026/1066", "CIB Bank EGP", "Delta Clinic", 3500, recv, "EGP", "Posted"],
+    [d("2026-09-29"), "PM/2026/0001", "Cash", "Medline", 1200, send, "EGP", "In Process"],
+    [d("2026-09-28"), "PM/2026/0002", "Cash", "Medline", 50, send, "EGP", "Draft"]];
+  const got = (g: Grid) => { const r = readPayments(g, { currency: "EGP" })!; expect(r.errors).toEqual([]); return r.lines.map((l) => [l.number, l.direction, l.amount, l.period, l.state]); };
+
+  it("labels with Amount and Payment Type (Receive / Send) give the direction and sign", () => {
+    expect(got({ name: "Sheet1", rows: rows(["Date", "Number", "Journal", "Customer/Vendor", "Amount", "Payment Type", "Currency", "Status"], "Receive", "Send") })).toEqual(want);
+  });
+
+  it("technical field names (import-compatible export) are read the same way", () => {
+    expect(got({ name: "Sheet1", rows: rows(["date", "name", "journal_id", "partner_id", "amount", "payment_type", "currency_id", "state"], "inbound", "outbound") })).toEqual(want);
+  });
+
+  it("Field/Sub-field labels are matched on the field", () => {
+    expect(got({ name: "Sheet1", rows: rows(["Date", "Number", "Journal/Display Name", "Customer/Vendor/Display Name", "Amount", "Payment Type", "Currency/Name", "Status"], "Receive", "Send") })).toEqual(want);
+  });
+
+  it("an amount in another currency with no company-currency amount is an error naming the row, never counted as EGP", () => {
+    const g: Grid = { name: "Sheet1", rows: [["Date", "Number", "Journal", "Customer/Vendor", "Amount", "Payment Type", "Currency", "Status"],
+      [d("2026-09-12"), "AAIB$/2026/0010", "aaib Bank $", "Medline Intl", 100, "Receive", "USD", "Posted"]] };
+    const r = readPayments(g, { currency: "EGP" })!;
+    expect(r.lines).toEqual([]);
+    expect(r.errors.join(" ")).toMatch(/Row 2 \(AAIB\$\/2026\/0010\): the amount is in USD.*Amount in Company Currency/);
+  });
+
+  it("an unsigned Amount with no Payment Type can't tell money in from money out: not read, and the reason says so", async () => {
+    const { paymentsHeadingGap } = await import("@/lib/ingest/payments");
+    const g: Grid = { name: "Sheet1", rows: [["Date", "Number", "Journal", "Customer/Vendor", "Amount", "Status"], [d("2026-09-12"), "X/1", "Cash", "A", 10, "Posted"]] };
+    expect(readPayments(g)).toBeNull();
+    expect(paymentsHeadingGap(g)).toMatch(/Amount Signed or Amount Company Currency Signed, or Amount with Payment Type/);
+  });
+
+  it("a sheet that isn't a payments list names the headings it saw", async () => {
+    const { paymentsHeadingGap } = await import("@/lib/ingest/payments");
+    expect(paymentsHeadingGap({ name: "Sheet1", rows: [["Product", "Quantity", "Price"], ["x", 1, 2]] })).toBeNull();
+    const { planPaymentsUpload } = await import("@/lib/ingest/payments-upload");
+    expect(planPaymentsUpload([{ name: "x › Sheet1", rows: [["Product", "Quantity", "Price"], ["x", 1, 2]] }]).unread[0].why).toMatch(/headings found: Product, Quantity, Price/);
+  });
+});
+
 describe("reading Odoo's payments list", () => {
   it("posted payments in company currency, direction from the sign, period from the date", () => {
     const r = readPayments(customers())!;

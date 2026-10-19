@@ -15,7 +15,7 @@ describe("Payments upload plan", () => {
     expect(p.aged.map((a) => [a.report.side, a.report.asOf, a.sheet])).toEqual([["receivable", "2026-09-30", "ar.xlsx › Aged Receivable"], ["payable", "2026-09-30", "ap.xlsx › Aged Payable"]]);
     expect(p.payments.lines.length).toBe(2);
     expect(p.payments.periods).toEqual(["2026-08", "2026-09"]);
-    expect(p.unread).toEqual([{ sheet: "x.xlsx › Notes", why: "not an ageing report (no buckets before a Total column) or a payments list (no Date, Number, Journal, Customer/Vendor and Amount headings)" }]);
+    expect(p.unread).toEqual([{ sheet: "x.xlsx › Notes", why: "not an ageing report (no buckets before a Total column) or a payments list (no Date, Number, Journal, Customer/Vendor and Amount headings); headings found: hello" }]);
     expect(p.errors).toEqual([]);
   });
   it("Odoo's own Filters sheet (Company: …) is not a file left unread", () => {
@@ -25,7 +25,7 @@ describe("Payments upload plan", () => {
 
   it("a payments list missing a heading is named with the headings it lacks", () => {
     const noAmount: Grid = { name: "pay.xlsx › Sheet1", rows: [["Date", "Number", "Journal", "Customer/Vendor", "Amount", "State"], ["09/30/2026", "CIB/1", "CIB", "Northside", 100, "Paid"]] };
-    expect(planPaymentsUpload([noAmount]).unread).toEqual([{ sheet: "pay.xlsx › Sheet1", why: "looks like a payments list but has no Amount Signed or Amount Company Currency Signed heading" }]);
+    expect(planPaymentsUpload([noAmount]).unread).toEqual([{ sheet: "pay.xlsx › Sheet1", why: "looks like a payments list but has no Amount Signed or Amount Company Currency Signed, or Amount with Payment Type heading; headings found: Date, Number, Journal, Customer/Vendor, Amount, State" }]);
   });
 
   it("two reports for the same side and date, or a report that doesn't add up, block saving", () => {

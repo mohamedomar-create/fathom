@@ -12,7 +12,8 @@ export interface PaymentsUploadPlan {
   errors: string[];
 }
 
-export function planPaymentsUpload(grids: Grid[]): PaymentsUploadPlan {
+/** opts.currency: the company's currency (an amount in another one, with no company-currency amount, is an error). */
+export function planPaymentsUpload(grids: Grid[], opts: { currency?: string } = {}): PaymentsUploadPlan {
   const plan: PaymentsUploadPlan = { aged: [], payments: { sheets: [], lines: [], periods: [], findings: [] }, unread: [], errors: [] };
   const numbers = new Set<string>();
   for (const g of grids) {
@@ -25,7 +26,7 @@ export function planPaymentsUpload(grids: Grid[]): PaymentsUploadPlan {
       }
       continue;
     }
-    const p = readPayments(g);
+    const p = readPayments(g, opts);
     if (p) {
       plan.errors.push(...p.errors.map((e) => `${g.name}: ${e}`));
       plan.payments.sheets.push(g.name);
@@ -41,7 +42,9 @@ export function planPaymentsUpload(grids: Grid[]): PaymentsUploadPlan {
     if (!filled.length) continue;
     // Odoo adds a "Filters" sheet to every export (Company: …): it holds no figures.
     if (/(^|› )filters$/i.test(g.name.trim()) && filled.length <= 30 && filled.every((r) => r.filter((c) => c !== null && c !== undefined && String(c).trim()).length <= 2)) continue;
-    plan.unread.push({ sheet: g.name, why: paymentsHeadingGap(g) ?? "not an ageing report (no buckets before a Total column) or a payments list (no Date, Number, Journal, Customer/Vendor and Amount headings)" });
+    const heads = filled.slice(0, 10).map((r) => r.map((c) => (c === null || c === undefined ? "" : String(c).trim())).filter(Boolean)).sort((a, b) => b.length - a.length)[0] ?? [];
+    const seen = heads.length ? `; headings found: ${heads.slice(0, 8).join(", ")}${heads.length > 8 ? ", …" : ""}` : "";
+    plan.unread.push({ sheet: g.name, why: (paymentsHeadingGap(g) ?? "not an ageing report (no buckets before a Total column) or a payments list (no Date, Number, Journal, Customer/Vendor and Amount headings)") + seen });
   }
   plan.payments.periods = [...new Set(plan.payments.lines.map((l) => l.period))].sort();
   return plan;

@@ -6,6 +6,7 @@ import type { Grid } from "@/lib/ingest/extract";
 import { planPaymentsUpload } from "@/lib/ingest/payments-upload";
 import { addPaymentLines, saveAgedReport, startPaymentBatch } from "@/app/company/[id]/settings/payments-actions";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
+import { useCompany } from "@/lib/company/context";
 
 const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const CHUNK = 3000;
@@ -21,7 +22,8 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   const [done, setDone] = useState<string | null>(null);
   const [acceptUnread, setAcceptUnread] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const plan = useMemo(() => (grids ? planPaymentsUpload(grids) : null), [grids]);
+  const currency = useCompany().settings.currency;
+  const plan = useMemo(() => (grids ? planPaymentsUpload(grids, { currency }) : null), [grids, currency]);
   const nothing = plan && !plan.aged.length && !plan.payments.lines.length;
 
   async function onFiles(fs: File[]) {
