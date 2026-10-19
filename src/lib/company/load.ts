@@ -65,11 +65,13 @@ function withDefaults(active: string[], cfg: KpiConfig) {
 }
 
 export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, version: number): Promise<StoredAccount[]> {
-  const { data: accts, error } = await supabase.from("source_accounts").select("id, code, name, class, sort_order").eq("company_id", companyId).eq("version", version).order("sort_order");
+  // The accounts and all balances of this version, read at the same time (see loadBalances).
+  const [{ data: accts, error }, bal] = await Promise.all([
+    supabase.from("source_accounts").select("id, code, name, class, sort_order").eq("company_id", companyId).eq("version", version).order("sort_order"),
+    loadBalances(supabase, companyId, version),
+  ]);
   if (error) throw error;
   const raw = new Map<string, Record<string, number>>((accts ?? []).map((a) => [a.id, {}]));
-  // All balances of this version in one call (see loadBalances).
-  const bal = await loadBalances(supabase, companyId, version);
   for (const b of bal) {
     const r = raw.get(b.account_id);
     if (r) r[b.period] = Number(b.amount);
@@ -82,14 +84,15 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   if (!user) notFound();
   const { data: c } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
   if (!c) notFound();
-  const [{ data: mem }, { data: org }, { data: list }, { data: comm }, { data: imp }] = await Promise.all([
+  // Everything else in one round, the accounts included.
+  const [{ data: mem }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored] = await Promise.all([
     supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
     supabase.from("commentary").select("period_key, section, body").eq("company_id", id),
     supabase.from("imports").select("report").eq("company_id", id).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    loadAccounts(supabase, id, c.data_version),
   ]);
-  const stored = await loadAccounts(supabase, id, c.data_version);
   const accounts = naturalAccounts(stored);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);

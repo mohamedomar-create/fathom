@@ -24,7 +24,7 @@ export function DataNav() {
         {TABS.filter((t) => t.href !== "/odoo" || c.basePath !== "/demo").map((t) => {
           const href = base + t.href;
           const on = t.href ? path.startsWith(href) : path === base;
-          return <Link prefetch={false} key={t.href} href={href} className={cn("-mb-px shrink-0 border-b-2 px-4 py-2 text-sm", on ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.label}</Link>;
+          return <Link key={t.href} href={href} className={cn("-mb-px shrink-0 border-b-2 px-4 py-2 text-sm", on ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{t.label}</Link>;
         })}
       </div>
     </div>
