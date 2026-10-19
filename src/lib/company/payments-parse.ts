@@ -1,5 +1,5 @@
-// The Payments summary as the database sends it (payments_summary, migration 0027), checked and typed.
-import { EMPTY_PAYMENTS, type AgedData, type PaymentsData, type Side } from "@/lib/engine/payments";
+// The Payments summary as the database sends it (payments_summary, migrations 0027 and 0028), checked and typed.
+import { EMPTY_PAYMENTS, type AgedData, type PaymentData, type PaymentsData, type Side } from "@/lib/engine/payments";
 
 const num = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : 0);
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -22,7 +22,8 @@ export function parsePaymentsSummary(raw: unknown): PaymentsData {
   }
   const payments = Array.isArray(r.payments) ? r.payments.map((p) => {
     const x = p as unknown[];
-    return { day: str(x[0]).slice(0, 10), number: str(x[1]), journal: str(x[2]), method: str(x[3]), partner: str(x[4]), amount: num(x[5]), currency: str(x[6]), amountCurrency: num(x[7]), state: str(x[8]) === "in_process" ? "in_process" as const : "paid" as const };
+    return { day: str(x[0]).slice(0, 10), number: str(x[1]), journal: str(x[2]), method: str(x[3]), partner: str(x[4]), amount: num(x[5]), currency: str(x[6]), amountCurrency: num(x[7]), state: str(x[8]) === "in_process" ? "in_process" as const : "paid" as const,
+      kind: (["customers", "suppliers", "transfer", "other"].includes(str(x[9])) ? str(x[9]) : "") as PaymentData["kind"], counter: str(x[10]), source: str(x[11]) === "ledger" ? "ledger" as const : "file" as const };
   }).filter((p) => /^\d{4}-\d{2}-\d{2}$/.test(p.day)) : [];
   return { aged, payments };
 }

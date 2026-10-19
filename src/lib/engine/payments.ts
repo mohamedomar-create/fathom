@@ -7,7 +7,10 @@ import { monthLabel } from "@/lib/i18n";
 export type Side = "receivable" | "payable";
 export interface AgedItemData { partner: string; ref: string; memo: string; day: string | null; amounts: number[]; total: number }
 export interface AgedData { asOf: string; buckets: string[]; total: { amounts: number[]; total: number }; findings: { id: string; message: string }[]; items: AgedItemData[]; filename?: string | null }
-export interface PaymentData { day: string; number: string; journal: string; method: string; partner: string; amount: number; currency: string; amountCurrency: number; state: "paid" | "in_process" }
+export type PaymentKind = "customers" | "suppliers" | "transfer" | "other";
+/** A payment from Odoo's payments list (source "file") or a bank or cash entry of the General Ledger (source "ledger",
+ *  with the kind of payment and the class on the other side of its journal entry). */
+export interface PaymentData { day: string; number: string; journal: string; method: string; partner: string; amount: number; currency: string; amountCurrency: number; state: "paid" | "in_process"; kind?: PaymentKind | ""; counter?: string; source?: "file" | "ledger" }
 export interface PaymentsData { aged: Partial<Record<Side, AgedData>>; payments: PaymentData[] }
 export const EMPTY_PAYMENTS: PaymentsData = { aged: {}, payments: [] };
 
@@ -26,7 +29,12 @@ export interface SideView {
   findings: { id: string; message: string }[];
 }
 export interface Flows {
+  /** "ledger": every bank and cash entry of the General Ledger (transfers between own accounts left out); "file": a payments list. */
+  basis: "ledger" | "file";
   received: number; paid: number; net: number; inProcess: number;
+  /** Moved between the company's own bank and cash accounts (ledger only): not money in or out. */
+  transfers: number;
+  byKind: { kind: PaymentKind; counter: string; received: number; paid: number; count: number }[];
   byMonth: { p: string; received: number; paid: number }[];
   byJournal: { journal: string; amount: number; count: number }[];
   byPartner: { partner: string; amount: number; count: number }[];
@@ -104,20 +112,40 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
   const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue)) : null;
   const payable = d.aged.payable ? sideView("payable", d.aged.payable, perDay(d.aged.payable.asOf, opts.cost)) : null;
 
-  const inWin = d.payments.filter((p) => win.periods.includes(p.day.slice(0, 7)));
-  const group = <K extends string>(key: (p: PaymentData) => string, name: K) => {
+  // The General Ledger's payments, when loaded, are the record (every bank entry, tied to the books); a payments file
+  // then only adds what the ledger can't say: cheques still in process.
+  const fromLedger = d.payments.some((p) => p.source === "ledger");
+  const base = fromLedger ? d.payments.filter((p) => p.source === "ledger") : d.payments;
+  const files = d.payments.filter((p) => p.source !== "ledger");
+  const real = base.filter((p) => p.kind !== "transfer");
+  const inWinAll = base.filter((p) => win.periods.includes(p.day.slice(0, 7)));
+  const inWin = inWinAll.filter((p) => p.kind !== "transfer");
+  const groupOf = <K extends string>(rows: PaymentData[], key: (p: PaymentData) => string, name: K) => {
     const m = new Map<string, { amount: number; count: number }>();
-    for (const p of inWin) { const k = key(p); const e = m.get(k) ?? { amount: 0, count: 0 }; e.amount = r2(e.amount + p.amount); e.count++; m.set(k, e); }
+    for (const p of rows) { const k = key(p); const e = m.get(k) ?? { amount: 0, count: 0 }; e.amount = r2(e.amount + p.amount); e.count++; m.set(k, e); }
     return [...m].map(([k, v]) => ({ [name]: k, ...v }) as { [P in K]: string } & { amount: number; count: number }).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
   };
-  const months = [...new Set(d.payments.map((p) => p.day.slice(0, 7)))].sort();
+  const group = <K extends string>(key: (p: PaymentData) => string, name: K) => groupOf(inWin, key, name);
+  const months = [...new Set(base.map((p) => p.day.slice(0, 7)))].sort();
+  const kinds = new Map<string, Flows["byKind"][number]>();
+  for (const p of inWinAll) {
+    const kind = (p.kind || (p.amount >= 0 ? "customers" : "suppliers")) as PaymentKind;
+    const k = `${kind}|${p.counter ?? ""}`;
+    const e = kinds.get(k) ?? { kind, counter: p.counter ?? "", received: 0, paid: 0, count: 0 };
+    if (p.amount >= 0) e.received = r2(e.received + p.amount); else e.paid = r2(e.paid - p.amount);
+    e.count++; kinds.set(k, e);
+  }
+  const order: PaymentKind[] = ["customers", "suppliers", "transfer", "other"];
   const flows: Flows = {
+    basis: fromLedger ? "ledger" : "file",
     received: r2(inWin.filter((p) => p.amount > 0).reduce((s, p) => s + p.amount, 0)),
     paid: r2(-inWin.filter((p) => p.amount < 0).reduce((s, p) => s + p.amount, 0)),
     net: r2(inWin.reduce((s, p) => s + p.amount, 0)),
-    inProcess: r2(inWin.filter((p) => p.state === "in_process").reduce((s, p) => s + p.amount, 0)),
-    byMonth: months.map((p) => ({ p, received: r2(d.payments.filter((x) => x.day.startsWith(p) && x.amount > 0).reduce((s, x) => s + x.amount, 0)), paid: r2(-d.payments.filter((x) => x.day.startsWith(p) && x.amount < 0).reduce((s, x) => s + x.amount, 0)) })),
-    byJournal: group((p) => p.journal || "—", "journal"),
+    inProcess: r2(files.filter((p) => win.periods.includes(p.day.slice(0, 7)) && p.state === "in_process").reduce((s, p) => s + p.amount, 0)),
+    transfers: r2(inWinAll.filter((p) => p.kind === "transfer" && p.amount > 0).reduce((s, p) => s + p.amount, 0)),
+    byKind: [...kinds.values()].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.received + b.paid - (a.received + a.paid)),
+    byMonth: months.map((p) => ({ p, received: r2(real.filter((x) => x.day.startsWith(p) && x.amount > 0).reduce((s, x) => s + x.amount, 0)), paid: r2(-real.filter((x) => x.day.startsWith(p) && x.amount < 0).reduce((s, x) => s + x.amount, 0)) })),
+    byJournal: groupOf(inWinAll, (p) => p.journal || "—", "journal"),
     byPartner: group((p) => p.partner || "—", "partner"),
   };
 

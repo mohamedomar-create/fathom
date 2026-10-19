@@ -47,6 +47,8 @@ import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
 import { stockFromLedger } from "@/lib/ingest/inventory";
 import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
+import { savePayments } from "@/lib/company/save-payments";
+import { ledgerCashMoves, paymentsFromLedger } from "@/lib/ingest/payments";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
@@ -461,13 +463,23 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         const stockLines = stockFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
         const st = await saveStockLedger(companyId, stockLines, filename);
         if (!st.ok) { setErr(`The figures were saved, but the ledger's stock entries could not be: ${st.error}`); return; }
+        // The ledger's bank and cash entries are the Payments in and out, named by the other side of each entry. They are
+        // saved only when every account's entries add up to its movement; otherwise the reason is said, never skipped quietly.
+        const pay = paymentsFromLedger(res.lines, ledgerCashMoves(res.lines));
+        const payLines = pay.lines.filter((l) => mode !== "add" || addedPL.has(l.period));
+        let payNote = "";
+        if (pay.errors.length) payNote = ` Payments in and out were not saved: ${pay.errors[0]}${pay.errors.length > 1 ? ` (and ${pay.errors.length - 1} more)` : ""}`;
+        else if (payLines.length) {
+          const pv = await savePayments(companyId, "ledger", payLines, mode === "add" ? [] : touchedPL, filename);
+          if (!pv.ok) { setErr(`The figures were saved, but the payments could not be: ${pv.error}`); return; }
+        }
         // Inventory sheets in the same upload go to Inventory.
         if (invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length)) {
           const inv = await saveInventory(companyId, { layers: invParts.layers, moves: invParts.moves, onhand: invParts.onhand ?? undefined, products: invParts.products }, filename, mode === "add" ? "add" : "replace");
           if (!inv.ok) { setErr(`The figures were saved, but the stock sheets could not be: ${inv.error}`); return; }
         }
         const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
-        setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved` });
+        setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved${payLines.length && !pay.errors.length ? `, with ${payLines.length} bank and cash payments` : ""}.${payNote}` });
         setScreen("done");
         router.refresh();
       } catch (e) {

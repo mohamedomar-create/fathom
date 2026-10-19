@@ -2,6 +2,7 @@
 // and payments by month and journal, days to collect, and the ageing tied to its control account in the books.
 import { describe, expect, it } from "vitest";
 import { paymentsAnalysis, suggestControl, type PaymentsData } from "@/lib/engine/payments";
+import { parsePaymentsSummary as parseSummary } from "@/lib/company/payments-parse";
 
 const B = ["At Date", "1-30", "31-60", "61-90", "91-120", "Older"];
 const item = (partner: string, ref: string, amounts: number[]) => ({ partner, ref, memo: "", day: null, amounts, total: amounts.reduce((a, b) => a + b, 0) });
@@ -94,6 +95,44 @@ describe("Payments demo and summary parsing", async () => {
   it("the database summary is read back exactly", () => {
     const p = parsePaymentsSummary({ aged: { receivable: { as_of: "2026-09-30", buckets: ["At Date", "Older"], total: { amounts: [100, "50.5"], total: 150.5 }, findings: [{ id: "no_partner", message: "x" }], items: [["Northside", "INV/1", "", "2026-09-01", [100, 50.5], 150.5]] } }, payments: [["2026-09-05", "CIB/1", "CIB", "Manual", "Northside", "3000.00", "EGP", 3000, "in_process"], ["bad", "", "", "", "", 1, "", 1, "paid"]] });
     expect(p.aged.receivable).toMatchObject({ asOf: "2026-09-30", total: { amounts: [100, 50.5], total: 150.5 }, items: [{ partner: "Northside", day: "2026-09-01", amounts: [100, 50.5], total: 150.5 }] });
-    expect(p.payments).toEqual([{ day: "2026-09-05", number: "CIB/1", journal: "CIB", method: "Manual", partner: "Northside", amount: 3000, currency: "EGP", amountCurrency: 3000, state: "in_process" }]);
+    expect(p.payments).toEqual([{ day: "2026-09-05", number: "CIB/1", journal: "CIB", method: "Manual", partner: "Northside", amount: 3000, currency: "EGP", amountCurrency: 3000, state: "in_process", kind: "", counter: "", source: "file" }]);
+  });
+});
+
+describe("Payments engine on the General Ledger's payments", () => {
+  const L = (day: string, number: string, journal: string, amount: number, kind: "customers" | "suppliers" | "transfer" | "other", counter: string, partner = "") =>
+    ({ day, number, journal, method: "", partner, amount, currency: "", amountCurrency: amount, state: "paid" as const, kind, counter, source: "ledger" as const });
+  const data = (): PaymentsData => ({ aged: {}, payments: [
+    L("2026-09-05", "CIB/1", "121221 CIB Bank EGP", 3000, "customers", "ar", "Northside"),
+    L("2026-09-10", "CIB/5", "121221 CIB Bank EGP", 700, "customers", "ar", "Delta"),
+    L("2026-09-06", "CIB/2", "121221 CIB Bank EGP", -1500, "suppliers", "ap", "Medline"),
+    L("2026-09-07", "TRF/1", "121221 CIB Bank EGP", -2000, "transfer", ""),
+    L("2026-09-07", "TRF/1", "121102 petty Mazen", 2000, "transfer", ""),
+    L("2026-09-08", "CIB/3", "121221 CIB Bank EGP", -50, "other", "interest_expenses"),
+    // A payments file uploaded too: shown as a cross-check, never added to the ledger's totals.
+    { day: "2026-09-30", number: "N/R/1", journal: "Notes Receivables", method: "Manual", partner: "Delta", amount: 1000, currency: "EGP", amountCurrency: 1000, state: "in_process", source: "file" },
+  ] });
+
+  it("received and paid come from the ledger, transfers between own accounts left out", () => {
+    const f = paymentsAnalysis(data(), SEP, 1).flows;
+    expect(f.basis).toBe("ledger");
+    expect([f.received, f.paid, f.net, f.transfers]).toEqual([3700, 1550, 2150, 2000]);
+    expect(f.inProcess).toBe(1000);
+  });
+
+  it("by kind and by account add up to the totals", () => {
+    const f = paymentsAnalysis(data(), SEP, 1).flows;
+    expect(f.byKind).toEqual([
+      { kind: "customers", counter: "ar", received: 3700, paid: 0, count: 2 },
+      { kind: "suppliers", counter: "ap", received: 0, paid: 1500, count: 1 },
+      { kind: "transfer", counter: "", received: 2000, paid: 2000, count: 2 },
+      { kind: "other", counter: "interest_expenses", received: 0, paid: 50, count: 1 },
+    ]);
+    expect(f.byJournal.map((j) => [j.journal, j.amount])).toEqual([["121102 petty Mazen", 2000], ["121221 CIB Bank EGP", 150]]);
+  });
+
+  it("the summary parser keeps kind, other side and source", () => {
+    const d = parseSummary({ aged: {}, payments: [["2026-09-05", "CIB/1", "121221 CIB", "", "Northside", 3000, "", 3000, "paid", "customers", "ar", "ledger"]] });
+    expect(d.payments[0]).toMatchObject({ kind: "customers", counter: "ar", source: "ledger" });
   });
 });

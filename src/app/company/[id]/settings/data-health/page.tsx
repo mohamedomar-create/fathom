@@ -31,7 +31,7 @@ export default async function DataHealthPage({ params, searchParams }: { params:
     loadInventory(id), loadExpenses(id),
     supabase.from("input_profiles").select("kind, sheet, headings, read, ignored, history, updated_at").eq("company_id", id).order("kind"),
     // Payments uploads and ageing reports (none before the database has the Payments tables).
-    supabase.from("payment_batches").select("id, filename, periods, created_at").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
+    supabase.from("payment_batches").select("*").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("aged_reports").select("id, side, as_of, filename, created_at").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
   ]);
   // Each export's remembered layout (none before the database has the table).
@@ -43,10 +43,11 @@ export default async function DataHealthPage({ params, searchParams }: { params:
   const lineUploads: LineUpload[] = [
     ...(salesFiles ?? []).map((b) => ({ id: b.id, kind: "sales" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
     ...(expenseFiles ?? []).map((b) => ({ id: b.id, kind: "expenses" as const, file: b.filename, periods: (b.periods as string[] | null) ?? [], at: b.created_at })),
-    ...(paymentFiles ?? []).map((b) => ({ id: b.id, kind: "payments" as const, file: b.filename, periods: b.periods ?? [], at: b.created_at })),
+    // ("*": the source column arrives with migration 0028; before it, every batch is a payments file.)
+    ...(paymentFiles ?? []).map((b) => ({ id: b.id, kind: "payments" as const, file: b.filename, periods: b.periods ?? [], at: b.created_at, ledger: b.source === "ledger" })),
   ].sort((a, b) => b.at.localeCompare(a.at)).flatMap((u, _i, all): LineUpload[] => {
     // A newer file replaced the older one's months (their lines are gone): show each upload with the months it still holds.
-    const newer = all.filter((x) => x.kind === u.kind && x.at > u.at).flatMap((x) => x.periods);
+    const newer = all.filter((x) => x.kind === u.kind && !!(x as { ledger?: boolean }).ledger === !!(u as { ledger?: boolean }).ledger && x.at > u.at).flatMap((x) => x.periods);
     const left = u.periods.filter((p) => !newer.includes(p));
     return left.length ? [{ ...u, periods: left }] : [];
   }).concat((agedFiles ?? []).map((r) => ({ id: r.id, kind: "aged" as const, file: r.filename, periods: [r.as_of.slice(0, 7)], at: r.created_at, asOf: r.as_of, side: r.side as "receivable" | "payable" })))

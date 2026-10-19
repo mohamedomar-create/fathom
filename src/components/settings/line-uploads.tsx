@@ -5,7 +5,7 @@ import { mlabel } from "@/lib/engine";
 import { removeLineUpload } from "@/app/company/[id]/settings/ledger-actions";
 import { removePaymentsUpload } from "@/app/company/[id]/settings/payments-actions";
 
-export interface LineUpload { id: string; kind: "sales" | "expenses" | "payments" | "aged"; file: string | null; periods: string[]; at: string; lines?: number; asOf?: string; side?: "receivable" | "payable" }
+export interface LineUpload { id: string; kind: "sales" | "expenses" | "payments" | "aged"; file: string | null; periods: string[]; at: string; lines?: number; asOf?: string; side?: "receivable" | "payable"; ledger?: boolean }
 
 const FEEDS: Record<LineUpload["kind"], string> = { sales: "Sales", expenses: "Expenses", payments: "Payments", aged: "Payments (ageing)" };
 
@@ -33,7 +33,7 @@ export function LineUploads({ rows, companyId, readOnly }: { rows: LineUpload[];
           {rows.map((r) => (
             <tr key={r.id} className="row" data-testid="line-upload">
               <td className="max-w-[260px] truncate text-start" title={r.file ?? ""}>{r.file ?? "Upload"}</td>
-              <td className="text-start">{FEEDS[r.kind]}</td>
+              <td className="text-start">{r.kind === "payments" && r.ledger ? "Payments (General Ledger)" : FEEDS[r.kind]}</td>
               <td className="text-start">{r.kind === "aged" ? `Aged ${r.side === "payable" ? "Payable" : "Receivable"} as of ${r.asOf}` : span([...r.periods].sort())}</td>
               <td className="text-start text-mute">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
               {!readOnly && <td><button onClick={() => remove(r)} disabled={busy} className="text-[12px] text-red underline" data-testid="remove-line-upload">Remove</button></td>}

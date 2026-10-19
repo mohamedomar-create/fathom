@@ -48,7 +48,7 @@ describe("payments from the General Ledger", () => {
   });
 
   it("each cash account's movement per month comes from its balances (the first month is the opening)", () => {
-    const ls = [{ code: "121221", name: "CIB Bank EGP", cls: "cash", excluded: false, values: { "2026-08": 10000, "2026-09": 9050, "2026-10": 9050 } },
+    const ls: { code: string; name: string; cls: string; excluded: boolean; values: Record<string, number> }[] = [{ code: "121221", name: "CIB Bank EGP", cls: "cash", excluded: false, values: { "2026-08": 10000, "2026-09": 9050, "2026-10": 9050 } },
       { code: "122200", name: "Trade Receivables", cls: "ar", excluded: false, values: { "2026-08": 1, "2026-09": 2 } }];
     expect(ledgerCashMoves(ls)).toEqual({ "121221 CIB Bank EGP": { "2026-09": -950, "2026-10": 0 } });
   });

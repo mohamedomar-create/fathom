@@ -1,8 +1,9 @@
 "use client";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { CheckCircle2, HandCoins, TriangleAlert } from "lucide-react";
-import { hasPL, money, pct } from "@/lib/engine";
-import { paymentsAnalysis, type PaymentsAnalysis, type PaymentsFinding, type Side, type SideView } from "@/lib/engine/payments";
+import { hasPL, money, pct, type ClassKey } from "@/lib/engine";
+import { CLASS_LABEL } from "@/lib/ingest/classes";
+import { paymentsAnalysis, type PaymentKind, type PaymentsAnalysis, type PaymentsFinding, type Side, type SideView } from "@/lib/engine/payments";
 import { useCompany } from "@/lib/company/context";
 import { usePayments } from "@/lib/company/payments-context";
 import { usePeriod } from "@/lib/company/use-period";
@@ -30,6 +31,8 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
     return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency }), months, hasPayments: data.payments.length > 0 };
   }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings.fyStartMonth, c.settings.currency, lang]);
 }
+
+const KIND_LABEL: Record<PaymentKind, string> = { customers: "Customers", suppliers: "Suppliers", transfer: "Between own accounts", other: "Other" };
 
 function NoPayments() {
   const c = useCompany();
@@ -252,15 +255,36 @@ export function PaymentsFlows() {
   return (
     <>
       <PageHeader title="Payments in and out" right={<PeriodPicker own={r.months} />} />
+      <p className="mb-5 max-w-4xl text-[14px] text-mute" data-testid="flows-basis">
+        {f.basis === "ledger"
+          ? <>From your General Ledger: every entry on your bank and cash accounts, named by the other side of its journal entry, so it agrees with the books.{f.transfers ? <> {money(f.transfers, cur)} moved between your own accounts is not counted as money in or out.</> : null}</>
+          : <>From the payments list exported from Odoo. Upload your General Ledger to see every bank and cash entry, tied to the books.</>}
+      </p>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
         <Tile label="Received" value={money(f.received, cur)} testId="flows-received" />
         <Tile label="Paid" value={money(f.paid, cur)} testId="flows-paid" />
         <Tile label="Net" value={money(f.net, cur)} neg={f.net < 0} />
-        <Tile label="Still in process" value={money(f.inProcess, cur)} sub="cheques and notes not yet cleared" />
+        {f.basis === "ledger"
+          ? <Tile label="Between own accounts" value={money(f.transfers, cur)} sub="not money in or out" />
+          : <Tile label="Still in process" value={money(f.inProcess, cur)} sub="cheques and notes not yet cleared" />}
       </div>
+      {f.byKind.length > 0 && (
+        <div className="mb-10">
+          <h3 className="mb-2 text-lg font-normal">What it was</h3>
+          <table className="w-full max-w-3xl text-[13px]" data-testid="flows-kinds"><thead><tr className="text-mute"><th className="text-start">Kind</th><th className="num">In</th><th className="num">Out</th></tr></thead><tbody>
+            {f.byKind.map((k) => (
+              <tr key={`${k.kind}|${k.counter}`} className="row border-b border-line/50">
+                <td className="py-1.5 text-start">{KIND_LABEL[k.kind]}{k.kind === "other" && k.counter ? `: ${CLASS_LABEL[k.counter as ClassKey] ?? k.counter}` : ""} <span className="text-mute">· {k.count}</span></td>
+                <td className="num">{k.received ? money(k.received, cur) : ""}</td>
+                <td className="num">{k.paid ? money(k.paid, cur) : ""}</td>
+              </tr>
+            ))}
+          </tbody></table>
+        </div>
+      )}
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-lg font-normal">By journal</h3>
+          <h3 className="mb-2 text-lg font-normal">{f.basis === "ledger" ? "By bank and cash account" : "By journal"}</h3>
           <table className="w-full text-[13px]" data-testid="flows-journals"><tbody>
             {f.byJournal.map((j) => <tr key={j.journal} className="row border-b border-line/50"><td className="py-1.5 text-start">{j.journal} <span className="text-mute">· {j.count}</span></td><td className={cn("num", j.amount < 0 && "text-red")}>{money(j.amount, cur)}</td></tr>)}
           </tbody></table>

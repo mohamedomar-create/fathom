@@ -23,6 +23,7 @@ const Aged = z.object({
 const Line = z.object({
   day: Day, period: Period, number: z.string().max(80), journal: z.string().max(120), method: z.string().max(120), partner: z.string().max(200),
   direction: z.enum(["in", "out"]), amount: Amount, currency: z.string().max(10), amount_currency: Amount.nullable(), state: z.enum(["paid", "in_process"]),
+  kind: z.enum(["", "customers", "suppliers", "transfer", "other"]).optional(), counter: z.string().max(40).optional(),
 });
 
 /** Saves one Aged Receivable / Aged Payable report, replacing the company's report for that side and date. */
@@ -46,15 +47,16 @@ export async function saveAgedReport(input: z.input<typeof Aged>): Promise<{ ok:
   }
 }
 
-/** Opens a payments batch: the company's payments for these months are replaced by the lines added next. */
-export async function startPaymentBatch(companyId: string, periods: string[], filename: string): Promise<{ ok: true; batch: string } | { ok: false; error: string }> {
-  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).min(1).max(240), filename: z.string().max(300) }).safeParse({ companyId, periods, filename });
+/** Opens a payments batch: the company's payments from this source (a payments file, or the General Ledger's bank and
+ *  cash entries) for these months are replaced by the lines added next. */
+export async function startPaymentBatch(companyId: string, periods: string[], filename: string, source: "file" | "ledger" = "file"): Promise<{ ok: true; batch: string } | { ok: false; error: string }> {
+  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).min(1).max(240), filename: z.string().max(300), source: z.enum(["file", "ledger"]) }).safeParse({ companyId, periods, filename, source });
   if (!v.success) return { ok: false, error: "The payments are not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, "payments", user.id)) return { ok: false, error: TOO_MANY };
   try {
-    const { data, error } = await supabase.rpc("begin_payment_batch", { p_company: companyId, p_periods: [...new Set(periods)].sort(), p_filename: filename, p_report: {} as Json });
+    const { data, error } = await supabase.rpc("begin_payment_batch", { p_company: companyId, p_periods: [...new Set(periods)].sort(), p_filename: filename, p_report: {} as Json, ...(source === "ledger" ? { p_source: source } : {}) });
     if (error) return { ok: false, error: dbError(error, "begin_payment_batch") };
     return { ok: true, batch: data as string };
   } catch (e) {

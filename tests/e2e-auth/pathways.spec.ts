@@ -97,6 +97,24 @@ test("an Odoo ledger with an unexplained opening adjustment imports cleanly and 
   await expect(page.locator('select[aria-label="Reclassify z Adjustment"]')).toHaveValue("other_equity");
 });
 
+/** Payments in and out come from the General Ledger's bank and cash entries: no payments file needed, every entry counted. */
+test("a General Ledger upload fills Payments in and out from its bank and cash entries, transfers left out", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Ledger Pay Owner", org: "Ledger Pay Advisory", email: newEmail("lpay") });
+  const id = await createCompany(page, "Ledger Pay Co");
+  await importFiles(page, id, ["egypt-odoo-general-ledger.xlsx"]);
+  await page.goto(`/company/${id}/payments/flows?type=month&end=2026-10`);
+  await expect(page.getByTestId("flows-basis")).toContainText("General Ledger");
+  await expect(page.getByTestId("flows-received")).toContainText("2,816,883");
+  await expect(page.getByTestId("flows-paid")).toContainText("1,438,965");
+  await expect(page.getByTestId("flows-kinds")).toContainText("Customers");
+  await expect(page.getByTestId("flows-kinds")).toContainText("Suppliers");
+  await expect(page.getByTestId("flows-journals")).toContainText("121221 CIB Bank EGP");
+  // Data health lists them as the General Ledger's.
+  await page.goto(`/company/${id}/settings/data-health`);
+  await expect(page.getByTestId("line-uploads")).toContainText("Payments (General Ledger)");
+});
+
 /** Lines from a ledger follow the accounts: replacing everything with a P&L and balance sheet clears them, and Sales falls back to revenue by account. */
 test("replacing a ledger with a P&L and balance sheet clears its sales and expense lines; every sector still shows its part", async ({ page }) => {
   test.setTimeout(180_000);

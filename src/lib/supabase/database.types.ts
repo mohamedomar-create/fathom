@@ -38,7 +38,7 @@ export type SalesLineRow = { id: number; company_id: string; batch_id: string; s
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
-export type PaymentBatchRow = { id: string; company_id: string; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type PaymentBatchRow = { id: string; company_id: string; filename: string | null; periods: string[]; report: Json; source: "file" | "ledger"; created_by: string | null; created_at: string }
 export type AgedReportRow = { id: string; company_id: string; side: "receivable" | "payable"; as_of: string; buckets: string[]; totals: Json; findings: Json; filename: string | null; created_by: string | null; created_at: string }
 export type InventoryBatchRow = { id: string; company_id: string; kind: "valuation" | "moves" | "onhand" | "products"; filename: string | null; periods: string[]; mode: "replace" | "add" | "all" | "update"; status: "open" | "done"; report: Json; created_by: string | null; created_at: string }
 export type StockLayerRow = { id: number; company_id: string; batch_id: string; odoo_key: string; day: string | null; period: string; ref: string; kind: string; product: string; code: string; category: string; lot: string; qty: number; unit_value: number; value: number; partner: string; landed_ref: string; live: boolean }
@@ -100,7 +100,7 @@ export type Database = {
       odoo_secret: { Args: { p_company: string }; Returns: string | null };
       company_balances: { Args: { p_company: string; p_version: number }; Returns: Json };
       save_aged_report: { Args: { p_company: string; p_side: string; p_as_of: string; p_buckets: string[]; p_totals: Json; p_findings: Json; p_filename: string; p_items: Json }; Returns: number };
-      begin_payment_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string | null; p_report?: Json }; Returns: string };
+      begin_payment_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string | null; p_report?: Json; p_source?: "file" | "ledger" }; Returns: string };
       add_payment_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       payments_summary: { Args: { p_company: string }; Returns: Json };
       odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
