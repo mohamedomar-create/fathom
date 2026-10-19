@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { compareBooks, type BookDiff } from "@/lib/company/compare";
 import { compareWithOf } from "@/lib/company/time-zone";
@@ -18,17 +19,22 @@ import { ExportLayouts, type LayoutRow } from "@/components/settings/export-layo
 import { loadInventory } from "@/lib/company/inventory-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
 
+/** The stock checks need the stock and expense summaries: they arrive after the rest of the page. */
+async function StockSection({ id }: { id: string }) {
+  const [inventory, expenses] = await Promise.all([loadInventory(id), loadExpenses(id)]);
+  return <StockChecks inventory={inventory} expenses={expenses} />;
+}
+
 export default async function DataChecksPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ imported?: string }> }) {
   const { id } = await params;
   const { imported } = await searchParams;
   const { supabase } = await getUser();
   const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, inventory, expenses, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
+  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
     loadVersion(supabase, id, bundle.dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
-    loadInventory(id), loadExpenses(id),
     supabase.from("input_profiles").select("kind, sheet, headings, read, ignored, history, updated_at").eq("company_id", id).order("kind"),
     // Payments uploads and ageing reports (none before the database has the Payments tables).
     supabase.from("payment_batches").select("*").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
@@ -134,7 +140,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
         <ExportLayouts rows={layouts} />
       </section>
       <section className="mt-10"><ImportJobs companyId={id} /></section>
-      <StockChecks inventory={inventory} expenses={expenses} />
+      <Suspense fallback={<div className="mt-10 h-40 animate-pulse rounded-lg bg-band" aria-busy="true" />}><StockSection id={id} /></Suspense>
     </div>
   );
 }

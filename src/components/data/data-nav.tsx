@@ -8,6 +8,7 @@ const TABS = [
   { href: "", label: "Steps" },
   { href: "/upload", label: "Upload" },
   { href: "/checks", label: "Checks & history" },
+  { href: "/readiness", label: "Readiness" },
   { href: "/odoo", label: "Odoo live" },
 ];
 

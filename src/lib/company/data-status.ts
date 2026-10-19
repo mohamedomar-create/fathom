@@ -5,7 +5,10 @@ import { hasPL, plCalc } from "@/lib/engine";
 import { agedTieouts, inventoryTies, type ReadinessInput } from "./readiness";
 import type { DataStatus } from "./data-steps";
 
-export function subLedgerStatus(x: ReadinessInput): Pick<DataStatus, "sales" | "stock" | "ageing"> {
+/** The sub-ledger steps' status: small enough to send to the page instead of the data behind it. */
+export type SubLedgers = Pick<DataStatus, "sales" | "stock" | "ageing">;
+
+export function subLedgerStatus(x: ReadinessInput): SubLedgers {
   const s = x.sales;
   const fileMonths = s ? Object.entries(s.sources).filter(([, v]) => v === "file").map(([p]) => p).sort() : [];
   const byMonth = new Map<string, number>();

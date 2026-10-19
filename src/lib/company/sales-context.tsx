@@ -10,3 +10,10 @@ export function SalesProvider({ value, children }: { value: SalesData; children:
 }
 
 export const useSales = () => useContext(Ctx);
+
+const Names = createContext<string[]>([]);
+/** Only the names of the company's customers (the Expenses pages tell a customer from a supplier with them). */
+export function CustomerNamesProvider({ value, children }: { value: string[]; children: React.ReactNode }) {
+  return <Names.Provider value={value}>{children}</Names.Provider>;
+}
+export const useCustomerNames = () => useContext(Names);

@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Receipt, Upload } from "lucide-react";
-import { accountsFromLines, customersOf, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
-import { useSales } from "@/lib/company/sales-context";
+import { accountsFromLines, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
+import { useCustomerNames } from "@/lib/company/sales-context";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { useExpenses } from "@/lib/company/expenses-context";
@@ -27,7 +27,7 @@ export const costVs = (growth: number | null, label: string) => <CostVs growth={
 export function useExpensesAnalysis() {
   const c = useCompany();
   const data = useExpenses();
-  const sales = useSales();
+  const names = useCustomerNames();
   const { sel, cmp } = usePeriod();
   const lang = useLang();
   return useMemo(() => {
@@ -37,8 +37,8 @@ export function useExpensesAnalysis() {
     const end = fromPL ? sel.end : sel.end && lineMonths.includes(sel.end) ? sel.end : lineMonths[lineMonths.length - 1];
     if (!end) return null;
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: customersOf(sales), lang });
-  }, [data, sales, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang]);
+    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang });
+  }, [data, names, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang]);
 }
 
 /** The period picker, which reads the financial months; with an expenses file only, the latest month is shown instead. */

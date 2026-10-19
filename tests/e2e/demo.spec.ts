@@ -356,6 +356,7 @@ test("cash flow shows each month and the change in cash", async ({ page }) => {
 test("the Data section lists each step in order and each sector's readiness, with templates to download", async ({ page }) => {
   await page.goto("/demo/data");
   await expect(page.getByTestId("step-ledger")).toBeVisible();
+  await page.goto("/demo/data/readiness");
   await expect(page.getByTestId("radar-financials")).toBeVisible();
   await expect(page.getByTestId("readiness-sales")).toBeVisible();
   // One upload feeds every sector it can: the accounts reach all five, the ledger's lines reach Expenses.

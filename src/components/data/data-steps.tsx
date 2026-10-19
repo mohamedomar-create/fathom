@@ -2,14 +2,11 @@
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, CircleDashed, Lock, ShieldCheck } from "lucide-react";
 import { useMemo } from "react";
-import { hasPL, mlabel, type ExpensesData, type SalesData } from "@/lib/engine";
+import { hasPL, mlabel } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { useInventoryData } from "@/lib/company/inventory-context";
-import type { InventoryState } from "@/lib/company/inventory-wire";
-import type { PaymentsBundle } from "@/lib/company/payments-load";
 import { checkKey, runChecks } from "@/lib/company/checks";
 import { dataSteps, type DataStatus, type StepStatus } from "@/lib/company/data-steps";
-import { subLedgerStatus } from "@/lib/company/data-status";
+import type { SubLedgers } from "@/lib/company/data-status";
 import type { TbCheck } from "@/lib/company/time-zone";
 import { cn } from "@/lib/cn";
 
@@ -36,15 +33,12 @@ const WORD: Record<StepStatus, string> = { verified: "Verified", done: "Done", i
  * The one sequence, in the order an accountant closes the books. The General Ledger is the book of record; the Trial
  * Balance proves it; the sub-ledgers add detail and reconcile to their control accounts; the review signs it off.
  */
-export function DataSteps({ facts, sales, expenses = null, inventory: state = null, payments = null }: { facts: DataFacts; sales: SalesData | null; expenses?: ExpensesData | null; inventory?: InventoryState | null; payments?: PaymentsBundle | null }) {
+export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers }) {
   const c = useCompany();
-  const parsed = useInventoryData(state);
   const steps = useMemo(() => {
-    const inventory = state ? parsed : null;
     const pl = c.months.filter(hasPL).map((m) => m.period).sort();
     const accepted = new Set(facts.accepted);
     const open = runChecks({ accounts: c.accounts, months: c.months }).filter((k) => k.severity !== "info" && !accepted.has(checkKey(k))).length;
-    const sub = subLedgerStatus({ months: c.months, checks: [], fyStart: c.settings.fyStartMonth, sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, payments: payments ?? undefined });
     const s: DataStatus = {
       basePath: c.basePath, booksStart: facts.booksStart, opening: facts.openingAsAt ? { asAt: facts.openingAsAt } : null, booksFromZero: !!c.booksFromZero,
       openingInLedger: facts.openingInLedger,
@@ -53,7 +47,7 @@ export function DataSteps({ facts, sales, expenses = null, inventory: state = nu
       ...sub, openChecks: open,
     };
     return dataSteps(s);
-  }, [c, facts, sales, expenses, state, parsed, payments]);
+  }, [c, facts, sub]);
   const tb = facts.tbCheck;
   return (
     <div data-testid="data-steps">

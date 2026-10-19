@@ -197,7 +197,7 @@ test("replacing a ledger with a P&L and balance sheet clears its sales and expen
   await page.goto(`/company/${id}/expenses`);
   await expect(page.getByTestId("expenses-headline")).toBeVisible();
   await expect(page.getByTestId("no-expense-lines")).toBeVisible();
-  await page.goto(`/company/${id}/data`);
+  await page.goto(`/company/${id}/data/readiness`);
   await expect(page.getByTestId("map-accounts-sales")).toHaveAttribute("data-on", "1");
   await expect(page.getByTestId("map-row-ledger")).toHaveCount(0);
 });
@@ -410,7 +410,7 @@ test("filled templates import exactly, and mistakes are listed before anything i
   await page.getByTestId("sales-next").click();
   await page.getByTestId("save-sales").click();
   await expect(page.getByTestId("done-step")).toBeVisible({ timeout: 30_000 });
-  await page.goto(`/company/${id}/data`);
+  await page.goto(`/company/${id}/data/readiness`);
   await expect(page.getByTestId("ready-item-sales-reconciled")).toHaveAttribute("data-status", "done");
 });
 
