@@ -14,7 +14,7 @@ import { saveControlAccounts } from "@/app/company/[id]/settings/payments-action
 import { cn } from "@/lib/cn";
 
 /** The Payments analysis for the period chosen (payments months, else the ageing's month). */
-function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[] } | null {
+function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPayments: boolean } | null {
   const c = useCompany();
   const { data, control } = usePayments();
   const lang = useLang();
@@ -27,7 +27,7 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[] } | null
     const revenue = Object.fromEntries(pl.map((m) => [m.period, m.pl.revenue ?? 0]));
     const cost = Object.fromEntries(pl.map((m) => [m.period, (m.pl.cos_variable ?? 0) + (m.pl.cos_fixed ?? 0)]));
     const accounts = c.accounts.filter((x) => x.cls === "ar" || x.cls === "ap").map((x) => ({ code: x.code, name: x.name, cls: x.cls, amounts: x.amounts }));
-    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency }), months };
+    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency }), months, hasPayments: data.payments.length > 0 };
   }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings.fyStartMonth, c.settings.currency, lang]);
 }
 
@@ -39,6 +39,19 @@ function NoPayments() {
       <h2 className="text-2xl font-light">No receivables or payments yet</h2>
       <p className="mt-2 text-mute">Upload Odoo&apos;s Aged Receivable, Aged Payable and Customer / Vendor Payments.</p>
       {!c.readOnly && <a href={`${c.basePath}/settings/source-data?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments">Upload them</a>}
+    </div>
+  );
+}
+
+/** The ageing reports are loaded but no payments list: say so, and how to get it, instead of showing zeros. */
+function NoPaymentsList() {
+  const c = useCompany();
+  return (
+    <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-payments-list">
+      <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
+      <h2 className="text-2xl font-light">No payments list loaded yet</h2>
+      <p className="mt-2 text-mute">Your ageing reports are loaded. Payments in and out come from a separate Odoo export: Accounting → Customers → Payments, and Vendors → Payments. In the list view, tick the top box, then “Select all N records”, then Export.</p>
+      {!c.readOnly && <a href={`${c.basePath}/settings/source-data?step=payments`} className="mt-5 inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="upload-payments-list">Upload payments</a>}
     </div>
   );
 }
@@ -141,6 +154,7 @@ export function PaymentsOverview() {
   if (!r) return <><PageHeader title="Payments" /><NoPayments /></>;
   const { a, months } = r;
   const rec = a.receivable, pay = a.payable;
+  const noList = !r.hasPayments;
   const headline = [
     rec && `Customers owe ${money(rec.owed, cur)} at ${rec.asOf}; ${money(rec.overdue, cur)} of it is overdue${rec.owed ? ` (${pct((rec.overdue / rec.owed) * 100, 0)})` : ""}.`,
     pay && `The company owes suppliers ${money(pay.owed, cur)}.`,
@@ -155,8 +169,8 @@ export function PaymentsOverview() {
         <Tile label="Overdue" value={rec ? money(rec.overdue, cur) : "–"} sub={rec?.days !== null && rec?.days !== undefined ? `${rec.days} days of sales outstanding` : undefined} neg={!!rec && rec.overdue > rec.notDue} testId="tile-overdue" />
         <Tile label="Over 90 days" value={rec ? money(rec.over90, cur) : "–"} neg={!!rec && rec.owed > 0 && rec.over90 / rec.owed > 0.2} testId="tile-over90" />
         <Tile label="Owed to suppliers" value={pay ? money(pay.owed, cur) : "–"} sub={pay ? `net ${money(pay.total, cur)} after advances` : "no ageing"} testId="tile-payables" />
-        <Tile label="Received" value={money(a.flows.received, cur)} sub={a.flows.inProcess ? `${money(a.flows.inProcess, cur)} still in process` : a.label} testId="tile-received" />
-        <Tile label="Paid" value={money(a.flows.paid, cur)} sub={`net ${money(a.flows.net, cur)}`} neg={a.flows.net < 0} testId="tile-paid" />
+        <Tile label="Received" value={noList ? "not loaded" : money(a.flows.received, cur)} sub={noList ? "upload Customer Payments" : a.flows.inProcess ? `${money(a.flows.inProcess, cur)} still in process` : a.label} testId="tile-received" />
+        <Tile label="Paid" value={noList ? "not loaded" : money(a.flows.paid, cur)} sub={noList ? "upload Vendor Payments" : `net ${money(a.flows.net, cur)}`} neg={!noList && a.flows.net < 0} testId="tile-paid" />
       </div>
       <Tieouts a={a} />
       <div className="grid gap-10 lg:grid-cols-2">
@@ -233,6 +247,7 @@ export function PaymentsFlows() {
   const r = usePaymentsAnalysis();
   const cur = c.settings.currency;
   if (!r) return <><PageHeader title="Payments in and out" /><NoPayments /></>;
+  if (!r.hasPayments) return <><PageHeader title="Payments in and out" /><NoPaymentsList /></>;
   const f = r.a.flows;
   return (
     <>

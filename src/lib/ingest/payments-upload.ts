@@ -2,12 +2,13 @@
 // (Customer / Vendor Payments), or named as neither. What would block saving is collected in one list.
 import type { Grid } from "./extract";
 import { readAged, type AgedReport } from "./aged";
-import { readPayments, type PaymentFinding, type PaymentLine } from "./payments";
+import { paymentsHeadingGap, readPayments, type PaymentFinding, type PaymentLine } from "./payments";
 
 export interface PaymentsUploadPlan {
   aged: { sheet: string; report: AgedReport & { asOf: string } }[];
   payments: { sheets: string[]; lines: PaymentLine[]; periods: string[]; findings: PaymentFinding[] };
-  unread: string[];
+  /** Sheets that are neither, each with why: never left out quietly. */
+  unread: { sheet: string; why: string }[];
   errors: string[];
 }
 
@@ -36,7 +37,11 @@ export function planPaymentsUpload(grids: Grid[]): PaymentsUploadPlan {
       }
       continue;
     }
-    if (g.rows.some((r) => (r ?? []).some((c) => c !== null && c !== undefined && String(c).trim()))) plan.unread.push(g.name);
+    const filled = g.rows.filter((r) => (r ?? []).some((c) => c !== null && c !== undefined && String(c).trim()));
+    if (!filled.length) continue;
+    // Odoo adds a "Filters" sheet to every export (Company: …): it holds no figures.
+    if (/(^|› )filters$/i.test(g.name.trim()) && filled.length <= 30 && filled.every((r) => r.filter((c) => c !== null && c !== undefined && String(c).trim()).length <= 2)) continue;
+    plan.unread.push({ sheet: g.name, why: paymentsHeadingGap(g) ?? "not an ageing report (no buckets before a Total column) or a payments list (no Date, Number, Journal, Customer/Vendor and Amount headings)" });
   }
   plan.payments.periods = [...new Set(plan.payments.lines.map((l) => l.period))].sort();
   return plan;

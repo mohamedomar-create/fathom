@@ -637,5 +637,16 @@ test("Odoo's ageing reports and payments list become the Payments pages; the sam
   await expect(rows).toHaveCount(2);
   await page.goto(`/company/${id}/payments`);
   await expect(page.getByTestId("tile-owed")).toContainText("1,490");
-  await expect(page.getByTestId("tile-received")).not.toContainText("3,790");
+  // With only the ageing left, payments say "not loaded", never 0, and the payments page says what to upload.
+  await expect(page.getByTestId("tile-received")).toContainText("not loaded");
+  await page.goto(`/company/${id}/payments/flows`);
+  await expect(page.getByTestId("no-payments-list")).toBeVisible();
+  await expect(page.getByTestId("upload-payments-list")).toHaveAttribute("href", `/company/${id}/settings/source-data?step=payments`);
+  // A file that is neither an ageing report nor a payments list is named with why, and saving needs a tick.
+  await startUpload(page, id, "payments");
+  await page.getByTestId("file-input").setInputFiles([fixture("odoo-aged-payable.xlsx"), fixture("odoo-vendor-bills.xlsx")]);
+  await expect(page.getByTestId("payments-unread")).toContainText("odoo-vendor-bills");
+  await expect(page.getByTestId("save-payments")).toBeDisabled();
+  await page.getByTestId("accept-unread").check();
+  await expect(page.getByTestId("save-payments")).toBeEnabled();
 });

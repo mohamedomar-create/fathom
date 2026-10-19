@@ -43,6 +43,24 @@ const text = (v: Cell) => (v === null || v === undefined ? "" : String(v).replac
 const r2 = (n: number) => Math.round(n * 100) / 100 || 0;
 const fmt = (n: number) => r2(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const NEEDED: [string, (f: Partial<Record<keyof typeof COLS, number>>) => boolean][] = [
+  ["Date", (f) => f.date !== undefined], ["Number", (f) => f.number !== undefined], ["Journal", (f) => f.journal !== undefined],
+  ["Customer/Vendor", (f) => f.partner !== undefined], ["Amount Signed or Amount Company Currency Signed", (f) => f.signed !== undefined || f.company !== undefined],
+];
+
+/** For a sheet readPayments did not read: the headings it lacks, when it has most of a payments list's headings; else null. */
+export function paymentsHeadingGap(g: Grid): string | null {
+  let best: string[] | null = null;
+  for (let i = 0; i < Math.min(g.rows.length, 10); i++) {
+    const cells = (g.rows[i] ?? []).map((c) => normAr(text(c)));
+    const found: Partial<Record<keyof typeof COLS, number>> = {};
+    for (const [k, rx] of Object.entries(COLS) as [keyof typeof COLS, RegExp][]) { const c = cells.findIndex((x) => rx.test(x)); if (c >= 0) found[k] = c; }
+    const missing = NEEDED.filter(([, has]) => !has(found)).map(([name]) => name);
+    if (missing.length <= 2 && (!best || missing.length < best.length)) best = missing;
+  }
+  return best && best.length ? `looks like a payments list but has no ${best.join(" or ")} heading` : null;
+}
+
 export function readPayments(g: Grid): PaymentsRead | null {
   const rows = g.rows;
   let h = -1;

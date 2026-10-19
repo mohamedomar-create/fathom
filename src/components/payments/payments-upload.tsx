@@ -19,6 +19,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [acceptUnread, setAcceptUnread] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const plan = useMemo(() => (grids ? planPaymentsUpload(grids) : null), [grids]);
   const nothing = plan && !plan.aged.length && !plan.payments.lines.length;
@@ -103,7 +104,13 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
             {plan.payments.findings.length > 0 && <ul className="mt-2 list-disc ps-5 text-[14px] text-ink">{plan.payments.findings.map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
           </li>
         )}
-        {plan.unread.length > 0 && <li className="text-[14px] text-mute" data-testid="payments-unread">Not read (not an ageing report or a payments list): {plan.unread.join(", ")}.</li>}
+        {plan.unread.length > 0 && (
+          <li className="rounded-lg border-2 border-red p-4" data-testid="payments-unread">
+            <p className="flex items-center gap-2 font-medium text-red"><AlertTriangle className="h-4 w-4" />Not read: nothing from {plan.unread.length > 1 ? "these sheets" : "this sheet"} will be saved</p>
+            <ul className="mt-1 list-disc ps-5 text-[14px]">{plan.unread.map((u) => <li key={u.sheet}><b>{u.sheet}</b>: {u.why}.</li>)}</ul>
+            <label className="mt-2 flex items-center gap-2 text-[14px]"><input type="checkbox" checked={acceptUnread} onChange={(e) => setAcceptUnread(e.target.checked)} data-testid="accept-unread" />Save without {plan.unread.length > 1 ? "these sheets" : "this sheet"}</label>
+          </li>
+        )}
       </ul>
       {(plan.errors.length > 0 || nothing) && (
         <div className="mt-4 max-w-4xl rounded-lg bg-red-bg p-4 text-red" data-testid="payments-errors">
@@ -112,7 +119,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
         </div>
       )}
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
-      <WizardNav onBack={() => setGrids(null)} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0} nextTestId="save-payments" />
+      <WizardNav onBack={() => { setGrids(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
     </div>
   );
 }
