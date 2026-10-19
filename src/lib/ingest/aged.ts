@@ -1,14 +1,14 @@
 // Odoo's Aged Receivable / Aged Payable report (Accounting ▸ Reporting ▸ Aged Receivable / Aged Payable, exported to
 // Excel). Read the way an accountant reads it: the as-of date, the buckets as the company's Odoo names them, one block per
-// partner (a header row with the partner's totals, its open documents, "Total <partner>"), and the report's own totals at
-// the top and bottom. Every figure is checked against the rows it should add up to; a row that can't be placed is an
+// partner (a header row with the partner's totals, its open documents, "Total <partner>") or, exported folded, one row per
+// partner with its totals only, and the report's own totals at the top and bottom. Every figure is checked against the rows it should add up to; a row that can't be placed is an
 // error, never skipped. Amounts keep Odoo's sign: positive is owed to the company (receivable) or by it (payable).
 import { arToLatin, cleanNum, detectDateOrder, normAr, parseDay, type Cell, type DateOrder } from "./parse";
 import type { Grid } from "./extract";
 
 export interface AgedItem { partner: string; ref: string; memo: string; day: string | null; amounts: number[]; total: number; row: number }
 export interface AgedPartner { name: string; amounts: number[]; total: number; items: number }
-export interface AgedFinding { id: "no_partner" | "nets_to_zero" | "offset_buckets" | "credit_balance" | "after_as_of" | "date_order"; message: string }
+export interface AgedFinding { id: "no_partner" | "nets_to_zero" | "offset_buckets" | "credit_balance" | "after_as_of" | "date_order" | "folded"; message: string }
 export interface AgedReport {
   side: "receivable" | "payable";
   asOf: string | null;
@@ -30,6 +30,9 @@ const PAYABLE = /payable|دائن|موردين|الموردين/i;
 const RECEIVABLE = /receivable|مدين|عملاء|العملاء/i;
 const AS_OF = /(?:as of|as at|at|بتاريخ|حتى|في)\s*:?\s*(\S+)\s*$/i;
 const NO_PARTNER = /^(unknown|no partner|غير معروف|بدون شريك)$/i;
+/** A document number's first word carries a slash (INV/2026/0001, BILL/2026/0003); a partner's name doesn't. */
+const DOC_LIKE = /^\S*[/\\]\S*/;
+const FOLDED_MEMO = "Partner total (documents not in the export)";
 
 const text = (v: Cell) => (v === null || v === undefined ? "" : String(v).replace(/\s+/g, " ").trim());
 const norm = (v: Cell) => normAr(arToLatin(text(v))).toLowerCase();
@@ -110,6 +113,7 @@ export function readAged(g: Grid): AgedReport | null {
   const items: AgedItem[] = [];
   let top: number[] | null = null, topTotal = 0, bottom: number[] = h.cols.map(() => 0), bottomTotal = 0;
   let cur: { name: string; head: number[]; headTotal: number; items: AgedItem[] } | null = null;
+  const folded = new Set<string>();
 
   for (let i = h.row + 1; i < rows.length; i++) {
     const l = label(i);
@@ -136,8 +140,17 @@ export function readAged(g: Grid): AgedReport | null {
     }
     if (!cur) {
       if (totalNames.has(l)) { cur = { name: l, head: amounts(i), headTotal: num(i, h.totalCol), items: [] }; continue; }
-      if (TOTAL_ROW.test(norm(l))) { errors.push(`Row ${i + 1}: "${l}" closes a partner that was never opened.`); continue; }
-      errors.push(`Row ${i + 1}: "${l || text(row.find((c) => text(c)))}" is outside any partner block.`);
+      if (!l) { errors.push(`Row ${i + 1}: "${text(row.find((c) => text(c)))}" has amounts but no partner name.`); continue; }
+      if (DOC_LIKE.test(l)) { errors.push(`Row ${i + 1}: "${l}" looks like a document but no partner was opened above it.`); continue; }
+      // Exported folded: the partner's own row, its buckets and total, with no documents under it. A "Total …" row here is a
+      // partner named so (the company itself, "Sample Trading Co"): no block is open for it to close, and the partners must
+      // still add up to the report's total, so a misread row cannot pass unnoticed.
+      const a = amounts(i), t = sum(a);
+      const given = text(row[h.totalCol]) ? num(i, h.totalCol) : t;
+      if (off(given, t)) errors.push(`Row ${i + 1} (${l}): its buckets add up to ${fmt(t)}, its Total says ${fmt(given)}.`);
+      partners.push({ name: l, amounts: a.map(r2), total: r2(given), items: 1 });
+      items.push({ partner: l, ref: "", memo: FOLDED_MEMO, day: null, amounts: a.map(r2), total: r2(given), row: i });
+      folded.add(l);
       continue;
     }
     const a = amounts(i);
@@ -161,7 +174,8 @@ export function readAged(g: Grid): AgedReport | null {
   const list = (ps: AgedPartner[]) => ps.slice(0, 5).map((p) => p.name).join(", ") + (ps.length > 5 ? ` and ${ps.length - 5} more` : "");
   const unknown = partners.filter((p) => NO_PARTNER.test(norm(p.name)));
   if (unknown.length) findings.push({ id: "no_partner", message: `${unknown.reduce((s, p) => s + p.items, 0)} open items (${fmt(sum(unknown.map((p) => p.total)))}) have no ${who} in Odoo: they can't be chased or matched until a ${who} is set on them.` });
-  const zero = partners.filter((p) => p.items > 0 && p.amounts.every((x) => !off(x, 0)));
+  if (folded.size) findings.push({ id: "folded", message: `${folded.size} ${folded.size > 1 ? "partners were" : "partner was"} exported folded (totals only): their document numbers and dates aren't in the file. To see each document, unfold all partners in Odoo (Unfold All) before exporting.` });
+  const zero = partners.filter((p) => p.items > 0 && !folded.has(p.name) && p.amounts.every((x) => !off(x, 0)));
   if (zero.length) findings.push({ id: "nets_to_zero", message: `${zero.length} ${who}${zero.length > 1 ? "s" : ""} net to zero but still have open items (${list(zero)}): the items cancel out and should be reconciled against each other in Odoo.` });
   const offset = partners.filter((p) => !off(p.total, 0) && p.amounts.some((x) => off(x, 0)));
   if (offset.length) findings.push({ id: "offset_buckets", message: `${offset.length} ${who}${offset.length > 1 ? "s" : ""} total zero while their buckets don't (${list(offset)}): an old item is offset by a newer one and the two were never matched in Odoo, so the ageing overstates both.` });

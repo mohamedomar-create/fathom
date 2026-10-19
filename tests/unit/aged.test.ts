@@ -83,10 +83,10 @@ describe("reading Odoo's Aged Receivable", () => {
     expect(readAged(setRow(receivable(), "Northside Hospital", 8, 1300))!.errors.join(" ")).toMatch(/Northside Hospital/);
   });
 
-  it("a row it can't place (outside any partner block) is an error, never skipped silently", () => {
+  it("a document row outside any partner block is an error naming it, never skipped silently", () => {
     const g = receivable();
-    g.rows.splice(8, 0, ["Stray note", _, 5, _, _, _, _, _, 5]);
-    expect(readAged(g)!.errors.join(" ")).toMatch(/Stray note/);
+    g.rows.splice(8, 0, ["INV/2026/0999 (stray)", "09/01/2026", 5, _, _, _, _, _, 5]);
+    expect(readAged(g)!.errors.join(" ")).toMatch(/Row 9: "INV\/2026\/0999 \(stray\)" looks like a document but no partner was opened above it/);
   });
 
   it("Aged Payable keeps Odoo's sign (positive = owed to the supplier) and older Odoo headings (Not due, 1 - 30) are read", () => {
@@ -127,6 +127,65 @@ describe("reading Odoo's Aged Receivable", () => {
 
 // The owner's own Odoo exports (never committed): every partner and the report's total must tie, to the cent.
 const dir = process.env.AGED_DIR;
+/** The same kind of report exported with Odoo's partner groups folded: one row per partner, totals only. */
+function foldedPayable(): Grid {
+  return {
+    name: "Aged Payable", rows: [
+      [_, "As of 10/15/2026"],
+      [],
+      H,
+      ["Aged Payable", _, 200, -9686, _, _, _, -3906402.17, -4715866.15],
+      ["Supplier Alpha", _, 200, -9686, _, _, _, _, -9486],
+      ["Nebuliser Co", _, _, _, _, _, _, -3906402.17, -3906402.17],
+      ["Unknown", _, _, _, _, _, _, _, 0],
+      ["Total Aged Payable", _, 200, -9686, _, _, _, -3906402.17, -4715866.15],
+    ],
+  };
+}
+
+describe("reading a folded Aged Payable (partner totals only)", () => {
+  it("each partner row is a partner with its own figures, one summary line each, and it says the documents are not in the file", () => {
+    const r = readAged(foldedPayable())!;
+    expect(r.errors).toEqual([]);
+    expect(r.side).toBe("payable");
+    expect(r.asOf).toBe("2026-10-15");
+    expect(r.partners.map((p) => [p.name, p.total, p.items])).toEqual([["Supplier Alpha", -9486, 1], ["Nebuliser Co", -3906402.17, 1], ["Unknown", 0, 1]]);
+    expect(r.items[0]).toMatchObject({ partner: "Supplier Alpha", ref: "", memo: "Partner total (documents not in the export)", day: null, amounts: [200, -9686, 0, 0, 0, 0], total: -9486 });
+    expect(r.total.total).toBe(-4715866.15);
+    expect(r.findings.find((f) => f.id === "folded")!.message).toMatch(/3 partners were exported folded \(totals only\)/);
+  });
+
+  it("a mixed export keeps the documents of the unfolded partner and the totals of the folded one", () => {
+    const g = receivable();
+    g.rows.splice(4, 0, ["Delta Clinic", _, _, _, _, _, _, 10, 10]);
+    for (const r of [g.rows[3], g.rows[g.rows.length - 1]]) { r[7] = 300; r[8] = 1500; }
+    const r = readAged(g)!;
+    expect(r.errors).toEqual([]);
+    expect(r.partners.find((p) => p.name === "Delta Clinic")).toMatchObject({ total: 10, items: 1 });
+    expect(r.partners.find((p) => p.name === "Northside Hospital")!.items).toBe(2);
+    expect(r.findings.find((f) => f.id === "folded")!.message).toMatch(/1 partner was exported folded/);
+  });
+
+  it("a folded partner whose own name starts with \"Total\" (the company itself) is a partner, and the figures still tie", () => {
+    const g = foldedPayable();
+    g.rows.splice(6, 0, ["Sample Trading Co", _, _, _, _, _, _, -22000, -22000]);
+    for (const r of [g.rows[3], g.rows[g.rows.length - 1]]) { r[7] = -4728380.15; r[8] = -4737866.15; }
+    const r = readAged(g)!;
+    expect(r.errors).toEqual([]);
+    expect(r.partners.find((p) => p.name === "Sample Trading Co")).toMatchObject({ total: -22000, items: 1 });
+  });
+
+  it("a folded row whose buckets don't add up to its Total is an error naming the row", () => {
+    const g = setRow(foldedPayable(), "Supplier Alpha", 8, -9000);
+    expect(readAged(g)!.errors.join(" ")).toMatch(/Row 5 \(Supplier Alpha\): its buckets add up to -9,486.00, its Total says -9,000.00/);
+  });
+
+  it("folded partners that don't add up to the report's total are an error", () => {
+    const g = setRow(setRow(foldedPayable(), "Nebuliser Co", 7, -4706000), "Nebuliser Co", 8, -4706000);
+    expect(readAged(g)!.errors.join(" ")).toMatch(/The partners add up to .* in "Older", the report's total says -3,906,402.17/);
+  });
+});
+
 describe.skipIf(!dir)("real Aged Receivable / Payable (local only)", () => {
   const load = async (f: string) => { const b = fs.readFileSync(path.join(dir!, f)); return (await readWorkbook(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, f))[0]; };
   it("the main company Sep 2026: receivable 417 partners, 1,501 documents, 310,920.00; payable 146 partners, 902 documents, 86,437.38", async () => {
