@@ -193,15 +193,24 @@ export function paymentsFromLedger(
   return { lines: out, errors };
 }
 
-/** Each bank and cash account's movement per month, from its month-end balances (the first month is its opening). */
+/** Each bank and cash account's movement per month, from its month-end balances (the first month is its opening). A
+ *  month missing between them, or after them up to the ledger's last month, is a zero balance: zero balances are not stored. */
 export function ledgerCashMoves(lines: { code: string; name: string; cls: string | null; excluded: boolean; system?: boolean; values?: Record<string, number> }[]): Record<string, Record<string, number>> {
+  const next = (p: string) => { const [y, m] = p.split("-").map(Number); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, "0")}`; };
+  const last = lines.flatMap((l) => Object.keys(l.values ?? {})).sort().pop();
   const out: Record<string, Record<string, number>> = {};
   for (const l of lines) {
-    if (l.cls !== "cash" || l.excluded || l.system || !l.values) continue;
+    if (l.cls !== "cash" || l.excluded || l.system || !l.values || !last) continue;
     const ps = Object.keys(l.values).sort();
+    if (!ps.length) continue;
     const m: Record<string, number> = {};
-    for (let i = 1; i < ps.length; i++) m[ps[i]] = r2(l.values[ps[i]] - l.values[ps[i - 1]]);
-    if (ps.length > 1) out[[l.code, l.name].filter(Boolean).join(" ")] = m;
+    for (let p = ps[0], prev = l.values[ps[0]]; p < last; ) {
+      p = next(p);
+      const bal = l.values[p] ?? 0;
+      m[p] = r2(bal - prev);
+      prev = bal;
+    }
+    if (Object.keys(m).length) out[[l.code, l.name].filter(Boolean).join(" ")] = m;
   }
   return out;
 }

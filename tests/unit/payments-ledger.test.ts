@@ -52,4 +52,12 @@ describe("payments from the General Ledger", () => {
       { code: "122200", name: "Trade Receivables", cls: "ar", excluded: false, values: { "2026-08": 1, "2026-09": 2 } }];
     expect(ledgerCashMoves(ls)).toEqual({ "121221 CIB Bank EGP": { "2026-09": -950, "2026-10": 0 } });
   });
+
+  it("a month missing from the balances is a zero balance (zero balances are not stored), up to the ledger's last month", () => {
+    const ls: { code: string; name: string; cls: string; excluded: boolean; values: Record<string, number> }[] = [
+      { code: "121102", name: "petty Mazen", cls: "cash", excluded: false, values: { "2024-03": 4500, "2024-05": 2000 } },
+      { code: "122200", name: "Trade Receivables", cls: "ar", excluded: false, values: { "2024-03": 1, "2024-06": 2 } },
+    ];
+    expect(ledgerCashMoves(ls)).toEqual({ "121102 petty Mazen": { "2024-04": -4500, "2024-05": 2000, "2024-06": -2000 } });
+  });
 });
