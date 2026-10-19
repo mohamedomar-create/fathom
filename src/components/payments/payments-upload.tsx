@@ -1,29 +1,29 @@
 "use client";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { AlertTriangle, FileSpreadsheet, Upload } from "lucide-react";
-import { readWorkbooks } from "@/lib/ingest/read";
-import type { Grid } from "@/lib/ingest/extract";
-import { planPaymentsUpload } from "@/lib/ingest/payments-upload";
-import { addPaymentLines, saveAgedReport, startPaymentBatch } from "@/app/company/[id]/settings/payments-actions";
+import type { PaymentsUploadPlan } from "@/lib/ingest/payments-upload";
+import { saveAgedReport } from "@/app/company/[id]/settings/payments-actions";
+import { planPaymentsInWorker } from "@/lib/imports/worker-client";
+import { savePayments } from "@/lib/company/save-payments";
+import { SaveProgress } from "@/components/upload/save-progress";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
 import { useCompany } from "@/lib/company/context";
 
 const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const CHUNK = 3000;
 
 /**
  * Odoo's Aged Receivable / Aged Payable and its Customer / Vendor Payments lists, uploaded together: each file is read and
  * checked in the page (every partner's documents must add up to its total, every payment counted once), then saved.
  */
 export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: string; basePath: string; onBack: () => void }) {
-  const [grids, setGrids] = useState<Grid[] | null>(null);
+  const [plan, setPlan] = useState<PaymentsUploadPlan | null>(null);
+  const [progress, setProgress] = useState<{ what: string; done: number; of: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [acceptUnread, setAcceptUnread] = useState(false);
   const input = useRef<HTMLInputElement>(null);
   const currency = useCompany().settings.currency;
-  const plan = useMemo(() => (grids ? planPaymentsUpload(grids, { currency }) : null), [grids, currency]);
   const nothing = plan && !plan.aged.length && !plan.payments.lines.length;
 
   async function onFiles(fs: File[]) {
@@ -32,8 +32,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     if (fs.some((f) => !/\.(xlsx|xls|csv)$/i.test(f.name))) { setErr("Choose Excel (.xlsx) or CSV files exported from Odoo."); return; }
     setBusy(true);
     try {
-      const gs = await readWorkbooks(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() }))));
-      setGrids(gs);
+      setPlan(await planPaymentsInWorker(fs, currency));
     } catch (e) { setErr((e as Error).message || "The files could not be read."); }
     finally { setBusy(false); }
   }
@@ -50,17 +49,12 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
       }
       const ls = plan.payments.lines;
       if (ls.length) {
-        const b = await startPaymentBatch(companyId, plan.payments.periods, plan.payments.sheets.join(", ").slice(0, 300));
-        if (!b.ok) throw new Error(b.error);
-        for (let i = 0; i < ls.length; i += CHUNK) {
-          const part = ls.slice(i, i + CHUNK).map((l) => ({ day: l.day, period: l.period, number: l.number, journal: l.journal, method: l.method, partner: l.partner, direction: l.direction, amount: l.amount, currency: l.currency, amount_currency: l.amountCurrency, state: l.state }));
-          const res = await addPaymentLines(companyId, b.batch, part, i + CHUNK >= ls.length);
-          if (!res.ok) throw new Error(res.error);
-        }
+        const res = await savePayments(companyId, "file", ls, plan.payments.periods, plan.payments.sheets.join(", "), (done, of) => setProgress({ what: "Saving payments", done, of }));
+        if (!res.ok) throw new Error(res.error);
       }
       setDone([plan.aged.map((a) => `Aged ${a.report.side === "receivable" ? "Receivable" : "Payable"} as of ${a.report.asOf}`).join(", "), ls.length ? `${ls.length} payments` : ""].filter(Boolean).join(" and "));
     } catch (e) { setErr((e as Error).message || "Saving failed."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setProgress(null); }
   }
 
   if (done) return (
@@ -121,7 +115,8 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
         </div>
       )}
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
-      <WizardNav onBack={() => { setGrids(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
+      {progress && <SaveProgress what={progress.what} done={progress.done} of={progress.of} />}
+      <WizardNav onBack={() => { setPlan(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
     </div>
   );
 }

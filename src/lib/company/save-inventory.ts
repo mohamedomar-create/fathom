@@ -1,8 +1,9 @@
 "use client";
 import { inventoryPeriods, type OnHand, type ProductRow, type StockLayer, type StockLedgerLine, type StockMove } from "@/lib/ingest/inventory";
 import { addInventoryRows, addStockLedgerLines, finishInventoryBatch, setOnHand, setProducts, startInventoryBatch, startStockLedgerBatch } from "@/app/company/[id]/settings/inventory-actions";
+import { ChunkStopped, orThrow, sendChunks, type ChunkOptions } from "@/lib/chunks";
 
-const CHUNK = 3000;
+const failed = (e: unknown) => ({ ok: false as const, error: e instanceof ChunkStopped ? e.message : String((e as Error)?.message ?? e) });
 const cut = (s: string, n: number) => (s ?? "").slice(0, n);
 
 /** A layer as the database stores it (where it was read stays in the browser). */
@@ -17,15 +18,15 @@ const moveRow = (m: StockMove) => ({
 
 type Out = { ok: true; added: number; already: number } | { ok: false; error: string };
 
-async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Record<string, unknown>[], periods: string[], filename: string, mode: "replace" | "add" | "all"): Promise<Out> {
+async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Record<string, unknown>[], periods: string[], filename: string, mode: "replace" | "add" | "all", onProgress?: ChunkOptions["onProgress"]): Promise<Out> {
   const start = await startInventoryBatch({ companyId, kind, periods, filename: cut(filename, 300), mode });
   if (!start.ok) return start;
   // Chunks are staged; the upload is finished in one step, so the pages show all of it or none of it.
   let repeated = 0;
-  for (let i = 0; i < rows.length; i += CHUNK) {
-    const r = await addInventoryRows(companyId, start.batch, kind, rows.slice(i, i + CHUNK));
-    if (!r.ok) return r;
-    repeated += r.repeated;
+  try {
+    await sendChunks(rows, async (part) => { repeated += (await orThrow(addInventoryRows(companyId, start.batch, kind, part))).repeated; }, { onProgress });
+  } catch (e) {
+    return failed(e);
   }
   const done = await finishInventoryBatch(companyId, start.batch);
   if (!done.ok) return done;
@@ -37,11 +38,11 @@ async function saveRows(companyId: string, kind: "valuation" | "moves", rows: Re
  * accepts, finished in one step (records already stored under the same Odoo ID are counted, not added), the stock-on-hand
  * snapshot, the products.
  */
-export async function saveInventory(companyId: string, parts: { layers?: StockLayer[]; moves?: StockMove[]; onhand?: { asOf: string; rows: OnHand[] }; products?: ProductRow[] }, filename: string, mode: "replace" | "add" | "all"): Promise<Out> {
+export async function saveInventory(companyId: string, parts: { layers?: StockLayer[]; moves?: StockMove[]; onhand?: { asOf: string; rows: OnHand[] }; products?: ProductRow[] }, filename: string, mode: "replace" | "add" | "all", onProgress?: ChunkOptions["onProgress"]): Promise<Out> {
   let added = 0, already = 0;
   for (const [kind, list, toRow] of [["valuation", parts.layers, layerRow], ["moves", parts.moves, moveRow]] as const) {
     if (!list?.length) continue;
-    const r = await saveRows(companyId, kind, (list as (StockLayer & StockMove)[]).map((x) => (toRow as (y: StockLayer & StockMove) => Record<string, unknown>)(x)), inventoryPeriods(list), filename, mode);
+    const r = await saveRows(companyId, kind, (list as (StockLayer & StockMove)[]).map((x) => (toRow as (y: StockLayer & StockMove) => Record<string, unknown>)(x)), inventoryPeriods(list), filename, mode, onProgress);
     if (!r.ok) return r;
     added += r.added;
     already += r.already;
@@ -56,28 +57,29 @@ export async function saveInventory(companyId: string, parts: { layers?: StockLa
   }
   if (parts.products?.length) {
     const rows = parts.products.filter((p) => p.code).map((p) => ({ code: cut(p.code, 120), name: cut(p.name, 300), category: cut(p.category, 200), cost: p.cost, type: cut(p.type, 60) }));
-    if (rows.length) {
-      const r = await setProducts(companyId, rows);
-      if (!r.ok) return r;
-      added += r.saved;
+    // Products are kept by code (each chunk updates its own), so they go in chunks too.
+    try {
+      await sendChunks(rows, async (part) => { added += (await orThrow(setProducts(companyId, part))).saved; }, { size: 2000 });
+    } catch (e) {
+      return failed(e);
     }
   }
   return { ok: true, added, already };
 }
 
-const LEDGER_CHUNK = 4000;
 /** Saves the General Ledger's stock postings for the months uploaded (they replace what those months held). */
-export async function saveStockLedger(companyId: string, lines: StockLedgerLine[], filename: string): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+export async function saveStockLedger(companyId: string, lines: StockLedgerLine[], filename: string, onProgress?: ChunkOptions["onProgress"]): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
   if (!lines.length) return { ok: true, saved: 0 };
   const start = await startStockLedgerBatch(companyId, inventoryPeriods(lines), cut(filename, 300));
   if (!start.ok) return start;
   if (!start.batch) return { ok: true, saved: 0 };
   let saved = 0;
-  for (let i = 0; i < lines.length; i += LEDGER_CHUNK) {
-    const part = lines.slice(i, i + LEDGER_CHUNK).map((l) => ({ day: l.day || null, period: l.period, ref: cut(l.ref, 120), account: cut(l.account, 200), amount: l.amount }));
-    const r = await addStockLedgerLines(companyId, start.batch, part);
-    if (!r.ok) return r;
-    saved += r.saved;
+  const batch = start.batch;
+  const rows = lines.map((l) => ({ day: l.day || null, period: l.period, ref: cut(l.ref, 120), account: cut(l.account, 200), amount: l.amount }));
+  try {
+    await sendChunks(rows, async (part) => { saved += (await orThrow(addStockLedgerLines(companyId, batch, part))).saved; }, { onProgress });
+  } catch (e) {
+    return failed(e);
   }
   return { ok: true, saved };
 }

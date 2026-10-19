@@ -20,6 +20,8 @@ export function dbError(error: { code?: string; message: string; details?: strin
     case "23505": return "That already exists.";
     case "23503": return "That refers to something that no longer exists. Refresh the page and try again.";
     case "22P02": case "22001": case "23502": case "23514": case "22023": return "That value isn't valid.";
+    // A time-out or a lock wait: the work was too big for one call (saves split it and try again).
+    case "57014": case "55P03": return "The database was busy. Please try again in a moment.";
   }
   // Our own SQL functions raise readable messages (e.g. "cannot remove the last admin"): pass those through.
   if (error.code === "P0001" && error.message.length < 200) return error.message.charAt(0).toUpperCase() + error.message.slice(1) + (error.message.endsWith(".") ? "" : ".");

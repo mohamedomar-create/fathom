@@ -3,7 +3,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upl
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
-import { extractAll, ingestOpening, materialUnmapped, rememberKey, runIngest, toAccountInputs, type IngestOptions, type IngestResult } from "@/lib/ingest/pipeline";
+import { materialUnmapped, rememberKey, toAccountInputs, type IngestOptions } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
 import { cellRef, fixRecords, type FixRecord } from "@/lib/ingest/trace";
 import { expenseIssues, financialIssues, finalTrace, salesIssues, sortedFinancials } from "@/lib/ingest/sorted";
@@ -16,18 +16,19 @@ import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
-import { readInWorker } from "@/lib/imports/worker-client";
+import { deriveInWorker, ingestInWorker, putSheets, readForUpload } from "@/lib/imports/worker-client";
+import { hasEntries, type IngestOutcome } from "@/lib/ingest/wizard-ingest";
 import { commitImport, previewImport, type PreviewResult } from "@/app/company/[id]/settings/actions";
 import { checkKey, runChecks, type Check } from "@/lib/company/checks";
 import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
 import { isPL } from "@/lib/company/build";
-import { salesFromLedger, type SalesOverride } from "@/lib/ingest/sales";
+import type { SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
-import { expensePeriods, expensesFromLedger, type ExpenseOverride } from "@/lib/ingest/expenses";
+import { expensePeriods, type ExpenseOverride } from "@/lib/ingest/expenses";
 import { saveExpenses } from "@/lib/company/save-expenses";
 import { saveExpensesAs, saveSalesAs, type SaveMode } from "@/lib/company/save-modes";
 import { clearLedgerLines } from "@/app/company/[id]/settings/ledger-actions";
@@ -39,6 +40,7 @@ import { guessRoles, IMPORTED, needsConfirm, type RoleGuess, type SheetRole } fr
 import { cashAccounts, cashCostColumns, ownerNetFormula, readCashBook, type CashLayout, type CashOverride } from "@/lib/ingest/cashbook";
 import { tieMessages, workbookTie } from "@/lib/ingest/workbook";
 import { WorkbookTieout } from "@/components/upload/workbook-tieout";
+import { SaveProgress } from "@/components/upload/save-progress";
 import { TbVerify } from "@/components/data/tb-verify";
 import { CashPL } from "@/components/upload/cash-pl";
 import { readBankStatement, type BankLayout, type BankOverride } from "@/lib/ingest/bank";
@@ -46,10 +48,8 @@ import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
 import { SheetRoles } from "@/components/upload/sheet-roles";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
-import { stockFromLedger } from "@/lib/ingest/inventory";
 import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
 import { savePayments } from "@/lib/company/save-payments";
-import { ledgerCashMoves, paymentsFromLedger } from "@/lib/ingest/payments";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
@@ -58,9 +58,11 @@ import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, 
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
 import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
-import { suggestBooksStart } from "@/lib/ingest/books-start";
 import { fmtDay } from "@/lib/ingest/odoo";
 
+const NO_RAW: RawLine[] = [];
+/** One step of saving after the figures (sales, expense, stock or payment lines), in chunks with its progress. */
+type PostStep = { what: string; run: (onProgress: (done: number, of: number) => void) => Promise<{ ok: true } | { ok: false; error: string }> };
 type Kind = "opening" | "accounts" | "sales" | "expenses" | "inventory" | "payments";
 const KIND_WORD: Record<Kind, string> = { opening: "an opening balances", accounts: "an accounts", sales: "a sales", expenses: "an expenses", inventory: "a stock", payments: "a receivables and payments" };
 
@@ -81,11 +83,16 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [expMode, setExpMode] = useState<SaveMode | null>(null);
   const [done, setDone] = useState<{ what: string } | null>(null);
   const [checked, setChecked] = useState(false);
+  // Saving in steps after the figures: what is being saved now, and a stopped save that can continue.
+  const [saveProgress, setSaveProgress] = useState<{ what: string; done: number; of: number } | null>(null);
+  const [post, setPost] = useState<{ steps: PostStep[]; at: number; doneMsg: string } | null>(null);
   // The person chose, on purpose, to save a summary report as figures although the books come from a ledger.
   const [asFigures, setAsFigures] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
   const [allGrids, setAllGrids] = useState<Grid[] | null>(null);
+  // The same sheets kept in the background worker (under this token), where every reading of them runs.
+  const [sheetsToken, setSheetsToken] = useState<string | null>(null);
   const [guesses, setGuesses] = useState<RoleGuess[]>([]);
   const [roles, setRoles] = useState<Record<string, SheetRole>>({});
   const [rolesOk, setRolesOk] = useState(false);
@@ -160,12 +167,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
    * Sheets from the files (spreadsheets, or tables read from PDF pages): iReport decides what each one is (accounts, a
    * sales or bills list, a cash book, a bank statement, a price list, a summary) and the person can change it.
    */
-  const takeSheets = useCallback((fs: File[], gs: Grid[]) => {
+  const takeSheets = useCallback((fs: File[], gs: Grid[], token: string) => {
     const gu = guessRoles(gs);
-    setAllGrids(gs); setGuesses(gu); setRoles({}); setRolesOk(false);
+    setAllGrids(gs); setSheetsToken(token); setGuesses(gu); setRoles({}); setRolesOk(false);
     setOverrides({}); setSalesOv({}); setExpOv({}); setCashOv({}); setBankOv({}); setPlOn(null); setPlMap({});
-    const acc = gs.filter((g) => gu.find((x) => x.sheet === g.name)?.role === "statement");
-    setDiag(diagnostic(fs, gs, acc.length ? extractAll(acc).issues : { warnings: [], skippedCols: [] }));
+    // The reading panel's findings come with the first reading, from the worker.
+    setDiag(diagnostic(fs, gs, { warnings: [], skippedCols: [] }));
     setFocus(null); setPicked(null); setScreen("check");
   }, []);
 
@@ -178,41 +185,44 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       if (fs.reduce((a, f) => a + f.size, 0) > 40 * 1024 * 1024 || fs.some((f) => f.size > 25 * 1024 * 1024)) throw new Error("That upload is too large (25 MB per file, 40 MB in all). Export a shorter date range or the monthly Trial Balance instead of journal items.");
       const pdfs = fs.filter(isPdfLike), sheets = fs.filter((f) => !isPdfLike(f));
       if (pdfs.length && demo) throw new Error("Reading PDFs and scanned pages needs a free account: each page is read by Claude. In the demo, upload an Excel or CSV export.");
-      let grids: Grid[] = [];
+      let grids: Grid[] = [], token = "";
       if (sheets.length) {
-        try { grids = await readInWorker(await Promise.all(sheets.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))); }
+        try { ({ grids, token } = await readForUpload(await Promise.all(sheets.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() }))))); }
         catch { throw new Error(`${sheets.length > 1 ? "One of these files" : "This file"} couldn't be opened as a spreadsheet. Save it as .xlsx or .csv and try again.`); }
       }
       setPdfSummary(null);
       if (pdfs.length) { setAllGrids(null); setPdfJob({ files: pdfs, sheets: grids }); return; }
-      takeSheets(fs, grids);
+      takeSheets(fs, grids, token || await putSheets(grids));
     } catch (e) {
       console.error("upload read failed", e);
       setErr((e as Error).message || "The file could not be read."); setAllGrids(null);
     } finally { setBusy(false); }
   }, [demo, takeSheets]);
-  function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
+  async function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
     setPdfJob(null); setPdfSummary(summary); setErr(null);
-    try { takeSheets(files, [...(job?.sheets ?? []), ...pdfGrids]); }
+    try { const gs = [...(job?.sheets ?? []), ...pdfGrids]; takeSheets(files, gs, await putSheets(gs)); }
     catch (e) { setErr((e as Error).message || "The figures could not be read."); setAllGrids(null); }
   }
 
-  // Re-read the workbook whenever the user corrects how a sheet or column is interpreted.
-  const [res, ingestErr, raw, booksStart]: [IngestResult | null, string | null, RawLine[], string | null] = useMemo(() => {
-    if (!grids) return [null, null, [], null];
-    try {
-      if (kind === "opening") {
-        const { raw } = extractAll(grids, overrides);
-        const asAt = asAtChoice ?? openingDayOf(raw);
-        const r = ingestOpening(grids, { ...opts, mapping, asAt }, overrides);
-        return [r, null, raw, r.booksStart.applied];
-      }
-      const { raw, issues } = extractAll(grids, overrides, undefined, opts.cutoff);
-      const start = startChoice !== undefined ? startChoice || null : savedStart ?? suggestBooksStart(raw).suggested;
-      return [runIngest(raw, issues, { ...opts, mapping, ...(start ? { booksStart: start } : {}) }), null, raw, start];
-    } catch (e) { console.error("ingest failed", e); return [null, (e as Error).message || "The file could not be analysed.", [], null]; }
-  }, [grids, overrides, opts, mapping, startChoice, savedStart, kind, asAtChoice]);
+  // Re-read the workbook whenever the user corrects how a sheet or column is interpreted: in the background worker, so the
+  // page never freezes on a large ledger; the latest correction wins.
+  const [reading, setReading] = useState<{ token: string; asked: object; outcome: IngestOutcome } | null>(null);
+  const sheetNames = useMemo(() => (grids ?? []).map((g) => g.name).join("\u0001"), [grids]);
+  // A new object each time what is asked changes: the reading is current when it answers this very request.
+  const asked = useMemo(() => ({}), [sheetNames, sheetsToken, overrides, opts, mapping, startChoice, savedStart, kind, asAtChoice]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!sheetNames || !sheetsToken) return;
+    let live = true;
+    const done = (o: IngestOutcome) => { if (live) setReading({ token: sheetsToken, asked, outcome: o }); };
+    ingestInWorker(sheetsToken, sheetNames.split("\u0001"), { kind: kind === "opening" ? "opening" : "accounts", overrides, opts, mapping, startChoice, savedStart, asAtChoice })
+      .then(done, (e) => done({ res: null, err: (e as Error).message || "The file could not be analysed.", raw: [], booksStart: null, extract: { warnings: [], skippedCols: [] } }));
+    return () => { live = false; };
+  }, [asked]); // eslint-disable-line react-hooks/exhaustive-deps
+  // The last reading of these sheets (kept on screen while a correction is being re-read).
+  const outcome = sheetNames && reading?.token === sheetsToken ? reading.outcome : null;
+  const ingesting = !!sheetNames && !!sheetsToken && reading?.asked !== asked;
+  const res = outcome?.res ?? null, ingestErr = outcome?.err ?? null, raw = outcome?.raw ?? NO_RAW, booksStart = outcome?.booksStart ?? null;
 
   // The cut-off: what the person chose, or else the last day anything in the file is dated.
   const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines)].filter((d): d is string => !!d).sort().pop());
@@ -425,6 +435,26 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
 
   const blocking = preview?.checks.filter((c) => c.severity === "block" && !c.accepted && !c.existing) ?? [];
 
+  // The steps after the figures are saved, run in order with their progress; a stopped step is continued from there.
+  async function runPost(steps: PostStep[], from: number, doneMsg: string) {
+    for (let i = from; i < steps.length; i++) {
+      setSaveProgress({ what: steps[i].what, done: 0, of: 0 });
+      const r = await steps[i].run((done, of) => setSaveProgress({ what: steps[i].what, done, of }));
+      if (!r.ok) {
+        setSaveProgress(null);
+        setPost({ steps, at: i, doneMsg });
+        setErr(`Your figures are saved. ${steps[i].what} stopped: ${r.error} Press Continue to finish from there.`);
+        return;
+      }
+    }
+    setSaveProgress(null);
+    setPost(null);
+    setDone({ what: doneMsg });
+    setScreen("done");
+    router.refresh();
+  }
+  const continuePost = () => { if (!post) return; setErr(null); start(() => runPost(post.steps, post.at, post.doneMsg)); };
+
   async function commit() {
     const p = payload(mode);
     if (!res || !files.length || !p) return;
@@ -438,8 +468,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
         if (!out.ok) { setErr(out.error); return; }
-        // The General Ledger's invoice lines become sales; a sales file uploaded with it is saved too.
-        // "Add only new months" keeps the sales of months already loaded as well.
+        // The figures are saved. What the ledger gives besides (sales, expense, stock and payment lines) is saved as steps,
+        // each in chunks with its progress; a step that stops can be continued from where it stopped, never left half done.
         const filename = files.map((f) => f.name).join(" + ");
         const addedPL = new Set(preview?.timeline.filter((t) => t.PL === "new").map((t) => t.period) ?? []);
         // Lines taken from an earlier ledger never outlive the months they came from: the months this import replaces
@@ -447,48 +477,35 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
         // Months before the books start are not trading: the ledger lines saved for them earlier go too.
         const preStart = booksStart && mode !== "replace" ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
-        if (mode !== "add" || preStart.length) {
-          const cleared = await clearLedgerLines(companyId, mode === "replace" ? "all" : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])]);
-          if (!cleared.ok) { setErr(`The figures were saved, but older ledger lines could not be cleared: ${cleared.error}`); return; }
-        }
-        const loadedSales = new Set(salesLoaded);
-        const ledger = salesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
-        const fileSales = allSales.filter((l) => mode !== "add" || !loadedSales.has(l.period));
-        for (const [source, ls] of [["ledger", ledger], ["file", fileSales]] as const) {
-          const saved = await saveSales(companyId, source, [...ls], filename);
-          if (!saved.ok) { setErr(`The figures were saved, but the sales could not be: ${saved.error}`); return; }
-        }
-        // The ledger's cost lines become expense lines (who was paid, for what); a purchases file is saved too.
-        const loadedExp = new Set(expensesLoaded);
-        const ledgerExp = expensesFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
-        const fileExp = allExp.filter((l) => mode !== "add" || !loadedExp.has(l.period));
-        for (const [source, ls] of [["ledger", ledgerExp], ["file", fileExp]] as const) {
-          const saved = await saveExpenses(companyId, source, [...ls], filename);
-          if (!saved.ok) { setErr(`The figures were saved, but the expense lines could not be: ${saved.error}`); return; }
-        }
+        const keep = <T extends { period: string }>(ls: T[]) => ls.filter((l) => mode !== "add" || addedPL.has(l.period));
+        const loadedSales = new Set(salesLoaded), loadedExp = new Set(expensesLoaded);
+        // The ledger's own lines, worked out in the background worker from the same reading.
+        const derived = sheetsToken && res.lines.some(hasEntries) ? await deriveInWorker(sheetsToken) : { sales: [], expenses: [], stock: [], payments: { lines: [], errors: [] } };
+        const pay = derived.payments;
+        const payLines = keep(pay.lines);
+        const steps: PostStep[] = [];
+        if (mode !== "add" || preStart.length) steps.push({ what: "Clearing older ledger lines", run: () => clearLedgerLines(companyId, mode === "replace" ? "all" : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])]) });
+        const salesLedger = keep(derived.sales), salesFile = allSales.filter((l) => mode !== "add" || !loadedSales.has(l.period));
+        if (salesLedger.length) steps.push({ what: "Saving sales lines from the ledger", run: (on) => saveSales(companyId, "ledger", salesLedger, filename, {}, { onProgress: on }) });
+        if (salesFile.length) steps.push({ what: "Saving sales lines", run: (on) => saveSales(companyId, "file", salesFile, filename, {}, { onProgress: on }) });
+        const expLedger = keep(derived.expenses), expFile = allExp.filter((l) => mode !== "add" || !loadedExp.has(l.period));
+        if (expLedger.length) steps.push({ what: "Saving expense lines from the ledger", run: (on) => saveExpenses(companyId, "ledger", expLedger, filename, {}, { onProgress: on }) });
+        if (expFile.length) steps.push({ what: "Saving expense lines", run: (on) => saveExpenses(companyId, "file", expFile, filename, {}, { onProgress: on }) });
         // The ledger's entries on the stock accounts: the accounts' side of the Inventory checks.
-        const stockLines = stockFromLedger(res.lines).filter((l) => mode !== "add" || addedPL.has(l.period));
-        const st = await saveStockLedger(companyId, stockLines, filename);
-        if (!st.ok) { setErr(`The figures were saved, but the ledger's stock entries could not be: ${st.error}`); return; }
+        const stockLines = keep(derived.stock);
+        if (stockLines.length) steps.push({ what: "Saving stock entries from the ledger", run: (on) => saveStockLedger(companyId, stockLines, filename, on) });
         // The ledger's bank and cash entries are the Payments in and out, named by the other side of each entry. They are
         // saved only when every account's entries add up to its movement; otherwise the reason is said, never skipped quietly.
-        const pay = paymentsFromLedger(res.lines, ledgerCashMoves(res.lines));
-        const payLines = pay.lines.filter((l) => mode !== "add" || addedPL.has(l.period));
         let payNote = "";
         if (pay.errors.length) payNote = ` Payments in and out were not saved: ${pay.errors[0]}${pay.errors.length > 1 ? ` (and ${pay.errors.length - 1} more)` : ""}`;
-        else if (payLines.length) {
-          const pv = await savePayments(companyId, "ledger", payLines, mode === "add" ? [] : touchedPL, filename);
-          if (!pv.ok) { setErr(`The figures were saved, but the payments could not be: ${pv.error}`); return; }
-        }
+        else if (payLines.length) steps.push({ what: "Saving payments in and out", run: (on) => savePayments(companyId, "ledger", payLines, mode === "add" ? [] : touchedPL, filename, on) });
         // Inventory sheets in the same upload go to Inventory.
         if (invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length)) {
-          const inv = await saveInventory(companyId, { layers: invParts.layers, moves: invParts.moves, onhand: invParts.onhand ?? undefined, products: invParts.products }, filename, mode === "add" ? "add" : "replace");
-          if (!inv.ok) { setErr(`The figures were saved, but the stock sheets could not be: ${inv.error}`); return; }
+          const parts = { layers: invParts.layers, moves: invParts.moves, onhand: invParts.onhand ?? undefined, products: invParts.products };
+          steps.push({ what: "Saving stock sheets", run: (on) => saveInventory(companyId, parts, filename, mode === "add" ? "add" : "replace", on) });
         }
         const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
-        setDone({ what: `${months.size} month${months.size === 1 ? "" : "s"} saved${payLines.length && !pay.errors.length ? `, with ${payLines.length} bank and cash payments` : ""}.${payNote}` });
-        setScreen("done");
-        router.refresh();
+        await runPost(steps, 0, `${months.size} month${months.size === 1 ? "" : "s"} saved${payLines.length && !pay.errors.length ? `, with ${payLines.length} bank and cash payments` : ""}.${payNote}`);
       } catch (e) {
         console.error("import failed", e);
         setErr(`The import could not be saved (${(e as Error).message || "network error"}). If the file is very large, export a shorter date range and try again.`);
@@ -605,7 +622,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <div className="mt-1 text-[14px] text-mute">Excel, CSV or PDF</div>
           <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv,.txt,.tsv,.pdf,.jpg,.jpeg,.png" className="hidden" data-testid="file-input" onChange={(e) => { const fs = Array.from(e.target.files ?? []); if (fs.length) onFiles(fs); e.target.value = ""; }} />
           {(err || ingestErr) && <p className="mt-5 max-w-xl whitespace-pre-line rounded bg-red-bg px-3 py-2 text-start text-sm text-red" role="alert" data-testid="upload-error" onClick={(e) => e.stopPropagation()}>{err || ingestErr}</p>}
-          {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Send this to support (download)</button>}
+          {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(outcome ? { ...diag, warnings: [...diag.warnings, ...outcome.extract.warnings], skipped: [...diag.skipped, ...outcome.extract.skippedCols] } : diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Send this to support (download)</button>}
         </div>
         <WizardNav onBack={() => setScreen("get")} />
       </div>
@@ -715,6 +732,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
             {bankRead.layouts.filter((l) => l.outAsExpenses || l.inAsSales).map((l) => <li key={l.sheet}><b className="font-medium">{l.sheet.split(" › ").pop()}</b>: bank statement{l.outAsExpenses ? `, ${l.moneyOut.lines} payments` : ""}{l.inAsSales ? `, ${l.moneyIn.lines} receipts` : ""}</li>)}
             {plWanted && <li data-testid="books-save-pl"><b className="font-medium">Financials</b>: a cash-basis P&amp;L for {plMonths.length} month{plMonths.length === 1 ? "" : "s"}</li>}
           </ul>
+          {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save"} nextTestId="save-books"
             disabled={saving || !toSave || (overlapB.length > 0 && expMode === null)}
@@ -747,9 +765,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
                 if (!pl.ok && !/Nothing new to add/.test(pl.error)) { setErr(`Nothing was saved: the P&L could not be built. ${pl.error}${pl.blocking?.length ? ` (${pl.blocking.slice(0, 3).map((c) => c.title).join("; ")})` : ""}`); return; }
                 if (pl.ok) plSaved = periods.length;
               }
-              const e = await saveExpensesAs(companyId, expToSave, name, report, expMode ?? "changed", expensesLoaded);
+              const e = await saveExpensesAs(companyId, expToSave, name, report, expMode ?? "changed", expensesLoaded, (done, of) => setSaveProgress({ what: "Saving expense lines", done, of }));
               if (!e.ok) { setErr(e.error); return; }
-              const sv = await saveSalesAs(companyId, salesToSave, name, report, salesMode ?? "changed", salesLoaded);
+              const sv = await saveSalesAs(companyId, salesToSave, name, report, salesMode ?? "changed", salesLoaded, (done, of) => setSaveProgress({ what: "Saving sales lines", done, of }));
               if (!sv.ok) { setErr(`The expenses were saved, but the sales could not be: ${sv.error}`); return; }
               setDone({ what: `${e.summary} ${sv.summary}${plSaved ? ` And a P&L for ${plSaved} months.` : ""}` });
               if (plSaved) setKind("accounts");
@@ -794,7 +812,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="books-problems" />
         </div>
         {box}
-        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
           : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { const o = overlapB.length > 0; setExpMode(o ? null : "changed"); setSalesMode(o ? null : "changed"); setScreen("save"); }}
@@ -812,13 +831,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <WizardSteps at="save" />
           <WizardTitle title="Save your expenses" hint={`${expToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
           <LineModes fileMonths={ps} loaded={expensesLoaded} chosen={expMode} onChoose={setExpMode} />
+          {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save expenses"} nextTestId="save-expenses"
             disabled={saving || !expToSave.length || (expOverlap.length > 0 && expMode === null)}
             hint={expOverlap.length > 0 && expMode === null ? "Choose one first." : !expToSave.length ? "Nothing new to save." : undefined}
             onNext={() => start(async () => {
               setErr(null);
-              const out = await saveExpensesAs(companyId, expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes() }, expMode ?? "changed", expensesLoaded);
+              const out = await saveExpensesAs(companyId, expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes() }, expMode ?? "changed", expensesLoaded, (done, of) => setSaveProgress({ what: "Saving expense lines", done, of }));
               if (!out.ok) { setErr(out.error); return; }
               setDone({ what: out.summary }); setScreen("done"); router.refresh();
             })} />
@@ -841,7 +861,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         </div>
         {box}
         {more(<ExpensesPreview read={expRead} currency={currency} overrides={expOv} onChange={setExpOv} />)}
-        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
           : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
@@ -858,13 +879,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <WizardSteps at="save" />
           <WizardTitle title="Save your sales" hint={`${salesToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
           <LineModes fileMonths={ps} loaded={salesLoaded} chosen={salesMode} onChoose={setSalesMode} />
+          {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
           <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : "Save sales"} nextTestId="save-sales"
             disabled={saving || !salesToSave.length || (salesOverlap.length > 0 && salesMode === null)}
             hint={salesOverlap.length > 0 && salesMode === null ? "Choose one first." : !salesToSave.length ? "Nothing new to save." : undefined}
             onNext={() => start(async () => {
               setErr(null);
-              const out = await saveSalesAs(companyId, salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() }, salesMode ?? "changed", salesLoaded);
+              const out = await saveSalesAs(companyId, salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() }, salesMode ?? "changed", salesLoaded, (done, of) => setSaveProgress({ what: "Saving sales lines", done, of }));
               if (!out.ok) { setErr(out.error); return; }
               setDone({ what: out.summary }); setScreen("done"); router.refresh();
             })} />
@@ -887,10 +909,21 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         </div>
         {box}
         {more(<SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />)}
-        {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
+        {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
+          {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
           : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+      </div>
+    );
+  }
+  // Still reading (in the background worker): the page stays usable, and says so.
+  if (!res && ingesting) {
+    return (
+      <div data-testid="reading">
+        <WizardSteps at="check" />
+        <WizardTitle title="Reading your file…" hint="Every row is read and checked. The page stays usable meanwhile." />
+        <p className="flex items-center gap-2 text-[15px] text-mute"><Loader2 className="h-4 w-4 animate-spin" />{files.map((f) => f.name).join(" + ")}</p>
       </div>
     );
   }
@@ -952,10 +985,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
             <CheckList checks={preview.checks.filter((c) => !blocking.includes(c))} />
           </div>
         </details>
+        {saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
         {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
-        <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : mode === "replace" && preview.hasData ? "Replace all and save" : "Save"} onNext={commit}
+        {post && !saving && <button onClick={continuePost} className="mt-3 rounded bg-brand-d px-5 py-2 text-sm font-medium text-white" data-testid="continue-save">Continue saving</button>}
+        {!post && <WizardNav onBack={() => setScreen("check")} next={saving ? "Saving…" : mode === "replace" && preview.hasData ? "Replace all and save" : "Save"} onNext={commit}
           disabled={saving || previewing || !canImport || needChoice || nothingNew} busy={previewing} nextTestId="commit-import"
-          hint={needChoice ? "Choose one first." : nothingNew ? "Nothing new to add." : !canImport ? (acceptOn ? "Write why it is right (at least 10 letters)." : "Something doesn't add up: see the box above, or tick Save anyway and give a reason.") : undefined} />
+          hint={needChoice ? "Choose one first." : nothingNew ? "Nothing new to add." : !canImport ? (acceptOn ? "Write why it is right (at least 10 letters)." : "Something doesn't add up: see the box above, or tick Save anyway and give a reason.") : undefined} />}
       </div>
     );
   }
@@ -990,8 +1025,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <label className="flex items-center gap-2"><input type="checkbox" checked={opts.plugEquity} onChange={(e) => setOpts({ ...opts, plugEquity: e.target.checked })} /> Force balance into Other Equity (last resort)</label>
         </div>
         {allSales.length > 0 && <p className="text-[13px]" data-testid="sales-alongside">Also in this upload: {allSales.length.toLocaleString("en-US")} sales lines. They are saved too.</p>}
-        {res.lines.some((l) => l.entries?.length && l.cls === "revenue" && !l.excluded) && <p className="text-[13px] text-mute" data-testid="ledger-sales-note">Invoice lines on revenue accounts also become your sales.</p>}
-        {res.lines.some((l) => l.entries?.length && l.cls && !l.excluded && isPL(l.cls) && l.cls !== "revenue") && <p className="text-[13px] text-mute" data-testid="ledger-expenses-note">Lines on cost accounts also become your expenses (who you pay).</p>}
+        {res.lines.some((l) => hasEntries(l) && l.cls === "revenue" && !l.excluded) && <p className="text-[13px] text-mute" data-testid="ledger-sales-note">Invoice lines on revenue accounts also become your sales.</p>}
+        {res.lines.some((l) => hasEntries(l) && l.cls && !l.excluded && isPL(l.cls) && l.cls !== "revenue") && <p className="text-[13px] text-mute" data-testid="ledger-expenses-note">Lines on cost accounts also become your expenses (who you pay).</p>}
         {allExp.length > 0 && <p className="text-[13px]" data-testid="expenses-alongside">Also in this upload: {allExp.length.toLocaleString("en-US")} expense lines. They are saved too.</p>}
         {fileChecks.length > 0 && <CheckList checks={fileChecks} />}
         {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals in the file ({controlCount} checked).</p>}
@@ -1005,7 +1040,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {demo
         ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing} nextTestId="continue-timeline" hint={errorCount ? `Fix the problems first: ${issues.find((i) => i.severity === "error")?.message ?? ""}`.trim() : rolesHint} />}
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || ingesting || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing || ingesting} nextTestId="continue-timeline" hint={errorCount ? `Fix the problems first: ${issues.find((i) => i.severity === "error")?.message ?? ""}`.trim() : rolesHint} />}
     </div>
   );
 }
@@ -1100,11 +1135,3 @@ function monthEndOf(month: string): string {
   return d.toISOString().slice(0, 10);
 }
 const dayBefore = (day: string) => new Date(Date.parse(`${day}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
-/** The day an opening balances file is at: Odoo's opening entry on a month end, else the month end of its last entry. */
-function openingDayOf(raw: RawLine[]): string {
-  const s = suggestBooksStart(raw);
-  if (s.suggested) return dayBefore(s.suggested);
-  const days = raw.flatMap((r) => (r.entries ?? []).map((e) => e.day)).sort();
-  const last = days[days.length - 1] ?? new Date().toISOString().slice(0, 10);
-  return monthEndOf(days.length ? last.slice(0, 7) : addMonths(last.slice(0, 7), -1));
-}

@@ -6,6 +6,7 @@ import { expenseLineMonths } from "@/app/company/[id]/settings/expense-actions";
 import { expenseLineText, monthPrints, planSave, salesLineText, type SaveMode } from "./month-print";
 import { saveSales } from "./save-sales";
 import { saveExpenses } from "./save-expenses";
+import type { ChunkOptions } from "@/lib/chunks";
 
 export type { SaveMode };
 export type SaveOutcome = { ok: true; saved: number; summary: string } | { ok: false; error: string };
@@ -50,10 +51,10 @@ async function saveAs<T extends { period: string }>(
   return { ...r, summary: mode === "all" ? `${n(r.saved)} ${noun} lines saved. Everything saved before was replaced by this file.` : `${n(r.saved)} ${noun} lines saved; the file's months were replaced${mode === "changed" ? " (the database cannot compare months yet)" : ""}.` };
 }
 
-export function saveSalesAs(companyId: string, lines: SalesLine[], filename: string, report: Record<string, unknown>, mode: SaveMode, loaded: string[]): Promise<SaveOutcome> {
-  return saveAs(lines, mode, loaded, "sales", () => salesLineMonths(companyId, "file"), salesLineText, (ls, all) => saveSales(companyId, "file", ls, filename, { ...report, mode }, { all }));
+export function saveSalesAs(companyId: string, lines: SalesLine[], filename: string, report: Record<string, unknown>, mode: SaveMode, loaded: string[], onProgress?: ChunkOptions["onProgress"]): Promise<SaveOutcome> {
+  return saveAs(lines, mode, loaded, "sales", () => salesLineMonths(companyId, "file"), salesLineText, (ls, all) => saveSales(companyId, "file", ls, filename, { ...report, mode }, { all, onProgress }));
 }
 
-export function saveExpensesAs(companyId: string, lines: ExpenseLine[], filename: string, report: Record<string, unknown>, mode: SaveMode, loaded: string[]): Promise<SaveOutcome> {
-  return saveAs(lines, mode, loaded, "expense", () => expenseLineMonths(companyId, "file"), expenseLineText, (ls, all) => saveExpenses(companyId, "file", ls, filename, { ...report, mode }, { all }));
+export function saveExpensesAs(companyId: string, lines: ExpenseLine[], filename: string, report: Record<string, unknown>, mode: SaveMode, loaded: string[], onProgress?: ChunkOptions["onProgress"]): Promise<SaveOutcome> {
+  return saveAs(lines, mode, loaded, "expense", () => expenseLineMonths(companyId, "file"), expenseLineText, (ls, all) => saveExpenses(companyId, "file", ls, filename, { ...report, mode }, { all, onProgress }));
 }

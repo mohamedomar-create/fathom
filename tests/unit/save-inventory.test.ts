@@ -25,11 +25,11 @@ const layer = (i: number, over: Partial<StockLayer> = {}): StockLayer => ({
 beforeEach(() => { calls.length = 0; staged = 0; finishResult = () => ({ ok: true, added: staged, already: 0 }); });
 
 describe("saving Inventory sheets", () => {
-  it("savesInChunksOf3000", async () => {
+  it("savesInChunksOf1000", async () => {
     const r = await saveInventory(CO, { layers: Array.from({ length: 7001 }, (_, i) => layer(i)) }, "valuation.xlsx", "replace");
-    expect(calls.filter((c) => c.name === "add").map((c) => (c.args[3] as unknown[]).length)).toEqual([3000, 3000, 1001]);
+    expect(calls.filter((c) => c.name === "add").map((c) => (c.args[3] as unknown[]).length)).toEqual([1000, 1000, 1000, 1000, 1000, 1000, 1000, 1]);
     // The upload is finished once, after every chunk: it shows all at once or not at all.
-    expect(calls.map((c) => c.name)).toEqual(["start", "add", "add", "add", "finish"]);
+    expect(calls.map((c) => c.name)).toEqual(["start", ...Array(8).fill("add"), "finish"]);
     expect(r).toEqual({ ok: true, added: 7001, already: 0 });
     expect(calls[0]).toMatchObject({ name: "start", args: [{ companyId: CO, kind: "valuation", periods: ["2026-09"], filename: "valuation.xlsx", mode: "replace" }] });
   });

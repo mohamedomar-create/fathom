@@ -50,6 +50,8 @@ export interface IngestLine {
   values: Record<string, number>;
   /** General Ledger move lines behind the figures (General Ledger uploads only). */
   entries?: LedgerEntry[];
+  /** How many entries the line has, when the entries themselves stay in the background worker. */
+  entryCount?: number;
 }
 
 export interface IngestResult {

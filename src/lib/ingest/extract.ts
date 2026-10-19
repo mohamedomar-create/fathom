@@ -50,6 +50,8 @@ export interface RawLine {
   closing?: number;
   /** General Ledger move lines behind the monthly figures (kept so revenue lines can become sales lines). */
   entries?: LedgerEntry[];
+  /** How many entries the line has, when the entries themselves stay in the background worker. */
+  entryCount?: number;
   /** The class the file states for the line (iReport templates): used as given, never guessed. */
   forcedCls?: ClassKey;
   /** The line comes from an iReport template: an account row as entered, never a total to detect. */

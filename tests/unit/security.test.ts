@@ -25,9 +25,12 @@ describe("safe errors", () => {
     expect(log).toHaveBeenCalled();
     log.mockRestore();
   });
-  it("passes through our own messages and readable SQL exceptions", () => {
+  it("passes through our own messages and readable SQL exceptions", async () => {
     expect(safeError(new Error("Enter the API key."), "t")).toBe("Enter the API key.");
     expect(dbError({ code: "P0001", message: "an organisation needs at least one admin" }, "t")).toBe("An organisation needs at least one admin.");
+    // A time-out or a lock wait says "busy" (the chunk engine splits and retries on it), never a generic error.
+    const { isBusy } = await import("@/lib/chunks");
+    for (const code of ["57014", "55P03"]) expect(isBusy(new Error(dbError({ code, message: "canceling statement due to statement timeout" }, "t")))).toBe(true);
     expect(safeError(new DbError({ code: "42501", message: "rls" }), "t")).toBe("You don't have permission to do that.");
     const z1 = z.string().uuid().safeParse("x");
     expect(safeError(z1.error, "t")).toMatch(/^That value isn't valid/);
