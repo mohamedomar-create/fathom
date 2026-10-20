@@ -85,6 +85,17 @@ export function detectAgencies(rows: EndUserRow[], own: { add: string[]; remove:
   return [...new Set([...auto, ...own.add])].filter((c) => !own.remove.includes(c)).sort();
 }
 
+/** What a delivery to the agency itself (its central stores, a tender) is listed as: it names no hospital. */
+export const AGENCY_ITSELF = "Delivered to the agency itself (no hospital named)";
+const HOSPITALISH = /مستشف|جامع|مركز|معهد|مجمع|مديري|hospital|univers|centre|center|clinic/i;
+/** The end user is the agency itself: its own name, or its name followed by something that is not a hospital (a store, a warehouse). */
+export function agencyItself(user: string, agency: string): boolean {
+  const rest = cleanHospital(user, agency);
+  if (!rest || hospitalKey(rest) === hospitalKey(agency)) return true;
+  const sp = (x: string) => normAr(x).replace(/\s+/g, "");
+  return sp(user).startsWith(sp(agency)) && !HOSPITALISH.test(normAr(rest));
+}
+
 const refKey = (s: string) => normAr(s).replace(/\s+/g, "").toLowerCase();
 
 export function endUserAnalysis(rows: EndUserRow[], maps: EndUserMaps): EndUserAnalysis {
@@ -101,16 +112,18 @@ export function endUserAnalysis(rows: EndUserRow[], maps: EndUserMaps): EndUserA
     const m = months.get(r.p) ?? { period: r.p, total: 0, order: 0, contact: 0, shipping: 0, statement: 0, register: 0, unmapped: 0 };
     months.set(r.p, m);
     m.total += r.a; total += r.a;
-    let name = r.u ? cleanHospital(r.u, r.c) : "";
+    const itself = Boolean(r.u) && agencyItself(r.u, r.c);
+    let name = r.u && !itself ? cleanHospital(r.u, r.c) : "";
     let how: keyof Omit<EndUserMonth, "period" | "total"> = r.m === "statement-group" ? "statement" : r.m || "unmapped";
-    if (!name) {
+    if (itself) how = "unmapped";
+    else if (!name) {
       const text = refKey(r.o);
       const hit = text ? register.find(([k]) => text.includes(k)) : undefined;
       if (hit) { name = hit[1]; how = "register"; } else how = "unmapped";
     }
     m[how] += r.a;
     if (how === "unmapped") {
-      const t = r.o.trim() || "(no description)";
+      const t = itself ? AGENCY_ITSELF : r.o.trim() || "(no description)";
       const u = unmapped.get(t) ?? { text: t, amount: 0, lines: 0, months: new Set<string>() };
       u.amount += r.a; u.lines += r.n; u.months.add(r.p);
       unmapped.set(t, u);

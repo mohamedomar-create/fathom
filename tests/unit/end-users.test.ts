@@ -93,3 +93,18 @@ describe("the database summary and the company's choices", () => {
     expect(parseRegister("PRO 501/22 = مستشفى الرحمة\nPRO 502/22\tمستشفى السلام\n\njunk")).toEqual([{ key: "PRO 501/22", hospital: "مستشفى الرحمة" }, { key: "PRO 502/22", hospital: "مستشفى السلام" }]);
   });
 });
+
+describe("goods delivered to the agency itself", () => {
+  const m = { agencies: [UPA], aliases: {}, register: {} };
+  it("a line whose end user is the agency (its central stores, a tender) is not placed on a hospital", () => {
+    const a = endUserAnalysis([
+      row("2026-09", "الهيئة المصرية للشراء الموحد - بمخازن شركة الجمهورية", "statement", 300),
+      row("2026-09", UPA, "statement", 200),
+      row("2026-09", "الهيئة المصرية للشراء الموحد - مستشفى صدر طنطا", "statement", 100),
+      row("2026-09", `${UPA} (جامعه الوادي)`, "contact", 50),
+    ], m);
+    expect(a.hospitals.map((h) => [h.name, h.amount])).toEqual([["مستشفى صدر طنطا", 100], ["جامعه الوادي", 50]]);
+    expect(a.months[0]).toMatchObject({ total: 650, statement: 100, contact: 50, unmapped: 500 });
+    expect(a.unmapped[0]).toMatchObject({ text: "Delivered to the agency itself (no hospital named)", amount: 500 });
+  });
+});
