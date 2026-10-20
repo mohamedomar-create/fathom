@@ -15,7 +15,7 @@ const zones = (own: string | null | undefined) => {
   return own && !all.includes(own) ? [own, ...all] : all;
 };
 
-export function ProfileForm({ initial, readOnly, canDelete, canExport = true, role, reset }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean; role?: "admin" | "editor" | "viewer"; reset?: ResetPreview | null }) {
+export function ProfileForm({ initial, readOnly, canDelete, canExport = true, role, reset, resetNote }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean; role?: "admin" | "editor" | "viewer"; reset?: ResetPreview | null; resetNote?: string | null }) {
   const router = useRouter();
   const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
   const [pending, start] = useTransition();
@@ -77,6 +77,9 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
         <a href={`/api/export/${initial.id}`} download className="inline-block rounded border border-line px-4 py-2 text-sm hover:bg-band" data-testid="export-company">Download all data (.xlsx)</a>
       </section>}
       {reset && role && <DataAndDeletion companyId={initial.id} name={initial.name} role={role} preview={reset} />}
+      {!reset && resetNote && role !== "viewer" && (
+        <p className="rounded-md border border-amber bg-amber/10 p-3 text-sm" role="status" data-testid="reset-unavailable"><b className="font-medium">Data and deletion:</b> {resetNote}</p>
+      )}
       {!reset && canDelete && (
         <section className="rounded-md border border-red/30 p-4">
           <h3 className="font-medium text-red">Danger zone</h3>

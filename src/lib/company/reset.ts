@@ -48,3 +48,11 @@ export function parseResetPreview(raw: unknown): ResetPreview | null {
 export function confirmCount(p: ResetPreview, scope: ResetScope): number {
   return scope === "all" ? p.total : p.modules.find((m) => m.key === scope)?.records ?? 0;
 }
+
+/** Why the clearing section cannot work (shown in its place, never hidden), or null when the preview was read. */
+export function resetUnavailable(error: { code?: string; message?: string } | null): string | null {
+  if (!error) return null;
+  if (error.code === "PGRST202" || error.code === "42883" || /data_reset_preview/.test(error.message ?? "")) return "Clearing data needs the latest database update (migration 0031). Ask the site owner to run it; until then only deleting the whole company is available.";
+  if (error.code === "42501") return "You don't have permission to see or clear this company's data.";
+  return "What this company holds could not be read just now. Reload the page to try again.";
+}

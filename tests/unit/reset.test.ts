@@ -43,3 +43,13 @@ describe("the reset preview", () => {
     for (const m of Object.values(RESET_MODULES)) expect(m.keeps.length).toBeGreaterThan(10);
   });
 });
+
+describe("when the preview cannot be read", () => {
+  it("a missing database update says so, never hides the section", async () => {
+    const { resetUnavailable } = await import("@/lib/company/reset");
+    expect(resetUnavailable({ code: "PGRST202", message: "Could not find the function public.data_reset_preview" })).toMatch(/migration 0031/);
+    expect(resetUnavailable({ code: "42883", message: "function does not exist" })).toMatch(/migration 0031/);
+    expect(resetUnavailable({ code: "42501", message: "not allowed" })).toMatch(/permission/);
+    expect(resetUnavailable(null)).toBeNull();
+  });
+});
