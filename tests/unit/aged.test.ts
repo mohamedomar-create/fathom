@@ -107,17 +107,17 @@ describe("reading Odoo's Aged Receivable", () => {
     expect(r.errors).toEqual([]);
   });
 
-  it("a partner whose own name starts with \"Total\" (the company itself, \"Sample Trading Co\") is a partner, not a total", () => {
+  it("a partner whose own name starts with \"Total\" (e.g. \"Total Supplies Co\") is a partner, not a total", () => {
     const g = receivable();
     const at = g.rows.findIndex((r) => r[0] === "Total Aged Receivable");
     g.rows.splice(at, 0,
-      ["Sample Trading Co", _, _, _, _, _, _, -100, -100],
+      ["Total Supplies Co", _, _, _, _, _, _, -100, -100],
       ["BMISR/2026/0067 (Check #68535519)", _, _, _, _, _, _, -100, _],
-      ["Total Sample Trading Co", _, _, _, _, _, _, -100, -100]);
+      ["Total Total Supplies Co", _, _, _, _, _, _, -100, -100]);
     for (const label of ["Aged Receivable", "Total Aged Receivable"]) { setRow(g, label, 7, 190); setRow(g, label, 8, 1390); }
     const r = readAged(g)!;
     expect(r.errors).toEqual([]);
-    expect(r.partners.at(-1)).toMatchObject({ name: "Sample Trading Co", total: -100, items: 1 });
+    expect(r.partners.at(-1)).toMatchObject({ name: "Total Supplies Co", total: -100, items: 1 });
   });
 
   it("anything that isn't an aged report is not read as one", () => {
@@ -134,11 +134,11 @@ function foldedPayable(): Grid {
       [_, "As of 10/15/2026"],
       [],
       H,
-      ["Aged Payable", _, 200, -9686, _, _, _, -3906402.17, -4715866.15],
+      ["Aged Payable", _, 200, -9686, _, _, _, -4321987.65, -4331473.65],
       ["Supplier Alpha", _, 200, -9686, _, _, _, _, -9486],
-      ["Nebuliser Co", _, _, _, _, _, _, -3906402.17, -3906402.17],
+      ["Beta Imports", _, _, _, _, _, _, -4321987.65, -4321987.65],
       ["Unknown", _, _, _, _, _, _, _, 0],
-      ["Total Aged Payable", _, 200, -9686, _, _, _, -3906402.17, -4715866.15],
+      ["Total Aged Payable", _, 200, -9686, _, _, _, -4321987.65, -4331473.65],
     ],
   };
 }
@@ -149,9 +149,9 @@ describe("reading a folded Aged Payable (partner totals only)", () => {
     expect(r.errors).toEqual([]);
     expect(r.side).toBe("payable");
     expect(r.asOf).toBe("2026-10-15");
-    expect(r.partners.map((p) => [p.name, p.total, p.items])).toEqual([["Supplier Alpha", -9486, 1], ["Nebuliser Co", -3906402.17, 1], ["Unknown", 0, 1]]);
+    expect(r.partners.map((p) => [p.name, p.total, p.items])).toEqual([["Supplier Alpha", -9486, 1], ["Beta Imports", -4321987.65, 1], ["Unknown", 0, 1]]);
     expect(r.items[0]).toMatchObject({ partner: "Supplier Alpha", ref: "", memo: "Partner total (documents not in the export)", day: null, amounts: [200, -9686, 0, 0, 0, 0], total: -9486 });
-    expect(r.total.total).toBe(-4715866.15);
+    expect(r.total.total).toBe(-4331473.65);
     expect(r.findings.find((f) => f.id === "folded")!.message).toMatch(/3 partners were exported folded \(totals only\)/);
   });
 
@@ -168,11 +168,11 @@ describe("reading a folded Aged Payable (partner totals only)", () => {
 
   it("a folded partner whose own name starts with \"Total\" (the company itself) is a partner, and the figures still tie", () => {
     const g = foldedPayable();
-    g.rows.splice(6, 0, ["Sample Trading Co", _, _, _, _, _, _, -22000, -22000]);
-    for (const r of [g.rows[3], g.rows[g.rows.length - 1]]) { r[7] = -4728380.15; r[8] = -4737866.15; }
+    g.rows.splice(6, 0, ["Total Supplies Co", _, _, _, _, _, _, -22000, -22000]);
+    for (const r of [g.rows[3], g.rows[g.rows.length - 1]]) { r[7] = -4343987.65; r[8] = -4353473.65; }
     const r = readAged(g)!;
     expect(r.errors).toEqual([]);
-    expect(r.partners.find((p) => p.name === "Sample Trading Co")).toMatchObject({ total: -22000, items: 1 });
+    expect(r.partners.find((p) => p.name === "Total Supplies Co")).toMatchObject({ total: -22000, items: 1 });
   });
 
   it("a folded row whose buckets don't add up to its Total is an error naming the row", () => {
@@ -181,18 +181,21 @@ describe("reading a folded Aged Payable (partner totals only)", () => {
   });
 
   it("folded partners that don't add up to the report's total are an error", () => {
-    const g = setRow(setRow(foldedPayable(), "Nebuliser Co", 7, -4706000), "Nebuliser Co", 8, -4706000);
-    expect(readAged(g)!.errors.join(" ")).toMatch(/The partners add up to .* in "Older", the report's total says -3,906,402.17/);
+    const g = setRow(setRow(foldedPayable(), "Beta Imports", 7, -4321000), "Beta Imports", 8, -4321000);
+    expect(readAged(g)!.errors.join(" ")).toMatch(/The partners add up to .* in "Older", the report's total says -4,321,987.65/);
   });
 });
 
+// Real files are local only: the folder (AGED_DIR) holds them and an expected.json with their totals. No company's
+// figures are ever written in the repo.
 describe.skipIf(!dir)("real Aged Receivable / Payable (local only)", () => {
   const load = async (f: string) => { const b = fs.readFileSync(path.join(dir!, f)); return (await readWorkbook(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, f))[0]; };
-  it("the main company Sep 2026: receivable 417 partners, 1,501 documents, 310,920.00; payable 146 partners, 902 documents, 86,437.38", async () => {
-    const ar = readAged(await load("aged_receivable_2026-09.xlsx"))!;
-    expect([ar.side, ar.asOf, ar.partners.length, ar.items.length, ar.total.total, ar.errors]).toEqual(["receivable", "2026-09-30", 417, 1501, 310920.00, []]);
-    expect(ar.total.amounts).toEqual([39860771.62, -6187846.56, -4243221.60, -15086863.83, 6421314.45, -20453497.14]);
-    const ap = readAged(await load("aged_payable_2026-09.xlsx"))!;
-    expect([ap.side, ap.asOf, ap.partners.length, ap.items.length, ap.total.total, ap.errors]).toEqual(["payable", "2026-09-30", 146, 902, 86437.38, []]);
+  const want = () => JSON.parse(fs.readFileSync(path.join(dir!, "expected.json"), "utf8")).aged as { file: string; side: string; asOf: string; partners: number; items: number; total: number; amounts?: number[] }[];
+  it("each real ageing report reads with no errors and matches its private expected totals", async () => {
+    for (const w of want()) {
+      const r = readAged(await load(w.file))!;
+      expect([r.side, r.asOf, r.partners.length, r.items.length, r.total.total, r.errors]).toEqual([w.side, w.asOf, w.partners, w.items, w.total, []]);
+      if (w.amounts) expect(r.total.amounts).toEqual(w.amounts);
+    }
   });
 });

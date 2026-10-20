@@ -12,11 +12,11 @@ const row = (p: string, u: string, m: EndUserRow["m"], a: number, extra: Partial
 describe("hospital names", () => {
   it("one hospital whatever the agency suffix or Arabic spelling", () => {
     expect(hospitalKey("مستشفى النور التخصصي-الشراء الموحد")).toBe(hospitalKey("مستشفي النور التخصصى"));
-    expect(hospitalKey("مستشفي الربيع المركزي(الشراء الموحد)")).toBe(hospitalKey("مستشفى الوادى المركزى"));
+    expect(hospitalKey("مستشفي الربيع المركزي(الشراء الموحد)")).toBe(hospitalKey("مستشفى الربيع المركزى"));
     expect(cleanHospital("مستشفى النور التخصصي-الشراء الموحد")).toBe("مستشفى النور التخصصي");
   });
   it("an invoice addressed to the agency's own child contact names the hospital in brackets", () => {
-    expect(cleanHospital(`${UPA} (جامعه الوادي)`, UPA)).toBe("جامعه الوادي");
+    expect(cleanHospital(`${UPA} (جامعه الربيع)`, UPA)).toBe("جامعه الربيع");
   });
 });
 
@@ -101,9 +101,9 @@ describe("goods delivered to the agency itself", () => {
       row("2026-09", "الهيئة المصرية للشراء الموحد - بمخازن شركة الجمهورية", "statement", 300),
       row("2026-09", UPA, "statement", 200),
       row("2026-09", "الهيئة المصرية للشراء الموحد - مستشفى صدر طنطا", "statement", 100),
-      row("2026-09", `${UPA} (جامعه الوادي)`, "contact", 50),
+      row("2026-09", `${UPA} (جامعه الربيع)`, "contact", 50),
     ], m);
-    expect(a.hospitals.map((h) => [h.name, h.amount])).toEqual([["مستشفى صدر طنطا", 100], ["جامعه الوادي", 50]]);
+    expect(a.hospitals.map((h) => [h.name, h.amount])).toEqual([["مستشفى صدر طنطا", 100], ["جامعه الربيع", 50]]);
     expect(a.months[0]).toMatchObject({ total: 650, statement: 100, contact: 50, unmapped: 500 });
     expect(a.unmapped[0]).toMatchObject({ text: "Delivered to the agency itself (no hospital named)", amount: 500 });
   });

@@ -244,7 +244,7 @@ describe("continuity with the months already loaded", () => {
   });
 });
 
-describe("books start (the main company went live on 1 Jul 2021)", () => {
+describe("books start (a company that went live on 1 Jul 2021)", () => {
   it("a merge drops stored months before the books start: P&L before it, balance sheets before the month before it", () => {
     const cur = books(["2021-01", "2021-02", "2021-06", "2021-07"]);
     const next = books(["2021-06", "2021-07", "2021-08"], "x").map((a) => inc(a.code, a.name, a.cls, Object.fromEntries(Object.entries(a.amounts).filter(([p]) => p >= (a.cls === "revenue" || a.cls === "exp_fixed" ? "2021-07" : "2021-06")))));
@@ -291,7 +291,7 @@ describe("opening balances uploaded on their own", () => {
   });
 });
 
-describe("opening balances against books loaded under other names (the main company, 18 Oct)", () => {
+describe("opening balances against books loaded under other names", () => {
   const opts = { mode: "merge" as const, slices: { PL: [], BS: ["2021-06"] }, booksStart: "2021-07-01", opening: { asAt: "2021-06-30" }, zeroMonths: [] };
   const s = (o: Record<string, number>) => ({ sources: Object.fromEntries(Object.keys(o).map((p) => [p, "imp-old"])) });
   const stored = [

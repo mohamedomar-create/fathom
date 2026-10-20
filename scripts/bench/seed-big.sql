@@ -1,4 +1,4 @@
--- A made-up company the size of a real Odoo user (the main company, Oct 2026): 150 accounts × 64 months, 31k expense lines,
+-- A made-up company the size of a large Odoo user: 150 accounts × 64 months, 31k expense lines,
 -- 17k sales lines, 22k payments. Local stack only, for timing pages and summary functions under the live limits.
 -- Usage: psql -v company="'<uuid>'" -f seed-big.sql   (without -v it creates its own bench user and company)
 \if :{?company}

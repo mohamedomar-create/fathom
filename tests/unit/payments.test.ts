@@ -11,7 +11,7 @@ const H = ["Date", "Number", "Journal", "Payment Method", "Customer/Vendor", "Am
 const d = (s: string) => new Date(`${s}T00:00:00Z`);
 function customers(): Grid {
   return { name: "Sheet1", rows: [H,
-    [d("2026-09-30"), "N/R/2026/0038", "Notes Receivables", "Manual (Notes Receivables)", "Northside Hospital", 115301.45, "EGP", 115301.45, "In Process"],
+    [d("2026-09-30"), "N/R/2026/0038", "Notes Receivables", "Manual (Notes Receivables)", "Northside Hospital", 128500.5, "EGP", 128500.5, "In Process"],
     [d("2026-09-30"), "CIB/2026/1066", "CIB Bank EGP", "Manual (CIB Bank EGP)", "Delta Clinic", 3500, "EGP", 3500, "Paid"],
     [d("2026-09-12"), "AAIB$/2026/0010", "aaib Bank $", "Manual", "Medline Intl", 100, "USD", 5005, "Paid"],
     [d("2026-09-10"), "CIB/2026/0990", "CIB Bank EGP", "Manual (CIB Bank EGP)", "Delta Clinic", 900, "EGP", 900, "Draft"],
@@ -67,7 +67,7 @@ describe("reading Odoo's payments list", () => {
   it("posted payments in company currency, direction from the sign, period from the date", () => {
     const r = readPayments(customers())!;
     expect(r.lines.map((l) => [l.number, l.direction, l.amount, l.period, l.state])).toEqual([
-      ["N/R/2026/0038", "in", 115301.45, "2026-09", "in_process"],
+      ["N/R/2026/0038", "in", 128500.5, "2026-09", "in_process"],
       ["CIB/2026/1066", "in", 3500, "2026-09", "paid"],
       ["AAIB$/2026/0010", "in", 5005, "2026-09", "paid"],
     ]);
@@ -101,13 +101,16 @@ describe("reading Odoo's payments list", () => {
 });
 
 const dir = process.env.AGED_DIR;
+// Real files are local only: AGED_DIR holds them and an expected.json with their totals; no figures in the repo.
 describe.skipIf(!dir)("real Customer / Vendor Payments (local only)", () => {
   const load = async (f: string) => { const b = fs.readFileSync(path.join(dir!, f)); return (await readWorkbook(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer, f))[0]; };
   const sum = (xs: { amount: number }[]) => Math.round(xs.reduce((s, x) => s + x.amount, 0) * 100) / 100;
-  it("the main company Sep 2026: 93 customer payments 10,233,365.74 (in process 1,081,645.46); 77 vendor payments -11,127,843.61", async () => {
-    const c = readPayments(await load("customer_payments_2026-09.xlsx"))!;
-    expect([c.lines.length, sum(c.lines), sum(c.lines.filter((l) => l.state === "in_process")), c.errors]).toEqual([93, 10233365.74, 1081645.46, []]);
-    const v = readPayments(await load("vendor_payments_2026-09.xlsx"))!;
-    expect([v.lines.length, sum(v.lines), v.errors]).toEqual([77, -11127843.61, []]);
+  const want = () => JSON.parse(fs.readFileSync(path.join(dir!, "expected.json"), "utf8")).payments as { file: string; lines: number; total: number; inProcess?: number }[];
+  it("each real payments list reads with no errors and matches its private expected totals", async () => {
+    for (const w of want()) {
+      const r = readPayments(await load(w.file))!;
+      expect([r.lines.length, sum(r.lines), r.errors]).toEqual([w.lines, w.total, []]);
+      if (w.inProcess !== undefined) expect(sum(r.lines.filter((l) => l.state === "in_process"))).toBe(w.inProcess);
+    }
   });
 });

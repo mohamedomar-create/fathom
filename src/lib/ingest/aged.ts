@@ -122,7 +122,7 @@ export function readAged(g: Grid): AgedReport | null {
     if (!l && !filled) continue;
     if (i === last) { bottom = amounts(i); bottomTotal = num(i, h.totalCol); continue; }
     if (!cur && top === null && l === title) { top = amounts(i); topTotal = num(i, h.totalCol); continue; }
-    // "Total <partner>" closes the open block; a partner may itself be named "Total …" (the company, "Sample Trading Co").
+    // "Total <partner>" closes the open block; a partner may itself be named "Total …" (e.g. a company called "Total Supplies").
     if (cur && TOTAL_ROW.test(norm(l)) && strip(l) === cur.name) {
       const name = cur.name;
       const at = amounts(i), atTotal = num(i, h.totalCol);
@@ -143,7 +143,7 @@ export function readAged(g: Grid): AgedReport | null {
       if (!l) { errors.push(`Row ${i + 1}: "${text(row.find((c) => text(c)))}" has amounts but no partner name.`); continue; }
       if (DOC_LIKE.test(l)) { errors.push(`Row ${i + 1}: "${l}" looks like a document but no partner was opened above it.`); continue; }
       // Exported folded: the partner's own row, its buckets and total, with no documents under it. A "Total …" row here is a
-      // partner named so (the company itself, "Sample Trading Co"): no block is open for it to close, and the partners must
+      // partner named so (e.g. "Total Supplies"): no block is open for it to close, and the partners must
       // still add up to the report's total, so a misread row cannot pass unnoticed.
       const a = amounts(i), t = sum(a);
       const given = text(row[h.totalCol]) ? num(i, h.totalCol) : t;

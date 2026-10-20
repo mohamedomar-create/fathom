@@ -12,8 +12,8 @@ export function validTimeZone(tz: string): boolean {
 
 /**
  * The time zone a company's Odoo date-times are moved to, when its exports write them in UTC. None unless set: what
- * decides a stock record's month is the date of its journal entry, and in a real Odoo export (Company B, 15 Oct 2026)
- * all 63 records stamped between 9 pm and midnight on a month's last day had their journal entry on that same day, so
+ * decides a stock record's month is the date of its journal entry, and in a real Odoo export
+ * all records stamped between 9 pm and midnight on a month's last day had their journal entry on that same day, so
  * moving them to Cairo time would have put them in the wrong month.
  */
 export function timeZoneOf(kpiConfig: unknown): string | null {

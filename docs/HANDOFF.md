@@ -17,12 +17,8 @@ Data comes in two ways:
 - **Odoo exports** (General Ledger, Trial Balance, P&L, Balance Sheet, invoice lines, vendor bills, and the stock valuation, moves, on-hand and product exports), plus Excel templates and messy workbooks;
 - a **read-only live Odoo connection**.
 
-The owner, an Egyptian finance executive, uses it for their own companies:
-- **the main company**, held as "the main company", plus an older one-month company "Sample Trading Co";
-- **Company B**;
-- **Company C**;
-- **Company D**;
-- a demo company.
+The owner uses it for their own companies, plus a demo company. Company names, figures and files are never kept in
+this repository: they live only in the app's database (Supabase) and in the private handoff outside the repo.
 
 ## 2. The owner's standing rules (always apply)
 
@@ -219,7 +215,7 @@ Not in this public copy. See the private handoff (`fathom-handoff.md`), which th
 
 1. **Owner:**
    - upload Odoo's 30 Jun 2021 opening ledger on the **Opening balances** card;
-   - then re-import the the main company General Ledger with cut-off **15 Oct 2026** (books start **Jul 2021**);
+   - then re-import the main company's General Ledger with cut-off **15 Oct 2026** (books start **Jul 2021**);
    - then the three stock files with **"Replace all"**;
    - reply "done".
 2. **Then, read-only on the live data:**
@@ -230,7 +226,7 @@ Not in this public copy. See the private handoff (`fathom-handoff.md`), which th
    - inventory checks;
    - sales counts.
 3. **To investigate:**
-   - the main company's customer days for 2025 look implausibly low (money owed by customers may be misclassed);
+   - The main company's customer days for 2025 look implausibly low (money owed by customers may be misclassed);
    - the known stock gap, and the opening stock posted to w.2 (interim received) instead of the stock account.
 4. **Deferred minor items** (owner to decide):
    - the stock cut-off vs the on-hand checks;

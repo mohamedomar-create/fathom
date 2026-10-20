@@ -2,7 +2,7 @@
 --
 -- Odoo's import-compatible export can carry a record's database ID (".id": 4512) or its External ID ("id"). For a record
 -- Odoo named itself, the External ID is "__export__.<model>_<database ID>_<random>", so the two describe the same record.
--- iReport now recognises the ".id" column too; without this, stock saved with External IDs (Company B's moves) would
+-- iReport now recognises the ".id" column too; without this, stock saved with External IDs (a real moves export) would
 -- look new when the same moves arrive with ".id", and "Add only new" would save every one of them a second time.
 -- Every key is reduced to the database ID when it carries one, as rows are staged and as they are saved, and the keys
 -- already saved are converted once. Keys built from a row's contents ("fp:…") and other External IDs are unchanged.
@@ -55,7 +55,7 @@ drop trigger if exists odoo_key_norm on public.import_rows;
 create trigger odoo_key_norm before insert or update of data on public.import_rows
   for each row execute function private.odoo_key_staged();
 
--- The keys already saved (Company B: 63,619 moves).
+-- The keys already saved (on companies that already hold stock).
 update public.stock_layers set odoo_key = private.odoo_key(odoo_key) where odoo_key like '\_\_export\_\_.%' and odoo_key <> private.odoo_key(odoo_key);
 update public.stock_moves set odoo_key = private.odoo_key(odoo_key) where odoo_key like '\_\_export\_\_.%' and odoo_key <> private.odoo_key(odoo_key);
 

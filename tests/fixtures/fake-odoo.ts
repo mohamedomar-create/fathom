@@ -60,7 +60,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /** late: an entry dated in August, posted (created) on 18 Oct 2026 after the last import. */
 /** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
 /** userCompanies: the companies the connected user may see. */
-/** custody: an employee's petty-cash custody account typed off-balance (as at the main company), coded next to the cash accounts. */
+/** custody: an employee's petty-cash custody account typed off-balance (as some charts do), coded next to the cash accounts. */
 export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; openingDate?: string; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[]; agency?: boolean; noSale?: boolean } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.custody) {
@@ -166,7 +166,7 @@ const INVOICES = [{ id: 101, name: "INV/2026/00001", invoice_user_id: [5, "Sara 
   { id: 102, name: "RINV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_refund", partner_id: [9, "Northside Hospital"], partner_shipping_id: [9, "Northside Hospital"], invoice_origin: false },
   { id: 103, name: "INV2/2026/0901", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: "S00010" },
   { id: 104, name: "INV2/2026/0902", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: "S00011" },
-  { id: 105, name: "INV/2026/0100", invoice_user_id: false, move_type: "out_invoice", partner_id: [31, "الهيئة المصرية للشراء الموحد (جامعه الوادي)"], partner_shipping_id: [31, "x"], invoice_origin: false },
+  { id: 105, name: "INV/2026/0100", invoice_user_id: false, move_type: "out_invoice", partner_id: [31, "الهيئة المصرية للشراء الموحد (جامعه الربيع)"], partner_shipping_id: [31, "x"], invoice_origin: false },
   { id: 106, name: "INV/2026/0101", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: false },
   { id: 107, name: "INV/2026/0102", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: [32, "مستشفى الرحمة المركزي-الشراء الموحد"], invoice_origin: false }];
 const SALE_LINES = [{ id: 901, order_id: [801, "S00010"] }];

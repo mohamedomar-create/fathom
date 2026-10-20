@@ -18,7 +18,7 @@ const acc = (code: string, name: string, rows: Row[]) => {
   ];
 };
 const OJE = "Opening Journal Entry";
-/** Odoo's General Ledger for the opening day, as the main company exported it: the opening entry and depreciation posted before it. */
+/** Odoo's General Ledger for the opening day, as a company exports it: the opening entry and depreciation posted before it. */
 function openingLedger(unbalanced = 0): Grid[] {
   const rows = [
     [null, null, "From 06/30/2021\nto 06/30/2021"], [], H,

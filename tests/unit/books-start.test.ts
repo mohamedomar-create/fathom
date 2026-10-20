@@ -1,6 +1,6 @@
 // The day a company's books start in Odoo (its go-live): everything posted before it, Odoo's opening journal entry
-// included, is the opening balance, never trading months. the main company went live on 1 Jul 2021 with its opening entry
-// dated 30 Jun 2021 and six months of depreciation posted before it.
+// included, is the opening balance, never trading months. A company that goes live on 1 Jul has its opening entry
+// dated 30 Jun and may have earlier months of depreciation posted before it.
 import { describe, expect, it } from "vitest";
 import { buildMonths } from "@/lib/company/build";
 import { runChecks } from "@/lib/company/checks";

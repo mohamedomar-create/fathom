@@ -12,3 +12,15 @@ test-results
 /.local-supabase
 /supabase/.temp
 __pycache__/
+
+# Company data never enters the repository: it lives only in the app's database (Supabase).
+# Spreadsheets, CSVs and PDFs are refused everywhere except the made-up fixtures folder.
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.ods
+*.pdf
+!tests/fixtures/files/*.xlsx
+/private
+/recon
