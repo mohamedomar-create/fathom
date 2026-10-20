@@ -26,8 +26,8 @@ create index if not exists company_data_audit_org_idx on public.company_data_aud
 alter table public.company_data_audit enable row level security;
 drop policy if exists company_data_audit_select on public.company_data_audit;
 create policy company_data_audit_select on public.company_data_audit for select to authenticated using (private.is_member(org_id));
-revoke all on public.company_data_audit from anon;
-revoke insert, update, delete on public.company_data_audit from authenticated;
+revoke all on public.company_data_audit from anon, authenticated;
+grant select on public.company_data_audit to authenticated;
 
 insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('reset', 'company', 3600, 20)
 on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;

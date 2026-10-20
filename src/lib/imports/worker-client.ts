@@ -34,7 +34,7 @@ function run<T extends WorkerResponse>(req: NoId<WorkerRequest>, onProgress?: (d
       : r.type === "payments"
       ? (r.grids ? Promise.resolve(r.grids) : readWorkbooks(r.files)).then((grids) => ({ id, type: "payments", plan: planPaymentsUpload(grids, { currency: r.currency }) }))
       : r.type === "preflight"
-      ? Promise.resolve({ id, type: "preflight", ...runPreflight(r.grids, r.module, r.decisions, r.stockMapping) })
+      ? Promise.resolve({ id, type: "preflight", ...runPreflight(r.grids, r.module, r.decisions, r.stockMapping, r.stockKey) })
       : r.type === "sample"
       ? Promise.all(r.files.map((f) => sampleFile(f.name, f.data, r.saved, f.export ?? null))).then((samples) => ({ id, type: "sample", samples }))
       : parseFiles(r.files, r.opts, onProgress).then((result) => ({ id, type: "parse", result }))) as Promise<T>;
@@ -102,7 +102,7 @@ export async function deriveInWorker(token: string): Promise<LedgerLines> {
 }
 
 /** Preflight off the page: the report, the cleaned copy with the person's decisions, and the cleaned copy's own report. */
-export async function preflightInWorker(grids: Grid[], module: PreflightModule, decisions: Decisions, stockMapping?: Record<string, string>): Promise<PreflightRun> {
-  const { report, cleaned, final } = await run<Extract<WorkerResponse, { type: "preflight" }>>({ type: "preflight", grids, module, decisions, stockMapping });
+export async function preflightInWorker(grids: Grid[], module: PreflightModule, decisions: Decisions, stockMapping?: Record<string, string>, stockKey?: string): Promise<PreflightRun> {
+  const { report, cleaned, final } = await run<Extract<WorkerResponse, { type: "preflight" }>>({ type: "preflight", grids, module, decisions, stockMapping, stockKey });
   return { report, cleaned, final };
 }

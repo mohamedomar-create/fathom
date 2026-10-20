@@ -50,7 +50,7 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
   useEffect(() => {
     let live = true;
     const todo = (samples ?? []).filter((s) => pfGrids[s.name]);
-    Promise.all(todo.map(async (s) => [s.name, await preflightInWorker(pfGrids[s.name], "stock", {}, (s.export ? saved[s.export] : undefined) as Record<string, string> | undefined)] as const))
+    Promise.all(todo.map(async (s) => [s.name, await preflightInWorker(pfGrids[s.name], "stock", {}, (s.export ? saved[s.export] : undefined) as Record<string, string> | undefined, s.export ?? undefined)] as const))
       .then((rs) => { if (live) setPfRuns(Object.fromEntries(rs)); })
       .catch((e: Error) => { if (live) setErr(e.message || "The files could not be checked."); });
     return () => { live = false; };

@@ -4,7 +4,7 @@
 // left out is listed with its reason.
 import type { Grid } from "@/lib/ingest/extract";
 import { cleanNum, normAr, type Cell } from "@/lib/ingest/parse";
-import { blankRow, CURRENCY_HEAD, dayOf, empty, ERROR_TEXT, numberForm, planColumns, planRows, rowKey, rowNo, rulesFor, text, isoDay } from "./inspect";
+import { blankRow, CURRENCY_HEAD, dateForm, dayOf, empty, ERROR_TEXT, numberForm, planColumns, planRows, rowKey, rowNo, rulesFor, text, isoDay } from "./inspect";
 import type { Decisions, PreflightReport } from "./types";
 
 export interface CleanChange { sheet: string; kind: string; count: number; detail: string }
@@ -56,7 +56,8 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const dropTotals = d.dropOddTotals ? rows.oddTotals : [];
     change("total_rows", rows.totals.length + dropTotals.length, `${rows.totals.length + dropTotals.length} total row(s) left out`);
     // Rows that are not lines (an agency statement's collections) stay in the copy as they were: the import skips them.
-    const keep = [...rows.data, ...rows.notLines, ...(d.dropOddTotals === false ? rows.oddTotals : [])].sort((a, b) => a - b);
+    // A "total" that does not add up stays as a line until the person says to leave it out: nothing goes unasked.
+    const keep = [...rows.data, ...rows.notLines, ...(d.dropOddTotals !== true ? rows.oddTotals : [])].sort((a, b) => a - b);
     const notLine = new Set(rows.notLines);
     const required = rules.required.map((grp) => grp.map((k) => plan.byField.get(k)).filter((c): c is number => c !== undefined)).filter((cols) => cols.length);
     const usedCols = [...plan.byField.values()];
@@ -81,7 +82,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
           const v = r?.[c];
           if (typeof v === "string" && ERROR_TEXT.test(v.trim())) return true;
           const t = spec(c)?.type;
-          return (t === "number" && numberForm(v) === "invalid") || (t === "date" && !empty(v) && dayOf(v, d.dateOrder ?? s.dateOrder) === null && typeof v !== "number");
+          return (t === "number" && numberForm(v) === "invalid") || (t === "date" && !empty(v) && typeof v !== "number" && dayOf(v, d.dateOrder ?? s.dateOrder) === null && !(dateForm(v) === "numeric" && !(d.dateOrder ?? s.dateOrder)));
         });
         if (badCol !== undefined) { invalid++; reject(i, `unreadable ${text(g.rows[h]?.[badCol])} ("${text(r?.[badCol])}")`); continue; }
       }

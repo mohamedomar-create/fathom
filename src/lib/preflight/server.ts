@@ -8,8 +8,8 @@ import type { PreflightModule } from "./types";
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Why an upload cannot be imported (the first blocking issue of a sheet that would go in), or null when it can. */
-export function preflightGate(grids: Grid[], module: PreflightModule, opts: { stockMapping?: Record<string, string> } = {}): string | null {
-  const r = inspectWorkbook(grids, module, { stockMapping: opts.stockMapping });
+export function preflightGate(grids: Grid[], module: PreflightModule, opts: { stockMapping?: Record<string, string>; stockKey?: string } = {}): string | null {
+  const r = inspectWorkbook(grids, module, { stockMapping: opts.stockMapping, stockKey: opts.stockKey });
   for (const s of r.sheets) {
     if (!s.include) continue;
     const block = s.issues.find((i) => i.level === "block");

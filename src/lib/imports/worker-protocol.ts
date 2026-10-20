@@ -14,7 +14,7 @@ export type WorkerRequest =
   | { id: number; type: "ingest"; token: string; sheets: string[]; params: IngestParams }
   | { id: number; type: "derive"; token: string }
   | { id: number; type: "sample"; files: { name: string; data: ArrayBuffer; export?: ExportKey | null }[]; saved: Partial<Record<ExportKey, SavedMapping>> }
-  | { id: number; type: "preflight"; grids: Grid[]; module: PreflightModule; decisions: Decisions; stockMapping?: Record<string, string> }
+  | { id: number; type: "preflight"; grids: Grid[]; module: PreflightModule; decisions: Decisions; stockMapping?: Record<string, string>; stockKey?: string }
   | { id: number; type: "parse"; files: { name: string; data: ArrayBuffer; export: ExportKey; mapping?: SavedMapping }[]; opts: { rentalLocation: string | null; asOf: string; timeZone?: string | null; cutoff?: string | null; locationTypes?: Record<string, "internal" | "transit" | "rental" | "outside"> } };
 export type WorkerResponse =
   | { id: number; type: "read"; grids: Grid[] }

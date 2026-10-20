@@ -70,7 +70,9 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
   useEffect(() => {
     if (!run || passed.current || !autoPass || Object.keys(decisions).length) return;
     const none = run.report.sheets.every((s) => !s.include);
-    const waiting = run.report.sheets.some((s) => (s.include && s.issues.some((i) => open(i, handOn))) || (stopOnLeftOut && !s.include && s.figures >= 3));
+    // A hidden or copied sheet with figures is always asked about; other left-out sheets only when stopOnLeftOut.
+    const waiting = run.report.sheets.some((s) => (s.include && s.issues.some((i) => open(i, handOn)))
+      || (!s.include && s.figures >= 3 && ((s.hidden || s.copyOf) ? decisions[s.sheet]?.include === undefined : stopOnLeftOut)));
     if (!waiting && (readyFor(run.final, handOn) || (allowNone && none))) { passed.current = true; onReady({ run, decisions }); }
   }, [run, autoPass, decisions, onReady, stopOnLeftOut, handOn, allowNone]);
   const canGo = run ? readyFor(run.final, handOn) || (allowNone && run.report.sheets.every((s) => !s.include)) : false;

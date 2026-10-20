@@ -26,9 +26,9 @@ async function removeFiles(supabase: Supa, paths: string[]): Promise<number> {
   let failed = 0;
   for (let i = 0; i < paths.length; i += 100) {
     const part = paths.slice(i, i + 100);
-    const { data, error } = await supabase.storage.from("imports").remove(part);
-    if (error) { console.error("reset: stored files", error.message); failed += part.length; continue; }
-    failed += part.length - (data?.length ?? 0);
+    // A file already gone is not a failure: only an error from Storage counts.
+    const { error } = await supabase.storage.from("imports").remove(part);
+    if (error) { console.error("reset: stored files", error.message); failed += part.length; }
   }
   return failed;
 }
@@ -46,10 +46,11 @@ export async function clearData(companyId: string, scope: string, shown: number)
   const before = await previewReset(companyId);
   if (!before.ok) return before;
   if (confirmCount(before.preview, s.data) !== shown) return { ok: false, error: dbError({ code: "40001", message: "stale" }, "clearData") };
-  // Files first, while their records still say whose they are; then the rows, all or nothing.
-  const filesLeft = s.data === "stock" || s.data === "all" ? await removeFiles(supabase, before.preview.files) : 0;
+  // The rows first, all or nothing (the database refuses if the data changed); then the stored files they named, so a
+  // refused clear never leaves records pointing at files already removed.
   const { error } = await supabase.rpc("clear_company_data", { p_company: companyId, p_scope: s.data, p_confirm: shown });
   if (error) return { ok: false, error: dbError(error, "clearData") };
+  const filesLeft = s.data === "stock" || s.data === "all" ? await removeFiles(supabase, before.preview.files) : 0;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, removed: shown, filesLeft };
 }
@@ -65,6 +66,9 @@ export async function deleteCompanyFully(companyId: string, name: string): Promi
   const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
   const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
   if (mem?.role !== "admin") return { ok: false, error: "Only organisation admins can delete a company." };
+  if (await limited(supabase, "reset", companyId)) return { ok: false, error: TOO_MANY };
+  // Files before the company: removing them needs the company (whose admins may remove its files). Name and role are
+  // checked above, so the delete that follows has nothing left to refuse.
   const filesLeft = await removeFiles(supabase, before.preview.files);
   const { error } = await supabase.rpc("delete_company", { p_company: companyId, p_name: name });
   if (error) return { ok: false, error: dbError(error, "deleteCompanyFully") };

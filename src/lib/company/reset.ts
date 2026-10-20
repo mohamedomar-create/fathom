@@ -10,7 +10,7 @@ export const RESET_MODULES: Record<ResetModule, { label: string; keeps: string }
   expenses: { label: "Expense lines", keeps: "The General Ledger and its costs stay. Lines taken from the ledger come back with the next ledger upload or Odoo sync." },
   stock: { label: "Stock (valuation, moves, on hand, products)", keeps: "The General Ledger, its stock accounts and its stock postings stay. Remembered column layouts and location types stay." },
   payments: { label: "Receivables, payables and payments", keeps: "The General Ledger and its receivable and payable accounts stay." },
-  end_users: { label: "End users and agency statement", keeps: "Sales lines and their amounts stay; only who each agency sale was for is forgotten." },
+  end_users: { label: "End users and agency statement", keeps: "Sales lines, their amounts and the end user Odoo links give stay; your agency list, order register, joined names and the agency statement go." },
 };
 const ORDER = Object.keys(RESET_MODULES) as ResetModule[];
 

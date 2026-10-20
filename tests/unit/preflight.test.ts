@@ -206,3 +206,26 @@ describe("files", () => {
     expect(grids.map((g) => [g.name, Boolean(g.hidden), g.merges ?? 0])).toEqual([["Visible", false, 1], ["Helper", true, 0]]);
   });
 });
+
+describe("review fixes", () => {
+  it("a total row that does not add up is never dropped before the person decides", () => {
+    const g: Grid = { name: "S", rows: [["Date", "Customer", "Untaxed Amount"], [d("2026-09-01"), "A", 10], ["Total Care Clinic", null, 5]] };
+    const r = runPreflight([g], "sales", {});
+    expect(r.cleaned.grids[0].rows).toHaveLength(3);
+    expect(r.final.ready).toBe(false);
+  });
+  it("leaving out unreadable rows never rejects dates that only wait for their day/month order", () => {
+    const g: Grid = { name: "S", rows: [["Date", "Untaxed Amount"], ["03/04/2026", 1], ["05/06/2026", "n/a"]] };
+    const r = runPreflight([g], "sales", { S: { dropInvalid: true } });
+    expect(r.cleaned.rejected.map((x) => x.row)).toEqual([3]);
+    expect(r.final.ready).toBe(false);
+  });
+  it("a stock file is checked as the export the person chose, not a guess", () => {
+    const g: Grid = { name: "V", rows: [["Date", "Product", "Reference", "Quantity", "Total Value"], [d("2026-09-01"), "[A1] Pump", "WH/IN/1", 1, 10]] };
+    expect(inspectWorkbook([g], "stock").sheets[0].status).not.toBe("cannot_import");
+    // Chosen as a moves export, it lacks From and To: checked as what the person said it is.
+    const asMoves = inspectWorkbook([g], "stock", { stockKey: "stock.move.line" }).sheets[0];
+    expect(asMoves.status).toBe("cannot_import");
+    expect(asMoves.stockKey).toBe("stock.move.line");
+  });
+});

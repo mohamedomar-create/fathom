@@ -321,7 +321,7 @@ function copies(grids: Grid[]): Map<string, string> {
 }
 
 /** Inspect every sheet of an upload for one import. `decisions` are the person's answers so far. */
-export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { decisions?: Decisions; stockMapping?: Record<string, string> } = {}): PreflightReport {
+export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { decisions?: Decisions; stockMapping?: Record<string, string>; stockKey?: string } = {}): PreflightReport {
   const cp = copies(grids);
   const sheets = grids.map((g): SheetReport => {
     const d: SheetDecision = { ...(opts.decisions?.[g.name] ?? {}) };
@@ -340,10 +340,11 @@ export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { 
     let stockKey: string | undefined;
     if (module === "agency") { rules = AGENCY_RULES; relevant = g.rows.slice(0, 30).some((r) => (r ?? []).some((c) => AGENCY_RULES.fieldOf(c))); role = "agency"; }
     else if (module === "stock") {
-      const key = STOCK_KEY_OF[guess.role] ?? bestStockKey(g);
+      // The export the person chose on the sample screen decides; the guess only stands in when there is none.
+      const key = (opts.stockKey && STOCK_KEYS.includes(opts.stockKey as (typeof STOCK_KEYS)[number]) ? opts.stockKey as (typeof STOCK_KEYS)[number] : null) ?? STOCK_KEY_OF[guess.role] ?? bestStockKey(g);
       stockKey = key;
       rules = stockRules(key);
-      relevant = STOCK_ROLES.has(guess.role) || Boolean(key && g.rows.slice(0, 15).some((r) => (r ?? []).filter((c) => stockRules(key).fieldOf(c)).length >= 3));
+      relevant = Boolean(opts.stockKey) || STOCK_ROLES.has(guess.role) || Boolean(key && g.rows.slice(0, 15).some((r) => (r ?? []).filter((c) => stockRules(key).fieldOf(c)).length >= 3));
       role = guess.role;
       if (opts.stockMapping) { const head = findHeaderRow(g, rules); if (head >= 0) { const hr = g.rows[head] ?? []; d.map = { ...Object.fromEntries(Object.entries(opts.stockMapping).map(([f, h]) => [f, hr.findIndex((c) => text(c).toLowerCase() === h.toLowerCase())]).filter(([, i]) => (i as number) >= 0)), ...d.map }; } }
     } else if (module === "payments") {
