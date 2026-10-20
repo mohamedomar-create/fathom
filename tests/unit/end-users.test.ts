@@ -82,7 +82,7 @@ describe("the database summary and the company's choices", () => {
     const d = parseEndUsers({ rows: [{ p: "2026-09", c: UPA, u: "X", m: "order", g: "", o: "", a: "250000.00", q: "5", n: 1 }, { p: "2026-09", c: UPA, u: "", m: "guess", a: 3 }, { p: "bad", c: UPA, a: 1 }], map: [{ k: "order", key: "PRO 501/22", h: "Rahma" }, { k: "hack", key: "x", h: "y" }] });
     expect(d.rows.map((r) => [r.a, r.m])).toEqual([[250000, "order"], [3, ""]]);
     expect(d.choices).toEqual([{ kind: "order", key: "PRO 501/22", hospital: "Rahma" }]);
-    expect(parseEndUsers(null)).toEqual({ rows: [], choices: [] });
+    expect(parseEndUsers(null)).toEqual({ rows: [], choices: [], statement: [], statementFile: null });
   });
   it("choices become aliases, register and the agency list", () => {
     const d = parseEndUsers({ rows: [], map: [{ k: "agency", key: UPA, h: "" }, { k: "not_agency", key: "B", h: "" }, { k: "alias", key: "k", h: "H" }] });

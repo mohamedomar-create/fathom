@@ -2,8 +2,8 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Hospital } from "lucide-react";
-import { detectAgencies, endUserAnalysis, money, pct } from "@/lib/engine";
-import { mapsOf, type EndUserData } from "@/lib/company/end-users-parse";
+import { money, pct } from "@/lib/engine";
+import { resolveEndUsers, type EndUserData } from "@/lib/company/end-users-parse";
 import { useCompany } from "@/lib/company/context";
 import { useSales } from "@/lib/company/sales-context";
 import { PageHeader } from "@/components/shell/page-header";
@@ -25,7 +25,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
   const t = T.d.eu;
   const cur = c.settings.currency;
   const title = T.d.nav["sales/end-users"][1];
-  const a = useMemo(() => endUserAnalysis(data.rows, mapsOf(data, (own) => detectAgencies(data.rows, own))), [data]);
+  const { analysis: a, match } = useMemo(() => resolveEndUsers(data), [data]);
   const check = useMemo(() => {
     const agencies = new Set(a.agencies);
     const bySales = new Map<string, number>();
@@ -57,6 +57,15 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
   const top = a.hospitals[0];
   const share = (v: number) => (a.total ? (v / a.total) * 100 : 0);
   const MAX = 60;
+  const sumBy = (pick: (h: (typeof a.hospitals)[number]) => [string, number][]) => {
+    const m = new Map<string, number>();
+    for (const h of a.hospitals) for (const [k, v] of pick(h)) if (k) m.set(k, (m.get(k) ?? 0) + v);
+    return [...m].sort((x, y) => y[1] - x[1]);
+  };
+  const funding = sumBy((h) => Object.entries(h.byFunding));
+  const regions = sumBy((h) => Object.entries(h.byRegion));
+  const notInvoiced = [...match.unmatchedLines.reduce((m, l) => { const k = l.day.slice(0, 7); const x = m.get(k) ?? [0, 0]; m.set(k, [x[0] + l.value, x[1] + 1]); return m; }, new Map<string, [number, number]>())]
+    .map(([p, [v, n]]) => [p, v, n] as const).sort((x, y) => y[0].localeCompare(x[0]));
   return (
     <>
       <PageHeader title={title} />
@@ -88,12 +97,12 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
           <h2 className="mb-3 text-xl font-light">{t.howH}</h2>
           <div className="overflow-x-auto">
             <table className="w-full text-[13px]" data-testid="eu-months">
-              <thead><tr className="label text-start"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.byOrder}</th><th className="text-end">{t.byContact}</th><th className="text-end">{t.byShipping}</th><th className="text-end">{t.byRegister}</th><th className="text-end">{t.unmapped}</th></tr></thead>
+              <thead><tr className="label text-start"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.byOrder}</th><th className="text-end">{t.byContact}</th><th className="text-end">{t.byShipping}</th><th className="text-end">{t.byStatement}</th><th className="text-end">{t.byRegister}</th><th className="text-end">{t.unmapped}</th></tr></thead>
               <tbody>
                 {[...a.months].reverse().slice(0, 24).map((m) => (
                   <tr key={m.period} className="border-t border-line">
                     <td className="py-1">{T.ml(m.period)}</td>
-                    {[m.total, m.order, m.contact, m.shipping, m.register].map((v, i) => <td key={i} className="num text-end">{v ? money(v, cur, true) : "–"}</td>)}
+                    {[m.total, m.order, m.contact, m.shipping, m.statement, m.register].map((v, i) => <td key={i} className="num text-end">{v ? money(v, cur, true) : "–"}</td>)}
                     <td className={m.unmapped ? "num text-end text-red" : "num text-end"}>{m.unmapped ? money(m.unmapped, cur, true) : "–"}</td>
                   </tr>
                 ))}
@@ -107,7 +116,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
       <h2 className="mb-3 mt-10 text-xl font-light">{t.allH}</h2>
       <div className="overflow-x-auto">
         <table className="w-full text-[13px]" data-testid="eu-table">
-          <thead><tr className="label"><th className="py-1 text-start">{t.hospital}</th>{hasEarlier && <th className="text-end">{t.earlier}</th>}{years.map((y) => <th key={y} className="text-end">{y}</th>)}<th className="text-end">{t.total2}</th><th className="text-end">{t.share}</th><th className="text-start ps-4">{t.topCategory}</th></tr></thead>
+          <thead><tr className="label"><th className="py-1 text-start">{t.hospital}</th>{hasEarlier && <th className="text-end">{t.earlier}</th>}{years.map((y) => <th key={y} className="text-end">{y}</th>)}<th className="text-end">{t.total2}</th><th className="text-end">{t.share}</th><th className="text-start ps-4">{t.topCategory}</th><th className="text-start ps-4">{t.region}</th></tr></thead>
           <tbody>
             {a.hospitals.slice(0, MAX).map((h) => {
               const cat = Object.entries(h.byCategory).sort((x, y) => y[1] - x[1])[0]?.[0] ?? "";
@@ -118,7 +127,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
                   {years.map((y) => { const v = yearOf(h, y); return <td key={y} className="num text-end">{v ? money(v, cur, true) : "–"}</td>; })}
                   <td className="num text-end font-semibold">{money(h.amount, cur, true)}</td>
                   <td className="num text-end">{pct(share(h.amount), 1)}</td>
-                  <td className="truncate ps-4 text-mute">{cat}</td>
+                  <td className="truncate ps-4 text-mute">{cat}</td><td className="ps-4 text-mute">{h.region}</td>
                 </tr>
               );
             })}
@@ -126,6 +135,31 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
         </table>
       </div>
       {a.hospitals.length > MAX && <p className="mt-2 text-xs text-mute">{t.showing(MAX, a.hospitals.length)}</p>}
+
+      {funding.length > 0 && (
+        <div className="mt-10 grid gap-10 lg:grid-cols-2">
+          <div>
+            <h2 className="mb-1 text-xl font-light">{t.fundingH}</h2>
+            <p className="mb-3 text-[13px] text-mute">{t.fundingNote}</p>
+            <BarList items={funding.map(([k, v]) => ({ key: k, label: k, value: v, share: share(v) }))} cur={cur} max={12} testId="eu-funding" />
+          </div>
+          <div>
+            <h2 className="mb-1 text-xl font-light">{t.regionH}</h2>
+            <p className="mb-3 text-[13px] text-mute">{t.fundingNote}</p>
+            <BarList items={regions.map(([k, v]) => ({ key: k, label: k, value: v, share: share(v) }))} cur={cur} max={12} testId="eu-regions" />
+          </div>
+        </div>
+      )}
+      {match.unmatchedLines.length > 0 && data.statement.length > 0 && (
+        <>
+          <h2 className="mb-1 mt-10 text-xl font-light">{t.notInvoicedH}</h2>
+          <p className="mb-3 text-[13px] text-mute" data-testid="eu-not-invoiced">{t.notInvoicedText(money(match.unmatchedLines.reduce((x, l) => x + l.value, 0), cur, true), match.unmatchedLines.length)}</p>
+          <table className="w-full text-[13px]">
+            <thead><tr className="label"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.lines}</th></tr></thead>
+            <tbody>{notInvoiced.slice(0, 18).map(([p, v, n]) => <tr key={p} className="border-t border-line"><td className="py-1">{T.ml(p)}</td><td className="num text-end">{money(v, cur, true)}</td><td className="num text-end">{n}</td></tr>)}</tbody>
+          </table>
+        </>
+      )}
 
       {a.unmapped.length > 0 && (
         <>

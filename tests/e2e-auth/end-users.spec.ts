@@ -48,3 +48,42 @@ test("agency sales placed on hospitals from exact links; an unlinked line stays 
   await expect(page.getByTestId("eu-unmapped-list")).toHaveCount(0);
   await expect(page.getByTestId("eu-table")).toContainText("مستشفى الرحمة المركزي");
 });
+
+test("an agency statement places unlinked invoices by amount and date; sales stay Odoo's, unmatched lines are listed apart", async ({ page }) => {
+  await signUp(page, { name: "Statement Owner", org: "Statement Advisory", email: newEmail("eus") });
+  const id = await createCompany(page, "Statement Co");
+  const sql = `
+    with b as (insert into public.sales_batches (company_id, source, periods, filename) values ('${id}', 'file', array['2026-09'], 'Odoo (live sync)') returning id)
+    insert into public.sales_lines (company_id, batch_id, source, day, period, doc, series, customer, product, category, salesperson, qty, amount, end_user, map_method, note)
+    select '${id}', b.id, 'file', d::date, left(d, 7), doc, 'INV2', '${UPA}', 'Cannula', 'Disposable', '', 1, a, eu, mm, nt from b, (values
+      ('2026-09-10', 'INV2/2026/0911', 26450, null, null, 'Disposable'),
+      ('2026-09-12', 'INV2/2026/0912', 5000, 'مستشفى النور التخصصي', 'order', null),
+      ('2026-09-14', 'INV2/2026/0913', 700, null, null, 'Disposable')
+    ) v(d, doc, a, eu, mm, nt);`;
+  execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-q", "-v", "ON_ERROR_STOP=1", "-c", sql]);
+  await page.goto(`/company/${id}/data/end-users`);
+  await page.getByRole("button", { name: "Add agency" }).waitFor();
+  await page.getByLabel("Agency customer").fill(UPA);
+  await page.getByRole("button", { name: "Add agency" }).click();
+  await expect(page.getByTestId("end-user-choices").getByRole("status")).toContainText("is now treated as an agency");
+
+  const csv = [
+    "Date,DN #,Inv #,Describtion,Name ( ),po#,Type,area,Value,VAT",
+    "2026-09-01,202609001,,Disposable,مستشفى الشفاء العام,,مجانى,cairo,26450,3703",
+    "2026-09-25,202609002,,Disposable,مستشفى الأمل الجامعي,,اقتصادى,delta,99999,13999.86",
+  ].join("\n");
+  await page.getByLabel("Agency statement file").setInputFiles({ name: "upa.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
+  // 5,000 of 32,150 placed by the order link now; 31,450 with the statement line of the same amount.
+  await expect(page.getByTestId("statement-coverage")).toHaveText("97.8%");
+  await expect(page.getByTestId("statement-effect")).toContainText("EGP 32,150");
+  await page.getByRole("button", { name: "Save the statement" }).click();
+  await expect(page.getByTestId("agency-statement").getByRole("status")).toContainText("Saved: 2 statement lines");
+
+  await page.goto(`/company/${id}/sales/end-users`);
+  await expect(page.getByTestId("eu-total")).toContainText("32");
+  await expect(page.getByTestId("eu-check")).toContainText("Every pound of agency sales is accounted for");
+  await expect(page.getByTestId("eu-table")).toContainText("مستشفى الشفاء العام");
+  await expect(page.getByTestId("eu-funding")).toContainText("مجانى");
+  await expect(page.getByTestId("eu-not-invoiced")).toContainText("1 statement line");
+  await expect(page.getByTestId("eu-unmapped-list")).toContainText("Disposable");
+});

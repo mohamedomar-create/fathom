@@ -1,8 +1,8 @@
 "use client";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cleanHospital, detectAgencies, endUserAnalysis, hospitalKey, money } from "@/lib/engine";
-import { mapsOf, parseRegister, type EndUserData } from "@/lib/company/end-users-parse";
+import { cleanHospital, detectAgencies, hospitalKey, money } from "@/lib/engine";
+import { parseRegister, resolveEndUsers, type EndUserData } from "@/lib/company/end-users-parse";
 import { useCompany } from "@/lib/company/context";
 import { removeEndUserChoice, saveEndUserChoices } from "@/app/company/[id]/data/actions";
 
@@ -24,7 +24,7 @@ export function EndUserChoices({ data }: { data: EndUserData }) {
   const [to, setTo] = useState("");
   const cur = c.settings.currency;
   const auto = useMemo(() => detectAgencies(data.rows), [data.rows]);
-  const a = useMemo(() => endUserAnalysis(data.rows, mapsOf(data, (own) => detectAgencies(data.rows, own))), [data]);
+  const a = useMemo(() => resolveEndUsers(data).analysis, [data]);
   const customers = useMemo(() => [...new Set(data.rows.map((r) => r.c))].sort(), [data.rows]);
   const of = (k: Kind) => data.choices.filter((x) => x.kind === k);
   const editable = !c.readOnly;

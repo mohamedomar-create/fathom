@@ -84,3 +84,46 @@ export async function removeEndUserChoice(companyId: string, kind: z.input<typeo
     return { ok: false, error: safeError(e, "removeEndUserChoice") };
   }
 }
+
+const AgencyLineIn = z.object({
+  day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dn: z.string().max(80), ref: z.string().max(80), hospital: z.string().trim().min(1).max(200),
+  funding: z.string().max(120), region: z.string().max(60), value: Amount, sheet: z.string().max(120),
+});
+
+/**
+ * Keeps a buying agency's statement (each delivery's hospital, funding and region), replacing the company's previous one.
+ * It only says whose each agency invoice was: it is stored apart and never touches sales lines, balances or receivables.
+ */
+export async function saveAgencyStatement(companyId: string, input: { filename: string; sheets: string[]; report: { lines: number; total: number; issues: string[] }; lines: z.input<typeof AgencyLineIn>[] }): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+  const id = z.string().uuid().safeParse(companyId);
+  const v = z.object({
+    filename: z.string().min(1).max(300), sheets: z.array(z.string().max(120)).max(30),
+    report: z.object({ lines: z.number().int().min(0), total: Amount, issues: z.array(z.string().max(500)).max(50) }),
+    lines: z.array(AgencyLineIn).min(1).max(20000),
+  }).safeParse(input);
+  if (!id.success || !v.success) return { ok: false, error: "The statement is not valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const { data, error } = await supabase.rpc("save_agency_statement", { p_company: companyId, p_filename: v.data.filename, p_sheets: v.data.sheets, p_report: v.data.report as Json, p_lines: v.data.lines as unknown as Json });
+    if (error) return { ok: false, error: dbError(error, "saveAgencyStatement") };
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true, saved: Number(data ?? 0) };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "saveAgencyStatement") };
+  }
+}
+
+export async function removeAgencyStatement(companyId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const { error } = await supabase.rpc("remove_agency_statement", { p_company: companyId });
+    if (error) return { ok: false, error: dbError(error, "removeAgencyStatement") };
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "removeAgencyStatement") };
+  }
+}

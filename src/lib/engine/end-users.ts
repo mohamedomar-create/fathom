@@ -5,7 +5,7 @@
 // A line with none of them is Unmapped and is shown as such: it is never spread across hospitals by amount or share.
 
 /** How a line's end user was found, most trusted first ("" = no link: Unmapped unless the register places it). */
-export type EndUserMethod = "order" | "contact" | "shipping" | "";
+export type EndUserMethod = "order" | "contact" | "shipping" | "statement" | "statement-group" | "";
 
 /** Agency sales added up by month, billed customer, end user (as Odoo names it), method and category. */
 export interface EndUserRow {
@@ -21,6 +21,11 @@ export interface EndUserRow {
   a: number;
   q: number;
   n: number;
+  /** The invoice (when the summary keeps invoices apart): what the agency's statement is matched to. */
+  d?: string;
+  /** From the agency's statement, when it placed the line: the funding type and region. */
+  f?: string;
+  r?: string;
 }
 
 export interface EndUserMaps {
@@ -31,8 +36,8 @@ export interface EndUserMaps {
   register: Record<string, string>;
 }
 
-export interface EndUserMonth { period: string; total: number; order: number; contact: number; shipping: number; register: number; unmapped: number }
-export interface Hospital { key: string; name: string; amount: number; qty: number; lines: number; byPeriod: Record<string, number>; byCategory: Record<string, number> }
+export interface EndUserMonth { period: string; total: number; order: number; contact: number; shipping: number; statement: number; register: number; unmapped: number }
+export interface Hospital { key: string; name: string; amount: number; qty: number; lines: number; byPeriod: Record<string, number>; byCategory: Record<string, number>; byFunding: Record<string, number>; byRegion: Record<string, number>; region: string }
 export interface EndUserAnalysis {
   agencies: string[];
   total: number;
@@ -93,11 +98,11 @@ export function endUserAnalysis(rows: EndUserRow[], maps: EndUserMaps): EndUserA
   let total = 0, placed = 0;
   for (const r of rows) {
     if (!agencies.has(r.c)) continue;
-    const m = months.get(r.p) ?? { period: r.p, total: 0, order: 0, contact: 0, shipping: 0, register: 0, unmapped: 0 };
+    const m = months.get(r.p) ?? { period: r.p, total: 0, order: 0, contact: 0, shipping: 0, statement: 0, register: 0, unmapped: 0 };
     months.set(r.p, m);
     m.total += r.a; total += r.a;
     let name = r.u ? cleanHospital(r.u, r.c) : "";
-    let how: keyof Omit<EndUserMonth, "period" | "total"> = r.m || "unmapped";
+    let how: keyof Omit<EndUserMonth, "period" | "total"> = r.m === "statement-group" ? "statement" : r.m || "unmapped";
     if (!name) {
       const text = refKey(r.o);
       const hit = text ? register.find(([k]) => text.includes(k)) : undefined;
@@ -115,7 +120,12 @@ export function endUserAnalysis(rows: EndUserRow[], maps: EndUserMaps): EndUserA
     const alias = maps.aliases[hospitalKey(name)];
     if (alias) name = alias;
     const key = hospitalKey(name);
-    const h = hospitals.get(key) ?? { key, name: "", amount: 0, qty: 0, lines: 0, byPeriod: {}, byCategory: {} };
+    const h = hospitals.get(key) ?? { key, name: "", amount: 0, qty: 0, lines: 0, byPeriod: {}, byCategory: {}, byFunding: {}, byRegion: {}, region: "" };
+    // Funding type and region come only from the agency statement, for the sales it placed ("—" when it leaves them blank).
+    if (r.m === "statement" || r.m === "statement-group") {
+      h.byFunding[r.f || "—"] = (h.byFunding[r.f || "—"] ?? 0) + r.a;
+      h.byRegion[r.r || "—"] = (h.byRegion[r.r || "—"] ?? 0) + r.a;
+    }
     const sp = spellings.get(key) ?? new Map<string, number>();
     sp.set(cleanHospital(name), (sp.get(cleanHospital(name)) ?? 0) + Math.abs(r.a));
     spellings.set(key, sp);
@@ -124,13 +134,80 @@ export function endUserAnalysis(rows: EndUserRow[], maps: EndUserMaps): EndUserA
     h.byCategory[r.g] = (h.byCategory[r.g] ?? 0) + r.a;
     hospitals.set(key, h);
   }
-  const round = (m: EndUserMonth): EndUserMonth => ({ period: m.period, total: r2(m.total), order: r2(m.order), contact: r2(m.contact), shipping: r2(m.shipping), register: r2(m.register), unmapped: r2(m.unmapped) });
+  const round = (m: EndUserMonth): EndUserMonth => ({ period: m.period, total: r2(m.total), order: r2(m.order), contact: r2(m.contact), shipping: r2(m.shipping), statement: r2(m.statement), register: r2(m.register), unmapped: r2(m.unmapped) });
   return {
     agencies: [...agencies].sort(),
     total: r2(total),
     coverage: total ? placed / total : null,
     months: [...months.values()].sort((a, b) => a.period.localeCompare(b.period)).map(round),
-    hospitals: [...hospitals.values()].map((h) => ({ ...h, name: [...(spellings.get(h.key) ?? [])].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0]?.[0] ?? h.key, amount: r2(h.amount) })).sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name)),
+    hospitals: [...hospitals.values()].map((h) => ({ ...h, name: [...(spellings.get(h.key) ?? [])].sort((x, y) => y[1] - x[1] || x[0].localeCompare(y[0]))[0]?.[0] ?? h.key, region: Object.entries(h.byRegion).filter(([k]) => k !== "—").sort((x, y) => y[1] - x[1])[0]?.[0] ?? "", amount: r2(h.amount) })).sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name)),
     unmapped: [...unmapped.values()].map((u) => ({ text: u.text, amount: r2(u.amount), lines: u.lines, months: [...u.months].sort() })).sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount)),
   };
+}
+
+// ---------------------------------------------------------------- the agency's own statement
+
+/** One delivery on the agency's statement: who it was for, under which funding and region, and its value before tax. */
+export interface AgencyLine { day: string; dn: string; ref: string; hospital: string; funding: string; region: string; value: number; sheet: string }
+/** One Odoo invoice to the agency, with no Odoo link to a hospital: its number, day and amount before tax. */
+export interface AgencyInvoice { doc: string; day: string; amount: number }
+export interface StatementPlace { hospital: string; funding: string; region: string; method: "statement" | "statement-group" }
+export interface StatementMatch { byDoc: Map<string, StatementPlace>; unmatchedInvoices: string[]; unmatchedLines: AgencyLine[] }
+
+const DAY = 86_400_000;
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / DAY);
+
+/**
+ * Pairs statement lines with Odoo's agency invoices: first one to one, same amount (within 1) and invoiced from 15 days
+ * before to 120 days after the delivery, nearest day first; then one invoice to all of one hospital's remaining lines in a
+ * month when they add up to it and no other hospital's do. Amounts are never adjusted or split.
+ */
+export function matchStatement(lines: AgencyLine[], invoices: AgencyInvoice[], win: { before: number; after: number } = { before: 15, after: 120 }): StatementMatch {
+  const inWindow = (l: AgencyLine, inv: AgencyInvoice) => { const d = daysBetween(l.day, inv.day); return d >= -win.before && d <= win.after; };
+  const byDoc = new Map<string, StatementPlace>();
+  const free = new Set(invoices.map((i) => i.doc));
+  const left: AgencyLine[] = [];
+  for (const l of [...lines].sort((a, b) => a.day.localeCompare(b.day) || a.hospital.localeCompare(b.hospital))) {
+    const best = invoices.filter((i) => free.has(i.doc) && Math.abs(i.amount - l.value) < 1 && inWindow(l, i))
+      .sort((a, b) => Math.abs(daysBetween(l.day, a.day)) - Math.abs(daysBetween(l.day, b.day)) || a.day.localeCompare(b.day) || a.doc.localeCompare(b.doc))[0];
+    if (!best) { left.push(l); continue; }
+    free.delete(best.doc);
+    byDoc.set(best.doc, { hospital: l.hospital, funding: l.funding, region: l.region, method: "statement" });
+  }
+  // Combined invoices: all of one hospital's remaining lines in a month.
+  const groups = new Map<string, AgencyLine[]>();
+  for (const l of left) { const k = `${l.hospital}|${l.day.slice(0, 7)}`; groups.set(k, [...(groups.get(k) ?? []), l]); }
+  const used = new Set<AgencyLine>();
+  for (const inv of invoices.filter((i) => free.has(i.doc)).sort((a, b) => a.day.localeCompare(b.day))) {
+    const fits = [...groups.values()].filter((g) => g.length > 1 && g.every((l) => !used.has(l)) && Math.abs(g.reduce((s, l) => s + l.value, 0) - inv.amount) < 1 && g.every((l) => inWindow(l, inv)));
+    if (new Set(fits.map((g) => g[0].hospital)).size !== 1) continue;
+    const g = fits[0];
+    g.forEach((l) => used.add(l));
+    free.delete(inv.doc);
+    byDoc.set(inv.doc, { hospital: g[0].hospital, funding: g[0].funding, region: g[0].region, method: "statement-group" });
+  }
+  return { byDoc, unmatchedInvoices: invoices.filter((i) => free.has(i.doc)).map((i) => i.doc), unmatchedLines: left.filter((l) => !used.has(l)) };
+}
+
+/** The agency invoices the statement may place: invoices whose lines have no Odoo link, with their amount and first day. */
+export function unlinkedInvoices(rows: (EndUserRow & { day?: string })[], agencies: string[]): AgencyInvoice[] {
+  const set = new Set(agencies);
+  const by = new Map<string, { amount: number; day: string; linked: boolean }>();
+  for (const r of rows) {
+    if (!set.has(r.c) || !r.d) continue;
+    const x = by.get(r.d) ?? { amount: 0, day: r.day ?? `${r.p}-01`, linked: false };
+    x.amount += r.a;
+    if (r.u) x.linked = true;
+    if (r.day && r.day < x.day) x.day = r.day;
+    by.set(r.d, x);
+  }
+  return [...by].filter(([, x]) => !x.linked && Math.abs(x.amount) >= 0.5).map(([doc, x]) => ({ doc, day: x.day, amount: Math.round(x.amount * 100) / 100 }));
+}
+
+/** The rows with the statement's hospital on every line of a matched invoice that Odoo did not link; amounts unchanged. */
+export function applyStatement<T extends EndUserRow>(rows: T[], m: StatementMatch): T[] {
+  return rows.map((r) => {
+    const place = !r.u && r.d ? m.byDoc.get(r.d) : undefined;
+    return place ? { ...r, u: place.hospital, m: place.method, f: place.funding, r: place.region } : r;
+  });
 }

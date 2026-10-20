@@ -50,7 +50,7 @@ select pg_temp.check('a method without an end user is not kept', (select coalesc
 create temp table s as select public.end_user_summary((select co from ids)) j;
 grant select on s to authenticated;
 select pg_temp.check('only customers with linked end users are summed', (select string_agg(distinct r ->> 'c', ',') from s, jsonb_array_elements(j -> 'rows') r), 'UPA');
-select pg_temp.check('unlinked lines are added up by their description', (select (r ->> 'a') || ' ' || (r ->> 'n') from s, jsonb_array_elements(j -> 'rows') r where r ->> 'o' like '( PRO 501%'), '4000.00 2');
+select pg_temp.check('unlinked lines keep their description, invoice by invoice', (select sum((r ->> 'a')::numeric) || ' ' || count(*) || ' ' || string_agg(r ->> 'd', ',' order by r ->> 'd') from s, jsonb_array_elements(j -> 'rows') r where r ->> 'o' like '( PRO 501%'), '4000.00 2 INV/2026/0101,INV/2026/0102');
 select pg_temp.check('every agency pound is in the summary', (select sum((r ->> 'a')::numeric)::text from s, jsonb_array_elements(j -> 'rows') r), '256010.00');
 
 insert into public.end_user_map (company_id, kind, key, hospital) values ((select co from ids), 'order', 'PRO 501/22', 'Rahma Hospital'), ((select co from ids), 'agency', 'Cash patient', '');
