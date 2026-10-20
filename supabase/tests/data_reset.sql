@@ -117,6 +117,10 @@ select pg_temp.check('the company, its settings, members and account classes sta
   (select name || ' ' || data_version || ' ' || (kpi_config #>> '{profile,booksStart}') || ' ' || ((kpi_config -> 'profile') ? 'openingAsAt')::text from public.companies where id = (select co from ids))
   || ' ' || (select count(*) from public.account_map where company_id = (select co from ids)) || ' ' || (select count(*) from public.memberships where org_id = (select org from ids)),
   'Reset Co 0 2021-07-01 false 1 3');
+select pg_temp.check('no stock summary is left due after clearing everything', (select count(*)::text from public.inventory_rollups where company_id = (select co from ids)), '0');
+reset role;
+select pg_temp.check('nothing left marked for a rebuild', (select count(*)::text from private.inventory_marks where company_id = (select co from ids)), '0');
+select pg_temp.login('ra@x.test');
 select pg_temp.check('every clear is recorded', (select string_agg(action || ':' || scope, ',' order by id) from public.company_data_audit), 'clear_module:sales,clear_module:stock,clear_module:payments,clear_all:all');
 select pg_temp.check('the other company is untouched',
   (select (select count(*) from public.sales_lines where company_id = (select other from ids)) || ' ' || (select count(*) from public.stock_layers where company_id = (select other from ids)) || ' ' || (select count(*) from public.account_balances where company_id = (select other from ids))),

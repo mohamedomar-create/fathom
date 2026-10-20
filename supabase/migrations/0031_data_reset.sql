@@ -205,7 +205,8 @@ begin
   v_preview := public.data_reset_preview(p_company);
   v_shown := case when p_scope = 'all' then (v_preview ->> 'total')::bigint else (v_preview #>> array['modules', p_scope, 'records'])::bigint end;
   if v_shown is distinct from p_confirm then raise exception 'the data changed since it was shown; look again before clearing' using errcode = '40001'; end if;
-  v_scopes := case when p_scope = 'all' then array['stock', 'payments', 'end_users', 'sales', 'expenses', 'financials'] else array[p_scope] end;
+  -- Stock last: clearing the ledger's stock postings marks the stock summary for a rebuild, and the stock clear removes it.
+  v_scopes := case when p_scope = 'all' then array['payments', 'end_users', 'sales', 'expenses', 'financials', 'stock'] else array[p_scope] end;
   foreach v_scope in array v_scopes loop
     v_counts := v_counts || jsonb_build_object(v_scope, v_preview #> array['modules', v_scope, 'tables']);
     perform private.clear_scope(p_company, v_scope);
