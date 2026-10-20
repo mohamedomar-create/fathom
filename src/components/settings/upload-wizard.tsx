@@ -1,5 +1,5 @@
 "use client";
-import { Preflight } from "@/components/preflight/preflight";
+import { Preflight, WIZARD_HANDS_ON } from "@/components/preflight/preflight";
 import { PreflightSummary, RejectedDownload } from "@/components/preflight/summary";
 import type { PreflightModule, PreflightRun } from "@/lib/preflight";
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
@@ -214,7 +214,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     if (!job) return;
     setPfRun(run); setPf(null);
     const hints = Object.fromEntries(run.final.sheets.filter((x) => x.role === "sales" || x.role === "bills").map((x) => [x.sheet, x.role as SheetRole]));
-    try { takeSheets(job.files, run.cleaned.grids, await putSheets(run.cleaned.grids), hints); }
+    // Sheets no import reads (price lists, summaries, notes) go on as they are: the sheet list names each one and why.
+    const leftOut = new Set(run.report.sheets.filter((x) => x.issues.some((i) => i.code === "irrelevant")).map((x) => x.sheet));
+    const gs = job.grids.flatMap((g) => (leftOut.has(g.name) ? [g] : run.cleaned.forImport.filter((c) => c.name === g.name)));
+    try { takeSheets(job.files, gs, await putSheets(gs), hints); }
     catch (e) { setErr((e as Error).message || "The file could not be read."); }
   }, [pf, takeSheets]);
   async function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
@@ -631,7 +634,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {pf && (
           <div className="max-w-4xl">
             <WizardTitle title="Check the file" hint="Each sheet is checked against what this import needs before anything is imported." />
-            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} />
+            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} stopOnLeftOut={false} allowNone handOn={WIZARD_HANDS_ON} />
             <WizardNav onBack={() => { setPf(null); setScreen("upload"); }} />
           </div>
         )}

@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import type { Grid } from "@/lib/ingest/extract";
 import type { Cell } from "@/lib/ingest/parse";
 import { preflightInWorker } from "@/lib/imports/worker-client";
-import { toCsv, toXlsx, type Decisions, type PreflightIssue, type PreflightModule, type PreflightRun, type SheetDecision, type SheetReport, type SheetStatus } from "@/lib/preflight";
+import { toCsv, toXlsx, type Decisions, type IssueCode, type PreflightIssue, type PreflightModule, type PreflightReport, type PreflightRun, type SheetDecision, type SheetReport, type SheetStatus } from "@/lib/preflight";
 
 export const STATUS_LABEL: Record<SheetStatus, string> = { ready: "Ready", ready_after_fixes: "Ready after fixes", cannot_import: "Cannot import yet" };
 const STATUS_TONE: Record<SheetStatus, string> = { ready: "bg-green-bg text-green-d", ready_after_fixes: "bg-amber/20 text-[#9a6b00]", cannot_import: "bg-red-bg text-red" };
@@ -23,15 +23,22 @@ function download(name: string, data: BlobPart, type: string) {
   setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
-/** Whether an issue is waiting on the person (a decision not yet made, or a block). */
-const open = (i: PreflightIssue) => i.level === "block" || (i.level === "fix" && i.fix !== "auto");
+/** Whether an issue is waiting on the person (a decision not yet made, or a block), unless a later step handles it. */
+const open = (i: PreflightIssue, handOn: IssueCode[] = []) => i.level === "block" || (i.level === "fix" && i.fix !== "auto" && !handOn.includes(i.code));
+/** Every sheet that goes in passes every rule, apart from issues a later step fixes row by row. */
+export function readyFor(r: PreflightReport, handOn: IssueCode[] = []): boolean {
+  const inc = r.sheets.filter((s) => s.include);
+  return inc.length > 0 && inc.every((s) => s.status !== "cannot_import" && s.issues.every((i) => i.level === "info" || i.fix === "auto" || handOn.includes(i.code)));
+}
+/** Row-level value problems the upload wizard lists and fixes itself, row by row, before anything is saved. */
+export const WIZARD_HANDS_ON: IssueCode[] = ["missing_values", "invalid_numbers", "invalid_dates", "error_cells"];
 
 /**
  * The preflight step of every upload: each sheet's status, every issue with its rows and columns, the safe fixes made
  * for the person, the decisions only they can make, a before/after preview and the cleaned file to download. Nothing is
  * imported here; the cleaned copy goes on only when every rule passes. A file with nothing to decide passes straight on.
  */
-export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, onReady, autoPass = true, stopOnLeftOut = true }: {
+export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, onReady, autoPass = true, stopOnLeftOut = true, handOn = [], allowNone = false }: {
   module: PreflightModule;
   grids: Grid[];
   moduleLabel: string;
@@ -41,6 +48,10 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
   autoPass?: boolean;
   /** Stop for the person when a sheet with figures is left out (the payments uploader asks about those itself). */
   stopOnLeftOut?: boolean;
+  /** Issues a later step lists and fixes row by row: shown here, but they do not hold the upload back. */
+  handOn?: IssueCode[];
+  /** When no sheet can be imported, go on anyway: the next step says why for each sheet. */
+  allowNone?: boolean;
 }) {
   const [decisions, setDecisions] = useState<Decisions>({});
   const [run, setRun] = useState<PreflightRun | null>(null);
@@ -58,9 +69,11 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
   // Nothing to decide and nothing blocking: the cleaned copy goes on at once (the summary still lists what was fixed).
   useEffect(() => {
     if (!run || passed.current || !autoPass || Object.keys(decisions).length) return;
-    const waiting = run.report.sheets.some((s) => (s.include && s.issues.some(open)) || (stopOnLeftOut && !s.include && s.figures >= 3));
-    if (!waiting && run.final.ready) { passed.current = true; onReady({ run, decisions }); }
-  }, [run, autoPass, decisions, onReady, stopOnLeftOut]);
+    const none = run.report.sheets.every((s) => !s.include);
+    const waiting = run.report.sheets.some((s) => (s.include && s.issues.some((i) => open(i, handOn))) || (stopOnLeftOut && !s.include && s.figures >= 3));
+    if (!waiting && (readyFor(run.final, handOn) || (allowNone && none))) { passed.current = true; onReady({ run, decisions }); }
+  }, [run, autoPass, decisions, onReady, stopOnLeftOut, handOn, allowNone]);
+  const canGo = run ? readyFor(run.final, handOn) || (allowNone && run.report.sheets.every((s) => !s.include)) : false;
 
   const set = (sheet: string, patch: Partial<SheetDecision>) => setDecisions((d) => ({ ...d, [sheet]: { ...d[sheet], ...patch } }));
   const base = (fileName ?? "upload").replace(/\.[^.]+$/, "");
@@ -71,13 +84,13 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
   const finalOf = (name: string) => run.final.sheets.find((s) => s.sheet === name);
 
   return (
-    <div className="space-y-4" data-testid="preflight" data-ready={run.final.ready}>
+    <div className="space-y-4" data-testid="preflight" data-ready={canGo}>
       <div className="rounded border border-line bg-panel p-3 text-[13.5px]">
         <p className="font-medium">Checked for {moduleLabel}: {run.report.sheets.length} sheet{run.report.sheets.length === 1 ? "" : "s"}, {included.length} to import.</p>
         <p className="text-mute">Nothing is imported until you confirm. Your file is not changed; the fixes go into a cleaned copy you can download.</p>
       </div>
       {run.report.sheets.map((s) => (
-        <SheetCard key={s.sheet} s={s} after={finalOf(s.sheet)} d={decisions[s.sheet] ?? {}} set={(p) => set(s.sheet, p)}
+        <SheetCard key={s.sheet} s={s} handOn={handOn} after={finalOf(s.sheet)} d={decisions[s.sheet] ?? {}} set={(p) => set(s.sheet, p)}
           original={grids.find((g) => g.name === s.sheet)} cleaned={run.cleaned.grids.find((g) => g.name === s.sheet)} />
       ))}
       {run.cleaned.rejected.length > 0 && (
@@ -95,15 +108,15 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
             onClick={() => download(`${base}-${g.name.replace(/[^\w؀-ۿ-]+/g, "_")}-cleaned.csv`, "﻿" + toCsv(g), "text/csv")}><Download className="h-4 w-4" />{g.name} (.csv)</button>
         ))}
         <span className="flex-1" />
-        <button className="rounded bg-brand-d px-4 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={!run.final.ready} data-testid="preflight-continue" onClick={() => onReady({ run, decisions })}>
-          {run.final.ready ? "Continue with the cleaned file" : "Resolve the items above to continue"}
+        <button className="rounded bg-brand-d px-4 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={!canGo} data-testid="preflight-continue" onClick={() => onReady({ run, decisions })}>
+          {canGo ? "Continue with the cleaned file" : "Resolve the items above to continue"}
         </button>
       </div>
     </div>
   );
 }
 
-function SheetCard({ s, after, d, set, original, cleaned }: { s: SheetReport; after?: SheetReport; d: SheetDecision; set: (p: Partial<SheetDecision>) => void; original?: Grid; cleaned?: Grid }) {
+function SheetCard({ s, after, d, set, original, cleaned, handOn }: { s: SheetReport; after?: SheetReport; d: SheetDecision; set: (p: Partial<SheetDecision>) => void; original?: Grid; cleaned?: Grid; handOn: IssueCode[] }) {
   const [preview, setPreview] = useState(false);
   const relevant = !s.issues.some((i) => i.code === "empty" || i.code === "irrelevant");
   const auto = s.issues.filter((i) => i.fix === "auto" && i.level !== "info");
@@ -111,7 +124,7 @@ function SheetCard({ s, after, d, set, original, cleaned }: { s: SheetReport; af
   const source = s.issues.filter((i) => i.fix === "source" && i.level !== "info");
   const notes = s.issues.filter((i) => i.level === "info" && i.fix !== "decision");
   const status = s.status;
-  const passes = (d.include ?? s.include) && after?.status === "ready";
+  const passes = (d.include ?? s.include) && after !== undefined && readyFor({ module: "sales", sheets: [{ ...after, include: true }], ready: false }, handOn);
   return (
     <section className="rounded-md border border-line p-3 sm:p-4" data-testid="preflight-sheet" data-sheet={s.sheet} data-status={status} data-final={after?.status ?? ""}>
       <div className="flex flex-wrap items-center gap-2">
@@ -124,7 +137,7 @@ function SheetCard({ s, after, d, set, original, cleaned }: { s: SheetReport; af
       </div>
       {(d.include ?? s.include) && relevant && (
         <div className="mt-3 space-y-3 text-[13px]">
-          {decide.length > 0 && <Group title="Your decisions" tone="warn" items={decide} render={(i) => <Decision i={i} s={s} d={d} set={set} />} />}
+          {decide.length > 0 && <Group title="Your decisions" tone="warn" items={decide} render={(i) => <><Decision i={i} s={s} d={d} set={set} />{handOn.includes(i.code) && i.level === "fix" && <p className="text-xs text-mute">Or fix these rows one by one in the next step; nothing is saved until they are.</p>}</>} />}
           {source.length > 0 && <Group title="Fix in Odoo or in the file" tone="bad" items={source} />}
           {auto.length > 0 && <Group title="Fixed for you (safe, in the cleaned copy)" tone="ok" items={auto} />}
           {notes.length > 0 && <details><summary className="cursor-pointer text-mute">{notes.length} note{notes.length === 1 ? "" : "s"}</summary><ul className="mt-1 space-y-1">{notes.map((i, k) => <IssueLine key={k} i={i} />)}</ul></details>}

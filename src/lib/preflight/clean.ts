@@ -9,12 +9,16 @@ import type { Decisions, PreflightReport } from "./types";
 
 export interface CleanChange { sheet: string; kind: string; count: number; detail: string }
 export interface Rejected { sheet: string; row: number; reason: string }
-export interface Cleaned { grids: Grid[]; changes: CleanChange[]; rejected: Rejected[] }
+/**
+ * grids: the cleaned copy to download and preview (left-out rows removed). forImport: the same copy with every row in
+ * its place (left-out rows blank), so the import's own messages name the rows as the person's file numbers them.
+ */
+export interface Cleaned { grids: Grid[]; forImport: Grid[]; changes: CleanChange[]; rejected: Rejected[] }
 
 const copyRow = (r: Cell[] | undefined): Cell[] => (r ?? []).map((c) => (c instanceof Date ? new Date(c.getTime()) : c));
 
 export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions: Decisions = {}): Cleaned {
-  const out: Cleaned = { grids: [], changes: [], rejected: [] };
+  const out: Cleaned = { grids: [], forImport: [], changes: [], rejected: [] };
   for (const s of report.sheets) {
     const g = grids.find((x) => x.name === s.sheet);
     const d = decisions[s.sheet] ?? {};
@@ -22,7 +26,9 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const rules = rulesFor(report.module, s);
     if (!rules || s.headerRow < 0) {
       // Accounts, ageing and payments sheets: their readers handle the layout; the copy is the sheet as uploaded.
-      out.grids.push({ ...g, rows: g.rows.map(copyRow), ...(g.formulas ? { formulas: { ...g.formulas } } : {}) });
+      const copy = { ...g, rows: g.rows.map(copyRow), ...(g.formulas ? { formulas: { ...g.formulas } } : {}) };
+      out.grids.push(copy);
+      out.forImport.push(copy);
       continue;
     }
     const change = (kind: string, count: number, detail: string) => { if (count) out.changes.push({ sheet: s.sheet, kind, count, detail }); };
@@ -58,10 +64,13 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const first = new Map<string, number>();
     let dups = 0, missing = 0, invalid = 0, wrongCur = 0, manual = 0, nums = 0, dates = 0, trimmed = 0;
     const body: Cell[][] = [];
+    const placed: Cell[][] = g.rows.map(() => []);
+    placed[h] = head;
+    const put = (i: number, r: Cell[]) => { body.push(r); placed[i] = r; };
     for (const i of keep) {
       const r = g.rows[i];
       if (excluded.has(i)) { manual++; reject(i, "left out by you"); continue; }
-      if (notLine.has(i)) { body.push(copyRow(r)); continue; }
+      if (notLine.has(i)) { put(i, copyRow(r)); continue; }
       const k = rowKey(r);
       if (d.duplicates === "keep_first" && first.has(k)) { dups++; reject(i, `duplicate of row ${rowNo(g, first.get(k)!)}`); continue; }
       if (!first.has(k)) first.set(k, i);
@@ -77,7 +86,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
         if (badCol !== undefined) { invalid++; reject(i, `unreadable ${text(g.rows[h]?.[badCol])} ("${text(r?.[badCol])}")`); continue; }
       }
       if (d.currency && curCol !== undefined && text(r?.[curCol]).toUpperCase() !== d.currency.toUpperCase()) { wrongCur++; reject(i, `in ${text(r?.[curCol]) || "no currency"}, not ${d.currency}`); continue; }
-      body.push(copyRow(r).map((v, j) => {
+      put(i, copyRow(r).map((v, j) => {
         const t = spec(j)?.type;
         if (t === "number" && numberForm(v) === "text") { nums++; return cleanNum(v); }
         if (t === "date" && !empty(v)) {
@@ -97,6 +106,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     change("dates", dates, `${dates} date(s) written as YYYY-MM-DD`);
     change("trimmed", trimmed, `${trimmed} cell(s) with extra spaces trimmed`);
     out.grids.push({ name: g.name, rows: [head, ...body] });
+    out.forImport.push({ name: g.name, rows: placed, ...(g.origin ? { origin: { ...g.origin } } : {}) });
   }
   return out;
 }

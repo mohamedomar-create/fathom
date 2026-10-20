@@ -56,7 +56,7 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
     const name = pf?.name ?? "";
     setPf(null); setPfRun(run);
     try {
-      const found = run.cleaned.grids.map((g) => readAgencyStatement(g, { booksStart })).filter((r): r is AgencyStatement => Boolean(r && r.lines.length));
+      const found = run.cleaned.forImport.map((g) => readAgencyStatement(g, { booksStart })).filter((r): r is AgencyStatement => Boolean(r && r.lines.length));
       setFilename(name);
       setReads(found);
       const big = found.slice().sort((a, b) => b.lines.length - a.lines.length)[0];

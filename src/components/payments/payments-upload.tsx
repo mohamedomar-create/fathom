@@ -52,7 +52,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     try {
       // Only sheets that are no ageing report or payments list go on (to be named and ticked); hidden or copied ones the person left out stay out.
       const leftOut = pf.grids.filter((g) => run.report.sheets.find((s) => s.sheet === g.name)?.issues.some((i) => i.code === "irrelevant"));
-      setPlan(await planPaymentsFromGrids([...run.cleaned.grids, ...leftOut], currency));
+      setPlan(await planPaymentsFromGrids([...run.cleaned.forImport, ...leftOut], currency));
       setPf(null);
     } catch (e) { setErr((e as Error).message || "The files could not be read."); }
     finally { setBusy(false); }
@@ -90,7 +90,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     <div data-testid="payments-preflight" className="max-w-4xl">
       <WizardSteps at="upload" />
       <WizardTitle title="Check the files" hint="Each sheet is checked against what this import needs before anything is imported." />
-      <Preflight module="payments" moduleLabel="Receivables, payables & payments" grids={pf.grids} fileName={pf.names} stopOnLeftOut={false} onReady={({ run }) => void afterPreflight(run)} />
+      <Preflight module="payments" moduleLabel="Receivables, payables & payments" grids={pf.grids} fileName={pf.names} stopOnLeftOut={false} allowNone onReady={({ run }) => void afterPreflight(run)} />
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
       <WizardNav onBack={() => setPf(null)} back="Choose other files" />
     </div>

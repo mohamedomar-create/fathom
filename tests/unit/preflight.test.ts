@@ -57,6 +57,8 @@ describe("a messy sales sheet", () => {
       ["2026-09-02", "INV/2", "Beta", 50],
     ]);
     expect(out.rejected.map((x) => [x.row, x.reason])).toEqual([[7, "duplicate of row 5"], [8, "no Untaxed Amount"]]);
+    // The import's copy keeps every row where it was, so its messages name the rows as the file does.
+    expect(out.forImport[0].rows.map((r) => r[1] ?? null)).toEqual([null, null, "Number", "INV/1", "INV/2", null, null, null, null]);
     expect(out.changes.map((c) => c.kind).sort()).toEqual(["blank_rows", "dates", "duplicates", "missing_values", "title_rows", "total_rows"]);
     const again = inspectWorkbook(out.grids, "sales", { decisions });
     expect(again.sheets[0].status).toBe("ready");
