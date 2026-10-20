@@ -24,3 +24,25 @@ export function forget(companyId?: string) {
   if (!companyId) { kept.clear(); return; }
   for (const k of [...kept.keys()]) if (k.endsWith(`:${companyId}`)) kept.delete(k);
 }
+
+// The last summary read without error, per company and kind, with the build it came from: sent as "already held" so the
+// database leaves an unchanged summary out, and shown (marked as not the latest, with its time) when a read fails.
+const good = new Map<string, { seq: number | null; builtAt: string | null; data: unknown; at: number }>();
+const GOOD_MAX = 60;
+
+export function keepGood<T>(kind: string, companyId: string, seq: number | null, builtAt: string | null, data: T) {
+  const key = `${kind}:${companyId}`;
+  good.delete(key);
+  good.set(key, { seq, builtAt, data, at: Date.now() });
+  while (good.size > GOOD_MAX) good.delete(good.keys().next().value!);
+}
+
+export function goodOf<T>(kind: string, companyId: string): { seq: number | null; builtAt: string | null; data: T } | null {
+  return (good.get(`${kind}:${companyId}`) as { seq: number | null; builtAt: string | null; data: T } | undefined) ?? null;
+}
+
+/** Forget the last good copies too (tests, or one company). */
+export function forgetGood(companyId?: string) {
+  if (!companyId) { good.clear(); return; }
+  for (const k of [...good.keys()]) if (k.endsWith(`:${companyId}`)) good.delete(k);
+}

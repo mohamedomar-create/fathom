@@ -117,4 +117,12 @@ describe("Trial Balance columns that cover several months", () => {
     expect(compareTrialBalance(tb, books, { "2026-10": 3 }).diffs).toEqual([]);
     expect(compareTrialBalance(tb, books).diffs).toEqual([{ period: "2026-10", account: "410000 Revenues", books: 300, file: 600, diff: -300 }]);
   });
+  it("a sub-ledger whose figures could not be read says so, never 'to do' or 'upload'", () => {
+    const base: DataStatus = { ...empty, booksStart: "2021-07-01", openingInLedger: true, ledger: { from: "2021-07", to: "2026-10", odoo: false, issues: 0 }, unread: ["sales", "ageing"] };
+    const st = Object.fromEntries(dataSteps(base).map((x) => [x.id, x]));
+    expect(st.sales.status).toBe("unchecked");
+    expect(st.sales.detail).toMatch(/couldn't be read/);
+    expect(st.ageing.status).toBe("unchecked");
+    expect(st.stock.status).toBe("todo");
+  });
 });

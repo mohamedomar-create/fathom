@@ -4,7 +4,7 @@
 import { mlabel } from "@/lib/engine";
 
 export type StepId = "setup" | "opening" | "ledger" | "tb" | "sales" | "stock" | "ageing" | "review";
-export type StepStatus = "todo" | "done" | "verified" | "issues" | "locked";
+export type StepStatus = "todo" | "done" | "verified" | "issues" | "locked" | "unchecked";
 export interface DataStep {
   id: StepId; n: number; title: string; role: string; status: StepStatus; detail: string;
   /** The Odoo report to export (menu path), when the step takes a file. */
@@ -31,6 +31,8 @@ export interface DataStatus {
   ageing: { side: "receivable" | "payable"; asOf: string; status: "ok" | "off" | "no_books" }[];
   /** Checks still open across everything loaded (accepted ones excluded). */
   openChecks: number;
+  /** Sub-ledger steps whose figures could not be read just now: shown as such, never as "to do". */
+  unread?: StepId[];
 }
 
 const span = (a: string, b: string) => (a === b ? mlabel(a) : `${mlabel(a)} – ${mlabel(b)}`);
@@ -84,6 +86,12 @@ export function dataSteps(s: DataStatus): DataStep[] {
   steps.push(after({ id: "review", n: 8, title: "Review", role: "Sign-off", status: s.openChecks ? "issues" : "verified",
     detail: s.openChecks ? `${s.openChecks} check${s.openChecks > 1 ? "s" : ""} to look at or accept with a reason.` : "Everything loaded agrees.",
     action: { label: "Open checks", href: `${s.basePath}/data/checks` } }));
+  // A sub-ledger that could not be read is unknown, not missing: no upload is suggested for it.
+  for (const st of steps) if (s.unread?.includes(st.id) && st.status !== "locked") {
+    st.status = "unchecked";
+    st.detail = "Couldn't be checked just now: its figures couldn't be read. Reload the page to try again.";
+    st.action = null;
+  }
   // The review is only "done" once the book of record and its proof are in.
   const review = steps[steps.length - 1];
   if (!locked && !s.openChecks && !tb) { review.status = "todo"; review.detail = "Add the Trial Balance check to prove the books, then review."; }

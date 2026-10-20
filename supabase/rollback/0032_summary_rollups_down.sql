@@ -15,7 +15,7 @@ begin
     execute format('drop trigger if exists %1$s_summary_del on public.%1$s', t);
   end loop;
 end $$;
-drop function if exists public.summary_state(uuid, text);
+drop function if exists public.summary_state(uuid, text, bigint);
 drop function if exists private.refresh_summary_rollups(integer);
 drop function if exists private.build_summary(uuid, text);
 drop function if exists private.sales_summary_calc(uuid);

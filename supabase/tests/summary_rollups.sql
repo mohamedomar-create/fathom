@@ -110,6 +110,9 @@ select pg_temp.check('a failed build reads as failed, with the last good figures
 select pg_temp.worker();
 select pg_temp.check('a failed build is not retried straight away', (select left(error, 5) from public.summary_rollups where company_id = (select co from ids) and kind = 'sales'), '57014');
 
+select pg_temp.check('a caller holding the latest build is not sent it again', (select (s ->> 'same') || '/' || coalesce(s ->> 'summary', 'none') from (select public.summary_state((select co from ids), 'expenses', (select built_seq from public.summary_rollups where company_id = (select co from ids) and kind = 'expenses')) s) x), 'true/none');
+select pg_temp.check('a caller holding an older build gets the new one', (select (s ->> 'same') || '/' || (s -> 'summary' is not null)::text from (select public.summary_state((select co from ids), 'expenses', 1) s) x), 'false/true');
+
 -- Who may read.
 select pg_temp.login('srv@x.test');
 select pg_temp.check('a viewer reads the kept summary', (public.summary_state((select co from ids), 'expenses') ->> 'status'), 'ready');

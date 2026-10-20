@@ -20,13 +20,17 @@ import { fromWire } from "@/lib/company/inventory-wire";
 import { ImportJobs } from "@/components/imports/import-jobs";
 import { ExportLayouts, type LayoutRow } from "@/components/settings/export-layouts";
 import { loadInventory } from "@/lib/company/inventory-load";
-import { loadExpenses } from "@/lib/company/expenses-load";
+import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
+import { unknownState } from "@/lib/company/loaded";
+import { DependencyNote } from "@/components/shell/module-state";
 
 /** The stock checks need the stock and expense summaries: they arrive after the rest of the page. */
 async function StockSection({ id }: { id: string }) {
   const [c, inventory, expenses] = await Promise.all([loadCompanyBundle(id), loadInventory(id), loadExpenses(id)]);
   // Worked out here: the page gets the checks, not the stock and expense summaries behind them (megabytes).
-  const ties = inventory?.wire ? inventoryTieOuts(fromWire(inventory.wire), inventoryLedger(c.months, expenses ?? { suppliers: [] }, c.accounts), c.settings.fyStartMonth, 12, c.inventorySettings?.locationTypes) : [];
+  // Without the expense lines the cost-of-sales checks can't be run: said so, not shown as "no ledger".
+  if (unknownState(expenses, (d) => noExpenses(d as typeof expenses.data))) return <DependencyNote modules={["expenses"]} />;
+  const ties = inventory?.wire ? inventoryTieOuts(fromWire(inventory.wire), inventoryLedger(c.months, expenses.data, c.accounts), c.settings.fyStartMonth, 12, c.inventorySettings?.locationTypes) : [];
   return <StockTies ties={ties} />;
 }
 

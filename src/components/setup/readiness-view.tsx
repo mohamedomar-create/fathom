@@ -95,8 +95,13 @@ export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: str
     <section className="rounded-lg border border-line p-4" data-testid={`readiness-${r.key}`}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-lg font-medium">{r.label}</h3>
-        <RadarLegend />
+        {!r.unread && <RadarLegend />}
       </div>
+      {r.unread ? (
+        <p role="status" className="rounded border border-amber/60 bg-amber/10 px-4 py-3 text-sm" data-testid={`readiness-unread-${r.key}`}>
+          Couldn&apos;t be checked just now: these figures couldn&apos;t be read. Nothing is missing because of this. Reload the page to try again.
+        </p>
+      ) : (
       <div className="grid gap-4 lg:grid-cols-[390px_1fr]">
         <div className="flex flex-col items-center gap-3">
           <RadarChart axes={r.items.map((i) => ({ label: i.axis, completion: i.completion, accuracy: i.accuracy }))} size={250} testId={`radar-${r.key}`} />
@@ -117,6 +122,7 @@ export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: str
           ))}
         </ul>
       </div>
+      )}
     </section>
   );
 }

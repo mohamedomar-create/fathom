@@ -11,6 +11,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { cn } from "@/lib/cn";
 import { useLang } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/use-t";
+import { UnreadInline, useUnread } from "@/components/shell/module-state";
 
 /**
  * The sales analysis for the period in the URL, with P&L revenue for the reconciliation. Without invoice lines, the P&L's
@@ -43,6 +44,7 @@ export function SalesPicker({ s, mode }: { s: { window: { label: string } } | nu
 export function NoSales() {
   const c = useCompany();
   const t = useT().d.sales;
+  if (useUnread("sales")) return <UnreadInline module="sales" />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-sales">
       <ShoppingBag className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

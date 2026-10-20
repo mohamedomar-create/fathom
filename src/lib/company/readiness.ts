@@ -36,7 +36,8 @@ export interface ReadinessItem {
   fix?: ReadinessFix;
 }
 /** accuracy is null when nothing loaded can be checked yet (or nothing in the sector is checkable). */
-export interface SectorReadiness { key: ReadinessSector; label: string; completion: number; accuracy: number | null; items: ReadinessItem[] }
+/** unread: its figures could not be read just now, so its scores are unknown (never shown as 0% or "missing"). */
+export interface SectorReadiness { key: ReadinessSector; label: string; completion: number; accuracy: number | null; items: ReadinessItem[]; unread?: boolean }
 
 export interface ReadinessInput {
   months: MonthData[];
@@ -56,6 +57,8 @@ export interface ReadinessInput {
   payments?: { data: PaymentsData; control?: Partial<Record<Side, string[]>> };
   /** The company said its books start from zero (nothing before the first month), so no opening balance is due. */
   booksFromZero?: boolean;
+  /** Sectors whose figures could not be read just now. */
+  unread?: ReadinessSector[];
 }
 
 const pct = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 100);
@@ -360,7 +363,8 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
 }
 
 export function readiness(x: ReadinessInput): SectorReadiness[] {
-  return [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), ...(x.payments ? [paymentsReadiness(x)] : []), bankingReadiness(x), forecastReadiness(x)];
+  const all = [financialsReadiness(x), salesReadiness(x), expensesReadiness(x), inventoryReadiness(x), ...(x.payments ? [paymentsReadiness(x)] : []), bankingReadiness(x), forecastReadiness(x)];
+  return x.unread?.length ? all.map((r) => (x.unread!.includes(r.key) ? { ...r, unread: true } : r)) : all;
 }
 
 /** "31 Dec 2025" for the month "2025-12". */

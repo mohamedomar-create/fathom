@@ -1,0 +1,35 @@
+import { area } from "../types";
+
+/** What a page says when a module's figures could not be read, are being added up, or are not the latest. */
+export const state = area(
+  {
+    failedTitle: (m: string) => `${m} couldn't be loaded just now`,
+    failedBody: "Your data is safe: nothing was lost or changed. The database was busy or unreachable for a moment.",
+    retry: "Try again", retrying: "Trying again…",
+    ref: (r: string) => `Reference ${r}`,
+    pendingTitle: (m: string) => `Adding up the latest ${m} figures`,
+    pendingBody: "This takes a few seconds after an upload or a change. The page refreshes by itself.",
+    pendingSlow: "This is taking longer than usual.",
+    updating: (when: string) => `Updating after the latest change. Showing the figures from ${when} until it finishes.`,
+    stale: (when: string) => `The latest figures couldn't be loaded. Showing the figures from ${when}.`,
+    staleNoTime: "The latest figures couldn't be loaded. Showing the last figures read.",
+    unchecked: "couldn't be checked just now",
+    dependency: (m: string) => `${m} couldn't be read just now, so the parts of this page that use them are left out or marked unchecked. Your data is safe.`,
+    modules: { sales: "Sales", expenses: "Expenses", payments: "Payments", inventory: "Stock" } as Record<string, string>,
+  },
+  {
+    failedTitle: (m: string) => `تعذّر تحميل ${m} الآن`,
+    failedBody: "بياناتك محفوظة: لم يُفقد أو يتغير شيء. كانت قاعدة البيانات مشغولة أو غير متاحة لحظيًا.",
+    retry: "حاول مرة أخرى", retrying: "جارٍ المحاولة…",
+    ref: (r: string) => `المرجع ${r}`,
+    pendingTitle: (m: string) => `جارٍ احتساب أحدث أرقام ${m}`,
+    pendingBody: "يستغرق ذلك بضع ثوانٍ بعد الرفع أو التعديل. تتحدث الصفحة تلقائيًا.",
+    pendingSlow: "يستغرق هذا وقتًا أطول من المعتاد.",
+    updating: (when: string) => `جارٍ التحديث بعد آخر تغيير. تُعرض أرقام ${when} حتى ينتهي.`,
+    stale: (when: string) => `تعذّر تحميل أحدث الأرقام. تُعرض أرقام ${when}.`,
+    staleNoTime: "تعذّر تحميل أحدث الأرقام. تُعرض آخر أرقام تمت قراءتها.",
+    unchecked: "تعذّر التحقق الآن",
+    dependency: (m: string) => `تعذّرت قراءة ${m} الآن، لذا تُستبعد أجزاء هذه الصفحة التي تعتمد عليها أو تُعلَّم بأنها لم يُتحقق منها. بياناتك محفوظة.`,
+    modules: { sales: "المبيعات", expenses: "المصروفات", payments: "المدفوعات", inventory: "المخزون" },
+  },
+);

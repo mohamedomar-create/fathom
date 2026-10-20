@@ -253,7 +253,8 @@ end $$;
 -- What a page reads. Not a member: refused (never an empty summary that would read as "no sales").
 --  status: ready (built from the latest change), pending (a newer one is being prepared; summary is the previous one, if
 --  any), failed (the latest build failed; summary is the last good one, if any), empty (nothing was ever recorded).
-create or replace function public.summary_state(p_company uuid, p_kind text)
+-- p_have: the build the caller already holds; when it is still the latest, the summary itself is left out (same = true).
+create or replace function public.summary_state(p_company uuid, p_kind text, p_have bigint default null)
 returns jsonb
 language plpgsql
 stable
@@ -274,7 +275,8 @@ begin
       when x.error_seq is not null and x.error_seq = k.seq then 'failed'
       when x.built_seq is not distinct from k.seq and x.summary is not null then 'ready'
       else 'pending' end,
-    'summary', x.summary,
+    'summary', case when p_have is not null and p_have = x.built_seq then null else x.summary end,
+    'same', p_have is not null and p_have = x.built_seq,
     'built_at', x.built_at,
     'built_seq', x.built_seq,
     'error', case when x.error_seq is not null and x.error_seq = k.seq then x.error end);
@@ -287,8 +289,8 @@ revoke execute on function private.expense_summary_calc(uuid, text, text) from p
 revoke execute on function private.payments_summary_calc(uuid) from public, anon, authenticated;
 revoke execute on function private.build_summary(uuid, text) from public, anon, authenticated;
 revoke execute on function private.refresh_summary_rollups(integer) from public, anon, authenticated;
-revoke execute on function public.summary_state(uuid, text) from public, anon;
-grant execute on function public.summary_state(uuid, text) to authenticated;
+revoke execute on function public.summary_state(uuid, text, bigint) from public, anon;
+grant execute on function public.summary_state(uuid, text, bigint) to authenticated;
 grant select on public.summary_rollups to authenticated;
 
 -- Every company that already has lines gets its summaries on the next runs.

@@ -148,3 +148,14 @@ describe("data readiness", () => {
     expect(none.items[0].fix?.what).toBe("Upload the stock valuation");
   });
 });
+
+describe("readiness when a module's figures could not be read", () => {
+  it("marks that sector unread instead of scoring it as missing; the others are unchanged", () => {
+    const base = company(ps("2025-12", 13), { bsOnly: ["2025-12"] });
+    const all = readiness({ ...base, unread: ["sales", "expenses"] });
+    expect(all.find((r) => r.key === "sales")?.unread).toBe(true);
+    expect(all.find((r) => r.key === "expenses")?.unread).toBe(true);
+    expect(all.find((r) => r.key === "financials")?.unread).toBeUndefined();
+    expect(readiness(base).some((r) => r.unread)).toBe(false);
+  });
+});

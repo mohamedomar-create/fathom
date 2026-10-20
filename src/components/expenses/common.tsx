@@ -13,6 +13,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { cn } from "@/lib/cn";
 import { useLang } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/use-t";
+import { UnreadInline, useUnread } from "@/components/shell/module-state";
 
 export { DataNotes, Findings, SalesTile as Tile } from "@/components/sales/common";
 
@@ -53,6 +54,7 @@ export type ExpensesView = NonNullable<ReturnType<typeof useExpensesAnalysis>>;
 export function NoExpenses() {
   const c = useCompany();
   const t = useT().d.exp;
+  if (useUnread("expenses")) return <UnreadInline module="expenses" />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-expenses">
       <Receipt className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

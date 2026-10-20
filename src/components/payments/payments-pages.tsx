@@ -13,6 +13,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { BarList } from "@/components/charts/bar-list";
 import { saveControlAccounts } from "@/app/company/[id]/settings/payments-actions";
 import { cn } from "@/lib/cn";
+import { UnreadInline, useUnread } from "@/components/shell/module-state";
 
 /** The Payments analysis for the period chosen (payments months, else the ageing's month). */
 function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPayments: boolean } | null {
@@ -36,6 +37,7 @@ const KIND_LABEL: Record<PaymentKind, string> = { customers: "Customers", suppli
 
 function NoPayments() {
   const c = useCompany();
+  if (useUnread("payments")) return <UnreadInline module="payments" />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-payments">
       <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />
@@ -49,6 +51,7 @@ function NoPayments() {
 /** The ageing reports are loaded but no payments list: say so, and how to get it, instead of showing zeros. */
 function NoPaymentsList() {
   const c = useCompany();
+  if (useUnread("payments")) return <UnreadInline module="payments" />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-payments-list">
       <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

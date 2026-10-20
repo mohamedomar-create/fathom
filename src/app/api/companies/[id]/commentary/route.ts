@@ -35,7 +35,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   try {
     const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts });
     const sel = { type: parsed.data.type, end: parsed.data.end };
-    const [sales, expenses] = await Promise.all([loadSales(id), loadExpenses(id)]);
+    const [salesState, expensesState] = await Promise.all([loadSales(id), loadExpenses(id)]);
+    // Commentary written from figures that could not be read would describe zeros: refuse, so the person can retry.
+    if (salesState.status === "failed" || expensesState.status === "failed")
+      return NextResponse.json({ error: `Sales or expense figures couldn't be read just now (ref ${salesState.ref ?? expensesState.ref}). Please try again in a moment.` }, { status: 503 });
+    const sales = salesState.data, expenses = expensesState.data;
     const context = {
       ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, asOf: bundle.asOf ?? null, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, parsed.data.sections),
       // Customers, products and suppliers from the same data, so the commentary can name them.

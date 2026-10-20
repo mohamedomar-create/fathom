@@ -109,6 +109,7 @@ export type Database = {
       begin_payment_batch: { Args: { p_company: string; p_periods: string[]; p_filename?: string | null; p_report?: Json; p_source?: "file" | "ledger" }; Returns: string };
       add_payment_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       payments_summary: { Args: { p_company: string }; Returns: Json };
+      summary_state: { Args: { p_company: string; p_kind: string; p_have?: number | null }; Returns: Json };
       odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
       odoo_claim_sync: { Args: { p_company: string }; Returns: boolean };
       odoo_save: { Args: { p_company: string; p_url: string; p_db: string; p_login: string; p_key_enc: string | null; p_odoo_company_id: number; p_odoo_company_name: string; p_include_branches: boolean; p_months: number; p_version: string; p_key_expires_on: string | null }; Returns: undefined };
