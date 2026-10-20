@@ -1,6 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState } from "react";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { mlabel } from "@/lib/engine";
 import { removeLineUpload } from "@/app/company/[id]/settings/ledger-actions";
 import { removePaymentsUpload } from "@/app/company/[id]/settings/payments-actions";
@@ -12,19 +13,17 @@ const FEEDS: Record<LineUpload["kind"], string> = { sales: "Sales", expenses: "E
 /** Sales, expenses and payments files uploaded on their own, and ageing reports: when, which months, and a way to take one out again. */
 export function LineUploads({ rows, companyId, readOnly }: { rows: LineUpload[]; companyId: string; readOnly: boolean }) {
   const router = useRouter();
-  const [busy, start] = useTransition();
+  const [, setTick] = useState(0);
   if (!rows.length) return <p className="text-sm text-mute">None yet.</p>;
-  const remove = (r: LineUpload) => {
-    const what = r.kind === "aged" ? `the Aged ${r.side === "payable" ? "Payable" : "Receivable"} as of ${r.asOf}` : `"${r.file ?? "this upload"}"`;
-    const then = r.kind === "aged" ? "Its documents go; an earlier report for the same side, if any, is shown instead." : r.kind === "payments" ? "Its payments go." : `Its ${r.kind} lines go, and the months fall back to your General Ledger or P&L.`;
-    if (!confirm(`Remove ${what}? ${then}`)) return;
-    start(async () => {
-      const out = r.kind === "payments" || r.kind === "aged" ? await removePaymentsUpload(companyId, r.kind, r.id) : await removeLineUpload(companyId, r.kind, r.id);
-      if (!out.ok) { alert(out.error); return; }
-      router.refresh();
-    });
-  };
   const span = (ps: string[]) => (ps.length ? (ps.length === 1 ? mlabel(ps[0]) : `${mlabel(ps[0])} – ${mlabel(ps[ps.length - 1])}`) : "");
+  const what = (r: LineUpload) => (r.kind === "aged" ? `the Aged ${r.side === "payable" ? "Payable" : "Receivable"} as of ${r.asOf}` : `"${r.file ?? "this upload"}"`);
+  const then = (r: LineUpload) => (r.kind === "aged" ? "Its documents go; an earlier report for the same side, if any, is shown instead." : r.kind === "payments" ? "Its payments go." : `Its ${r.kind} lines go, and the months fall back to your General Ledger or P&L.`);
+  const remove = (r: LineUpload) => async () => {
+    const out = r.kind === "payments" || r.kind === "aged" ? await removePaymentsUpload(companyId, r.kind, r.id) : await removeLineUpload(companyId, r.kind, r.id);
+    if (!out.ok) return out.error ?? "Could not remove the upload.";
+    setTick((t) => t + 1);
+    router.refresh();
+  };
   return (
     <div className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl text-[13px]" data-testid="line-uploads">
@@ -36,7 +35,11 @@ export function LineUploads({ rows, companyId, readOnly }: { rows: LineUpload[];
               <td className="text-start">{r.kind === "payments" && r.ledger ? "Payments (General Ledger)" : FEEDS[r.kind]}</td>
               <td className="text-start">{r.kind === "aged" ? `Aged ${r.side === "payable" ? "Payable" : "Receivable"} as of ${r.asOf}` : span([...r.periods].sort())}</td>
               <td className="text-start text-mute">{new Date(r.at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</td>
-              {!readOnly && <td><button onClick={() => remove(r)} disabled={busy} className="text-[12px] text-red underline" data-testid="remove-line-upload">Remove</button></td>}
+              {!readOnly && <td><ConfirmDialog title="Remove this upload?" confirmLabel="Remove" onConfirm={remove(r)} testId="remove-line-upload-dialog"
+                trigger={<button className="text-[12px] text-red underline" data-testid="remove-line-upload">Remove</button>}>
+                <p>This removes {what(r)}{r.lines ? `: ${r.lines.toLocaleString("en-US")} lines` : ""}{r.periods.length ? ` (${span([...r.periods].sort())})` : ""}.</p>
+                <p className="text-mute">{then(r)}</p>
+              </ConfirmDialog></td>}
             </tr>
           ))}
         </tbody>

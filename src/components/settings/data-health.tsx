@@ -1,4 +1,5 @@
 "use client";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CheckCircle2, History, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -189,14 +190,12 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
-  const restore = (r: HistoryRow) => {
-    if (!r.version || !confirm(`Restore the data as it was after "${r.file ?? r.kind}" (${fmtDate(r.at)})? The current data stays in the history and can be restored again.`)) return;
+  const restore = (r: HistoryRow) => async () => {
     setErr(null);
-    start(async () => {
-      const out = await restoreVersion(companyId, r.version!);
-      if (!out.ok) setErr(out.error ?? "Restore failed.");
-      else { setNote(out.notice ?? null); router.refresh(); }
-    });
+    const out = await restoreVersion(companyId, r.version!);
+    if (!out.ok) return out.error ?? "Restore failed.";
+    setNote(out.notice ?? null);
+    start(() => router.refresh());
   };
   if (!rows.length) return <p className="text-sm text-mute">No imports yet.</p>;
   return (
@@ -224,7 +223,11 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
               <td className="!text-start text-mute">{r.by ?? "–"}</td>
               <td>
                 {r.current ? <span className="text-xs font-semibold text-brand-d">Current</span>
-                  : r.restorable && !readOnly ? <button disabled={pending} onClick={() => restore(r)} className="inline-flex items-center gap-1 text-xs text-brand-d underline disabled:opacity-50" data-testid="restore"><RotateCcw className="h-3 w-3" />Restore</button>
+                  : r.restorable && !readOnly ? r.version ? <ConfirmDialog title="Restore this version?" confirmLabel="Restore" onConfirm={restore(r)} testId="restore-dialog"
+                      trigger={<button disabled={pending} className="inline-flex items-center gap-1 text-xs text-brand-d underline disabled:opacity-50" data-testid="restore"><RotateCcw className="h-3 w-3" />Restore</button>}>
+                      <p>The data goes back to how it was after &quot;{r.file ?? r.kind}&quot; ({fmtDate(r.at)}).</p>
+                      <p className="text-mute">The current data stays in the history and can be restored again.</p>
+                    </ConfirmDialog> : null
                     : null}
               </td>
             </tr>

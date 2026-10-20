@@ -121,6 +121,9 @@ export type Database = {
       end_user_summary: { Args: { p_company: string }; Returns: Json };
       save_agency_statement: { Args: { p_company: string; p_filename: string; p_sheets: string[]; p_report: Json; p_lines: Json }; Returns: number };
       remove_agency_statement: { Args: { p_company: string }; Returns: undefined };
+      data_reset_preview: { Args: { p_company: string }; Returns: Json };
+      clear_company_data: { Args: { p_company: string; p_scope: string; p_confirm: number }; Returns: Json };
+      delete_company: { Args: { p_company: string; p_name: string }; Returns: Json };
       get_published_sales: { Args: { p_token: string }; Returns: Json };
       begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };

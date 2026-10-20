@@ -278,10 +278,10 @@ test("an Odoo vendor bills export becomes expenses by supplier", async ({ page }
   await expect(page.getByTestId("tile-supplier-count")).toContainText("3");
 
   // The upload is listed in Data health and can be taken out again.
-  page.on("dialog", (d) => d.accept());
   await page.goto(`/company/${id}/data/checks`);
   await expect(page.getByTestId("line-upload")).toHaveCount(1);
   await page.getByTestId("remove-line-upload").click();
+  await page.getByTestId("remove-line-upload-dialog").getByTestId("confirm-button").click();
   await expect(page.getByTestId("line-upload")).toHaveCount(0, { timeout: 15_000 });
   await page.goto(`/company/${id}/expenses`);
   await expect(page.getByTestId("no-expenses")).toBeVisible();
@@ -702,8 +702,8 @@ test("Odoo's ageing reports and payments list become the Payments pages; the sam
   const rows = page.getByTestId("line-upload");
   await expect(rows).toHaveCount(3);
   await expect(page.getByTestId("line-uploads")).toContainText("Aged Receivable as of 2026-09-30");
-  page.once("dialog", (d) => d.accept());
   await rows.filter({ hasNotText: "Aged" }).getByTestId("remove-line-upload").click();
+  await page.getByTestId("remove-line-upload-dialog").getByTestId("confirm-button").click();
   await expect(rows).toHaveCount(2);
   await page.goto(`/company/${id}/payments`);
   await expect(page.getByTestId("tile-owed")).toContainText("1,490");

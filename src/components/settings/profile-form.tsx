@@ -3,6 +3,8 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { deleteCompany, saveProfile } from "@/app/company/[id]/settings/actions";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { DataAndDeletion } from "@/components/settings/data-and-deletion";
+import type { ResetPreview } from "@/lib/company/reset";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -13,7 +15,7 @@ const zones = (own: string | null | undefined) => {
   return own && !all.includes(own) ? [own, ...all] : all;
 };
 
-export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean }) {
+export function ProfileForm({ initial, readOnly, canDelete, canExport = true, role, reset }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean; role?: "admin" | "editor" | "viewer"; reset?: ResetPreview | null }) {
   const router = useRouter();
   const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
   const [pending, start] = useTransition();
@@ -74,7 +76,8 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true }: 
         <p className="mb-3 text-sm text-mute">Download everything stored for this company: settings, every account by month, import history, commentary and reports. The Odoo API key is never included.</p>
         <a href={`/api/export/${initial.id}`} download className="inline-block rounded border border-line px-4 py-2 text-sm hover:bg-band" data-testid="export-company">Download all data (.xlsx)</a>
       </section>}
-      {canDelete && (
+      {reset && role && <DataAndDeletion companyId={initial.id} name={initial.name} role={role} preview={reset} />}
+      {!reset && canDelete && (
         <section className="rounded-md border border-red/30 p-4">
           <h3 className="font-medium text-red">Danger zone</h3>
           <p className="mb-3 text-sm text-mute">Deleting a company removes its data, reports and Odoo connection permanently.</p>
