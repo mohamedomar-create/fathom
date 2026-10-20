@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { loadCompanyBundle } from "@/lib/company/load";
+import { loadCompanyMeta } from "@/lib/company/meta";
 import { compareBooks, type BookDiff } from "@/lib/company/compare";
 import { compareWithOf } from "@/lib/company/time-zone";
 import { CLASS_LABEL } from "@/lib/ingest/classes";
@@ -13,7 +14,9 @@ import type { FixRecord } from "@/lib/ingest/trace";
 import type { AcceptedItem } from "@/app/company/[id]/settings/actions";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { LineUploads, type LineUpload } from "@/components/settings/line-uploads";
-import { StockChecks } from "@/components/inventory/stock-checks";
+import { StockTies } from "@/components/inventory/stock-checks";
+import { inventoryLedger, inventoryTieOuts } from "@/lib/engine/inventory";
+import { fromWire } from "@/lib/company/inventory-wire";
 import { ImportJobs } from "@/components/imports/import-jobs";
 import { ExportLayouts, type LayoutRow } from "@/components/settings/export-layouts";
 import { loadInventory } from "@/lib/company/inventory-load";
@@ -21,17 +24,21 @@ import { loadExpenses } from "@/lib/company/expenses-load";
 
 /** The stock checks need the stock and expense summaries: they arrive after the rest of the page. */
 async function StockSection({ id }: { id: string }) {
-  const [inventory, expenses] = await Promise.all([loadInventory(id), loadExpenses(id)]);
-  return <StockChecks inventory={inventory} expenses={expenses} />;
+  const [c, inventory, expenses] = await Promise.all([loadCompanyBundle(id), loadInventory(id), loadExpenses(id)]);
+  // Worked out here: the page gets the checks, not the stock and expense summaries behind them (megabytes).
+  const ties = inventory?.wire ? inventoryTieOuts(fromWire(inventory.wire), inventoryLedger(c.months, expenses ?? { suppliers: [] }, c.accounts), c.settings.fyStartMonth, 12, c.inventorySettings?.locationTypes) : [];
+  return <StockTies ties={ties} />;
 }
 
 export default async function DataChecksPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ imported?: string }> }) {
   const { id } = await params;
   const { imported } = await searchParams;
   const { supabase } = await getUser();
-  const bundle = await loadCompanyBundle(id);
-  const [current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
-    loadVersion(supabase, id, bundle.dataVersion),
+  // The current version is known from two small reads, so the stored accounts and the company's figures load together.
+  const { dataVersion } = await loadCompanyMeta(id);
+  const [bundle, current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
+    loadCompanyBundle(id),
+    loadVersion(supabase, id, dataVersion),
     supabase.from("imports").select("id, kind, action, filename, created_at, created_by, data_version, report").eq("company_id", id).order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),
     supabase.from("expense_batches").select("id, filename, periods, created_at").eq("company_id", id).eq("source", "file").order("created_at", { ascending: false }).limit(40),

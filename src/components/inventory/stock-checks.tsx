@@ -6,12 +6,19 @@ import { useInventoryData } from "@/lib/company/inventory-context";
 import type { InventoryState } from "@/lib/company/inventory-wire";
 import { useCompany } from "@/lib/company/context";
 import { TieTable } from "./common";
+import type { TieOut } from "@/lib/engine/tieout";
 
 /** Data health: every stock check against the accounts over the last 12 months with stock records (the same checks as the Inventory pages). */
 export function StockChecks({ inventory: state, expenses }: { inventory: InventoryState; expenses: ExpensesData | null }) {
   const c = useCompany();
   const inventory = useInventoryData(state);
   const ties = useMemo(() => inventoryTieOuts(inventory, inventoryLedger(c.months, expenses ?? { suppliers: [] }, c.accounts), c.settings.fyStartMonth, 12, c.inventorySettings?.locationTypes), [inventory, expenses, c.months, c.accounts, c.settings.fyStartMonth, c.inventorySettings]);
+  return <StockTies ties={ties} />;
+}
+
+/** The stock checks from results worked out on the server (the stock summary itself never goes to the page). */
+export function StockTies({ ties }: { ties: TieOut[] }) {
+  const c = useCompany();
   if (!ties.length) return null;
   const sum = tieSummary(ties), off = sum.off.length, checked = sum.checked;
   return (

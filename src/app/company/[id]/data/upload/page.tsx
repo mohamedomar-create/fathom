@@ -1,6 +1,6 @@
 import { getUser } from "@/lib/supabase/server";
 import { booksStartOf } from "@/lib/company/time-zone";
-import { loadCompanyBundle } from "@/lib/company/load";
+import { loadCompanyMeta } from "@/lib/company/meta";
 import { UploadWizard } from "@/components/settings/upload-wizard";
 import { loadAccountMap } from "@/lib/company/account-map";
 import { loadDataFacts } from "@/lib/company/data-facts";
@@ -9,20 +9,22 @@ export default async function DataUploadPage({ params, searchParams }: { params:
   const { id } = await params;
   const { step } = await searchParams;
   const { supabase } = await getUser();
-  const { role, dataVersion } = await loadCompanyBundle(id);
-  const [{ data: c }, { data: imports }, { data: batches }, { data: expBatches }, facts] = await Promise.all([
+  // The role and current version only (the figures themselves are not shown here); everything else in one round.
+  const { role, dataVersion } = await loadCompanyMeta(id);
+  const [{ data: c }, { data: imports }, { data: batches }, { data: expBatches }, facts, accountMap, { data: profiles }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source, kpi_config").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
     supabase.from("sales_batches").select("periods").eq("company_id", id).eq("source", "file"),
     supabase.from("expense_batches").select("periods").eq("company_id", id).eq("source", "file"),
     loadDataFacts(supabase, id, dataVersion),
+    loadAccountMap(supabase, id),
+    supabase.from("input_profiles").select("kind, headings").eq("company_id", id),
   ]);
   // Months that already have sales from a file: a new sales file asks before replacing them.
   const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const lastUpload = imports?.find((i) => i.kind === "upload");
   // The company's account map (every class a person has chosen); before it existed, the last upload's mapping.
-  const [accountMap, { data: profiles }] = await Promise.all([loadAccountMap(supabase, id), supabase.from("input_profiles").select("kind, headings").eq("company_id", id)]);
   // The company's remembered export layouts (none before the database has them).
   const savedLayouts = Object.fromEntries((profiles ?? []).map((p) => [p.kind, p.headings]));
   const savedMapping = Object.keys(accountMap).length ? accountMap : ((lastUpload?.report as { mapping?: Record<string, string> } | null)?.mapping) ?? {};

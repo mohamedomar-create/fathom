@@ -43,3 +43,23 @@ test("every page of a large company opens quickly and never freezes the page", a
     expect.soft(r.longest, `${r.page} froze for ${r.longest} ms`).toBeLessThan(300);
   }
 });
+
+/** The Data section on the same large company: every tab, opened by clicking its tab as a person does, opens quickly. */
+test("the Data tabs open quickly one after another on a large company", async ({ page }) => {
+  test.setTimeout(300_000);
+  await signUp(page, { name: "Data Speed", org: "Data Speed Advisory", email: newEmail("dspeed") });
+  const id = await createCompany(page, "Data Speed Co");
+  execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-q", "-v", "ON_ERROR_STOP=1", "-v", `company='${id}'`, "-f", path.join(__dirname, "../../scripts/bench/seed-big.sql")]);
+  await page.goto(`/company/${id}/data`);
+  await page.getByTestId("data-steps").waitFor({ timeout: 60_000 });
+  const tabs: [string, string][] = [["Upload", "[data-testid=wiz-steps]"], ["Checks & history", "[data-testid=health-calendar]"], ["Readiness", "[data-testid=readiness-overview]"], ["End users", "[data-testid=end-user-choices]"], ["Odoo live", "main button:has-text(\"Test connection\")"], ["Steps", "[data-testid=data-steps]"]];
+  const rows: { tab: string; ms: number }[] = [];
+  for (const [label, sel] of tabs) {
+    const t0 = Date.now();
+    await page.getByTestId("data-nav").getByRole("link", { name: label }).click();
+    await page.locator(sel).first().waitFor({ timeout: 60_000 });
+    rows.push({ tab: label, ms: Date.now() - t0 });
+  }
+  console.log(JSON.stringify(rows));
+  for (const r of rows) expect.soft(r.ms, `${r.tab} took ${r.ms} ms`).toBeLessThan(1500);
+});

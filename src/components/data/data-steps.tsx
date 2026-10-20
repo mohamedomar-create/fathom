@@ -27,13 +27,16 @@ const ICON: Record<StepStatus, React.ReactNode> = {
   verified: <ShieldCheck className="h-5 w-5 text-green-d" />, done: <CheckCircle2 className="h-5 w-5 text-green-d" />,
   issues: <AlertTriangle className="h-5 w-5 text-[#9a6b00]" />, todo: <CircleDashed className="h-5 w-5 text-mute" />, locked: <Lock className="h-5 w-5 text-mute" />,
 };
+/** Steps whose status comes from the sub-ledger checks, which arrive a moment after the page. */
+const CHECKING = new Set(["sales", "stock", "ageing"]);
 const WORD: Record<StepStatus, string> = { verified: "Verified", done: "Done", issues: "Differences", todo: "To do", locked: "Locked" };
 
 /**
  * The one sequence, in the order an accountant closes the books. The General Ledger is the book of record; the Trial
  * Balance proves it; the sub-ledgers add detail and reconcile to their control accounts; the review signs it off.
  */
-export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers }) {
+/** sub: the sub-ledger checks, or null while they are still being worked out (those steps say so). */
+export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers | null }) {
   const c = useCompany();
   const steps = useMemo(() => {
     const pl = c.months.filter(hasPL).map((m) => m.period).sort();
@@ -44,26 +47,29 @@ export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers })
       openingInLedger: facts.openingInLedger,
       ledger: facts.ledger && pl.length ? { from: pl[0], to: pl[pl.length - 1], odoo: facts.odoo, issues: open } : null,
       tb: facts.tbCheck ? { at: facts.tbCheck.at, file: facts.tbCheck.file, months: facts.tbCheck.months, diffs: facts.tbCheck.diffs.length } : null,
-      ...sub, openChecks: open,
+      ...(sub ?? { sales: null, stock: null, ageing: [] }), openChecks: open,
     };
     return dataSteps(s);
   }, [c, facts, sub]);
   const tb = facts.tbCheck;
+  // While the sub-ledgers stream in, this list is the placeholder: its test ids carry "pending-" so the finished list
+  // that replaces it is the only one with the real ids.
+  const id = (x: string) => (sub ? x : `pending-${x}`);
   return (
-    <div data-testid="data-steps">
+    <div data-testid={id("data-steps")} data-checking={sub ? undefined : "true"}>
       <ol className="space-y-3">
         {steps.map((s) => (
-          <li key={s.id} className={cn("rounded-lg border p-4", s.status === "locked" ? "border-line bg-band/40" : s.status === "issues" ? "border-amber" : "border-line")} data-testid={`step-${s.id}`} data-status={s.status}>
+          <li key={s.id} className={cn("rounded-lg border p-4", s.status === "locked" ? "border-line bg-band/40" : s.status === "issues" ? "border-amber" : "border-line")} data-testid={id(`step-${s.id}`)} data-status={s.status}>
             <div className="flex items-start gap-3">
               <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#e8e8e4] text-xs font-semibold text-mute">{s.n}</span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="font-medium">{s.title}</h2>{ICON[s.status]}<span className="text-xs text-mute">{WORD[s.status]}</span>
+                  <h2 className="font-medium">{s.title}</h2>{!sub && CHECKING.has(s.id) ? <span className="text-xs text-mute" data-testid={id(`step-${s.id}-checking`)}>Checking…</span> : <>{ICON[s.status]}<span className="text-xs text-mute">{WORD[s.status]}</span></>}
                   <span className="rounded bg-band px-2 py-0.5 text-[11px] text-mute">{s.role}</span>
                 </div>
-                <p className="mt-0.5 text-[15px] text-mute" data-testid={`step-${s.id}-detail`}>{s.detail}</p>
+                <p className="mt-0.5 text-[15px] text-mute" data-testid={id(`step-${s.id}-detail`)}>{s.detail}</p>
                 {s.id === "tb" && tb && tb.diffs.length > 0 && (
-                  <details className="mt-2 text-[13px]" data-testid="tb-check-diffs">
+                  <details className="mt-2 text-[13px]" data-testid={id("tb-check-diffs")}>
                     <summary className="cursor-pointer text-brand-d">See the differences ({tb.file}, {new Date(tb.at).toISOString().slice(0, 10)})</summary>
                     <ul className="mt-1 space-y-0.5">{tb.diffs.slice(0, 50).map((d) => <li key={`${d.period}|${d.account}`}>{mlabel(d.period)} · {d.account}: books {d.books.toLocaleString("en-US")}, file {d.file.toLocaleString("en-US")} (difference {d.diff.toLocaleString("en-US")})</li>)}</ul>
                   </details>
@@ -74,7 +80,7 @@ export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers })
                     {s.verifies && <p className="mt-1 text-mute">Checked against: {s.verifies}</p>}
                   </details>
                 )}
-                {s.action && !c.readOnly && <div className="mt-3"><Link prefetch={false} href={s.action.href} className={cn("rounded px-4 py-2 text-sm", s.status === "todo" ? "bg-brand-d text-white" : "border border-brand-d text-brand-d")} data-testid={`step-${s.id}-go`}>{s.action.label}</Link></div>}
+                {s.action && !c.readOnly && <div className="mt-3"><Link prefetch={false} href={s.action.href} className={cn("rounded px-4 py-2 text-sm", s.status === "todo" ? "bg-brand-d text-white" : "border border-brand-d text-brand-d")} data-testid={id(`step-${s.id}-go`)}>{s.action.label}</Link></div>}
               </div>
             </div>
           </li>

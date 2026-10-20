@@ -48,7 +48,9 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
       </Popover>
       <nav className="ms-1 hidden items-center gap-1 sm:flex">
         {tabs.map((t) => (
-          <Link key={t.key} href={t.href + (t.keepQuery ? q : "")} aria-current={t.active ? "page" : undefined} data-testid={`tab-${t.key}`} className={cn("rounded px-3 py-1 hover:text-white", t.active ? "bg-bar-2 text-white" : "")}>
+          // Not preloaded: a section's layout loads all its data, so a preload downloads the whole section (megabytes)
+          // while the person works on another page.
+          <Link prefetch={false} key={t.key} href={t.href + (t.keepQuery ? q : "")} aria-current={t.active ? "page" : undefined} data-testid={`tab-${t.key}`} className={cn("rounded px-3 py-1 hover:text-white", t.active ? "bg-bar-2 text-white" : "")}>
             {t.label}
           </Link>
         ))}
