@@ -58,6 +58,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
 import { KPI_DEFS } from "@/lib/engine";
 import { loadBalances } from "./balances";
 import { checkKey, runChecks } from "./checks";
+import { accessFrom, AccessError } from "./access";
 function withDefaults(active: string[], cfg: KpiConfig) {
   const set = new Set(active);
   for (const d of KPI_DEFS) if (cfg[d.key]?.active === undefined && d.defaultActive) set.add(d.key);
@@ -82,10 +83,11 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
 export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle & { role: string; orgId: string; dataVersion: number }> => {
   const { supabase, user } = await getUser();
   if (!user) notFound();
-  const { data: c } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
+  const { data: c, error: cErr } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
+  if (cErr) throw new AccessError(cErr.code);
   if (!c) notFound();
   // Everything else in one round, the accounts included.
-  const [{ data: mem }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored] = await Promise.all([
+  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored] = await Promise.all([
     supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
@@ -93,6 +95,9 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     supabase.from("imports").select("report").eq("company_id", id).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadAccounts(supabase, id, c.data_version),
   ]);
+  // Fails closed: a membership that couldn't be read is an error, none means not this person's company.
+  const access = accessFrom(mem, memErr);
+  if (access === "none") notFound();
   const accounts = naturalAccounts(stored);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);
@@ -106,10 +111,10 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   for (const r of comm ?? []) commentary[`${r.period_key}|${r.section}`] = r.body;
   return {
     id: c.id, name: c.name, basePath: `/company/${c.id}`, source: c.source as CompanyBundle["source"],
-    months, settings, alerts, accounts, commentary, readOnly: mem?.role === "viewer",
+    months, settings, alerts, accounts, commentary, readOnly: access.readOnly,
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
-    role: mem?.role ?? "viewer", orgId: c.org_id, dataVersion: c.data_version,
+    role: access.role, orgId: c.org_id, dataVersion: c.data_version,
     accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config),
   };
 });

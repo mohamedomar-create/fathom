@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { notFound } from "next/navigation";
 import { getUser } from "@/lib/supabase/server";
+import { accessFrom, AccessError } from "./access";
 
 export interface CompanyMeta { id: string; orgId: string; role: "admin" | "editor" | "viewer"; dataVersion: number; source: string; kpiConfig: unknown }
 
@@ -13,11 +14,14 @@ export interface CompanyMeta { id: string; orgId: string; role: "admin" | "edito
 export const loadCompanyMeta = cache(async (id: string): Promise<CompanyMeta> => {
   const { supabase, user } = await getUser();
   if (!user) notFound();
-  const { data: c } = await supabase.from("companies").select("id, org_id, data_version, source, kpi_config").eq("id", id).maybeSingle();
+  // A read that failed is an error (the error screen with a retry), not "not found"; no membership is not found.
+  const { data: c, error: cErr } = await supabase.from("companies").select("id, org_id, data_version, source, kpi_config").eq("id", id).maybeSingle();
+  if (cErr) throw new AccessError(cErr.code);
   if (!c) notFound();
-  const { data: m } = await supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle();
-  if (!m) notFound();
-  return { id: c.id, orgId: c.org_id, role: m.role as CompanyMeta["role"], dataVersion: c.data_version, source: c.source, kpiConfig: c.kpi_config };
+  const { data: m, error: mErr } = await supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle();
+  const access = accessFrom(m, mErr);
+  if (access === "none") notFound();
+  return { id: c.id, orgId: c.org_id, role: access.role, dataVersion: c.data_version, source: c.source, kpiConfig: c.kpi_config };
 });
 
 const list = (rows: { id: string; created_at: string }[] | null) => (rows ?? []).map((r) => `${r.id}@${r.created_at}`).join(",");
