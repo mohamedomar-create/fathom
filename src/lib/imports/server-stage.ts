@@ -1,6 +1,8 @@
 import { parseFiles } from "./prepare";
 import { isTransient, missingOf, stageRows, type Range } from "./stage";
 import type { ExportKey, SavedMapping } from "@/lib/ingest/odoo-templates";
+import { readWorkbook } from "@/lib/ingest/read";
+import { preflightGate } from "@/lib/preflight/server";
 
 /**
  * A job's rows read and sent by the server, so the page can be closed once the original files are uploaded. The files
@@ -26,6 +28,11 @@ export async function readJobOnServer(db: StageDb, jobId: string, mappings: Reco
   if (!job || job.status !== "preparing") throw new Error("This import is no longer open.");
   if (!job.files.length || job.files.some((f) => !f.stored)) throw new Error("NOT_STORED: the original files are not all uploaded yet.");
   const files = await Promise.all(job.files.map(async (f) => ({ name: f.filename, data: await db.download(f.storage_path), export: f.export_key as ExportKey, mapping: mappings[f.id] })));
+  // Preflight again on the server, on the stored file itself: one that cannot be imported is refused before any row is sent.
+  for (const f of files) {
+    const why = preflightGate(await readWorkbook(f.data, f.name), "stock", { stockMapping: f.mapping as Record<string, string> | undefined });
+    if (why) throw new Error(`PREFLIGHT: ${f.name} cannot be imported yet. ${why}`);
+  }
   const parsed = await parseFiles(files, { rentalLocation: job.options.rentalLocation ?? null, asOf: job.options.asOf ?? "", timeZone: job.options.timeZone ?? null, cutoff: job.options.cutoff ?? null, locationTypes: job.options.locationTypes });
   return { job, parsed };
 }

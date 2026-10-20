@@ -3,6 +3,7 @@ import { parseFiles, sampleFile } from "./prepare";
 import { readWorkbooks } from "@/lib/ingest/read";
 import { planPaymentsUpload } from "@/lib/ingest/payments-upload";
 import { handleSheets, keepSheets } from "./sheets-store";
+import { runPreflight } from "@/lib/preflight/run";
 import type { WorkerRequest, WorkerResponse } from "./worker-protocol";
 
 /** Reads uploads off the page's main thread, so the page never freezes on a large export. */
@@ -18,7 +19,9 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     } else if (m.type === "put" || m.type === "ingest" || m.type === "derive") {
       post(handleSheets(m));
     } else if (m.type === "payments") {
-      post({ id: m.id, type: "payments", plan: planPaymentsUpload(await readWorkbooks(m.files), { currency: m.currency }) });
+      post({ id: m.id, type: "payments", plan: planPaymentsUpload(m.grids ?? await readWorkbooks(m.files), { currency: m.currency }) });
+    } else if (m.type === "preflight") {
+      post({ id: m.id, type: "preflight", ...runPreflight(m.grids, m.module, m.decisions, m.stockMapping) });
     } else if (m.type === "sample") {
       const samples = [];
       for (const f of m.files) samples.push(await sampleFile(f.name, f.data, m.saved, f.export ?? null));

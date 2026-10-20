@@ -180,12 +180,16 @@ export async function startImport(companyId: string, mode: ImportMode, files: Im
   } finally { activeHere.delete(job); }
 }
 
+class Refused extends Error {}
 /** Asks the server to read the stored files and send their rows. False: it could not take over (the page does it). */
 async function handOff(job: string, mappings: Record<string, SavedMapping>): Promise<boolean> {
   try {
     const r = await fetch(`/api/imports/${job}/stage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mappings }) });
+    // The server's preflight refused the stored file: the page must not send its rows either.
+    if (r.status === 422) { const why = String((await r.json().catch(() => ({})) as { error?: string }).error ?? ""); if (/^PREFLIGHT/.test(why)) throw new Refused(why); }
     return r.status === 202;
-  } catch {
+  } catch (e) {
+    if (e instanceof Refused) throw e;
     return false;
   }
 }

@@ -64,6 +64,8 @@ export interface SheetReport {
   issues: PreflightIssue[];
   /** Fields the person can map, for the column picker (list modules only). */
   fields: { key: string; label: string; required: boolean }[];
+  /** Numbers on the sheet (a sheet left out with figures on it is always shown to the person). */
+  figures: number;
   /** Stock sheets: which Odoo export they were checked as. */
   stockKey?: string;
 }

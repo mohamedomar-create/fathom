@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 import type { Grid } from "@/lib/ingest/extract";
 import { readWorkbook } from "@/lib/ingest/read";
-import { cleanWorkbook, inspectWorkbook, toCsv, toXlsx, supportedFile, type Decisions } from "@/lib/preflight";
+import { cleanWorkbook, inspectWorkbook, runPreflight, toCsv, toXlsx, supportedFile, type Decisions } from "@/lib/preflight";
 
 const d = (s: string) => new Date(`${s}T00:00:00`);
 const codes = (r: { issues: { code: string }[] }) => r.issues.map((i) => i.code).sort();
@@ -156,6 +156,23 @@ describe("module rules", () => {
     const s = inspectWorkbook([{ name: "TB", rows: [["Code", "Account", "Debit", "Credit"], ["110100", "Cash", 100, 0], [null, null, null, null], ["310000", "Capital", 0, 100]] }], "accounts").sheets[0];
     expect(s.status).toBe("ready");
     expect(issue(s, "blank_rows")).toMatchObject({ level: "info" });
+  });
+});
+
+describe("an agency statement", () => {
+  it("collection rows (no value) are not lines and the End row is checked as a total, as the statement reader does", () => {
+    const g: Grid = { name: "UPA SOA", rows: [
+      ["Date", "DN #", "Name", "Value"],
+      [d("2026-09-01"), "1", "Shifa Hospital", 100],
+      [d("2026-09-05"), "", "Shifa Hospital", null],
+      [d("2026-09-07"), "2", "Nour Hospital", 50],
+      ["End", null, null, 150],
+    ] };
+    const r = runPreflight([g], "agency", {});
+    expect(r.report.sheets[0].status).toBe("ready_after_fixes");
+    expect(codes(r.report.sheets[0])).toEqual(["blank_rows", "total_rows"]);
+    expect(r.final.ready).toBe(true);
+    expect(r.cleaned.grids[0].rows.map((x) => x[3])).toEqual(["Value", 100, null, 50]);
   });
 });
 

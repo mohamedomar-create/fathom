@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { ODOO_TEMPLATES, type ExportKey, type Field, type SavedMapping } from "@/lib/ingest/odoo-templates";
 import type { FileSample } from "@/lib/imports/prepare";
-import { sampleInWorker } from "@/lib/imports/worker-client";
+import { preflightInWorker, readInWorker, sampleInWorker } from "@/lib/imports/worker-client";
+import type { Grid } from "@/lib/ingest/extract";
+import type { PreflightRun } from "@/lib/preflight";
+import { PreflightReportView } from "@/components/preflight/preflight";
 import { importError, pendingJob, savedTemplates, saveTemplate, startImport, type ImportMode, type ImportProgress } from "@/lib/imports/jobs";
 import { saveInventorySettings } from "@/app/company/[id]/settings/actions";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
@@ -39,8 +42,19 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
   const [resume, setResume] = useState<string | null>(null);
   const [jobsKey, setJobsKey] = useState(0);
   const input = useRef<HTMLInputElement>(null);
+  // Preflight of each whole file (the sample shows only its first rows): read once, checked again when a column changes.
+  const [pfGrids, setPfGrids] = useState<Record<string, Grid[]>>({});
+  const [pfRuns, setPfRuns] = useState<Record<string, PreflightRun>>({});
 
   useEffect(() => { savedTemplates(companyId).then(setSaved, () => setSaved({})); }, [companyId]);
+  useEffect(() => {
+    let live = true;
+    const todo = (samples ?? []).filter((s) => pfGrids[s.name]);
+    Promise.all(todo.map(async (s) => [s.name, await preflightInWorker(pfGrids[s.name], "stock", {}, (s.export ? saved[s.export] : undefined) as Record<string, string> | undefined)] as const))
+      .then((rs) => { if (live) setPfRuns(Object.fromEntries(rs)); })
+      .catch((e: Error) => { if (live) setErr(e.message || "The files could not be checked."); });
+    return () => { live = false; };
+  }, [samples, pfGrids, saved]);
 
   async function sample(fs: File[], s: Partial<Record<ExportKey, SavedMapping>>, f: Record<string, ExportKey | null>) {
     setBusy(true); setErr(null);
@@ -55,8 +69,10 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
     const big = fs.find((f) => f.size > MAX_MB * 1024 * 1024);
     if (big) { setErr(`${big.name} is larger than ${MAX_MB} MB. Export a shorter date range.`); return; }
     if (fs.some((f) => !/\.(xlsx|xls|csv)$/i.test(f.name))) { setErr("Choose Excel (.xlsx) or CSV files exported from Odoo."); return; }
-    setFiles(fs); setForced({}); setChanged(new Set());
+    setFiles(fs); setForced({}); setChanged(new Set()); setPfRuns({}); setPfGrids({});
     await sample(fs, saved, {});
+    try { setPfGrids(Object.fromEntries(await Promise.all(fs.map(async (f) => [f.name, await readInWorker([{ name: f.name, data: await f.arrayBuffer() }])] as const)))); }
+    catch (e) { setErr((e as Error).message || "The files could not be read."); }
     setScreen("check");
   }
   const setColumn = async (key: ExportKey, field: Field, heading: string) => {
@@ -73,6 +89,8 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
 
   const ready = samples?.filter((s) => s.export && !s.columns?.missing.length) ?? [];
   const blocked = samples?.filter((s) => !s.export || s.columns?.missing.length) ?? [];
+  const pfPending = ready.some((s) => !pfRuns[s.name]);
+  const pfBlocked = ready.filter((s) => pfRuns[s.name]?.report.sheets.some((x) => x.include && x.status === "cannot_import"));
   const exportsUsed = new Set(ready.map((s) => s.export));
   const repeated = ready.length !== exportsUsed.size;
   const stockFiles = ready.filter((s) => s.export === "stock.valuation.layer" || s.export === "stock.move.line");
@@ -172,9 +190,16 @@ export function OdooImport({ companyId, rentalLocation: savedRental, timeZone = 
             <span className="text-mute">Optional. Layers and moves dated after it are left out. Stock on hand is the count on the day it was exported.</span>
           </label>
         )}
+        {ready.length > 0 && (
+          <section className="mt-5 max-w-5xl space-y-2" data-testid="stock-preflight">
+            <h3 className="font-medium">Whole-file check</h3>
+            <p className="text-[13px] text-mute">Every row of each file, checked against what the stock import needs. The original file is imported (Odoo&apos;s date-times decide each record&apos;s day); the server checks every row again and stops on any it cannot read.</p>
+            {ready.map((s) => (pfRuns[s.name] ? <PreflightReportView key={s.name} run={pfRuns[s.name]} fileName={s.name} /> : <p key={s.name} className="text-[13px] text-mute">Checking {s.name}…</p>))}
+          </section>
+        )}
         {repeated && <p className="mt-4 max-w-5xl rounded bg-red-bg px-3 py-2 text-sm text-red">Two files are the same kind of export. Import one of each at a time.</p>}
-        <WizardNav onBack={() => { setScreen("upload"); setSamples(null); }} next="Next: how to save" nextTestId="import-next" disabled={busy || !ready.length || repeated || blocked.length > 0}
-          hint={blocked.length ? `Fix or remove: ${blocked.map((b) => b.name).join(", ")}.` : undefined} onNext={() => { setMode(null); setScreen("save"); }} />
+        <WizardNav onBack={() => { setScreen("upload"); setSamples(null); }} next="Next: how to save" nextTestId="import-next" disabled={busy || !ready.length || repeated || blocked.length > 0 || pfPending || pfBlocked.length > 0}
+          hint={blocked.length ? `Fix or remove: ${blocked.map((b) => b.name).join(", ")}.` : pfBlocked.length ? `Cannot import yet: ${pfBlocked.map((b) => b.name).join(", ")}.` : pfPending ? "Checking the whole files…" : undefined} onNext={() => { setMode(null); setScreen("save"); }} />
       </div>
     );
   }

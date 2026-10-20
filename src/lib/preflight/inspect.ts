@@ -32,7 +32,8 @@ export const colOf = (g: Grid, j: number) => colLetter((g.origin?.c ?? 0) + j);
 export const blankRow = (r: Cell[] | undefined) => !r || r.every(empty);
 const listed = (xs: number[]) => xs.slice(0, MAX_ROWS_LISTED);
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
-const rowsText = (rows: number[]) => (rows.length <= 8 ? rows.join(", ") : `${rows.slice(0, 8).join(", ")} and ${rows.length - 8} more`);
+/** "row 8", "rows 5, 7", "rows 1, 2 … and 40 more". */
+const rowsText = (rows: number[]) => `${rows.length === 1 ? "row" : "rows"} ${rows.length <= 8 ? rows.join(", ") : `${rows.slice(0, 8).join(", ")} and ${rows.length - 8} more`}`;
 
 /** How a date cell is written: the import reads all of these, once a numeric date's day/month order is known. */
 export type DateForm = "excel" | "iso" | "numeric" | "text" | "invalid";
@@ -133,23 +134,24 @@ export function planColumns(g: Grid, h: number, rules: ListRules, d: SheetDecisi
 
 // ---------------------------------------------------------------- rows
 
-interface RowPlan { data: number[]; blank: number[]; totals: number[]; oddTotals: number[] }
-export function planRows(g: Grid, h: number, amountCol: number | undefined, keyCols: number[]): RowPlan {
+interface RowPlan { data: number[]; blank: number[]; totals: number[]; oddTotals: number[]; notLines: number[] }
+export function planRows(g: Grid, h: number, amountCol: number | undefined, keyCols: number[], opts: { lineCol?: number; totalRx?: RegExp } = {}): RowPlan {
   let last = g.rows.length - 1;
   while (last > h && blankRow(g.rows[last])) last--;
-  const out: RowPlan = { data: [], blank: [], totals: [], oddTotals: [] };
+  const out: RowPlan = { data: [], blank: [], totals: [], oddTotals: [], notLines: [] };
   let run = 0;
   for (let i = h + 1; i <= last; i++) {
     const r = g.rows[i];
     if (blankRow(r)) { out.blank.push(i); continue; }
     const label = (r ?? []).slice(0, 4).find((c) => typeof c === "string" && c.trim());
-    const isTotal = typeof label === "string" && TOTAL_ROW.test(normAr(label.trim())) && keyCols.every((c) => empty(r?.[c]) || r?.[c] === label);
+    const isTotal = typeof label === "string" && (TOTAL_ROW.test(normAr(label.trim())) || Boolean(opts.totalRx?.test(label.trim()))) && keyCols.every((c) => empty(r?.[c]) || r?.[c] === label);
     if (isTotal) {
       const v = amountCol === undefined ? null : cleanNum(r?.[amountCol] ?? null);
       (v !== null && Math.abs(v - run) <= 0.01 ? out.totals : out.oddTotals).push(i);
       run = 0;
       continue;
     }
+    if (opts.lineCol !== undefined && empty(r?.[opts.lineCol])) { out.notLines.push(i); continue; }
     out.data.push(i);
     if (amountCol !== undefined) run += cleanNum(r?.[amountCol] ?? null) ?? 0;
   }
@@ -179,8 +181,8 @@ function layoutOnly(ctx: Ctx, opts: { blankLevel: "info" }) {
   const errCols = new Set<string>();
   for (let i = first + 1; i < last; i++) if (blankRow(g.rows[i])) blanks.push(rowNo(g, i));
   g.rows.forEach((r, i) => (r ?? []).forEach((c, j) => { if (typeof c === "string" && ERROR_TEXT.test(c.trim())) { errs.push(rowNo(g, i)); errCols.add(colOf(g, j)); } }));
-  if (blanks.length) add(ctx, { code: "blank_rows", level: opts.blankLevel, fix: "auto", rows: listed(blanks), message: `${plural(blanks.length, "blank row")} inside the table (rows ${rowsText(blanks)}).`, action: "Blank rows are skipped; nothing to do." });
-  if (errs.length) add(ctx, { code: "error_cells", level: "info", fix: "source", rows: listed([...new Set(errs)]), cols: [...errCols], message: `${plural(errs.length, "cell")} show a spreadsheet error (#REF!, #DIV/0!…) in rows ${rowsText([...new Set(errs)])}.`, action: "The import reports any figure it needs from these cells. Fix the formulas in the file and upload it again." });
+  if (blanks.length) add(ctx, { code: "blank_rows", level: opts.blankLevel, fix: "auto", rows: listed(blanks), message: `${plural(blanks.length, "blank row")} inside the table (${rowsText(blanks)}).`, action: "Blank rows are skipped; nothing to do." });
+  if (errs.length) add(ctx, { code: "error_cells", level: "info", fix: "source", rows: listed([...new Set(errs)]), cols: [...errCols], message: `${plural(errs.length, "cell")} show a spreadsheet error (#REF!, #DIV/0!…) in ${rowsText([...new Set(errs)])}.`, action: "The import reports any figure it needs from these cells. Fix the formulas in the file and upload it again." });
 }
 
 function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule }): { header: number; columns: PreflightColumn[]; dataRows: number; dateOrder: DateOrder | null } {
@@ -215,12 +217,13 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
 
   const amountCol = rules.amount.map((k) => plan.byField.get(k)).find((c) => c !== undefined);
   const keyCols = ["date", "doc", "ref", "id"].map((k) => plan.byField.get(k)).filter((c): c is number => c !== undefined);
-  const rows = planRows(g, h, amountCol, keyCols);
+  const rows = planRows(g, h, amountCol, keyCols, { lineCol: rules.lineIf ? plan.byField.get(rules.lineIf) : undefined, totalRx: rules.totalRx });
   const excluded = new Set(d.exclude ?? []);
+  if (rows.notLines.length) add(ctx, { code: "blank_rows", level: "info", fix: "auto", rows: listed(rows.notLines.map((i) => rowNo(g, i))), message: `${plural(rows.notLines.length, "row")} have no ${rules.fields.find((f) => f.key === rules.lineIf)?.label ?? rules.lineIf} (such as collections).`, action: "They are not lines of this import and are skipped by it; nothing to do." });
   const data = rows.data.filter((i) => !excluded.has(i));
-  if (rows.blank.length) add(ctx, { code: "blank_rows", level: "fix", fix: "auto", rows: listed(rows.blank.map((i) => rowNo(g, i))), message: `${plural(rows.blank.length, "blank row")} inside the table (rows ${rowsText(rows.blank.map((i) => rowNo(g, i)))}).`, action: "Blank rows are left out." });
-  if (rows.totals.length) add(ctx, { code: "total_rows", level: "fix", fix: "auto", rows: listed(rows.totals.map((i) => rowNo(g, i))), message: `${plural(rows.totals.length, "total row")} (rows ${rowsText(rows.totals.map((i) => rowNo(g, i)))}) equal the rows above ${rows.totals.length === 1 ? "it" : "them"}.`, action: "Total rows are left out so nothing is counted twice; each was checked against the rows it adds up." });
-  if (rows.oddTotals.length) add(ctx, { code: "total_mismatch", level: decided("fix", d.dropOddTotals !== undefined), fix: "decision", rows: listed(rows.oddTotals.map((i) => rowNo(g, i))), message: `${plural(rows.oddTotals.length, "row")} labelled as a total (rows ${rowsText(rows.oddTotals.map((i) => rowNo(g, i)))}) ${rows.oddTotals.length === 1 ? "does" : "do"} not equal the rows above.`, action: d.dropOddTotals === undefined ? "Leave them out if they are totals (the rows above may be incomplete), or keep them if they are real lines named \"Total…\"." : d.dropOddTotals ? "Left out, as you chose." : "Kept as lines, as you chose." });
+  if (rows.blank.length) add(ctx, { code: "blank_rows", level: "fix", fix: "auto", rows: listed(rows.blank.map((i) => rowNo(g, i))), message: `${plural(rows.blank.length, "blank row")} inside the table (${rowsText(rows.blank.map((i) => rowNo(g, i)))}).`, action: "Blank rows are left out." });
+  if (rows.totals.length) add(ctx, { code: "total_rows", level: "fix", fix: "auto", rows: listed(rows.totals.map((i) => rowNo(g, i))), message: `${plural(rows.totals.length, "total row")} (${rowsText(rows.totals.map((i) => rowNo(g, i)))}) equal the rows above ${rows.totals.length === 1 ? "it" : "them"}.`, action: "Total rows are left out so nothing is counted twice; each was checked against the rows it adds up." });
+  if (rows.oddTotals.length) add(ctx, { code: "total_mismatch", level: decided("fix", d.dropOddTotals !== undefined), fix: "decision", rows: listed(rows.oddTotals.map((i) => rowNo(g, i))), message: `${plural(rows.oddTotals.length, "row")} labelled as a total (${rowsText(rows.oddTotals.map((i) => rowNo(g, i)))}) ${rows.oddTotals.length === 1 ? "does" : "do"} not equal the rows above.`, action: d.dropOddTotals === undefined ? "Leave them out if they are totals (the rows above may be incomplete), or keep them if they are real lines named \"Total…\"." : d.dropOddTotals ? "Left out, as you chose." : "Kept as lines, as you chose." });
 
   // Duplicates: rows identical in every cell.
   const seen = new Map<string, number[]>();
@@ -228,7 +231,7 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
   const dupGroups = [...seen.values()].filter((v) => v.length > 1);
   if (dupGroups.length) {
     const all = dupGroups.flat().sort((a, b) => a - b).map((i) => rowNo(g, i));
-    add(ctx, { code: "duplicates", level: decided("fix", d.duplicates !== undefined), fix: "decision", rows: listed(all), message: `${plural(dupGroups.reduce((s, x) => s + x.length - 1, 0), "row")} repeat another row exactly (rows ${rowsText(all)}).`, action: d.duplicates === undefined ? "Keep one of each if they were exported twice; keep all if they are real separate lines (the same item sold twice on one day)." : d.duplicates === "keep_first" ? "One of each kept, as you chose." : "All kept, as you chose." });
+    add(ctx, { code: "duplicates", level: decided("fix", d.duplicates !== undefined), fix: "decision", rows: listed(all), message: `${plural(dupGroups.reduce((s, x) => s + x.length - 1, 0), "row")} repeat another row exactly (${rowsText(all)}).`, action: d.duplicates === undefined ? "Keep one of each if they were exported twice; keep all if they are real separate lines (the same item sold twice on one day)." : d.duplicates === "keep_first" ? "One of each kept, as you chose." : "All kept, as you chose." });
   }
 
   // Required values on each row.
@@ -240,7 +243,7 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
   }
   if (missRows.size) {
     const rs = [...missRows].sort((a, b) => a - b).map((i) => rowNo(g, i));
-    add(ctx, { code: "missing_values", level: decided("fix", Boolean(d.dropMissing)), fix: "decision", rows: listed(rs), cols: [...missCols], message: `${plural(rs.length, "row")} miss a required value (rows ${rowsText(rs)}).`, needs: `Every line needs: ${rules.required.map((grp) => groupLabel(rules, grp)).join(", ")}.`, action: d.dropMissing ? "These rows are left out and listed as rejected, as you approved." : "Fill them in the file and upload again, or approve importing the other rows only (these are listed as rejected)." });
+    add(ctx, { code: "missing_values", level: decided("fix", Boolean(d.dropMissing)), fix: "decision", rows: listed(rs), cols: [...missCols], message: `${plural(rs.length, "row")} miss a required value (${rowsText(rs)}).`, needs: `Every line needs: ${rules.required.map((grp) => groupLabel(rules, grp)).join(", ")}.`, action: d.dropMissing ? "These rows are left out and listed as rejected, as you approved." : "Fill them in the file and upload again, or approve importing the other rows only (these are listed as rejected)." });
   }
 
   // Values in the fields the import reads.
@@ -264,7 +267,7 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
       const needsOrder = forms.has("numeric") && !found.order;
       if (needsOrder && !d.dateOrder) add(ctx, { code: "date_order", level: "fix", fix: "decision", cols: [c.letter], message: `Dates in column ${c.letter} such as "${text(vals.find((v) => dateForm(v) === "numeric"))}" could be day/month or month/day: no date in the file settles it.`, action: "Say how the dates are written. It is never guessed, because a wrong guess moves sales between months." });
       const bad = data.filter((i) => { const v = g.rows[i]?.[c.index]; return !empty(v) && !(typeof v === "string" && ERROR_TEXT.test(v.trim())) && dateForm(v) === "invalid"; });
-      if (bad.length) add(ctx, { code: "invalid_dates", level: decided("fix", Boolean(d.dropInvalid)), fix: "decision", rows: listed(bad.map((i) => rowNo(g, i))), cols: [c.letter], message: `${plural(bad.length, "cell")} in column ${c.letter} are not dates (rows ${rowsText(bad.map((i) => rowNo(g, i)))}).`, action: d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Correct them in the file, or approve leaving those rows out." });
+      if (bad.length) add(ctx, { code: "invalid_dates", level: decided("fix", Boolean(d.dropInvalid)), fix: "decision", rows: listed(bad.map((i) => rowNo(g, i))), cols: [c.letter], message: `${plural(bad.length, "cell")} in column ${c.letter} are not dates (${rowsText(bad.map((i) => rowNo(g, i)))}).`, action: d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Correct them in the file, or approve leaving those rows out." });
       const readable = [...forms].filter((f) => f !== "invalid");
       if (readable.length > 1 && (!needsOrder || d.dateOrder)) add(ctx, { code: "date_formats", level: "fix", fix: "auto", cols: [c.letter], message: `Column ${c.letter} writes dates in ${readable.length} ways (${readable.map((f) => ({ excel: "Excel dates", iso: "2026-09-30", numeric: "30/09/2026", text: "30-Sep-2026", invalid: "" })[f]).join(", ")}).`, action: `All are written as YYYY-MM-DD${dateOrder ? ` (read ${dateOrder === "dmy" ? "day first" : "month first"})` : ""}.` });
     }
@@ -274,10 +277,10 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
     const rs = [...new Set([...m.values()].flat())].sort((a, b) => a - b).map((i) => rowNo(g, i));
     add(ctx, { code, level, fix, rows: listed(rs), cols: [...m.keys()].map((j) => colOf(g, j)), message: msg([...m.values()].reduce((s, x) => s + x.length, 0), rowsText(rs)), action });
   };
-  cellsIssue("text_numbers", textNum, (n, rs) => `${plural(n, "number")} are stored as text (rows ${rs}).`, "They are read as numbers (thousand separators, brackets for negatives and currency marks are understood).", "fix", "auto");
-  cellsIssue("invalid_numbers", badNum, (n, rs) => `${plural(n, "cell")} in an amount or quantity column are not numbers (rows ${rs}).`, d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Correct them in the file, or approve leaving those rows out. They are never read as zero.", decided("fix", Boolean(d.dropInvalid)), "decision");
+  cellsIssue("text_numbers", textNum, (n, rs) => `${plural(n, "number")} are stored as text (${rs}).`, "They are read as numbers (thousand separators, brackets for negatives and currency marks are understood).", "fix", "auto");
+  cellsIssue("invalid_numbers", badNum, (n, rs) => `${plural(n, "cell")} in an amount or quantity column are not numbers (${rs}).`, d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Correct them in the file, or approve leaving those rows out. They are never read as zero.", decided("fix", Boolean(d.dropInvalid)), "decision");
   const errInUsed = [...errCell.keys()].some((j) => plan.columns.find((c) => c.index === j)?.field);
-  cellsIssue("error_cells", errCell, (n, rs) => `${plural(n, "cell")} show a spreadsheet error (#REF!, #DIV/0!…) in rows ${rs}.`, errInUsed ? (d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Fix the formulas in the file and upload again, or approve leaving those rows out.") : "They are in columns the import does not use.", errInUsed ? decided("fix", Boolean(d.dropInvalid)) : "info", errInUsed ? "decision" : "source");
+  cellsIssue("error_cells", errCell, (n, rs) => `${plural(n, "cell")} show a spreadsheet error (#REF!, #DIV/0!…) in ${rs}.`, errInUsed ? (d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Fix the formulas in the file and upload again, or approve leaving those rows out.") : "They are in columns the import does not use.", errInUsed ? decided("fix", Boolean(d.dropInvalid)) : "info", errInUsed ? "decision" : "source");
 
   // Currencies.
   for (const c of plan.columns.filter((x) => CURRENCY_HEAD.test(normAr(x.heading)))) {
@@ -324,12 +327,13 @@ export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { 
     const d: SheetDecision = { ...(opts.decisions?.[g.name] ?? {}) };
     const ctx: Ctx = { g, d, issues: [] };
     const isEmpty = g.rows.every(blankRow);
-    const base = { sheet: g.name, hidden: Boolean(g.hidden), empty: isEmpty, copyOf: cp.get(g.name) ?? null, headerRow: -1, headerRowNo: 0, columns: [] as PreflightColumn[], dataRows: 0, dateOrder: null as DateOrder | null, fields: [] as SheetReport["fields"] };
+    const base = { sheet: g.name, hidden: Boolean(g.hidden), empty: isEmpty, copyOf: cp.get(g.name) ?? null, headerRow: -1, headerRowNo: 0, columns: [] as PreflightColumn[], dataRows: 0, dateOrder: null as DateOrder | null, fields: [] as SheetReport["fields"], figures: 0 };
     if (isEmpty) {
       add(ctx, { code: "empty", level: "block", fix: "source", message: "This sheet is empty.", action: "Nothing to import from it; it is left out." });
       return { ...base, role: "notes", roleLabel: "Empty", status: "cannot_import", include: false, issues: ctx.issues };
     }
     const guess = guessRole(g);
+    base.figures = guess.figures;
     let role: string = guess.role;
     let rules: ListRules | null = null;
     let relevant = false;

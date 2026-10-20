@@ -31,7 +31,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const plan = planColumns(g, h, rules, d);
     const amountCol = rules.amount.map((k) => plan.byField.get(k)).find((c) => c !== undefined);
     const keyCols = ["date", "doc", "ref", "id"].map((k) => plan.byField.get(k)).filter((c): c is number => c !== undefined);
-    const rows = planRows(g, h, amountCol, keyCols);
+    const rows = planRows(g, h, amountCol, keyCols, { lineCol: rules.lineIf ? plan.byField.get(rules.lineIf) : undefined, totalRx: rules.totalRx });
     const spec = (j: number) => rules.fields.find((f) => f.key === [...plan.byField].find(([, c]) => c === j)?.[0]);
 
     // The heading row: a column the person chose takes the heading the import reads; one that lost its field says so.
@@ -49,7 +49,9 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const excluded = new Set(d.exclude ?? []);
     const dropTotals = d.dropOddTotals ? rows.oddTotals : [];
     change("total_rows", rows.totals.length + dropTotals.length, `${rows.totals.length + dropTotals.length} total row(s) left out`);
-    const keep = [...rows.data, ...(d.dropOddTotals === false ? rows.oddTotals : [])].sort((a, b) => a - b);
+    // Rows that are not lines (an agency statement's collections) stay in the copy as they were: the import skips them.
+    const keep = [...rows.data, ...rows.notLines, ...(d.dropOddTotals === false ? rows.oddTotals : [])].sort((a, b) => a - b);
+    const notLine = new Set(rows.notLines);
     const required = rules.required.map((grp) => grp.map((k) => plan.byField.get(k)).filter((c): c is number => c !== undefined)).filter((cols) => cols.length);
     const usedCols = [...plan.byField.values()];
     const curCol = s.columns.find((c) => CURRENCY_HEAD.test(normAr(c.heading)))?.index;
@@ -59,6 +61,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     for (const i of keep) {
       const r = g.rows[i];
       if (excluded.has(i)) { manual++; reject(i, "left out by you"); continue; }
+      if (notLine.has(i)) { body.push(copyRow(r)); continue; }
       const k = rowKey(r);
       if (d.duplicates === "keep_first" && first.has(k)) { dups++; reject(i, `duplicate of row ${rowNo(g, first.get(k)!)}`); continue; }
       if (!first.has(k)) first.set(k, i);

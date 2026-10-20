@@ -1,6 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { zodProblem } from "@/lib/preflight/server";
 import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
@@ -64,7 +65,8 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
 export async function addSalesLines(companyId: string, batch: string, lines: z.input<typeof Line>[], last: boolean): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
   const ids = z.object({ companyId: z.string().uuid(), batch: z.string().uuid() }).safeParse({ companyId, batch });
   const ls = z.array(Line).min(1).max(4000).safeParse(lines);
-  if (!ids.success || !ls.success) return { ok: false, error: "The sales lines are not valid." };
+  if (!ids.success) return { ok: false, error: "The sales lines are not valid." };
+  if (!ls.success) return { ok: false, error: zodProblem(ls.error, "sales line") };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {

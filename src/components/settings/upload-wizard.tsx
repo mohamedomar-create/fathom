@@ -1,4 +1,7 @@
 "use client";
+import { Preflight } from "@/components/preflight/preflight";
+import { PreflightSummary, RejectedDownload } from "@/components/preflight/summary";
+import type { PreflightModule, PreflightRun } from "@/lib/preflight";
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
@@ -89,6 +92,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // The person chose, on purpose, to save a summary report as figures although the books come from a ledger.
   const [asFigures, setAsFigures] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  // Preflight: the upload as read, waiting for its check; the check's result once it is done (for the save screen).
+  const [pf, setPf] = useState<{ files: File[]; grids: Grid[] } | null>(null);
+  const [pfRun, setPfRun] = useState<PreflightRun | null>(null);
+  const pfModule: PreflightModule = kind === "opening" ? "opening" : kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : kind === "inventory" ? "stock" : kind === "payments" ? "payments" : "accounts";
+  const pfLabel = kind === "opening" ? "Opening balances" : kind === "sales" ? "Sales" : kind === "expenses" ? "Expenses" : kind === "inventory" ? "Stock" : kind === "payments" ? "Receivables, payables & payments" : "Accounts";
   // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
   const [allGrids, setAllGrids] = useState<Grid[] | null>(null);
   // The same sheets kept in the background worker (under this token), where every reading of them runs.
@@ -167,8 +175,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
    * Sheets from the files (spreadsheets, or tables read from PDF pages): iReport decides what each one is (accounts, a
    * sales or bills list, a cash book, a bank statement, a price list, a summary) and the person can change it.
    */
-  const takeSheets = useCallback((fs: File[], gs: Grid[], token: string) => {
-    const gu = guessRoles(gs);
+  const takeSheets = useCallback((fs: File[], gs: Grid[], token: string, hints: Record<string, SheetRole> = {}) => {
+    // A list preflight recognised by its headings (a sales or bills list) is that list, however short it is.
+    const gu = guessRoles(gs).map((g) => (hints[g.sheet] && hints[g.sheet] !== g.role ? { ...g, role: hints[g.sheet], sure: true, why: "Its headings are the ones this import reads." } : g));
     setAllGrids(gs); setSheetsToken(token); setGuesses(gu); setRoles({}); setRolesOk(false);
     setOverrides({}); setSalesOv({}); setExpOv({}); setCashOv({}); setBankOv({}); setPlOn(null); setPlMap({});
     // The reading panel's findings come with the first reading, from the worker.
@@ -178,7 +187,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
-    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setAllGrids(null); setSalesOv({}); setExpOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null); setExpMode(null);
+    setErr(null); setBusy(true); setFiles(fs); setDiag(null); setPreview(null); setAllGrids(null); setPf(null); setPfRun(null); setSalesOv({}); setExpOv({}); setFocus(null); setPicked(null); setModeChosen(false); setSalesMode(null); setExpMode(null);
     try {
       if (!fs.length) throw new Error("Choose a file.");
       if (fs.length > 6) throw new Error("Upload up to 6 files at a time.");
@@ -192,16 +201,26 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       }
       setPdfSummary(null);
       if (pdfs.length) { setAllGrids(null); setPdfJob({ files: pdfs, sheets: grids }); return; }
-      takeSheets(fs, grids, token || await putSheets(grids));
+      void token;
+      // Every spreadsheet is checked before it is read for the import (preflight): the cleaned copy goes on.
+      setPf({ files: fs, grids });
     } catch (e) {
       console.error("upload read failed", e);
       setErr((e as Error).message || "The file could not be read."); setAllGrids(null);
     } finally { setBusy(false); }
-  }, [demo, takeSheets]);
+  }, [demo]);
+  const pfReady = useCallback(async ({ run }: { run: PreflightRun }) => {
+    const job = pf;
+    if (!job) return;
+    setPfRun(run); setPf(null);
+    const hints = Object.fromEntries(run.final.sheets.filter((x) => x.role === "sales" || x.role === "bills").map((x) => [x.sheet, x.role as SheetRole]));
+    try { takeSheets(job.files, run.cleaned.grids, await putSheets(run.cleaned.grids), hints); }
+    catch (e) { setErr((e as Error).message || "The file could not be read."); }
+  }, [pf, takeSheets]);
   async function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
     setPdfJob(null); setPdfSummary(summary); setErr(null);
-    try { const gs = [...(job?.sheets ?? []), ...pdfGrids]; takeSheets(files, gs, await putSheets(gs)); }
+    try { setPf({ files, grids: [...(job?.sheets ?? []), ...pdfGrids] }); }
     catch (e) { setErr((e as Error).message || "The figures could not be read."); setAllGrids(null); }
   }
 
@@ -609,6 +628,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="wiz-upload">
         <WizardSteps at="upload" />
+        {pf && (
+          <div className="max-w-4xl">
+            <WizardTitle title="Check the file" hint="Each sheet is checked against what this import needs before anything is imported." />
+            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} />
+            <WizardNav onBack={() => { setPf(null); setScreen("upload"); }} />
+          </div>
+        )}
+        {!pf && <>
         <WizardTitle title="Upload your file" hint={kind === "opening" ? "Your opening balances: Odoo's General Ledger or Trial Balance for the opening day, or our template." : kind === "inventory" ? "Your Odoo Inventory exports: one sheet, or several together." : kind === "sales" ? "Your sales file." : kind === "expenses" ? "Your vendor bills, or the expenses template." : "Your accounts file. You can add your Trial Balance too: it double-checks the numbers."} />
         <div
           onDragOver={(e) => e.preventDefault()}
@@ -625,6 +652,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           {(err || ingestErr) && diag && <button type="button" onClick={(e) => { e.stopPropagation(); downloadDiagnostic(outcome ? { ...diag, warnings: [...diag.warnings, ...outcome.extract.warnings], skipped: [...diag.skipped, ...outcome.extract.skippedCols] } : diag); }} className="mt-2 text-xs text-mute underline" data-testid="download-diagnostic">Send this to support (download)</button>}
         </div>
         <WizardNav onBack={() => setScreen("get")} />
+        </>}
       </div>
     );
   }
@@ -638,6 +666,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <CheckCircle2 className="h-12 w-12 shrink-0" />
           <div><div className="text-2xl font-medium">{checked ? "Checked" : "Saved!"}</div><div className="text-[15px]">{done.what.replace(/\.$/, "")}.</div></div>
         </div>
+        {pfRun && pfRun.cleaned.rejected.length > 0 && <p className="mb-4 text-[14px]" data-testid="done-rejected">{pfRun.cleaned.rejected.length} row{pfRun.cleaned.rejected.length === 1 ? " was" : "s were"} not imported. <RejectedDownload run={pfRun} label="Download them with the reason for each" /></p>}
         {kind === "accounts" && !checked && <ImportReadiness />}
         <div className="flex flex-wrap gap-3">
           {checked
@@ -725,6 +754,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       return (
         <div data-testid="books-save">
           <WizardSteps at="save" />
+          <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} />
           <WizardTitle title="Save your money in and out" hint={`${expToSave.length.toLocaleString("en-US")} expense lines and ${salesToSave.length.toLocaleString("en-US")} sales lines${months.length ? `, ${monthsText(months)}` : ""}.`} />
           <LineModes fileMonths={months} loaded={[...new Set([...salesLoaded, ...expensesLoaded])]} chosen={expMode} onChoose={(m) => { setExpMode(m); setSalesMode(m); }} />
           <ul className="mt-4 max-w-4xl space-y-1 text-[14px]" data-testid="books-save-summary">
@@ -829,6 +859,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       return (
         <div data-testid="expenses-save">
           <WizardSteps at="save" />
+          <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} />
           <WizardTitle title="Save your expenses" hint={`${expToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
           <LineModes fileMonths={ps} loaded={expensesLoaded} chosen={expMode} onChoose={setExpMode} />
           {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
@@ -877,6 +908,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       return (
         <div data-testid="sales-save">
           <WizardSteps at="save" />
+          <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} />
           <WizardTitle title="Save your sales" hint={`${salesToSave.length.toLocaleString("en-US")} lines${ps.length ? `, ${monthsText(ps)}` : ""}.`} />
           <LineModes fileMonths={ps} loaded={salesLoaded} chosen={salesMode} onChoose={setSalesMode} />
           {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
@@ -962,6 +994,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="timeline-step">
         <WizardSteps at="save" />
+          <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} />
         <WizardTitle title="Save your data" hint={`This file has ${monthsText([...new Set([...res.slices.PL, ...res.slices.BS])].sort())}.`} />
         {kind === "opening" && <p className="text-[15px]" data-testid="opening-save-note">Saved as your opening balances. Months before them are removed; balances loaded from zero after them move by the opening amounts (see month by month).</p>}
         {kind !== "opening" && overlap.length > 0 && (

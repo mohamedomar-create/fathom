@@ -3,7 +3,11 @@ import { useRef, useState } from "react";
 import { AlertTriangle, FileSpreadsheet, Upload } from "lucide-react";
 import type { PaymentsUploadPlan } from "@/lib/ingest/payments-upload";
 import { saveAgedReport } from "@/app/company/[id]/settings/payments-actions";
-import { planPaymentsInWorker } from "@/lib/imports/worker-client";
+import { planPaymentsFromGrids, readInWorker } from "@/lib/imports/worker-client";
+import type { Grid } from "@/lib/ingest/extract";
+import { Preflight } from "@/components/preflight/preflight";
+import { PreflightSummary } from "@/components/preflight/summary";
+import type { PreflightRun } from "@/lib/preflight";
 import { savePayments } from "@/lib/company/save-payments";
 import { SaveProgress } from "@/components/upload/save-progress";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
@@ -22,8 +26,11 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [acceptUnread, setAcceptUnread] = useState(false);
+  const [pf, setPf] = useState<{ names: string; grids: Grid[] } | null>(null);
+  const [pfRun, setPfRun] = useState<PreflightRun | null>(null);
+  const company = useCompany();
+  const currency = company.settings.currency;
   const input = useRef<HTMLInputElement>(null);
-  const currency = useCompany().settings.currency;
   const nothing = plan && !plan.aged.length && !plan.payments.lines.length;
 
   async function onFiles(fs: File[]) {
@@ -32,7 +39,21 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     if (fs.some((f) => !/\.(xlsx|xls|csv)$/i.test(f.name))) { setErr("Choose Excel (.xlsx) or CSV files exported from Odoo."); return; }
     setBusy(true);
     try {
-      setPlan(await planPaymentsInWorker(fs, currency));
+      setPfRun(null);
+      setPf({ names: fs.map((f) => f.name).join(" + "), grids: await readInWorker(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))) });
+    } catch (e) { setErr((e as Error).message || "The files could not be read."); }
+    finally { setBusy(false); }
+  }
+
+  /** After preflight: the cleaned sheets are read; sheets preflight could not import are passed on, so they are named and need a tick. */
+  async function afterPreflight(run: PreflightRun) {
+    if (!pf) return;
+    setBusy(true); setPfRun(run);
+    try {
+      // Only sheets that are no ageing report or payments list go on (to be named and ticked); hidden or copied ones the person left out stay out.
+      const leftOut = pf.grids.filter((g) => run.report.sheets.find((s) => s.sheet === g.name)?.issues.some((i) => i.code === "irrelevant"));
+      setPlan(await planPaymentsFromGrids([...run.cleaned.grids, ...leftOut], currency));
+      setPf(null);
     } catch (e) { setErr((e as Error).message || "The files could not be read."); }
     finally { setBusy(false); }
   }
@@ -65,6 +86,16 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     </div>
   );
 
+  if (!plan && pf) return (
+    <div data-testid="payments-preflight" className="max-w-4xl">
+      <WizardSteps at="upload" />
+      <WizardTitle title="Check the files" hint="Each sheet is checked against what this import needs before anything is imported." />
+      <Preflight module="payments" moduleLabel="Receivables, payables & payments" grids={pf.grids} fileName={pf.names} stopOnLeftOut={false} onReady={({ run }) => void afterPreflight(run)} />
+      {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
+      <WizardNav onBack={() => setPf(null)} back="Choose other files" />
+    </div>
+  );
+
   if (!plan) return (
     <div data-testid="payments-upload">
       <WizardSteps at="upload" />
@@ -82,6 +113,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
     <div data-testid="payments-check">
       <WizardSteps at="check" />
       <WizardTitle title="Check what iReport read" hint="Every partner's documents are added up and checked against the report's own totals." />
+      <PreflightSummary run={pfRun} company={company.name} moduleLabel="Receivables, payables & payments" />
       <ul className="max-w-4xl space-y-3">
         {plan.aged.map((a) => (
           <li key={a.sheet} className="rounded-lg border border-line p-4" data-testid={`aged-${a.report.side}`}>
@@ -116,7 +148,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
       )}
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
       {progress && <SaveProgress what={progress.what} done={progress.done} of={progress.of} />}
-      <WizardNav onBack={() => { setPlan(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
+      <WizardNav onBack={() => { setPlan(null); setPf(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
     </div>
   );
 }

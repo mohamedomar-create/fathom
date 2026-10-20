@@ -3,4 +3,5 @@
 export { inspectWorkbook, rulesFor, colLetter } from "./inspect";
 export { cleanWorkbook, beforeAfter, type CleanChange, type Cleaned, type Rejected } from "./clean";
 export { toCsv, toXlsx, supportedFile } from "./export";
+export { runPreflight, type PreflightRun } from "./run";
 export type { Decisions, FixKind, IssueCode, PreflightColumn, PreflightIssue, PreflightModule, PreflightReport, SheetDecision, SheetReport, SheetStatus } from "./types";

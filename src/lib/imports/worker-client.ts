@@ -9,6 +9,8 @@ import type { IngestOutcome, IngestParams, LedgerLines } from "@/lib/ingest/wiza
 export type { WorkerRequest, WorkerResponse } from "./worker-protocol";
 import type { WorkerRequest, WorkerResponse } from "./worker-protocol";
 import { handleSheets, keepSheets } from "./sheets-store";
+import { runPreflight, type PreflightRun } from "@/lib/preflight/run";
+import type { Decisions, PreflightModule } from "@/lib/preflight";
 
 let worker: Worker | null = null;
 let next = 1;
@@ -30,7 +32,9 @@ function run<T extends WorkerResponse>(req: NoId<WorkerRequest>, onProgress?: (d
     return (r.type === "read"
       ? readWorkbooks(r.files).then((grids) => { if (r.keep) keepSheets(r.keep, grids); return { id, type: "read", grids }; })
       : r.type === "payments"
-      ? readWorkbooks(r.files).then((grids) => ({ id, type: "payments", plan: planPaymentsUpload(grids, { currency: r.currency }) }))
+      ? (r.grids ? Promise.resolve(r.grids) : readWorkbooks(r.files)).then((grids) => ({ id, type: "payments", plan: planPaymentsUpload(grids, { currency: r.currency }) }))
+      : r.type === "preflight"
+      ? Promise.resolve({ id, type: "preflight", ...runPreflight(r.grids, r.module, r.decisions, r.stockMapping) })
       : r.type === "sample"
       ? Promise.all(r.files.map((f) => sampleFile(f.name, f.data, r.saved, f.export ?? null))).then((samples) => ({ id, type: "sample", samples }))
       : parseFiles(r.files, r.opts, onProgress).then((result) => ({ id, type: "parse", result }))) as Promise<T>;
@@ -65,6 +69,10 @@ export async function readInWorker(files: { name: string; data: ArrayBuffer }[])
   return (await run<Extract<WorkerResponse, { type: "read" }>>({ type: "read", files })).grids;
 }
 
+/** Ageing reports and payments lists from sheets already read (and checked by preflight), off the page's main thread. */
+export async function planPaymentsFromGrids(grids: Grid[], currency: string): Promise<PaymentsUploadPlan> {
+  return (await run<Extract<WorkerResponse, { type: "payments" }>>({ type: "payments", files: [], grids, currency })).plan;
+}
 /** Ageing reports and payments lists: read and checked off the page's main thread. */
 export async function planPaymentsInWorker(files: File[], currency: string): Promise<PaymentsUploadPlan> {
   const data = await Promise.all(files.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })));
@@ -91,4 +99,10 @@ export async function ingestInWorker(token: string, sheets: string[], params: In
 /** The ledger's sales, expense, stock and payment lines, from the last reading, off the page. */
 export async function deriveInWorker(token: string): Promise<LedgerLines> {
   return (await run<Extract<WorkerResponse, { type: "derive" }>>({ type: "derive", token })).lines;
+}
+
+/** Preflight off the page: the report, the cleaned copy with the person's decisions, and the cleaned copy's own report. */
+export async function preflightInWorker(grids: Grid[], module: PreflightModule, decisions: Decisions, stockMapping?: Record<string, string>): Promise<PreflightRun> {
+  const { report, cleaned, final } = await run<Extract<WorkerResponse, { type: "preflight" }>>({ type: "preflight", grids, module, decisions, stockMapping });
+  return { report, cleaned, final };
 }

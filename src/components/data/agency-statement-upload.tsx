@@ -3,7 +3,11 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { money, pct, type AgencyLine } from "@/lib/engine";
 import { readAgencyStatement, type AgencyStatement } from "@/lib/ingest/agency-statement";
-import { readForUpload } from "@/lib/imports/worker-client";
+import { readInWorker } from "@/lib/imports/worker-client";
+import type { Grid } from "@/lib/ingest/extract";
+import { Preflight } from "@/components/preflight/preflight";
+import { PreflightSummary } from "@/components/preflight/summary";
+import type { PreflightRun } from "@/lib/preflight";
 import { resolveEndUsers, type EndUserData } from "@/lib/company/end-users-parse";
 import { useCompany } from "@/lib/company/context";
 import { removeAgencyStatement, saveAgencyStatement } from "@/app/company/[id]/data/actions";
@@ -27,6 +31,8 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
   const [filename, setFilename] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
+  const [pf, setPf] = useState<{ name: string; grids: Grid[] } | null>(null);
+  const [pfRun, setPfRun] = useState<PreflightRun | null>(null);
   const cur = c.settings.currency;
   const now = useMemo(() => resolveEndUsers(data), [data]);
 
@@ -38,11 +44,20 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
   const largest = reads?.slice().sort((a, b) => b.lines.length - a.lines.length)[0];
 
   const read = async (f: File) => {
-    setMsg(null);
+    setMsg(null); setReads(null); setPfRun(null);
     try {
-      const { grids } = await readForUpload([{ name: f.name, data: await f.arrayBuffer() }]);
-      const found = grids.map((g) => readAgencyStatement(g, { booksStart })).filter((r): r is AgencyStatement => Boolean(r && r.lines.length));
-      setFilename(f.name);
+      setPf({ name: f.name, grids: await readInWorker([{ name: f.name, data: await f.arrayBuffer() }]) });
+    } catch (e) {
+      setMsg((e as Error).message || "The file could not be read.");
+    }
+  };
+  // After preflight: the statement is read from the cleaned copy only.
+  const afterPreflight = (run: PreflightRun) => {
+    const name = pf?.name ?? "";
+    setPf(null); setPfRun(run);
+    try {
+      const found = run.cleaned.grids.map((g) => readAgencyStatement(g, { booksStart })).filter((r): r is AgencyStatement => Boolean(r && r.lines.length));
+      setFilename(name);
       setReads(found);
       const big = found.slice().sort((a, b) => b.lines.length - a.lines.length)[0];
       setPicked(new Set(big ? [big.sheet] : []));
@@ -79,9 +94,11 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
         </p>
       )}
       {msg && <p className="mb-3 rounded border border-line bg-panel p-2 text-[13.5px]" role="status">{msg}</p>}
-      {!c.readOnly && <input type="file" accept=".xlsx,.xls,.csv" aria-label="Agency statement file" onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); }} className="text-sm" />}
+      {!c.readOnly && <input type="file" accept=".xlsx,.xls,.csv" aria-label="Agency statement file" onChange={(e) => { const f = e.target.files?.[0]; if (f) void read(f); e.target.value = ""; }} className="text-sm" />}
+      {pf && <div className="mt-4 max-w-4xl"><Preflight module="agency" moduleLabel="Agency statement" grids={pf.grids} fileName={pf.name} onReady={({ run }) => afterPreflight(run)} /></div>}
       {reads && reads.length > 0 && (
         <div className="mt-4 space-y-3" data-testid="statement-preview">
+          <PreflightSummary run={pfRun} company={c.name} moduleLabel="Agency statement" />
           <table className="w-full max-w-4xl text-[13px]">
             <thead><tr className="label"><th className="py-1 text-start">Use</th><th className="text-start">Sheet</th><th className="text-end">Lines</th><th className="text-end">Value</th><th className="text-start ps-4">Notes</th></tr></thead>
             <tbody>

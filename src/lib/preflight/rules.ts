@@ -21,6 +21,10 @@ export interface ListRules {
   pivotOk: boolean;
   /** The column whose figures a total row adds up. */
   amount: string[];
+  /** Rows with this field empty are not lines (an agency statement's collection rows): skipped by the import, never "missing". */
+  lineIf?: string;
+  /** More labels that mark a closing total row (the statement's "End"). */
+  totalRx?: RegExp;
 }
 
 const str = (c: Cell) => (c === null || c === undefined ? "" : c instanceof Date ? c.toISOString().slice(0, 10) : String(c).replace(/\s+/g, " ").trim());
@@ -69,6 +73,8 @@ export const AGENCY_RULES: ListRules = {
   fieldOf: (h) => agencyFieldOf(h),
   pivotOk: false,
   amount: ["value"],
+  lineIf: "value",
+  totalRx: /^end$/i,
 };
 
 const ODOO_TYPE: Partial<Record<OdooField, FieldType>> = { date: "date", updated: "date", qty: "number", value: "number", unitValue: "number", cost: "number" };
