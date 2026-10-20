@@ -72,10 +72,12 @@ export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { 
     ? XLSX.read(decodeText(data), { type: "string", raw: true, ...rows })
     : XLSX.read(new Uint8Array(data), { type: "array", cellDates: true, ...rows });
   const date1904 = !isCsv && Boolean((wb.Workbook as { WBProps?: { date1904?: boolean } } | undefined)?.WBProps?.date1904);
+  const hiddenNames = new Set(((wb.Workbook as { Sheets?: { name?: string; Hidden?: number }[] } | undefined)?.Sheets ?? []).filter((x) => x.Hidden).map((x) => x.name));
   return wb.SheetNames.map((name): Grid => {
     const ws = wb.Sheets[name];
+    const hidden = hiddenNames.has(name) ? { hidden: true } : {};
     if (isCsv) return { name: filename.replace(/\.[^.]+$/, ""), rows: csvCells(XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true })) };
-    if (!ws["!ref"]) return { name, rows: [] };
+    if (!ws["!ref"]) return { name, rows: [], ...hidden };
     // Rows and columns are counted from the sheet's used range, which need not start at A1.
     const at = XLSX.utils.decode_range(ws["!ref"]).s;
     const cells: { r: number; c: number; cell: SheetCell }[] = [];
@@ -86,7 +88,7 @@ export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { 
       const a = XLSX.utils.decode_cell(k);
       cells.push({ r: a.r, c: a.c, cell });
     }
-    if (!cells.length) return { name, rows: [] };
+    if (!cells.length) return { name, rows: [], ...hidden };
     const { end, cut } = extent(cells, at, XLSX.utils.encode_col);
     const rows = XLSX.utils.sheet_to_json<Cell[]>(ws, { header: 1, raw: true, defval: null, blankrows: true, range: { s: at, e: end } });
     const formulas: Record<string, string> = {};
@@ -103,6 +105,7 @@ export async function readWorkbook(data: ArrayBuffer, filename: string, opts: { 
     return {
       name, rows: fillMerges(rows, merges), origin: at, ...(date1904 ? { date1904 } : {}), ...(full && opts.sheetRows ? { totalRows: full.e.r - full.s.r + 1 } : {}),
       ...(Object.keys(formulas).length ? { formulas } : {}), ...(cut.length ? { cut } : {}), ...(broken ? { broken } : {}),
+      ...hidden, ...(merges.length ? { merges: merges.length } : {}),
     };
   });
 }

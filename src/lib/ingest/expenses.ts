@@ -129,7 +129,7 @@ const FIELD_RX: [ExpenseField, RegExp][] = [
   ["label", arRx(/^(product|description|label|item|details|narration|memo|البيان|الصنف|الوصف|المنتج)$/i)],
 ];
 /** A heading's field; a required-mark "*" is ignored, and an amount "(excl. VAT)" is the amount before tax. */
-const fieldOf = (h: string): ExpenseField | null => {
+export const expenseFieldOf = (h: string): ExpenseField | null => {
   const excl = /\((excl\.?|excluding|before|without) (vat|tax)\)/i.test(h);
   const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
   const f = FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
@@ -169,7 +169,7 @@ export function readExpenseGrid(g: Grid, ov: ExpenseOverride = {}): { lines: Exp
   for (let r = 0; r < Math.min(rows.length, 25); r++) {
     const heads = rows[r].map((v) => str(v));
     if (heads.some((h) => LEDGER_HDR.test(normAr(h)))) return null;
-    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : fieldOf(h)));
+    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : expenseFieldOf(h)));
     const has = (f: ExpenseField) => fields.includes(f);
     if (!(has("untaxed") || has("total")) || !(has("date") || has("period")) || !(has("supplier") || has("account") || has("category") || has("label"))) continue;
     // Purchases, not sales: a vendor / supplier heading, mostly vendor-bill numbers, or iReport's expenses template.

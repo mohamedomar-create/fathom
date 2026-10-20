@@ -88,7 +88,7 @@ const FIELD_RX: [SalesField, RegExp][] = [
   ["margin", arRx(/^(margin|gross margin|profit|الربح|هامش الربح|مجمل الربح)$/i)],
 ];
 /** A heading's field; a required-mark "*" and "(excl. VAT)" are ignored, as in iReport's sales template. */
-const fieldOf = (h: string): SalesField | null => {
+export const salesFieldOf = (h: string): SalesField | null => {
   const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
   return FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
 };
@@ -142,7 +142,7 @@ export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLi
     if (heads.some((h) => ACCOUNT_HDR.test(normAr(h)))) return null;
     // Purchases (vendor bills, the expenses template) are read by the expenses reader.
     if (templateMarkOf(g) === "expenses" || heads.some((h) => VENDOR_HDR.test(normAr(h.replace(/\s*\*\s*$/, ""))))) return null;
-    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : fieldOf(h)));
+    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : salesFieldOf(h)));
     if (mostlyBills(rows.slice(r + 1), fields.indexOf("doc"))) return null;
     const has = (f: SalesField) => fields.includes(f);
     const months = heads.map((h, c) => ({ c, p: headerPeriod(h) })).filter((x) => x.p && x.p.months === 1);

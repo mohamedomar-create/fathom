@@ -18,7 +18,8 @@ const FIELDS: [Field, RegExp][] = [
   ["vat", arRx(/^(vat|الضريبه|ضريبه القيمه المضافه)$/i)],
   ["description", arRx(/^(descri(b|p)tion|البيان|الوصف)$/i)],
 ];
-const fieldOf = (c: Cell): Field | null => {
+export type AgencyField = Field;
+export const agencyFieldOf = (c: Cell): Field | null => {
   const t = normAr(String(c ?? "").replace(/\s+/g, " ").trim());
   return FIELDS.find(([, rx]) => rx.test(t))?.[0] ?? null;
 };
@@ -37,12 +38,12 @@ export interface AgencyStatement {
 /** The statement in a sheet, or null when the sheet has no date, hospital and value headings. */
 export function readAgencyStatement(g: Grid, opts: { booksStart?: string | null } = {}): AgencyStatement | null {
   const hi = g.rows.slice(0, 30).findIndex((r) => {
-    const f = new Set((r ?? []).map(fieldOf));
+    const f = new Set((r ?? []).map(agencyFieldOf));
     return f.has("date") && f.has("hospital") && f.has("value") && (f.has("dn") || f.has("ref"));
   });
   if (hi < 0) return null;
   const col = new Map<Field, number>();
-  (g.rows[hi] ?? []).forEach((c, i) => { const f = fieldOf(c); if (f && !col.has(f)) col.set(f, i); });
+  (g.rows[hi] ?? []).forEach((c, i) => { const f = agencyFieldOf(c); if (f && !col.has(f)) col.set(f, i); });
   const at = (r: Cell[], f: Field) => (col.has(f) ? r[col.get(f)!] : null);
   const lines: AgencyLine[] = [];
   const issues: string[] = [];

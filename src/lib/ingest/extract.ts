@@ -21,6 +21,10 @@ export interface Grid {
   cut?: { what: "columns" | "rows"; from: string; to: string; cells: number; rows: number[] }[];
   /** Cells showing a spreadsheet error (#REF!, #DIV/0!…): they hold that text, so a reader that needs them says so. */
   broken?: number;
+  /** The sheet is hidden in the workbook (often a working or helper sheet). */
+  hidden?: boolean;
+  /** How many merged areas the sheet has (their headings are copied into every cell they cover). */
+  merges?: number;
 }
 
 /** What a reader records while reading: row marks and unreadable cells, both indexed by the trimmed rows it read. */
