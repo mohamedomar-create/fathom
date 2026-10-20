@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, FileText, Settings } from "lucide-react";
+import { BarChart3, Database, FileText, Settings } from "lucide-react";
 import { money, pct } from "@/lib/engine";
 import { loadPortfolio } from "@/lib/company/portfolio";
 import { AppBar } from "@/components/shell/app-bar";
@@ -75,7 +75,9 @@ export default async function CompaniesPage() {
                 <div className="mt-4 flex gap-2 border-t border-line pt-3 text-sm">
                   <Link href={`/company/${c.id}/summary`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><BarChart3 className="h-4 w-4 text-brand-d" />{t.analysis}</Link>
                   <Link href={`/company/${c.id}/reports`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><FileText className="h-4 w-4 text-brand-d" />{t.reports}</Link>
-                  <Link href={`/company/${c.id}/data`} className="ms-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band"><Settings className="h-4 w-4" />{t.settings}</Link>
+                  {/* The same destinations as inside the company: Data ▸ Steps, and Settings ▸ Company profile. */}
+                  <Link href={`/company/${c.id}/data`} className="ms-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band" data-testid="card-data"><Database className="h-4 w-4" />{t.data}</Link>
+                  <Link href={`/company/${c.id}/settings/profile`} className="flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band" data-testid="card-settings"><Settings className="h-4 w-4" />{t.settings}</Link>
                 </div>
               </div>
             );

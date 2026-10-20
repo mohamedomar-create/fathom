@@ -16,6 +16,10 @@ export async function clearLedgerLines(companyId: string, periods: string[] | "a
   if (!v.success) return { ok: false, error: "Invalid request." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  // Row security would quietly delete nothing for a viewer; say so instead of reporting success.
+  const { data: co } = await supabase.from("companies").select("org_id").eq("id", v.data.companyId).maybeSingle();
+  const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
+  if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can do that." };
   try {
     await clearLedger(supabase, v.data.companyId, v.data.periods);
     return { ok: true };

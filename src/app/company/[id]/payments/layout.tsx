@@ -1,6 +1,7 @@
 import { PaymentsProvider } from "@/lib/company/payments-context";
 import { loadPayments, noPayments } from "@/lib/company/payments-load";
-import { ModuleGate, statusOf } from "@/components/shell/module-state";
+import { ModuleGate } from "@/components/shell/module-state";
+import { statusOf } from "@/lib/company/loaded";
 
 export default async function PaymentsLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;

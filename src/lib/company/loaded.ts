@@ -27,3 +27,7 @@ export const unknownState = (l: Pick<Loaded<unknown>, "status" | "data">, empty:
   l.status === "failed" || (l.status === "pending" && empty(l.data));
 
 export const loaded = <T>(status: LoadStatus, data: T, builtAt: string | null = null, extra: { ref?: string; code?: string } = {}): Loaded<T> => ({ status, data, builtAt, ...extra });
+
+/** A module's state without its figures (those go to the page's own provider), for the client-side gate. */
+export interface ModuleStatus { status: LoadStatus; builtAt: string | null; ref?: string; hasData: boolean }
+export const statusOf = (l: { status: LoadStatus; builtAt: string | null; ref?: string }, hasData: boolean): ModuleStatus => ({ status: l.status, builtAt: l.builtAt, ref: l.ref, hasData });

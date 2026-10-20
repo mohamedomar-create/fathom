@@ -25,7 +25,12 @@ export async function loadKept<T>(kind: Kind, companyId: string, parse: (raw: un
     const { state, keep } = fromStateRow<T>(result.data as StateRow, held, parse, empty, isEmpty, ref);
     if (keep) keepGood(kind, companyId, keep.seq, keep.builtAt, keep.data);
     logOp({ op: `summary_state:${kind}`, company: companyId, ms: Date.now() - t0, attempts, outcome: state.status === "ready" ? "ok" : state.status, code: state.code, ref: state.ref });
-    return state;
+    if (state.status !== "pending") return state;
+    // Just after a change, before the worker has rebuilt it: add it up live once (as before 0032), so the page shows the
+    // latest figures straight away. If that is too slow or fails, the previous figures (marked as updating) or the
+    // waiting screen stand.
+    const live = await liveSummary(kind, companyId, parse, ref);
+    return live ? loaded(isEmpty(live) ? "empty" : "ready", live) : state;
   }
   if (result.error.code !== "PGRST202") {
     logOp({ op: `summary_state:${kind}`, company: companyId, ms: Date.now() - t0, attempts, outcome: held ? "stale" : "failed", code: result.error.code, ref });
@@ -51,4 +56,13 @@ export async function loadKept<T>(kind: Kind, companyId: string, parse: (raw: un
     logOp({ op: `${LEGACY[kind]}`, company: companyId, ms: Date.now() - t1, attempts: tries, outcome: held ? "stale" : "failed", code, ref });
     return afterError(held, empty, ref, code);
   }
+}
+
+/** The summary function itself, once, with no retry (a pending rebuild is seconds away); null when it fails. */
+async function liveSummary<T>(kind: Kind, companyId: string, parse: (raw: unknown) => T, ref: string): Promise<T | null> {
+  const { supabase } = await getUser();
+  const t0 = Date.now();
+  const r = await supabase.rpc(LEGACY[kind], { p_company: companyId });
+  logOp({ op: `${LEGACY[kind]}:while-pending`, company: companyId, ms: Date.now() - t0, attempts: 1, outcome: r.error ? "failed" : "fallback", code: r.error?.code, ref: r.error ? ref : undefined });
+  return r.error ? null : parse(r.data);
 }

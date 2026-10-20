@@ -283,7 +283,8 @@ test("the report includes the forecast", async ({ page }) => {
 test("the sector tabs switch the side rail, and the old bank address still works", async ({ page }) => {
   await page.goto("/demo/summary");
   // Phones get the sectors as chips above the page; wider screens as tabs in the top bar (wait for either to render).
-  await expect(page.getByTestId("tab-sales").or(page.getByTestId("sector-sales")).first()).toBeVisible();
+  // (Both exist in the page; the top-bar tabs come first and are hidden on phones, so wait for the visible one.)
+  await expect(page.getByTestId("tab-sales").or(page.getByTestId("sector-sales")).filter({ visible: true }).first()).toBeVisible();
   const desktop = await page.getByTestId("tab-sales").isVisible();
   if (desktop) await expect(page.getByTestId("tab-financials")).toHaveAttribute("aria-current", "page");
   await page.getByTestId(desktop ? "tab-sales" : "sector-sales").click();

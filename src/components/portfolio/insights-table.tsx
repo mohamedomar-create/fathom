@@ -12,6 +12,8 @@ import { monthLabel } from "@/lib/i18n";
 import { term } from "@/lib/i18n/areas/fin";
 
 export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string }
+/** Margins whose group figure is a total ÷ total revenue (the numerator's P&L key). */
+const MARGIN_OF: Record<string, string> = { gpm: "gross_profit", nim: "net_income", opm: "operating_profit", ebitda_margin: "ebitda" };
 interface Metric { key: string; label: string; group: string; unit: Unit; get: (m: MonthCalc) => number | null; good?: "up" | "down" }
 
 const P = (k: string) => (m: MonthCalc) => (m.P as unknown as Record<string, number>)[k] ?? null;
@@ -115,10 +117,19 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
               {metrics.map((m) => {
                 const vals = shown.map((r) => val(r, m)).filter((v): v is number => v !== null);
                 const avg = vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+                // A margin for the group is total profit ÷ total revenue (only when every company reports in one currency);
+                // the simple average of each company's margin is shown as such.
+                const numer = MARGIN_OF[m.key];
+                const cur = new Set(shown.map((r) => r.c.currency));
+                const withP = shown.filter((r) => r.last && r.last.P.revenue);
+                const group = numer && cur.size === 1 && withP.length
+                  ? (withP.reduce((a, r) => a + ((r.last!.P as unknown as Record<string, number>)[numer] ?? 0), 0) / withP.reduce((a, r) => a + r.last!.P.revenue, 0)) * 100
+                  : null;
                 return (
                   <th key={m.key} colSpan={3} className="border-s border-line px-2 py-2 text-start align-bottom">
                     <SortBtn label={label(m)} active={sort.key === m.key} dir={sort.dir} onClick={() => setSort({ key: m.key, dir: sort.key === m.key ? (-sort.dir as 1 | -1) : -1 })} />
-                    <div className="text-[11px] font-normal text-mute">{t.avg} {fmt(avg, m, companies[0]?.currency ?? "")}</div>
+                    <div className="text-[11px] font-normal text-mute" title={t.avgTitle}>{t.avg} {fmt(avg, m, companies[0]?.currency ?? "")}</div>
+                    {group !== null && <div className="text-[11px] font-normal text-mute" title={t.groupTitle} data-testid={`group-${m.key}`}>{t.group} {fmt(group, m, companies[0]?.currency ?? "")}</div>}
                   </th>
                 );
               })}

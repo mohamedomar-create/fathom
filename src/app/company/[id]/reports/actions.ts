@@ -73,6 +73,8 @@ export async function deleteReport(companyId: string, id: string) {
   if (!Uuid.safeParse(companyId).success || !Uuid.safeParse(id).success) return;
   const { supabase, user } = await getUser();
   if (!user) return;
-  await supabase.from("reports").delete().eq("id", id).eq("company_id", companyId);
+  const { data, error } = await supabase.from("reports").delete().eq("id", id).eq("company_id", companyId).select("id");
+  // A refused delete (a viewer: row security removes nothing) is logged, never treated as done.
+  if (error || !data?.length) console.error(JSON.stringify({ kind: "op", op: "deleteReport", outcome: "failed", code: error?.code ?? "NOT_ALLOWED" }));
   revalidatePath(`/company/${companyId}/reports`);
 }

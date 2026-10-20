@@ -1,6 +1,7 @@
 import { SalesProvider } from "@/lib/company/sales-context";
 import { loadSales, noSales } from "@/lib/company/sales-load";
-import { ModuleGate, statusOf } from "@/components/shell/module-state";
+import { ModuleGate } from "@/components/shell/module-state";
+import { statusOf } from "@/lib/company/loaded";
 
 export default async function SalesLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;

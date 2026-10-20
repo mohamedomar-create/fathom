@@ -3,11 +3,8 @@ import { createContext, useContext, useEffect, useRef, useState, useTransition }
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { useT } from "@/lib/i18n/use-t";
-import type { LoadStatus } from "@/lib/company/loaded";
+import type { ModuleStatus } from "@/lib/company/loaded";
 
-/** A module's state without its figures (those go to the page's own provider). */
-export interface ModuleStatus { status: LoadStatus; builtAt: string | null; ref?: string; hasData: boolean }
-export const statusOf = (l: { status: LoadStatus; builtAt: string | null; ref?: string }, hasData: boolean): ModuleStatus => ({ status: l.status, builtAt: l.builtAt, ref: l.ref, hasData });
 
 const when = (iso: string | null, lang: string) => iso ? new Date(iso).toLocaleString(lang === "ar" ? "ar-EG" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;
 

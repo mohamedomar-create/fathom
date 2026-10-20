@@ -42,6 +42,11 @@ export async function clearData(companyId: string, scope: string, shown: number)
   if (!Id.safeParse(companyId).success || !s.success || !Number.isInteger(shown) || shown < 0) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  // The role first, so a viewer's attempt neither runs nor uses up the editors' reset allowance (the database checks it too).
+  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
+  const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
+  if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can clear data." };
+  if (s.data === "all" && mem.role !== "admin") return { ok: false, error: "Only organisation admins can clear everything." };
   if (await limited(supabase, "reset", companyId)) return { ok: false, error: TOO_MANY };
   const before = await previewReset(companyId);
   if (!before.ok) return before;

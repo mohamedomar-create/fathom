@@ -3,7 +3,8 @@ import { customersOf } from "@/lib/engine";
 import { loadSales } from "@/lib/company/sales-load";
 import { ExpensesProvider } from "@/lib/company/expenses-context";
 import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
-import { ModuleGate, statusOf } from "@/components/shell/module-state";
+import { ModuleGate } from "@/components/shell/module-state";
+import { statusOf } from "@/lib/company/loaded";
 import { hasFigures } from "@/lib/company/loaded";
 
 export default async function ExpensesLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
