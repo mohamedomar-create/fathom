@@ -20,3 +20,4 @@ export * from "./expenses";
 export * from "./series";
 export * from "./tieout";
 export * from "./inventory";
+export * from "./end-users";

@@ -34,7 +34,7 @@ export type ReportRow = {
   id: string; company_id: string; title: string; period_type: string; period_end: string; sections: Json; status: string; share_token: string | null; expires_at: string | null;
   published_at: string | null; created_by: string | null; created_at: string; updated_at: string;
 }
-export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null }
+export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null; sale_order: string | null; end_user: string | null; map_method: "order" | "contact" | "shipping" | null; note: string | null }
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
@@ -48,6 +48,7 @@ export type ImportJobRow = { id: string; company_id: string; kind: "inventory"; 
 export type ImportFileRow = { id: string; job_id: string; company_id: string; filename: string; size: number; export_key: string; kind: "valuation" | "moves" | "onhand" | "products"; storage_path: string; stored: boolean; rows_declared: number | null; counts: Json; created_at: string }
 export type ImportRowRow = { file_id: string; n: number; job_id: string; line: number | null; data: Json; error: string | null }
 export type AccountMapRow = { company_id: string; key: string; cls: string; name: string; updated_by: string | null; updated_at: string }
+export type EndUserMapRow = { company_id: string; kind: "alias" | "order" | "agency" | "not_agency"; key: string; hospital: string; updated_by: string | null; updated_at: string }
 export type InputProfileRow = { company_id: string; kind: string; headings: string[]; read: string[]; ignored: string[]; sheet: string; history: Json; updated_by: string | null; updated_at: string }
 export type ImportTemplateRow = { company_id: string; export_key: string; mapping: Json; updated_by: string | null; updated_at: string }
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
@@ -84,6 +85,7 @@ export type Database = {
       import_rows: Table<ImportRowRow, "file_id" | "n" | "job_id">;
       import_templates: Table<ImportTemplateRow, "company_id" | "export_key">;
       account_map: Table<AccountMapRow, "company_id" | "key" | "cls">;
+      end_user_map: Table<EndUserMapRow, "company_id" | "kind" | "key">;
       input_profiles: Table<InputProfileRow, "company_id" | "kind" | "headings">;
     };
     Views: { [_ in never]: never };
@@ -112,6 +114,7 @@ export type Database = {
       begin_sales_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       add_sales_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       sales_summary: { Args: { p_company: string }; Returns: Json };
+      end_user_summary: { Args: { p_company: string }; Returns: Json };
       get_published_sales: { Args: { p_token: string }; Returns: Json };
       begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };

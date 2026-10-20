@@ -66,14 +66,69 @@ export async function firstStockDay(c: DetailCtx): Promise<string | null> {
   return days[0] ?? null;
 }
 
+/** The fields a model has (an Odoo without the Sales app has no sale_line_ids, invoice_origin or sale.order). */
+async function fieldsOf(c: DetailCtx, model: string): Promise<Set<string>> {
+  try {
+    const f = await c.client.executeKw(model, "fields_get", [], { attributes: ["type"], context: ctxOf(c) });
+    return new Set(f && typeof f === "object" ? Object.keys(f as Record<string, unknown>) : []);
+  } catch (e) {
+    if (e instanceof OdooError) return new Set();
+    throw e;
+  }
+}
+
+const many2many = z.union([z.array(id).max(1000), z.literal(false), z.null()]).transform((x) => x || []);
+const Order = z.object({ id, name: text, partner_id: m2o });
+
+/**
+ * Who each invoice was for, from exact links only: the line's own sales order line, else the invoice's order number
+ * (when its orders share one customer), else the contact the invoice was addressed to, else its delivery address, when
+ * either differs from the billed customer. Nothing is matched by amount.
+ */
+async function endUsersOf(c: DetailCtx, rows: { id: number; partner_id: false | [number, string]; sale_line_ids: number[] }[], moves: Map<number, { partner_id: false | [number, string]; partner_shipping_id: false | [number, string]; invoice_origin: string }>, moveOf: Map<number, number>, sale: boolean) {
+  const out = new Map<number, { saleOrder?: string; endUser?: string; mapMethod?: "order" | "contact" | "shipping" }>();
+  const orderOfLine = new Map<number, number>();
+  const orders = new Map<number, z.infer<typeof Order>>();
+  if (sale) {
+    const sl = [...new Set(rows.flatMap((r) => r.sale_line_ids))];
+    if (sl.length) for (const l of trust(many(z.object({ id, order_id: m2o })), await c.client.executeKw("sale.order.line", "read", [sl], { fields: ["order_id"], context: ctxOf(c) }), "order lines")) if (l.order_id) orderOfLine.set(l.id, l.order_id[0]);
+    const ids = [...new Set(orderOfLine.values())];
+    if (ids.length) for (const o of trust(many(Order), await c.client.executeKw("sale.order", "read", [ids], { fields: ["name", "partner_id"], context: ctxOf(c) }), "orders")) orders.set(o.id, o);
+  }
+  const originNames = (o: string) => o.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+  const byName = new Map<string, z.infer<typeof Order>>();
+  if (sale) {
+    const names = [...new Set([...moves.values()].flatMap((m) => originNames(m.invoice_origin)))];
+    if (names.length) for (const o of trust(many(Order), await c.client.executeKw("sale.order", "search_read", [[["name", "in", names]]], { fields: ["name", "partner_id"], context: ctxOf(c) }), "orders")) byName.set(o.name, o);
+  }
+  for (const r of rows) {
+    const billed = nameOf(r.partner_id);
+    const linked = r.sale_line_ids.map((l) => orders.get(orderOfLine.get(l) ?? 0)).find((o) => o?.partner_id);
+    if (linked) { out.set(r.id, { saleOrder: linked.name, endUser: nameOf(linked.partner_id), mapMethod: "order" }); continue; }
+    const mv = moves.get(moveOf.get(r.id) ?? 0);
+    if (!mv) continue;
+    const found = originNames(mv.invoice_origin).map((n) => byName.get(n)).filter((o): o is z.infer<typeof Order> => Boolean(o?.partner_id));
+    const customers = new Set(found.map((o) => nameOf(o.partner_id)));
+    if (found.length && customers.size === 1) { out.set(r.id, { saleOrder: found.map((o) => o.name).join(", ").slice(0, 80), endUser: [...customers][0], mapMethod: "order" }); continue; }
+    const contact = nameOf(mv.partner_id), ship = nameOf(mv.partner_shipping_id);
+    if (contact && contact !== billed) out.set(r.id, { endUser: contact, mapMethod: "contact" });
+    else if (ship && ship !== billed) out.set(r.id, { endUser: ship, mapMethod: "shipping" });
+  }
+  return out;
+}
+
 /** One page of sales lines: untaxed, company currency, credit notes negative, free lines (zero amount) kept. */
 export async function salesPage(c: DetailCtx, range: { from: string; to: string }, offset: number): Promise<SalesLine[]> {
-  const rows = trust(many(z.object({ id, date: stamp, move_id: m2o, partner_id: m2o, product_id: m2o, quantity: amount, balance: amount, name: text })),
-    await c.client.executeKw("account.move.line", "search_read", [salesDomain(c, range.from, range.to)], { fields: ["date", "move_id", "partner_id", "product_id", "quantity", "balance", "name"], order: "date, id", limit: PAGE.sales, offset, context: ctxOf(c) }), "sales lines");
+  const [lineFields, moveFields, orderFields] = await Promise.all([fieldsOf(c, "account.move.line"), fieldsOf(c, "account.move"), fieldsOf(c, "sale.order")]);
+  const sale = lineFields.has("sale_line_ids") && orderFields.has("partner_id");
+  const extraMove = ["partner_id", "partner_shipping_id", "invoice_origin"].filter((f) => moveFields.has(f));
+  const rows = trust(many(z.object({ id, date: stamp, move_id: m2o, partner_id: m2o, product_id: m2o, quantity: amount, balance: amount, name: text, sale_line_ids: many2many.optional().transform((x) => x ?? []) })),
+    await c.client.executeKw("account.move.line", "search_read", [salesDomain(c, range.from, range.to)], { fields: ["date", "move_id", "partner_id", "product_id", "quantity", "balance", "name", ...(sale ? ["sale_line_ids"] : [])], order: "date, id", limit: PAGE.sales, offset, context: ctxOf(c) }), "sales lines");
   const moveIds = [...new Set(rows.map((r) => (r.move_id ? r.move_id[0] : 0)).filter(Boolean))];
-  const moves = moveIds.length ? trust(many(z.object({ id, name: text, invoice_user_id: m2o, move_type: text })), await c.client.executeKw("account.move", "read", [moveIds], { fields: ["name", "invoice_user_id", "move_type"], context: ctxOf(c) }), "invoices") : [];
+  const moves = moveIds.length ? trust(many(z.object({ id, name: text, invoice_user_id: m2o, move_type: text, partner_id: m2o.optional(), partner_shipping_id: m2o.optional(), invoice_origin: text.optional() })), await c.client.executeKw("account.move", "read", [moveIds], { fields: ["name", "invoice_user_id", "move_type", ...extraMove], context: ctxOf(c) }), "invoices") : [];
   const byMove = new Map(moves.map((m) => [m.id, m]));
   const cats = await categories(c, rows.map((r) => (r.product_id ? r.product_id[0] : 0)).filter(Boolean));
+  const users = await endUsersOf(c, rows, new Map(moves.map((m) => [m.id, { partner_id: m.partner_id ?? false, partner_shipping_id: m.partner_shipping_id ?? false, invoice_origin: m.invoice_origin ?? "" }])), new Map(rows.map((r) => [r.id, r.move_id ? r.move_id[0] : 0])), sale);
   return rows.map((r) => {
     const mv = r.move_id ? byMove.get(r.move_id[0]) : undefined;
     const refund = mv?.move_type === "out_refund";
@@ -81,10 +136,13 @@ export async function salesPage(c: DetailCtx, range: { from: string; to: string 
     const { category, product } = splitLabel(label);
     const amt = Math.round(-r.balance * 100) / 100 || 0;
     const doc = mv?.name || (r.move_id ? r.move_id[1] : "");
+    const who = users.get(r.id);
     return {
       day: r.date, period: r.date.slice(0, 7), doc, series: seriesOf(doc), customer: nameOf(r.partner_id) || NO_CUSTOMER,
       product, category: (r.product_id && cats.get(r.product_id[0])) || category, salesperson: mv ? nameOf(mv.invoice_user_id) : "",
       qty: r.quantity ? (refund ? -Math.abs(r.quantity) : Math.abs(r.quantity)) : r.quantity === 0 ? 0 : null, amount: amt, cost: null,
+      ...(who?.saleOrder ? { saleOrder: who.saleOrder } : {}),
+      ...(who?.endUser ? { endUser: who.endUser.slice(0, 200), mapMethod: who.mapMethod } : { ...(r.name || r.product_id ? { note: r.name.split(/\r?\n/)[0].trim().slice(0, 200) } : {}) }),
     };
   }).filter((l) => l.amount !== 0 || (l.qty ?? 0) !== 0);
 }

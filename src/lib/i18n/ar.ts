@@ -5,6 +5,7 @@ import { home } from "./areas/home";
 import { fin } from "./areas/fin";
 import { ana } from "./areas/ana";
 import { sales } from "./areas/sales";
+import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { bank } from "./areas/bank";
@@ -50,6 +51,7 @@ export const ar: Dict = {
     "sales/products": ["المنتجات", "المنتجات والفئات"],
     "sales/customers": ["العملاء", "العملاء"],
     "sales/trend": ["الاتجاه", "اتجاه المبيعات"],
+    "sales/end-users": ["المستخدمون النهائيون", "المستخدمون النهائيون (مبيعات الجهات المشترية)"],
     expenses: ["نظرة عامة", "نظرة عامة على المصروفات"],
     "expenses/accounts": ["الحسابات", "المصروفات حسب الحساب"],
     "expenses/suppliers": ["الموردون", "الموردون"],
@@ -106,6 +108,7 @@ export const ar: Dict = {
   fin: fin.ar,
   ana: ana.ar,
   sales: sales.ar,
+  eu: eu.ar,
   exp: exp.ar,
   inv: inv.ar,
   bank: bank.ar,

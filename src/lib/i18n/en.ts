@@ -5,6 +5,7 @@ import { home } from "./areas/home";
 import { fin } from "./areas/fin";
 import { ana } from "./areas/ana";
 import { sales } from "./areas/sales";
+import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { bank } from "./areas/bank";
@@ -53,6 +54,7 @@ export const en = {
     "sales/products": ["Products", "Products and Categories"],
     "sales/customers": ["Customers", "Customers"],
     "sales/trend": ["Trend", "Sales Trend"],
+    "sales/end-users": ["End users", "End Users (agency sales)"],
     expenses: ["Overview", "Expenses Overview"],
     "expenses/accounts": ["Accounts", "Expenses by Account"],
     "expenses/suppliers": ["Suppliers", "Suppliers"],
@@ -109,6 +111,7 @@ export const en = {
   fin: fin.en,
   ana: ana.en,
   sales: sales.en,
+  eu: eu.en,
   exp: exp.en,
   inv: inv.en,
   bank: bank.en,

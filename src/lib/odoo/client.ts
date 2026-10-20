@@ -11,7 +11,9 @@ const OPEN_CALLS = new Set(["common.version", "common.authenticate"]);
 /** The only Odoo models iReport reads. res.users is read for the connected user's own record only (its name and companies). */
 export const READ_MODELS: ReadonlySet<string> = new Set(["res.company", "res.users", "account.account", "ir.model.data", "account.move.line", "account.move",
   // Sales and stock detail: products, locations, valuation records, moves and stock on hand.
-  "product.product", "stock.location", "stock.valuation.layer", "stock.move.line", "stock.move", "stock.quant"]);
+  "product.product", "stock.location", "stock.valuation.layer", "stock.move.line", "stock.move", "stock.quant",
+  // The sales order behind an invoice line: its customer is the end user when a buying agency is billed.
+  "sale.order", "sale.order.line"]);
 /**
  * Odoo's own questions "may this user create / change / delete these records?", asked to prove the connected user cannot
  * change anything. They answer yes or no and change nothing: check_access_rights (Odoo 13–17, kept in 18) and has_access (18+).

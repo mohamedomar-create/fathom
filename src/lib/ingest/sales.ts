@@ -23,6 +23,14 @@ export interface SalesLine {
   qty: number | null;
   amount: number;
   cost: number | null;
+  /** The sales order behind the invoice line (live sync, or a Source Document column). */
+  saleOrder?: string;
+  /** Who the goods were for, when Odoo records it apart from the billed customer: the order's customer, the contact the
+   * invoice was addressed to, or its delivery address (mapMethod says which). Needed when a buying agency is billed. */
+  endUser?: string;
+  mapMethod?: "order" | "contact" | "shipping";
+  /** A line with no end-user link: its description, where an agency order number may be read ("( PRO 501 / 22 ) …"). */
+  note?: string;
   /** Where the line was read (sales files only): the sheet and its row as uploaded. Never saved. */
   src?: { sheet: string; row: number };
 }

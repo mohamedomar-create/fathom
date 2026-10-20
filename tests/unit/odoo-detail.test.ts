@@ -6,21 +6,44 @@ import { OdooClient } from "@/lib/odoo/client";
 import { countPart, firstStockDay, layersPage, movesPage, onHand, readLocations, salesPage, type DetailCtx } from "@/lib/odoo/detail";
 import { fakeOdoo } from "../fixtures/fake-odoo";
 
-const ctx = (v: 15 | 17 | 18 = 18): DetailCtx => ({ client: new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(v).fetch), companyId: 1, major: v, includeBranches: false });
+const ctx = (v: 15 | 17 | 18 = 18, opts: Parameters<typeof fakeOdoo>[1] = {}): DetailCtx => ({ client: new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(v, opts).fetch), companyId: 1, major: v, includeBranches: false });
 const RANGE = { from: "2021-07-01", to: "2026-10-31" };
 
 describe("sales lines by product", () => {
   it("an invoice, a free line and a credit note, as the Invoice Analysis upload reads them", async () => {
     const lines = await salesPage(ctx(), RANGE, 0);
     expect(lines).toEqual([
-      { day: "2026-09-03", period: "2026-09", doc: "INV/2026/00001", series: "INV", customer: "Northside Hospital", product: "Oxygen Concentrator", category: "All / Devices", salesperson: "Sara Sales", qty: 2, amount: 50000, cost: null },
-      { day: "2026-09-03", period: "2026-09", doc: "INV/2026/00001", series: "INV", customer: "Northside Hospital", product: "Nasal Cannula", category: "All / Consumables", salesperson: "Sara Sales", qty: 10, amount: 0, cost: null },
-      { day: "2026-09-20", period: "2026-09", doc: "RINV/2026/00001", series: "RINV", customer: "Northside Hospital", product: "Oxygen Concentrator", category: "All / Devices", salesperson: "Sara Sales", qty: -1, amount: -25000, cost: null },
+      { day: "2026-09-03", period: "2026-09", doc: "INV/2026/00001", series: "INV", customer: "Northside Hospital", product: "Oxygen Concentrator", category: "All / Devices", salesperson: "Sara Sales", qty: 2, amount: 50000, cost: null, note: "x" },
+      { day: "2026-09-03", period: "2026-09", doc: "INV/2026/00001", series: "INV", customer: "Northside Hospital", product: "Nasal Cannula", category: "All / Consumables", salesperson: "Sara Sales", qty: 10, amount: 0, cost: null, note: "free" },
+      { day: "2026-09-20", period: "2026-09", doc: "RINV/2026/00001", series: "RINV", customer: "Northside Hospital", product: "Oxygen Concentrator", category: "All / Devices", salesperson: "Sara Sales", qty: -1, amount: -25000, cost: null, note: "return" },
     ]);
     expect(await countPart(ctx(), "sales", RANGE)).toBe(3);
   });
   it("Odoo 15 marks invoice lines another way", async () => {
     expect((await salesPage(ctx(15), RANGE, 0)).length).toBe(3);
+  });
+});
+
+describe("the end user behind agency sales (exact links only)", () => {
+  const pick = (l: Awaited<ReturnType<typeof salesPage>>[number]) => [l.doc, l.customer, l.saleOrder ?? "", l.endUser ?? "", l.mapMethod ?? "", l.note ?? ""];
+  it("order line link, the invoice's order number, its addressed contact, its delivery address; an unlinked line keeps its description", async () => {
+    const lines = (await salesPage(ctx(18, { agency: true }), RANGE, 0)).filter((l) => l.customer.startsWith("الهيئة"));
+    expect(lines.map(pick)).toEqual([
+      ["INV2/2026/0901", "الهيئة المصرية للشراء الموحد", "S00010", "مستشفى النور التخصصي-الشراء الموحد", "order", ""],
+      ["INV2/2026/0902", "الهيئة المصرية للشراء الموحد", "S00011", "مستشفى الشفاء العام", "order", ""],
+      ["INV/2026/0100", "الهيئة المصرية للشراء الموحد", "", "الهيئة المصرية للشراء الموحد (جامعه الوادي)", "contact", ""],
+      ["INV/2026/0101", "الهيئة المصرية للشراء الموحد", "", "", "", "( PRO 501 / 22 ) - [Device] Airtech AE-8"],
+      ["INV/2026/0102", "الهيئة المصرية للشراء الموحد", "", "مستشفى الرحمة المركزي-الشراء الموحد", "shipping", ""],
+    ]);
+  });
+  it("a line with no order, contact or delivery link carries no end user", async () => {
+    const own = (await salesPage(ctx(18, { agency: true }), RANGE, 0)).filter((l) => l.customer === "Northside Hospital");
+    expect(own.every((l) => !l.endUser && !l.mapMethod)).toBe(true);
+  });
+  it("an Odoo without the Sales app still syncs its invoice lines (no order link to follow)", async () => {
+    const lines = await salesPage(ctx(18, { agency: true, noSale: true }), RANGE, 0);
+    expect(lines.length).toBe(8);
+    expect(lines.find((l) => l.doc === "INV2/2026/0901")?.mapMethod ?? "").toBe("");
   });
 });
 

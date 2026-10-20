@@ -61,7 +61,7 @@ const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 
 /** rights: what the connected user may do on accounting records ("read" = nothing, "write" = can change, "unknown" = Odoo won't say). */
 /** userCompanies: the companies the connected user may see. */
 /** custody: an employee's petty-cash custody account typed off-balance (as at the main company), coded next to the cash accounts. */
-export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; openingDate?: string; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[] } = {}) {
+export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolean; late?: boolean; custody?: boolean; openingDate?: string; rights?: "read" | "write" | "admin" | "unknown"; userCompanies?: number[]; agency?: boolean; noSale?: boolean } = {}) {
   const { accs, lines } = buildLedger();
   if (opts.custody) {
     accs.push({ id: 901, code: "101400", name: "Hossam Hassan", cls: "cash", type: "off_balance" });
@@ -84,7 +84,8 @@ export function fakeOdoo(version: 15 | 17 | 18 | 19, opts: { offBalance?: boolea
     else if (service === "common" && method === "authenticate") result = args[2] === "secret" ? 7 : false;
     else if (service === "object") {
       const [, , , model, m, a, kw] = args;
-      const detail = detailAnswer(model, m, a, kw, version);
+      const detail = detailAnswer(model, m, a, kw, version, opts);
+      if (detail && typeof detail === "object" && "__error" in detail) return json({ jsonrpc: "2.0", id: 1, error: { message: "Odoo Server Error", data: { name: "ValueError", message: (detail as { __error: string }).__error } } });
       if (detail !== undefined) result = detail;
       else if (m === "check_access_rights" || m === "has_access") {
         const rights = opts.rights ?? "read";
@@ -147,12 +148,30 @@ const LOCS = [
   { id: 5, complete_name: "Repair & Maintenance", usage: "inventory" },
 ];
 const PRODUCTS = [{ id: 11, categ_id: [7, "All / Devices"] }, { id: 12, categ_id: [8, "All / Consumables"] }];
-const INV_LINES = [
+const BASE_LINES = [
   { id: 1, date: "2026-09-03", move_id: [101, "INV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [11, "[P1] Oxygen Concentrator"], quantity: 2, balance: -50000, name: "x" },
   { id: 2, date: "2026-09-03", move_id: [101, "INV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [12, "[P2] Nasal Cannula"], quantity: 10, balance: 0, name: "free" },
   { id: 3, date: "2026-09-20", move_id: [102, "RINV/2026/00001"], partner_id: [9, "Northside Hospital"], product_id: [11, "[P1] Oxygen Concentrator"], quantity: 1, balance: 25000, name: "return" },
 ];
-const INVOICES = [{ id: 101, name: "INV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_invoice" }, { id: 102, name: "RINV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_refund" }];
+// A buying agency (Egypt's Unified Procurement Authority) billed for hospitals: one line per way the hospital is recorded.
+const UPA: [number, string] = [30, "الهيئة المصرية للشراء الموحد"];
+const AGENCY_LINES = [
+  { id: 4, date: "2026-09-29", move_id: [103, "INV2/2026/0901"], partner_id: UPA, product_id: [12, "[P2] Nasal Cannula"], quantity: 5, balance: -250000, name: "[P2] Nasal Cannula", sale_line_ids: [901] },
+  { id: 5, date: "2026-09-30", move_id: [104, "INV2/2026/0902"], partner_id: UPA, product_id: [12, "[P2] Nasal Cannula"], quantity: 1, balance: -1000, name: "[P2] Nasal Cannula", sale_line_ids: [] },
+  { id: 6, date: "2026-09-30", move_id: [105, "INV/2026/0100"], partner_id: UPA, product_id: [11, "[P1] Oxygen Concentrator"], quantity: 1, balance: -2000, name: "[P1] Oxygen Concentrator", sale_line_ids: [] },
+  { id: 7, date: "2026-09-30", move_id: [106, "INV/2026/0101"], partner_id: UPA, product_id: false, quantity: 1, balance: -3000, name: "( PRO 501 / 22 ) - [Device] Airtech AE-8\nsecond line", sale_line_ids: [] },
+  { id: 8, date: "2026-09-30", move_id: [107, "INV/2026/0102"], partner_id: UPA, product_id: [11, "[P1] Oxygen Concentrator"], quantity: 1, balance: -4000, name: "[P1] Oxygen Concentrator", sale_line_ids: [] },
+];
+const INVOICES = [{ id: 101, name: "INV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_invoice", partner_id: [9, "Northside Hospital"], partner_shipping_id: [9, "Northside Hospital"], invoice_origin: false },
+  { id: 102, name: "RINV/2026/00001", invoice_user_id: [5, "Sara Sales"], move_type: "out_refund", partner_id: [9, "Northside Hospital"], partner_shipping_id: [9, "Northside Hospital"], invoice_origin: false },
+  { id: 103, name: "INV2/2026/0901", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: "S00010" },
+  { id: 104, name: "INV2/2026/0902", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: "S00011" },
+  { id: 105, name: "INV/2026/0100", invoice_user_id: false, move_type: "out_invoice", partner_id: [31, "الهيئة المصرية للشراء الموحد (جامعه الوادي)"], partner_shipping_id: [31, "x"], invoice_origin: false },
+  { id: 106, name: "INV/2026/0101", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: UPA, invoice_origin: false },
+  { id: 107, name: "INV/2026/0102", invoice_user_id: false, move_type: "out_invoice", partner_id: UPA, partner_shipping_id: [32, "مستشفى الرحمة المركزي-الشراء الموحد"], invoice_origin: false }];
+const SALE_LINES = [{ id: 901, order_id: [801, "S00010"] }];
+const ORDERS = [{ id: 801, name: "S00010", partner_id: [40, "مستشفى النور التخصصي-الشراء الموحد"], partner_shipping_id: [40, "x"] },
+  { id: 802, name: "S00011", partner_id: [41, "مستشفى الشفاء العام"], partner_shipping_id: [41, "x"] }];
 const MOVE_LINES = [
   { id: 201, date: "2026-08-10 09:00:00", reference: "WH/IN/00001", product_id: [11, "[P1] Oxygen Concentrator"], lot_id: false, location_id: [2, "Partners/Vendors"], location_dest_id: [1, "WH/Stock"], quantity: 5, qty_done: 5, product_uom_id: [1, "Units"], picking_partner_id: [20, "Medline Supply"] },
   { id: 202, date: "2026-09-03 10:00:00", reference: "WH/OUT/00001", product_id: [11, "[P1] Oxygen Concentrator"], lot_id: false, location_id: [1, "WH/Stock"], location_dest_id: [3, "Partners/Customers"], quantity: 2, qty_done: 2, product_uom_id: [1, "Units"], picking_partner_id: [9, "Northside Hospital"] },
@@ -167,11 +186,28 @@ const LAYERS = [
 const JOURNAL = [{ id: 501, date: "2026-08-31" }, { id: 502, date: "2026-09-03" }];
 const QUANTS = [{ id: 701, product_id: [11, "[P1] Oxygen Concentrator"], location_id: [1, "WH/Stock"], lot_id: false, quantity: 3, value: 31500 }];
 
+const json500 = (message: string) => ({ __error: message });
 const page = <T,>(rows: T[], kw: Record<string, unknown>) => rows.slice(Number(kw.offset ?? 0), Number(kw.offset ?? 0) + Number(kw.limit ?? rows.length));
 const byIds = <T extends { id: number }>(rows: T[], ids: number[]) => rows.filter((r) => ids.includes(r.id));
 function needsCompany(dom: unknown[]) { if (!dom.some((d) => Array.isArray(d) && d[0] === "company_id")) throw new Error("every detail read is limited to the company"); }
 
-function detailAnswer(model: string, m: string, a: unknown[], kw: Record<string, unknown>, version: number): unknown {
+function detailAnswer(model: string, m: string, a: unknown[], kw: Record<string, unknown>, version: number, opts: { agency?: boolean; noSale?: boolean } = {}): unknown {
+  const INV_LINES = opts.agency ? [...BASE_LINES, ...AGENCY_LINES] : BASE_LINES;
+  if (m === "fields_get") {
+    const f = model === "account.move.line" ? (opts.noSale ? ["name", "partner_id"] : ["name", "partner_id", "sale_line_ids"])
+      : model === "account.move" ? ["name", "partner_id", "partner_shipping_id", "invoice_origin"]
+      : model === "sale.order" && !opts.noSale ? ["name", "partner_id", "partner_shipping_id"] : null;
+    if (!f) return json500(`Object ${model} doesn't exist`);
+    return Object.fromEntries(f.map((k) => [k, { type: "char" }]));
+  }
+  if (model === "sale.order.line" || model === "sale.order") {
+    if (opts.noSale) return json500(`Object ${model} doesn't exist`);
+    for (const k of (kw.fields as string[] | undefined) ?? []) if (!["order_id", "name", "partner_id", "partner_shipping_id"].includes(k)) return json500(`Invalid field ${k} on ${model}`);
+    if (model === "sale.order.line" && m === "read") return byIds(SALE_LINES, a[0] as number[]);
+    if (model === "sale.order" && m === "read") return byIds(ORDERS, a[0] as number[]);
+    if (model === "sale.order" && m === "search_read") { const names = ((a[0] as unknown[][]).find((d) => d[0] === "name")?.[2] ?? []) as string[]; return ORDERS.filter((o) => names.includes(o.name)); }
+  }
+  if (model === "account.move.line" && m === "search_read" && opts.noSale && ((kw.fields as string[] | undefined) ?? []).includes("sale_line_ids")) return json500("Invalid field sale_line_ids on account.move.line");
   if (model === "stock.location") return LOCS;
   if (model === "product.product" && m === "read") return byIds(PRODUCTS, a[0] as number[]);
   if (model === "account.move" && m === "read") return [...byIds(INVOICES, a[0] as number[]), ...byIds(JOURNAL, a[0] as number[])];
