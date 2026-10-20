@@ -83,7 +83,7 @@ describe("Odoo's product variant list in another layout (Name and Internal Refer
   // Today's export from a company's Odoo: the name and the internal reference in two columns, "Cost" instead of a value.
   const variants = grid([
     ["Cost", "Favorite", "Forecasted Quantity", "Internal Reference", "Name", "Quantity On Hand", "Sales Price", "Unit of Measure", "Variant Values"],
-    [4922.68, "False", 0, "Accessories", "Air mattress Compressor", 0, 0, "PCS", null],
+    [4730.71, "False", 0, "Accessories", "Air mattress Compressor", 0, 0, "PCS", null],
     [4100.25, "False", 3, "Device", "Airtech AE-5 10L/min", 3, 0, "PCS", null],
     [12.5, "False", 0, null, "YUWELL FILTER", -2, 0, "PCS", null],
   ]);
