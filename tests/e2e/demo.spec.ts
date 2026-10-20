@@ -521,3 +521,19 @@ test("payments pages show the demo receivables, payables and payments, tied to t
   await expect(page.getByTestId("flows-journals")).toContainText("Bank");
   expect(errors).toEqual([]);
 });
+
+test("preflight: a messy sales file is checked sheet by sheet, and the screen fits a phone", async ({ page }) => {
+  await page.goto("/demo/data/upload");
+  await page.getByTestId("pick-sales").click();
+  await page.getByTestId("wiz-next").click();
+  const csv = ["Sales – September,,", ",,", "Date,Customer,Untaxed Amount", "2026-09-01,Alpha,100", "2026-09-01,Alpha,100", "Total,,200"].join("\n");
+  await page.getByTestId("file-input").setInputFiles({ name: "messy.csv", mimeType: "text/csv", buffer: Buffer.from(csv, "utf8") });
+  await expect(page.getByTestId("preflight-sheet")).toHaveAttribute("data-status", "ready_after_fixes");
+  await expect(page.getByTestId("preflight-continue")).toBeDisabled();
+  await page.getByTestId("preflight-dups-keep_all").check();
+  await expect(page.getByTestId("preflight-continue")).toBeEnabled();
+  // Nothing on the screen is wider than the phone (no sideways scrolling of the page).
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.getByTestId("preflight-continue").click();
+  await expect(page.getByTestId("sales-total")).toContainText("200");
+});
