@@ -47,8 +47,8 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 | S11 | Low | Portfolio | "Avg GPM" was a plain mean of margins with no label | — | Labelled "Simple avg" with a tooltip; margins also show "Group" = total profit ÷ total revenue (same currency only) | Typecheck + e2e | Fixed |
 | S12 | CI | E2E job 118758912978 | `[mobile] demo.spec.ts:283`: locator resolved to a hidden element | Test fault: `.or(...).first()` picked the top-bar tab, which is hidden on phones; the sector chips were visible | Waits for the visible one | Public e2e 130/130 on desktop and mobile | Fixed |
 | S13 | Info | CI | Node 20 deprecation warning on GitHub actions | Not the cause of S12 | Not changed: `actions/*@v4` run on Node 24 as forced by the runner. Bump to Node 24 action majors when they are published | — | Recorded |
-| S14 | Medium | Rate limits | `rate_limit_hit` lets any member of a company or organisation count against shared scopes (`reset`, `invite`, `ai_company`) | SQL checks membership only | Needs a migration to require editor or admin for those scopes | — | Open (proposed) |
-| S15 | Low | Delete company | `settings/actions:deleteCompany` deletes the row directly and skips the stored-file cleanup and the deletion record that `deleteCompanyFully` does | Two delete paths | Point the old path at `deleteCompanyFully` | — | Open |
+| S14 | Medium | Rate limits | `rate_limit_hit` let any member of a company or organisation count against shared scopes (`reset`, `invite`, `ai_company`, `pdf_read_company`) | SQL checked membership only | Migration **0034**: company scopes need an editor, the organisation scope (invites) an admin; user and visitor scopes unchanged | `supabase/tests/rate_limit_roles.sql` (6 checks) | Fixed (not live) |
+| S15 | Low | Delete company | `settings/actions:deleteCompany` deleted the row directly, skipping the stored-file cleanup and the deletion record that `deleteCompanyFully` does | Two delete paths | `deleteCompany` now uses `deleteCompanyFully` whenever migration 0031 is live (it is); the plain delete remains only for a database without 0031 | e2e company deletion | Fixed |
 | S16 | Info | Layout | `company/[id]/layout.tsx` waits for the company bundle | Measured: `company_balances` 103 ms (361 ms at 16 at once) locally and 405 ms live; `loading.tsx` shows at once | Not split: not the bottleneck once S1 is fixed | — | Not needed |
 | S17 | Info | Authorization survey | Every server action and API write surveyed | Each write requires editor or admin in code, in the database function, or in row security; no service-role client in `src` | — | e2e: a viewer's clear, settings change and batch delete are refused; a stranger's `summary_state` call gets 403 | Verified |
 
@@ -81,7 +81,7 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 | `npx tsc --noEmit` | clean |
 | `npm run lint` | 0 errors (1 old warning) |
 | `npm test` | 905 passed |
-| `scripts/test-db.sh` | 379 checks passed, 22 of them new in `summary_rollups.sql` |
+| `scripts/test-db.sh` | 385 checks passed, 22 new in `summary_rollups.sql` and 6 in `rate_limit_roles.sql` |
 | `npx next build` | ok |
 | `npx playwright test tests/e2e` (desktop and mobile) | 130 passed |
 | `E2E_AUTH=1 … tests/e2e-auth --project=desktop` | 40 passed, 4 of them new in `failure-states.spec.ts` |
@@ -120,10 +120,11 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 
 ## Release (needs the owner's approval)
 
-1. **Database, in the Supabase SQL editor.** Paste `supabase/migrations/0032_summary_rollups.sql`, then `0033_restamp_fast.sql`.
+1. **Database, in the Supabase SQL editor.** Paste `supabase/migrations/0032_summary_rollups.sql`, then `0033_restamp_fast.sql`, then `0034_rate_limit_roles.sql`.
    - **0032:** adds tables, functions, triggers and one cron job (`ireport-summary-rollups`, every 5 s), and marks every company so its summaries build within seconds.
    - **0033:** replaces one function with the same rules.
-   - Both only add or replace. The current production app keeps working, because it never calls `summary_state`.
+   - **0034:** replaces `rate_limit_hit` with role checks.
+   - All three only add or replace. The current production app keeps working, because it never calls `summary_state`.
 2. **Check, read-only:**
    - `summary_rollups` has a row per company and kind with `error` null;
    - `summary_state` for the largest company equals `expense_summary` and `sales_summary`, compared as sets;
@@ -137,10 +138,11 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 - **App:** revert the merge commit. The old app ignores the new objects.
 - **Database:** paste `supabase/rollback/0032_summary_rollups_down.sql`. It unschedules the job and drops the triggers, the two tables and the new functions; no data is touched.
 - **0033:** to revert, re-paste the function body from `0023_expense_classes_by_chart.sql`. Not expected to be needed, since the result is identical.
+- **0034:** to revert, re-paste `rate_limit_hit` from `0025_odoo_security.sql`.
 
 ## Remaining risks
 
-- **S14 (shared rate limits) and S15 (second delete path)** are open. Fixes are proposed above.
+- **S14 is fixed in migration 0034**, but only takes effect once you paste it.
 - **Brief load after an upload:** right after one, the page adds the summary up live once while the worker rebuilds. A very large company can still time out in that window. It then shows the previous figures marked "updating", or the waiting screen, never zero.
 - **First-ever build:** the worker rebuilds one company and kind at a time (≤ 3 per 5 s tick). After pasting 0032, the largest company's three summaries need a few ticks. Meanwhile pages fall back as above.
 - **In-memory "last good copy":** it is per server instance, so a fresh serverless instance has no copy to show as stale. It shows "failed" with a retry instead.
