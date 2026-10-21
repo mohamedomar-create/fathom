@@ -1,7 +1,8 @@
 # Stabilisation (20 Oct 2026): hangs, timeouts, false empty states
 
 - **Branch:** `claude/stabilize-aql360`, cut from `02cdbe2`. That was the head of the production branch `claude/sharp-pasteur-ms9hn6` when this work started; the audited SHA `6569934` was one commit older.
-- **Production:** nothing is deployed, and no production database change was made. Both wait for the owner's approval (see "Release").
+- **Production app:** released on 21 Oct. `claude/sharp-pasteur-ms9hn6` was fast-forwarded to `d166eac` after CI run 121 passed every job, and Vercel reported the deployment as successful.
+- **Production database:** unchanged. Migrations 0032, 0033 and 0034 wait for the owner to paste them, following the standing rule that the owner applies migrations. Until then the app uses the old summary functions, with explicit failed and stale states instead of false zeros (see "Release").
 
 ## Baseline (read-only, live project)
 
