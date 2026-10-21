@@ -836,12 +836,22 @@ persona("P47", "Dark-mode, reduced-motion user", "Prefers dark colours and no an
     for (const p of ["summary", "analysis/financials", "data", "settings/profile"]) {
       await run.visit(page, `/company/${id}/${p}`);
       const low = await page.evaluate(() => {
-        const lum = (c: string) => { const m = c.match(/\d+(\.\d+)?/g); if (!m) return 1; const [r, g, b] = m.slice(0, 3).map(Number).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
-        const bgOf = (el: Element | null): string => { while (el) { const b = getComputedStyle(el).backgroundColor; if (b && !/rgba\(0, 0, 0, 0\)|transparent/.test(b)) return b; el = el.parentElement; } return "rgb(255,255,255)"; };
+        // Any CSS colour (rgb, oklch, color-mix …) read through a 1×1 canvas, so the numbers are always sRGB 0-255.
+        const cv = document.createElement("canvas"); cv.width = cv.height = 1; const g = cv.getContext("2d", { willReadFrequently: true })!;
+        const rgba = (c: string) => { g.clearRect(0, 0, 1, 1); g.fillStyle = "#000"; g.fillStyle = c; g.fillRect(0, 0, 1, 1); return Array.from(g.getImageData(0, 0, 1, 1).data); };
+        const lum = (c: number[]) => { const [r, gg, b] = c.slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * gg + 0.0722 * b; };
+        // The background a reader sees: layers above white, each blended by its own alpha.
+        const bgOf = (el: Element | null): number[] => {
+          const layers: number[][] = [];
+          while (el) { const c = rgba(getComputedStyle(el).backgroundColor); if (c[3] > 0) layers.push(c); if (c[3] === 255) break; el = el.parentElement; }
+          let out = [255, 255, 255];
+          for (const c of layers.reverse()) { const a = c[3] / 255; out = out.map((v, i) => v * (1 - a) + c[i] * a); }
+          return out;
+        };
         let bad = 0; const ex: string[] = [];
         for (const el of Array.from(document.querySelectorAll("main p, main h1, main h2, main td, main span")).slice(0, 400)) {
           if (!(el as HTMLElement).innerText?.trim()) continue;
-          const a = lum(getComputedStyle(el).color), b = lum(bgOf(el));
+          const a = lum(rgba(getComputedStyle(el).color)), b = lum(bgOf(el));
           const ratio = (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
           if (ratio < 3) { bad++; if (ex.length < 3) ex.push((el as HTMLElement).innerText.slice(0, 30)); }
         }

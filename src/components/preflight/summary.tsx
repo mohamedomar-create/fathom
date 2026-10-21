@@ -14,7 +14,15 @@ export function preflightTotals(run: PreflightRun) {
  * The pre-import summary of the preflight: shown on the save screen, above the button that confirms the import, so the
  * person sees exactly what goes in, what is skipped and what was changed before anything is saved.
  */
-export function PreflightSummary({ run, company, moduleLabel }: { run: PreflightRun | null; company: string; moduleLabel: string }) {
+/** "N accounts × M months" for an accounts file: what it holds, counted the way an accountant reads it. */
+export function accountsCounted(res: { lines: { key: string }[]; slices: { PL: string[]; BS: string[] } }): string {
+  const accounts = new Set(res.lines.map((l) => l.key)).size;
+  const months = new Set([...res.slices.PL, ...res.slices.BS]).size;
+  return `${accounts.toLocaleString("en-US")} accounts × ${months} months`;
+}
+
+/** `counted`: what the file holds when preflight doesn't count its rows (accounts files are read by the statement readers). */
+export function PreflightSummary({ run, company, moduleLabel, counted }: { run: PreflightRun | null; company: string; moduleLabel: string; counted?: string }) {
   if (!run) return null;
   const t = preflightTotals(run);
   return (
@@ -24,7 +32,7 @@ export function PreflightSummary({ run, company, moduleLabel }: { run: Preflight
         <dt className="text-mute">Company</dt><dd>{company}</dd>
         <dt className="text-mute">Import</dt><dd>{moduleLabel}</dd>
         <dt className="text-mute">Sheets</dt><dd>{t.sheets.map((s) => s.sheet).join(", ") || "none"}{t.leftOutSheets.length ? <span className="text-mute"> (left out: {t.leftOutSheets.map((s) => s.sheet).join(", ")})</span> : null}</dd>
-        <dt className="text-mute">Rows checked</dt><dd data-testid="preflight-summary-rows">{t.rows.toLocaleString("en-US")} to import · {t.skipped.toLocaleString("en-US")} skipped</dd>
+        <dt className="text-mute">{counted ? "In the file" : "Rows checked"}</dt><dd data-testid="preflight-summary-rows">{counted ?? `${t.rows.toLocaleString("en-US")} to import · ${t.skipped.toLocaleString("en-US")} skipped`}</dd>
       </dl>
       {t.changes.length > 0 && (
         <div className="mt-2"><p className="text-mute">Changes made in the cleaned copy:</p><ul className="list-disc ps-5">{t.changes.map((c, i) => <li key={i}>{c.sheet}: {c.detail}</li>)}</ul></div>

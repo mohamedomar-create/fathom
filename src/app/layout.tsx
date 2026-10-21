@@ -5,6 +5,8 @@ import { APP_NAME, APP_TAGLINE } from "@/lib/brand";
 import { dirOf, htmlLang } from "@/lib/i18n";
 import { LangProvider } from "@/lib/i18n/context";
 import { getLang } from "@/lib/i18n/server";
+import { Suspense } from "react";
+import { SessionWatch } from "@/components/shell/session-watch";
 
 const poppins = Poppins({ subsets: ["latin"], weight: ["300", "400", "500", "600", "700"], variable: "--font-sans" });
 // Arabic letters come from this font; Latin letters and figures stay in Poppins in both languages.
@@ -18,7 +20,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const lang = await getLang();
   return (
     <html lang={htmlLang(lang)} dir={dirOf(lang)} className={`${poppins.variable} ${arabic.variable}`}>
-      <body><LangProvider lang={lang}>{children}</LangProvider></body>
+      <body><LangProvider lang={lang}>{children}<Suspense fallback={null}><SessionWatch /></Suspense></LangProvider></body>
     </html>
   );
 }

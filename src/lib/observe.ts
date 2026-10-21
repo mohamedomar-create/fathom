@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
 export const newRef = () => randomBytes(3).toString("hex").toUpperCase();
 export const companyTag = (id: string) => createHash("sha256").update(id).digest("hex").slice(0, 8);
 
-export interface OpLog { op: string; company?: string; ms: number; attempts: number; outcome: "ok" | "empty" | "pending" | "stale" | "failed" | "fallback"; code?: string; ref?: string }
+export interface OpLog { op: string; company?: string; ms: number; attempts: number; outcome: "ok" | "empty" | "pending" | "stale" | "failed" | "fallback"; code?: string; ref?: string; detail?: string }
 
 export function logOp(e: OpLog) {
   const line = JSON.stringify({ level: e.outcome === "failed" || e.outcome === "stale" ? "error" : "info", kind: "op", ...e, company: e.company ? companyTag(e.company) : undefined });

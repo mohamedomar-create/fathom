@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { isUuid } from "@/lib/ids";
 import { getUser } from "@/lib/supabase/server";
 import { ReportBuilder } from "@/components/report/report-builder";
 import { ReportData } from "@/components/report/report-data";
@@ -7,6 +8,7 @@ import type { PeriodType } from "@/lib/engine";
 
 export default async function ReportEditor({ params }: { params: Promise<{ id: string; rid: string }> }) {
   const { id, rid } = await params;
+  if (!isUuid(id) || !isUuid(rid)) notFound();
   const { supabase } = await getUser();
   const { data: r } = await supabase.from("reports").select("*").eq("id", rid).eq("company_id", id).maybeSingle();
   if (!r) notFound();

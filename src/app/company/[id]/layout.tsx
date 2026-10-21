@@ -6,9 +6,9 @@ import { getUser } from "@/lib/supabase/server";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
-  const { supabase } = await getUser();
-  const { data } = await supabase.from("companies").select("name").eq("id", id).maybeSingle();
-  return { title: data?.name ?? "Company" };
+  // The same per-request load as the layout (React cache), so the title costs no extra query.
+  const bundle = await loadCompanyBundle(id).catch(() => null);
+  return { title: bundle?.name ?? "Company" };
 }
 
 export default async function CompanyLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {

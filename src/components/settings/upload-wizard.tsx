@@ -1,6 +1,6 @@
 "use client";
 import { Preflight, WIZARD_HANDS_ON } from "@/components/preflight/preflight";
-import { PreflightSummary, RejectedDownload } from "@/components/preflight/summary";
+import { accountsCounted, PreflightSummary, RejectedDownload } from "@/components/preflight/summary";
 import type { PreflightModule, PreflightRun } from "@/lib/preflight";
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -997,7 +997,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     return (
       <div data-testid="timeline-step">
         <WizardSteps at="save" />
-          <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} />
+        <PreflightSummary run={pfRun} company={company.name} moduleLabel={pfLabel} counted={accountsCounted(res)} />
         <WizardTitle title="Save your data" hint={`This file has ${monthsText([...new Set([...res.slices.PL, ...res.slices.BS])].sort())}.`} />
         {kind === "opening" && <p className="text-[15px]" data-testid="opening-save-note">Saved as your opening balances. Months before them are removed; balances loaded from zero after them move by the opening amounts (see month by month).</p>}
         {kind !== "opening" && overlap.length > 0 && (

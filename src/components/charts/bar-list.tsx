@@ -4,6 +4,13 @@ import { useState } from "react";
 import { money, pct } from "@/lib/engine";
 import { C } from "./util";
 
+/** Where a bar's value label sits: just past the bar's end, but never past the chart's edge (long bars, refunds too). */
+export function labelStyle(w: number, value: number, anyNeg: boolean): React.CSSProperties {
+  const at = (from: string) => `min(calc(${from}${w}% + 6px), calc(100% - 70px))`;
+  if (!anyNeg) return { left: at("") };
+  return value < 0 ? { right: at("50% + ") } : { left: at("50% + ") };
+}
+
 export interface BarItem { key: string; label: string; value: number; share?: number; sub?: string }
 
 /**
@@ -36,7 +43,7 @@ export function BarList({ items, cur, max = 10, testId, onSelect }: { items: Bar
                 width: `${w}%`, background: r.value < 0 ? C.red : r.key === "__other" ? "#b8c4c4" : C.s[0],
                 ...(anyNeg ? (r.value < 0 ? { right: "50%" } : { left: "50%" }) : { left: 0 }),
               }} />
-              <span className="num absolute whitespace-nowrap text-[12px] text-ink" style={anyNeg ? (r.value < 0 ? { right: `calc(50% + ${w}% + 6px)` } : { left: `calc(50% + ${w}% + 6px)` }) : { left: `min(calc(${w}% + 6px), calc(100% - 70px))` }}>
+              <span className="num absolute whitespace-nowrap text-[12px] text-ink" style={labelStyle(w, r.value, anyNeg)}>
                 {money(r.value, cur, true)}{r.share !== undefined && hover === r.key ? ` · ${pct(r.share, 1)}` : ""}
               </span>
             </div>

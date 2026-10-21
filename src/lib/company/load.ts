@@ -2,6 +2,8 @@ import { LOCATION_TYPES, type LocationType, type LocationTypes } from "@/lib/ing
 import { cache } from "react";
 import "server-only";
 import { notFound } from "next/navigation";
+import { isUuid } from "@/lib/ids";
+import { logOp } from "@/lib/observe";
 import type { Assumptions, ClassKey, ForecastDrivers, CompanySettings, Importance } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
@@ -81,6 +83,8 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
 }
 
 export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle & { role: string; orgId: string; dataVersion: number }> => {
+  if (!isUuid(id)) notFound();
+  const t0 = Date.now();
   const { supabase, user } = await getUser();
   if (!user) notFound();
   const { data: c, error: cErr } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
@@ -106,9 +110,11 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   // Only the latest month can be a part month: an older import's stop day no longer applies once later months exist.
   const asOf = report.asOf && months.length && report.asOf.startsWith(months[months.length - 1].period) ? report.asOf : undefined;
   const ok = new Set(accepted.map((a) => a.key));
+  const tChecks = Date.now();
   const failing = runChecks({ accounts, months }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
   const commentary: Record<string, string> = {};
   for (const r of comm ?? []) commentary[`${r.period_key}|${r.section}`] = r.body;
+  logOp({ op: "company_bundle", company: id, ms: Date.now() - t0, attempts: 1, outcome: "ok", detail: `checks ${Date.now() - tChecks} ms, ${accounts.length} accounts, ${months.length} months` });
   return {
     id: c.id, name: c.name, basePath: `/company/${c.id}`, source: c.source as CompanyBundle["source"],
     months, settings, alerts, accounts, commentary, readOnly: access.readOnly,

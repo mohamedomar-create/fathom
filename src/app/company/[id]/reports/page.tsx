@@ -4,6 +4,7 @@ import { getUser } from "@/lib/supabase/server";
 import { windowFor, type PeriodType } from "@/lib/engine";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { createReport } from "./actions";
+import { SubmitOnce } from "@/components/ui/submit-once";
 
 export default async function ReportsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +28,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
       <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
         <div><div className="label">Reports</div><h1 className="text-3xl font-light">Management reports</h1>
           <p className="text-mute">Branded A4 reports with commentary — download as PDF or share a link.</p></div>
-        {canEdit && <form action={create}><button disabled={!last} aria-describedby={blocked ? "report-blocked" : undefined} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</button></form>}
+        {canEdit && <form action={create}><SubmitOnce disabled={!last} aria-describedby={blocked ? "report-blocked" : undefined} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</SubmitOnce></form>}
       </div>
       {blocked && (
         <p id="report-blocked" className="mb-4 rounded bg-amber/15 px-3 py-2 text-sm" data-testid="report-blocked">

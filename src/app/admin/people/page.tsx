@@ -4,8 +4,10 @@ import { PeopleManager } from "./people-manager";
 
 export default async function PeoplePage() {
   const { supabase, user } = await getUser();
-  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").order("created_at").limit(1).single();
-  const orgId = m!.org_id;
+  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
+  // Not an admin anywhere: the layout explains; this page renders nothing (it runs alongside the layout).
+  if (!m) return null;
+  const orgId = m.org_id;
   const [{ data: members }, { data: invites }] = await Promise.all([
     supabase.from("memberships").select("user_id, role, created_at").eq("org_id", orgId),
     supabase.from("invites").select("id, email, role, created_at").eq("org_id", orgId).is("accepted_at", null),

@@ -11,7 +11,8 @@ export { COMMENTARY_SECTIONS, type CommentarySection };
 
 const Schema = z.object(Object.fromEntries(COMMENTARY_SECTIONS.map((s) => [s, z.string()])) as Record<CommentarySection, z.ZodString>);
 
-export class CommentaryError extends Error {}
+import { CommentaryError } from "./commentary-error";
+export { CommentaryError, commentaryStatus } from "./commentary-error";
 
 const MAX_SECTION: Partial<Record<CommentarySection, number>> = { bank: 3000 };
 const maxLen = (s: CommentarySection) => MAX_SECTION[s] ?? 1500;
@@ -25,7 +26,7 @@ export function asData(v: unknown): unknown {
 }
 
 export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS]): Promise<Partial<Record<CommentarySection, string>>> {
-  if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.");
+  if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.", "not_configured");
   // Stay inside the route's 60s function limit (Vercel Hobby cap).
   const client = new Anthropic({ timeout: 55_000, maxRetries: 0 });
   try {

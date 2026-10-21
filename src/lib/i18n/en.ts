@@ -70,6 +70,11 @@ export const en = {
     "payments/flows": ["Payments", "Payments In and Out"],
     banking: ["Bank Readiness", "Bank Readiness"],
   } as Record<string, readonly [string, string]>,
+  dataNav: {
+    title: "Data",
+    sub: "The General Ledger is your book of record. Everything else adds detail or checks it, in this order.",
+    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live" } as Record<string, string>,
+  },
   settingsNav: {
     monthsLoaded: (n: number) => `${n} months loaded`,
     noData: "No data yet",

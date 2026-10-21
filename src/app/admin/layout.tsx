@@ -8,8 +8,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
   const { data: m } = await supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
-  if (!m) redirect("/companies");
   const d = (await getDict()).account;
+  // Someone who runs no organisation (an invited editor or viewer) is told why, not bounced or shown an error.
+  if (!m) return (
+    <>
+      <AppBar email={user.email ?? ""} active="admin" />
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8">
+        <p className="rounded border border-line bg-band/40 p-4 text-[15px]" data-testid="not-org-admin">{d.notOrgAdmin}</p>
+        <Link href="/companies" className="mt-4 inline-block text-sm text-brand-d hover:underline">{d.myCompanies}</Link>
+      </div>
+    </>
+  );
   return (
     <>
       <AppBar email={user.email ?? ""} orgName={(m.organizations as unknown as { name: string } | null)?.name} isAdmin active="admin" />

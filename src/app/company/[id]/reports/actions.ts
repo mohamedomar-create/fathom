@@ -16,6 +16,10 @@ const SIGN_IN = { ok: false, error: "Please sign in again." } as const;
 export async function createReport(companyId: string, periodEnd: string) {
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
+  // A second press within a few seconds (a double-click before the page was ready) opens the report just made.
+  const since = new Date(Date.now() - 10_000).toISOString();
+  const { data: just } = await supabase.from("reports").select("id").eq("company_id", Uuid.parse(companyId)).eq("created_by", user.id).gte("created_at", since).limit(1).maybeSingle();
+  if (just) redirect(`/company/${companyId}/reports/${just.id}`);
   const { data, error } = await supabase.from("reports").insert({
     company_id: Uuid.parse(companyId), period_end: Period.parse(periodEnd), period_type: "month", title: "Monthly Performance Report",
     sections: DEFAULT_SECTIONS as unknown as Json, created_by: user.id,
@@ -69,12 +73,16 @@ export async function publishReport(id: string, publish: boolean, expiresDays: 0
   return { ok: true, token: data.share_token, expiresAt: data.expires_at };
 }
 
-export async function deleteReport(companyId: string, id: string) {
-  if (!Uuid.safeParse(companyId).success || !Uuid.safeParse(id).success) return;
+export async function deleteReport(companyId: string, id: string): Promise<{ ok: boolean; error?: string }> {
+  if (!Uuid.safeParse(companyId).success || !Uuid.safeParse(id).success) return INVALID;
   const { supabase, user } = await getUser();
-  if (!user) return;
+  if (!user) return SIGN_IN;
   const { data, error } = await supabase.from("reports").delete().eq("id", id).eq("company_id", companyId).select("id");
   // A refused delete (a viewer: row security removes nothing) is logged, never treated as done.
-  if (error || !data?.length) console.error(JSON.stringify({ kind: "op", op: "deleteReport", outcome: "failed", code: error?.code ?? "NOT_ALLOWED" }));
+  if (error || !data?.length) {
+    console.error(JSON.stringify({ kind: "op", op: "deleteReport", outcome: "failed", code: error?.code ?? "NOT_ALLOWED" }));
+    return { ok: false, error: error ? dbError(error, "deleteReport") : "You do not have permission to delete this report." };
+  }
   revalidatePath(`/company/${companyId}/reports`);
+  return { ok: true };
 }

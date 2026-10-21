@@ -4,7 +4,7 @@ import { analyze, stampMemo } from "@/lib/engine";
 import { buildContext, linesContext } from "@/lib/ai/context";
 import { loadSales } from "@/lib/company/sales-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
-import { COMMENTARY_SECTIONS, CommentaryError, writeCommentary } from "@/lib/ai/commentary";
+import { COMMENTARY_SECTIONS, CommentaryError, commentaryStatus, writeCommentary } from "@/lib/ai/commentary";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
@@ -54,7 +54,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
     return NextResponse.json({ commentary: out });
   } catch (e) {
-    if (e instanceof CommentaryError) return NextResponse.json({ error: e.message }, { status: 502 });
+    if (e instanceof CommentaryError) return NextResponse.json({ error: e.message }, { status: commentaryStatus(e) });
     console.error(e);
     return NextResponse.json({ error: "Could not write commentary" }, { status: 500 });
   }

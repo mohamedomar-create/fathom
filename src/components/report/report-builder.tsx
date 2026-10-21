@@ -1,5 +1,7 @@
 "use client";
-import { ArrowDown, ArrowUp, Copy, Download, Eye, EyeOff, Globe, Loader2, Printer, Save, Sparkles } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, Download, Eye, EyeOff, Globe, Loader2, Printer, Save, Sparkles, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useMemo, useState, useTransition } from "react";
 import { selectableEnds, stripMemoStamp, windowFor, type PeriodType } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
@@ -8,7 +10,7 @@ import { useExpenses } from "@/lib/company/expenses-context";
 import { downloadReportPdf } from "@/lib/report/export";
 import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportOrg, type ReportSection } from "@/lib/report/types";
-import { publishReport, saveCommentary, saveReport } from "@/app/company/[id]/reports/actions";
+import { deleteReport, publishReport, saveCommentary, saveReport } from "@/app/company/[id]/reports/actions";
 import { ReportDocument } from "./report-document";
 import { cn } from "@/lib/cn";
 
@@ -16,6 +18,7 @@ export interface ReportRecord { id: string; title: string; period_type: PeriodTy
 
 export function ReportBuilder({ report, org, demo = false }: { report: ReportRecord; org: ReportOrg; demo?: boolean }) {
   const c = useCompany();
+  const router = useRouter();
   const sales = useSales();
   const expenses = useExpenses();
   const [title, setTitle] = useState(report.title);
@@ -108,6 +111,13 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
           {!demo && <button onClick={save} disabled={!!busy} className="flex items-center gap-1.5 rounded bg-brand-d px-3 py-2 text-sm font-medium text-white disabled:opacity-60">{busy === "save" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}Save</button>}
           <button onClick={pdf} disabled={!!busy} className="flex items-center gap-1.5 rounded border border-brand-d px-3 py-2 text-sm font-medium text-brand-d disabled:opacity-60" data-testid="download-pdf">{busy === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Download PDF</button>
           <button onClick={() => window.print()} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm"><Printer className="h-4 w-4" />Print</button>
+          {!demo && !c.readOnly && (
+            <ConfirmDialog testId="delete-report-dialog" title="Delete this report?" confirmLabel="Delete report"
+              trigger={<button className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-sm text-red hover:bg-red/5" data-testid="delete-report"><Trash2 className="h-4 w-4" />Delete</button>}
+              onConfirm={async () => { const r = await deleteReport(c.id, report.id); if (!r.ok) return r.error; router.push(`${c.basePath}/reports`); }}>
+              <p>&ldquo;{title}&rdquo; and its commentary are deleted for good.{token ? " Its share link stops working at once." : ""}</p>
+            </ConfirmDialog>
+          )}
         </div>
         {!demo && (
           <div className="rounded-md border border-line p-3 text-sm">

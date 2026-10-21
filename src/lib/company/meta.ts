@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { notFound } from "next/navigation";
+import { isUuid } from "@/lib/ids";
 import { getUser } from "@/lib/supabase/server";
 import { accessFrom, AccessError } from "./access";
 
@@ -12,6 +13,7 @@ export interface CompanyMeta { id: string; orgId: string; role: "admin" | "edito
  * the page shows figures).
  */
 export const loadCompanyMeta = cache(async (id: string): Promise<CompanyMeta> => {
+  if (!isUuid(id)) notFound();
   const { supabase, user } = await getUser();
   if (!user) notFound();
   // A read that failed is an error (the error screen with a retry), not "not found"; no membership is not found.
