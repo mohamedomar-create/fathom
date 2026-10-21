@@ -2,7 +2,7 @@
 
 - **Branch:** `claude/stabilize-aql360`, cut from `02cdbe2`. That was the head of the production branch `claude/sharp-pasteur-ms9hn6` when this work started; the audited SHA `6569934` was one commit older.
 - **Production app:** released on 21 Oct. `claude/sharp-pasteur-ms9hn6` was fast-forwarded to `d166eac` after CI run 121 passed every job, and Vercel reported the deployment as successful.
-- **Production database:** unchanged. Migrations 0032, 0033 and 0034 wait for the owner to paste them, following the standing rule that the owner applies migrations. Until then the app uses the old summary functions, with explicit failed and stale states instead of false zeros (see "Release").
+- **Production database:** migrations 0032, 0033 and 0034 were pasted by the owner on 21 Oct and checked read-only afterwards (see "Live verification").
 
 ## Baseline (read-only, live project)
 
@@ -35,11 +35,11 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 
 | ID | Sev | Workflow | Evidence | Root cause | Fix | Verification | Status |
 |---|---|---|---|---|---|---|---|
-| S1 | Critical | Every Sales, Expenses, Payments and Data page on a large company | 57014 and HTTP 500 in the live logs; reproduced locally: 16 concurrent summary calls under the 8 s limit, **16/16 failed** | Each page view re-adds every line (~60k expense lines): medians, a duplicate-bill self-join, sorts. Concurrent calls pass 8 s | Migration **0032**: summaries kept ready. Line changes mark the company; a background worker rebuilds the summary after a 3 s settle, one at a time under an advisory lock; pages read one row through `summary_state` (status, built time, error). Old functions unchanged | Same local test: **0/48 failed** (48 concurrent reads, slowest 4.8 s with ~10 MB of JSON each). DB test: identical output to the old functions after upload, restamp, undo and clear (rows compared as sets; jsonb_agg has no order). Idle worker cost 3 ms per tick | Fixed (not live) |
+| S1 | Critical | Every Sales, Expenses, Payments and Data page on a large company | 57014 and HTTP 500 in the live logs; reproduced locally: 16 concurrent summary calls under the 8 s limit, **16/16 failed** | Each page view re-adds every line (~60k expense lines): medians, a duplicate-bill self-join, sorts. Concurrent calls pass 8 s | Migration **0032**: summaries kept ready. Line changes mark the company; a background worker rebuilds the summary after a 3 s settle, one at a time under an advisory lock; pages read one row through `summary_state` (status, built time, error). Old functions unchanged | Same local test: **0/48 failed** (48 concurrent reads, slowest 4.8 s with ~10 MB of JSON each). DB test: identical output to the old functions after upload, restamp, undo and clear (rows compared as sets; jsonb_agg has no order). Idle worker cost 3 ms per tick | Fixed, live |
 | S2 | Critical | Financial integrity | `sales-load.ts`, `expenses-load.ts` and `payments-load.ts` returned EMPTY after an error, so pages showed "No sales loaded" and upload prompts | Errors were swallowed into the empty value | Loaders return `Loaded<T>`: ready, empty, pending, stale or failed. Section layouts gate on it: failed gives a retry and a reference; pending refreshes itself for up to 2 min; stale shows a note with the time. Data Steps and Readiness say "couldn't be checked". Inventory, Reports and Data checks name the dependency that failed. AI commentary refuses (503) instead of writing from zeros | Unit tests (`summary-state`, `data-steps`, `readiness`); e2e `failure-states.spec.ts` injects 57014 for one company: failed, stale, pending, then retry recovers, and `no-sales` never appears | Fixed |
 | S3 | High | Authorization | `load.ts`: `readOnly: mem?.role === "viewer"` but `role: mem?.role ?? "viewer"`, and membership errors were discarded | A failed or missing membership showed edit controls | `access.ts`, fail-closed: a read error throws to the section's error screen, no membership gives not found, `readOnly` comes from the real role. A company read error is an error, not "not found". Same in `meta.ts` | `tests/unit/access.test.ts`; e2e viewer test | Fixed |
 | S4 | High | Reports | "Create report" disabled while figures were visible | The page read `account_balances` with a join and treated a slow or failed read as "no data"; viewers got no reason | Reads the same bundle the pages use; gives an exact reason (view-only, or no figures for version N with a link to Data ▸ Steps); a failed list says so | e2e (viewer sees "View-only") | Fixed |
-| S5 | High | Import and class changes | `restamp_expense_classes` 500 three times out of three live | The planner ran the per-account class lookup once per line: 31k calls, 5.1 s locally on the bench company | Migration **0033**: the class lookup runs once per distinct account (`materialized`) | 5.1 s → 25 ms on the same data; DB suite green | Fixed (not live) |
+| S5 | High | Import and class changes | `restamp_expense_classes` 500 three times out of three live | The planner ran the per-account class lookup once per line: 31k calls, 5.1 s locally on the bench company | Migration **0033**: the class lookup runs once per distinct account (`materialized`) | 5.1 s → 25 ms on the same data; DB suite green | Fixed, live |
 | S6 | Medium | Navigation | Reports list: 722 KB download, page frozen 380 ms | The Reports layout loaded the full sales and expense summaries for the list page too | They load only for an open report (`components/report/report-data.tsx`) | Speed test: 1.24 s → 0.42–0.49 s, 83 KB, no long task | Fixed |
 | S7 | Medium | Errors | HTTP 200 pages hid downstream failures; no `error.tsx` under `/company` | — | `error.tsx` per company section (menus kept, digest as reference). Structured `kind:"op"` log line per summary read: op, company hash, ms, attempts, outcome, SQL code, ref | Build; e2e | Fixed |
 | S8 | Medium | Retries | No retry policy | — | One bounded retry, jittered 300–600 ms, on 57014, 55P03, 53300, 08xxx, PGRST00x, 502–504 or network errors (`observe.ts`). The retry button is disabled while running. Pending refresh stops after 2 min | Unit + e2e | Fixed |
@@ -48,10 +48,20 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 | S11 | Low | Portfolio | "Avg GPM" was a plain mean of margins with no label | — | Labelled "Simple avg" with a tooltip; margins also show "Group" = total profit ÷ total revenue (same currency only) | Typecheck + e2e | Fixed |
 | S12 | CI | E2E job 118758912978 | `[mobile] demo.spec.ts:283`: locator resolved to a hidden element | Test fault: `.or(...).first()` picked the top-bar tab, which is hidden on phones; the sector chips were visible | Waits for the visible one | Public e2e 130/130 on desktop and mobile | Fixed |
 | S13 | Info | CI | Node 20 deprecation warning on GitHub actions | Not the cause of S12 | Not changed: `actions/*@v4` run on Node 24 as forced by the runner. Bump to Node 24 action majors when they are published | — | Recorded |
-| S14 | Medium | Rate limits | `rate_limit_hit` let any member of a company or organisation count against shared scopes (`reset`, `invite`, `ai_company`, `pdf_read_company`) | SQL checked membership only | Migration **0034**: company scopes need an editor, the organisation scope (invites) an admin; user and visitor scopes unchanged | `supabase/tests/rate_limit_roles.sql` (6 checks) | Fixed (not live) |
+| S14 | Medium | Rate limits | `rate_limit_hit` let any member of a company or organisation count against shared scopes (`reset`, `invite`, `ai_company`, `pdf_read_company`) | SQL checked membership only | Migration **0034**: company scopes need an editor, the organisation scope (invites) an admin; user and visitor scopes unchanged | `supabase/tests/rate_limit_roles.sql` (6 checks) | Fixed, live |
 | S15 | Low | Delete company | `settings/actions:deleteCompany` deleted the row directly, skipping the stored-file cleanup and the deletion record that `deleteCompanyFully` does | Two delete paths | `deleteCompany` now uses `deleteCompanyFully` whenever migration 0031 is live (it is); the plain delete remains only for a database without 0031 | e2e company deletion | Fixed |
 | S16 | Info | Layout | `company/[id]/layout.tsx` waits for the company bundle | Measured: `company_balances` 103 ms (361 ms at 16 at once) locally and 405 ms live; `loading.tsx` shows at once | Not split: not the bottleneck once S1 is fixed | — | Not needed |
 | S17 | Info | Authorization survey | Every server action and API write surveyed | Each write requires editor or admin in code, in the database function, or in row security; no service-role client in `src` | — | e2e: a viewer's clear, settings change and batch delete are refused; a stranger's `summary_state` call gets 403 | Verified |
+
+## Live verification (21 Oct, read-only, after the owner pasted 0032–0034)
+
+- **Objects:** `summary_state` exists; `summary_rollups` has RLS on; signed-out visitors cannot run `summary_state`; cron job `ireport-summary-rollups` is active, 62 runs, 0 failures.
+- **Rollups:** 5 built (sales and expenses for two companies, payments for one), none with an error, each built at its latest mark.
+- **Same figures:** for the largest company, signed in as a member inside a read-only transaction, `summary_state` returned `ready` for sales, expenses and payments, and each summary is byte-identical (md5) to the old `sales_summary`, `expense_summary` and `payments_summary`.
+- **Speed:** the three `summary_state` reads together took 0.30 s, against 2.96 s for `expense_summary` alone and 1.82 s for the other summaries measured on 20 Oct.
+- **0033:** `restamp_expense_classes` carries the `materialized` lookup. **0034:** `rate_limit_hit` carries the editor and admin checks.
+- **Timeouts:** the postgres log shows 152 statement timeouts on 20 Oct (18:00–19:59 UTC) and none since. Little traffic has reached the site since the release, so this is not yet proof under load; the next busy hours are the real test.
+- **Not checked:** aql360.com itself cannot be reached from this session.
 
 ## Measurements (local stack under the live limits: 8 s signed-in statements, jit off, 4 CPUs)
 
@@ -119,7 +129,7 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 
   This runs in the Supabase log explorer.
 
-## Release (needs the owner's approval)
+## Release (done 21 Oct: app at d166eac, migrations pasted by the owner)
 
 1. **Database, in the Supabase SQL editor.** Paste `supabase/migrations/0032_summary_rollups.sql`, then `0033_restamp_fast.sql`, then `0034_rate_limit_roles.sql`.
    - **0032:** adds tables, functions, triggers and one cron job (`ireport-summary-rollups`, every 5 s), and marks every company so its summaries build within seconds.
@@ -143,7 +153,6 @@ The signed-in statement limit is 8 s. Several pages and section layouts ask for 
 
 ## Remaining risks
 
-- **S14 is fixed in migration 0034**, but only takes effect once you paste it.
 - **Brief load after an upload:** right after one, the page adds the summary up live once while the worker rebuilds. A very large company can still time out in that window. It then shows the previous figures marked "updating", or the waiting screen, never zero.
 - **First-ever build:** the worker rebuilds one company and kind at a time (≤ 3 per 5 s tick). After pasting 0032, the largest company's three summaries need a few ticks. Meanwhile pages fall back as above.
 - **In-memory "last good copy":** it is per server instance, so a fresh serverless instance has no copy to show as stale. It shows "failed" with a retry instead.
