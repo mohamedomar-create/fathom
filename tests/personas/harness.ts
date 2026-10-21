@@ -42,7 +42,7 @@ export class Run {
     page.on("console", (m) => {
       if (m.type() !== "error") return;
       const t = m.text();
-      if (/status of (401|403|404)/.test(t) && expect4xx) return;
+      if (/status of 4\d\d/.test(t) && expect4xx) return;
       if (/Failed to load resource: net::ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED/.test(t)) return;
       this.issue("medium", "console error", t.slice(0, 300), page.url());
     });

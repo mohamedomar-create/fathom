@@ -7,6 +7,7 @@ export default defineConfig({
   timeout: 300_000,
   workers: Number(process.env.PERSONA_WORKERS ?? 4),
   retries: 0,
+  fullyParallel: true,
   outputDir: "test-results/pw-personas",
   reporter: [["list"]],
   use: {
