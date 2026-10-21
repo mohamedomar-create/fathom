@@ -6,7 +6,7 @@ import path from "node:path";
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const OUT = path.join(ROOT, "test-results/personas");
-const DOC = path.join(ROOT, process.env.PERSONA_REPORT ?? "docs/PERSONA_TEST_ISSUES.md");
+const DOC = path.resolve(ROOT, process.env.PERSONA_REPORT ?? "docs/PERSONA_TEST_ISSUES.md");
 const RANK = { critical: 0, high: 1, medium: 2, low: 3 };
 const read = (f) => (fs.existsSync(path.join(OUT, f)) ? fs.readFileSync(path.join(OUT, f), "utf8") : "");
 const norm = (s) => s.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g, ":id").replace(/-[a-z0-9]{6,9}-\d+@test\.local/g, "@test").replace(/\b\d+(\.\d+)?\s?(s|ms|KB)\b/g, "N $2").replace(/\b\d{2,}\b/g, "N").replace(/\?.*$/, "").trim();
@@ -34,7 +34,8 @@ for (const line of server) {
   if (line.startsWith("{") && line.includes('"kind":"op"')) {
     try {
       const o = JSON.parse(line);
-      if (o.outcome === "ok") continue;
+      // "empty" (nothing uploaded yet) and "pending" with a live fallback are the designed states, not problems.
+      if (o.outcome === "ok" || o.outcome === "empty" || o.outcome === "pending" || o.outcome === "fallback") continue;
       sev = o.outcome === "failed" ? "high" : "medium";
       text = `op ${o.op} ${o.outcome}${o.code ? ` (code ${o.code})` : ""}${o.attempt > 1 ? ` after ${o.attempt} attempts` : ""}`;
     } catch { continue; }

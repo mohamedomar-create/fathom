@@ -11,6 +11,8 @@ export default defineConfig({
   outputDir: "test-results/pw-personas",
   reporter: [["list"]],
   use: {
+    actionTimeout: 15_000,
+    navigationTimeout: 45_000,
     baseURL: `http://localhost:${PORT}`,
     launchOptions: { executablePath: process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" },
     ...devices["Desktop Chrome"],
