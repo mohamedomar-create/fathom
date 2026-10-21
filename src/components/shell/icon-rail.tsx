@@ -27,7 +27,7 @@ export function IconRail() {
           return (
             <div key={n.href} className={cn(n.group && "mt-1 border-t border-line pt-2")}>
             <Tip label={d.nav[n.href]?.[1] ?? n.title}>
-              <Link href={href + q} aria-label={d.nav[n.href]?.[1] ?? n.title} data-testid={`nav-${n.href.split("/").pop()}`}
+              <Link prefetch={false} href={href + q} aria-label={d.nav[n.href]?.[1] ?? n.title} data-testid={`nav-${n.href.split("/").pop()}`}
                 className={cn("flex h-11 w-11 items-center justify-center rounded-md text-[#555] transition hover:bg-band hover:text-ink", active && "bg-brand-bg text-brand-d hover:bg-brand-bg")}>
                 <n.icon className="h-5 w-5" strokeWidth={1.7} />
               </Link>
@@ -53,7 +53,7 @@ export function IconRail() {
           const href = `${c.basePath}/${n.href}`;
           const active = pathname === href;
           return (
-            <Link key={n.href} href={href + q} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs", active ? "bg-brand-bg text-brand-d" : "text-[#555]")}>
+            <Link prefetch={false} key={n.href} href={href + q} className={cn("flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1 text-xs", active ? "bg-brand-bg text-brand-d" : "text-[#555]")}>
               <n.icon className="h-3.5 w-3.5" />{d.nav[n.href]?.[0] ?? n.label}
             </Link>
           );
