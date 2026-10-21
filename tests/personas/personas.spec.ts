@@ -118,13 +118,21 @@ persona("P05", "Keyboard-only user", "Signs in using only the keyboard", async (
   await run.step("tab through the sign-in form", async () => {
     await run.visit(page, "/login");
     const seen: string[] = [];
+    const bare: string[] = [];
     for (let i = 0; i < 12; i++) {
       await page.keyboard.press("Tab");
-      seen.push(await page.evaluate(() => { const a = document.activeElement as HTMLElement | null; return a ? `${a.tagName}:${a.getAttribute("aria-label") ?? a.getAttribute("name") ?? a.textContent?.trim().slice(0, 20) ?? ""}` : ""; }));
+      const f = await page.evaluate(() => {
+        const a = document.activeElement as HTMLElement | null;
+        if (!a || a === document.body) return null; // tabbed past the last control
+        const s = getComputedStyle(a);
+        return { name: `${a.tagName}:${a.getAttribute("aria-label") ?? a.getAttribute("name") ?? a.textContent?.trim().slice(0, 20) ?? ""}`, ring: (s.outlineStyle !== "none" && s.outlineWidth !== "0px") || s.boxShadow !== "none" };
+      });
+      if (!f) continue;
+      seen.push(f.name);
+      if (!f.ring) bare.push(f.name);
     }
     run.check(seen.some((s) => /INPUT/.test(s)), "medium", `Keyboard: Tab never reaches the email field (${seen.join(", ")})`);
-    const outline = await page.evaluate(() => { const a = document.activeElement as HTMLElement; const s = getComputedStyle(a); return s.outlineStyle !== "none" || s.boxShadow !== "none"; });
-    run.check(outline, "low", "Keyboard: the focused element shows no focus ring");
+    run.check(bare.length === 0, "low", `Keyboard: no focus ring on ${bare.join(", ")}`);
   });
 });
 

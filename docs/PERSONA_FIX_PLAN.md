@@ -189,3 +189,50 @@ Every fix starts with a test that fails first, as in the rest of the project.
 - designed summary states are not reported.
 
 **Still to do for the script:** let a step say which 404s it expects, and tell a disabled button apart from a missing one.
+
+## Results (21 Oct, branch `claude/persona-fixes`)
+
+All 50 personas were run again after the fixes, on the same disposable local stack and the same machine.
+
+| | First run | After F1–F8, F11, F12 | After F9 too |
+|---|---|---|---|
+| Browser issues: critical / high | 0 / 6 | 0 / 2 | **0 / 0** |
+| Server-log problem lines | 251 (2 crashes) | 0 | **0** |
+| Database-log errors | 1 | 0 | **0** |
+| Page load: median / p95 | 2.27 s / 4.94 s | 2.88 s / 6.22 s | **1.34 s / 2.60 s** |
+| Company loads (`company_bundle`) for the run | not logged | 2,549 | **766** |
+| Run time for 50 personas | 12 min | 9 min | **5 min** |
+
+| # | Status | Fix | Proof |
+|---|---|---|---|
+| F1 | Fixed | `src/lib/ids.ts`. The proxy (`malformedId`) answers 404 before any query, and the loaders check the id too. | e2e F1; unit `ids`, `proxy` |
+| F2 | Fixed | The admin layout explains to non-admins; pages no longer assume an admin membership. EN and AR. | e2e F2 |
+| F3 | Fixed | The proxy never redirects server actions or `/api` (`keepsOwnAnswer`). `SessionWatch` shows "Your session has ended … Sign in again", linking back to the same page. | e2e F3; unit `proxy` (session cookie) |
+| F4 | Fixed | `SubmitOnce` ignores a second press, and the server opens the report just made if pressed again within 10 s. | e2e F4 |
+| F5 | Fixed | A **Delete** button on the report editor, editors only. A confirm dialog, then the share link stops working. | e2e F5 (the link returns 404 afterwards) |
+| F6 | Fixed | The accounts summary reads "N accounts × M months". | e2e F6; unit `preflight-summary` |
+| F7 | Fixed | Bar labels are clamped on both sides (`labelStyle`). | e2e F7 at 1440 and 320 px; unit `bar-list` |
+| F8 | Fixed | AI that isn't set up returns 503; a failure of the AI service stays 502. | unit `commentary-status` |
+| F9 | Fixed | Cause: every visible link in the section rail and Data tabs prefetched, and each prefetch re-ran the whole company load. That was 7–11 loads per page view; now 1–3. The page title also reuses the same load. | Measured: one user, server answer about 0.35 s and page ready about 0.5 s; persona numbers above |
+| F10 | Not an app fault | The app is light-only (`color-scheme: light`), and the flagged text is #222 on white. The test misread modern CSS colours; it now converts them through a canvas. P47 re-run: no issues. | P47 |
+| F11 | Fixed | The Data section header and tabs, plus the settings headings, now come from the dictionaries, in company and demo pages. | e2e F11; P04 re-run: no issues |
+| F12 | Fixed | One `:focus-visible` ring for every control. Inputs previously had only a 1 px border change. | e2e F12; P05 re-run: no issues |
+
+**Still in the report, and expected:**
+
+- the deliberate 404s (tampered and deleted addresses);
+- the offline persona's failed fetch;
+- three test-script steps that expect a button the app correctly withholds:
+  - the same file again gives "Nothing new to add";
+  - a 10-month trial balance needs **Save anyway**;
+  - Targets has nothing to save until something changes.
+
+**Test script hardening done during the work:**
+
+- a 15 s per-action limit;
+- personas run in parallel;
+- colours read through a canvas;
+- the focus check stops at the page's end;
+- the run refuses a build that points at the live project.
+
+**Not tested from here:** aql360.com itself (not reachable from this session). Production timings should be checked after release.

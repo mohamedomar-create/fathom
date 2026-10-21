@@ -10,6 +10,8 @@ rm -rf "$OUT"; mkdir -p "$OUT"
 [ "${SKIP_STACK:-}" = 1 ] || bash scripts/local-supabase/start.sh
 set -a; . .local-supabase/env; set +a
 [ "${SKIP_BUILD:-}" = 1 ] || npx next build
+# Never run personas against a build that talks to the live project (one built without the local stack's settings).
+if grep -rqs "iszcsjgwbsulwmnyokpd" .next/static/chunks; then echo "This build points at the live Supabase project: rebuild with the local stack's env (.local-supabase/env)." >&2; exit 1; fi
 fuser -k 3100/tcp 2>/dev/null || true
 npm run start -- -p 3100 > "$OUT/server.log" 2>&1 &
 for _ in $(seq 60); do curl -sf -o /dev/null http://localhost:3100/login && break; sleep 1; done
