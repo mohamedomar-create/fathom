@@ -10,7 +10,7 @@ type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 export const SCOPES = {
   invite: [86400, 30], pdf_read_company: [86400, 200], pdf_read_user: [86400, 400], ai_company: [86400, 20], ai_user: [86400, 60],
   pdf_render_user: [3600, 30], pdf_render_ip: [600, 5], pdf_render_token: [3600, 20], export: [3600, 20],
-  odoo: [3600, 20], odoo_test_company: [3600, 10], odoo_sync_company: [3600, 6], import: [3600, 60], import_preview: [3600, 300], inventory: [3600, 60], expenses: [3600, 60], sales: [3600, 60], payments: [3600, 60], reset: [3600, 20],
+  odoo: [3600, 20], odoo_test_company: [3600, 10], odoo_sync_company: [3600, 6], import: [3600, 60], import_preview: [3600, 300], inventory: [3600, 60], expenses: [3600, 60], sales: [3600, 60], payments: [3600, 60], reset: [3600, 20], cash_entry: [3600, 600],
 } as const satisfies Record<string, readonly [number, number]>;
 export type Scope = keyof typeof SCOPES;
 

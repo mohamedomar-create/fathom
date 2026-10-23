@@ -133,7 +133,7 @@ export type Database = {
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };
       simple_lines: { Args: { p_company: string }; Returns: Json };
       cash_entries_list: { Args: { p_company: string }; Returns: Json };
-      cash_upload_begin: { Args: { p_company: string; p_filename: string; p_months: string[]; p_mode: string; p_skipped?: number }; Returns: string };
+      cash_upload_begin: { Args: { p_company: string; p_filename: string; p_months: string[]; p_mode: string; p_skipped?: number; p_directions?: string[] }; Returns: string };
       cash_upload_add: { Args: { p_upload: string; p_entries: Json }; Returns: number };
       cash_upload_finish: { Args: { p_upload: string }; Returns: Json };
       cash_upload_remove: { Args: { p_upload: string }; Returns: number };

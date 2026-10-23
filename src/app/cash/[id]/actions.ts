@@ -16,27 +16,28 @@ const Entry = z.object({
   paid: z.boolean().nullable().default(null), paidOn: Day.nullable().default(null),
 });
 export type EntryInput = z.input<typeof Entry>;
-const FIELDS = ["date", "in", "out", "amount", "type", "category", "party", "note", "paid", "paidOn", ""] as const;
+const FIELDS = ["date", "in", "out", "amount", "qty", "price", "balance", "type", "category", "party", "note", "paid", "paidOn", ""] as const;
 
 /** The database's own reason when it refuses a value ("a date is needed"), else the safe message. */
 const said = (e: { code?: string; message: string }, ctx: string) =>
   e.code === "22023" && e.message.length < 200 ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + "." : e.code === "PGRST202" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : dbError(e, ctx);
 const refresh = (id: string) => revalidatePath(`/cash/${id}`, "layout");
-async function editor() {
+async function editor(scope: "sales" | "cash_entry" = "sales") {
   const { supabase, user } = await getUser();
   if (!user) return { error: "Please sign in again." as const };
-  if (await limited(supabase, "sales", user.id)) return { error: TOO_MANY };
+  if (await limited(supabase, scope, user.id)) return { error: TOO_MANY };
   return { supabase };
 }
 
 /** Opens an upload; its entries go in parts (uploadPart) and show only when it is finished (uploadFinish). */
-export async function uploadBegin(companyId: string, filename: string, months: string[], mode: "add" | "replace_months", skipped: number): Promise<Result<{ upload: string }>> {
-  const v = z.object({ companyId: Id, filename: z.string().max(300), months: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)).max(600), mode: z.enum(["add", "replace_months"]), skipped: z.number().int().min(0) })
-    .safeParse({ companyId, filename, months, mode, skipped });
+export async function uploadBegin(companyId: string, filename: string, months: string[], mode: "add" | "replace_months", skipped: number, directions: ("in" | "out")[] = ["in", "out"]): Promise<Result<{ upload: string }>> {
+  const v = z.object({ companyId: Id, filename: z.string().max(300), months: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)).max(600), mode: z.enum(["add", "replace_months"]), skipped: z.number().int().min(0),
+    directions: z.array(z.enum(["in", "out"])).min(1).max(2) })
+    .safeParse({ companyId, filename, months, mode, skipped, directions });
   if (!v.success) return { ok: false, error: "The upload is not valid: " + v.error.issues[0]?.message };
   const s = await editor();
   if ("error" in s) return { ok: false, error: s.error! };
-  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: v.data.months, p_mode: v.data.mode, p_skipped: v.data.skipped });
+  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: v.data.months, p_mode: v.data.mode, p_skipped: v.data.skipped, p_directions: v.data.directions });
   if (error) return { ok: false, error: said(error, "uploadBegin") };
   return { ok: true, upload: data as string };
 }
@@ -76,7 +77,7 @@ export async function entryAdd(companyId: string, entry: EntryInput): Promise<Re
   const v = Entry.safeParse(entry);
   if (!Id.safeParse(companyId).success) return { ok: false, error: "That business isn't valid." };
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "That entry isn't valid." };
-  const s = await editor();
+  const s = await editor("cash_entry");
   if ("error" in s) return { ok: false, error: s.error! };
   const { error } = await s.supabase.rpc("cash_entry_add", { p_company: companyId, p_entry: v.data as unknown as Json });
   if (error) return { ok: false, error: said(error, "entryAdd") };
@@ -87,7 +88,7 @@ export async function entryAdd(companyId: string, entry: EntryInput): Promise<Re
 export async function entryUpdate(companyId: string, id: number, entry: EntryInput): Promise<Result> {
   const v = Entry.safeParse(entry);
   if (!v.success || !Number.isInteger(id) || id <= 0) return { ok: false, error: v.success ? "That entry isn't valid." : v.error.issues[0]?.message ?? "That entry isn't valid." };
-  const s = await editor();
+  const s = await editor("cash_entry");
   if ("error" in s) return { ok: false, error: s.error! };
   const { error } = await s.supabase.rpc("cash_entry_update", { p_id: id, p_entry: v.data as unknown as Json });
   if (error) return { ok: false, error: said(error, "entryUpdate") };
@@ -97,7 +98,7 @@ export async function entryUpdate(companyId: string, id: number, entry: EntryInp
 
 export async function entryDelete(companyId: string, id: number): Promise<Result> {
   if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "That entry isn't valid." };
-  const s = await editor();
+  const s = await editor("cash_entry");
   if ("error" in s) return { ok: false, error: s.error! };
   const { error } = await s.supabase.rpc("cash_entry_delete", { p_id: id });
   if (error) return { ok: false, error: said(error, "entryDelete") };

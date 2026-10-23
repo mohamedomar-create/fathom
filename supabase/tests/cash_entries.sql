@@ -54,6 +54,7 @@ insert into st values ('u2', public.cash_upload_begin((select co from ids), 'feb
 select public.cash_upload_add((select id from st where k = 'u2'), '[{"day":"2026-02-15","direction":"in","amount":900,"category":"Sales"}]'::jsonb);
 select pg_temp.check('replacing a month says how many went', (public.cash_upload_finish((select id from st where k = 'u2')) ->> 'removed'), '2');
 select pg_temp.check('only that month was replaced', (select string_agg(to_char(day, 'YYYY-MM') || ':' || amount, ',' order by day) from public.cash_entries where company_id = (select co from ids)), '2026-01:1000,2026-01:300,2026-02:900');
+select pg_temp.check('the replaced upload''s count follows what is left of it', (select rows::text from public.cash_uploads where id = (select id from st where k = 'u1')), '2');
 
 -- The viewer reads, never writes; an outsider sees nothing.
 select pg_temp.login('cbv@x.test');
@@ -76,6 +77,22 @@ select pg_temp.check('copying back is skipped while the cash book has entries', 
 select pg_temp.check('an upload can be taken back', public.cash_upload_remove((select id from st where k = 'u2'))::text, '1');
 select pg_temp.check('clearing everything', public.cash_entries_clear((select co from ids))::text, '2');
 select pg_temp.check('switching back fills an empty cash book from the lines', public.cash_from_full((select co from ids))::text, '3');
+
+-- An expenses file replacing January takes only January's money out; its money in stays.
+insert into st values ('u3', public.cash_upload_begin((select co from ids), 'exp.xlsx', array['2026-01'], 'replace_months', 0, array['out']));
+select public.cash_upload_add((select id from st where k = 'u3'), '[{"day":"2026-01-09","direction":"out","amount":350,"category":"Rent"}]'::jsonb);
+select pg_temp.check('a money-out file replaces only money out', (public.cash_upload_finish((select id from st where k = 'u3')) ->> 'removed'), '1');
+select pg_temp.check('January''s money in is kept', (select string_agg(direction || ':' || amount, ',' order by direction, amount) from public.cash_entries where company_id = (select co from ids) and day < '2026-02-01'), 'in:1000.00,out:350');
+select pg_temp.check('directions are only in and out', pg_temp.err($$select public.cash_upload_begin((select co from ids), 'x', array['2026-01'], 'add', 0, array['sideways'])$$), '22023');
+
+-- Two uploads open at once (a double press): finishing one never deletes the other's rows.
+insert into st values ('u4', public.cash_upload_begin((select co from ids), 'a.xlsx', array['2026-01'], 'add', 0, array['in']));
+select public.cash_upload_add((select id from st where k = 'u4'), '[{"day":"2026-01-20","direction":"in","amount":5}]'::jsonb);
+insert into st values ('u5', public.cash_upload_begin((select co from ids), 'b.xlsx', array['2026-01'], 'replace_months', 0, array['in']));
+select public.cash_upload_add((select id from st where k = 'u5'), '[{"day":"2026-01-21","direction":"in","amount":7}]'::jsonb);
+select pg_temp.check('finishing one upload leaves the other open upload alone', (public.cash_upload_finish((select id from st where k = 'u5')) ->> 'removed'), '1');
+select pg_temp.check('the other upload still finishes with its rows', (public.cash_upload_finish((select id from st where k = 'u4')) ->> 'rows'), '1');
+select pg_temp.check('January money in is both uploads', (select string_agg(amount::text, ',' order by amount) from public.cash_entries where company_id = (select co from ids) and day < '2026-02-01' and direction = 'in'), '5,7');
 reset role;
 delete from public.companies where id = (select co from ids);
 select pg_temp.check('a deleted company leaves no entries', (select count(*) from public.cash_entries)::text || (select count(*) from public.cash_uploads)::text, '00');

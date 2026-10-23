@@ -8,12 +8,15 @@ create table if not exists public.cash_uploads (
   filename text not null default '' check (length(filename) <= 300),
   months text[] not null default '{}',
   mode text not null default 'add' check (mode in ('add', 'replace_months')),
+  -- Which sides of the book the upload holds: "replace these months" replaces only those (a sales file keeps the expenses).
+  directions text[] not null default '{in,out}' check (directions <@ '{in,out}' and cardinality(directions) >= 1),
   status text not null default 'open' check (status in ('open', 'done')),
   rows integer not null default 0,
   skipped integer not null default 0,
   created_by uuid default auth.uid(),
   created_at timestamptz not null default now()
 );
+alter table public.cash_uploads add column if not exists directions text[] not null default '{in,out}';
 create index if not exists cash_uploads_company on public.cash_uploads (company_id, created_at desc);
 
 create table if not exists public.cash_entries (
@@ -76,7 +79,8 @@ begin
 end $$;
 
 -- An upload in three steps, so a large file is sent in parts and shows only once all of it has arrived.
-create or replace function public.cash_upload_begin(p_company uuid, p_filename text, p_months text[], p_mode text, p_skipped integer default 0) returns uuid
+drop function if exists public.cash_upload_begin(uuid, text, text[], text, integer);
+create or replace function public.cash_upload_begin(p_company uuid, p_filename text, p_months text[], p_mode text, p_skipped integer default 0, p_directions text[] default '{in,out}') returns uuid
 language plpgsql security definer set search_path = '' as $$
 declare v_id uuid;
 begin
@@ -85,9 +89,11 @@ begin
   if coalesce(array_length(p_months, 1), 0) > 600 or exists (select 1 from unnest(p_months) m where m !~ '^\d{4}-(0[1-9]|1[0-2])$') then
     raise exception 'months must be YYYY-MM (at most 600)' using errcode = '22023';
   end if;
+  if coalesce(cardinality(p_directions), 0) = 0 or not (p_directions <@ array['in', 'out']) then raise exception 'directions are in and out' using errcode = '22023'; end if;
   -- Parts of an upload left open for a day were abandoned.
   delete from public.cash_uploads where company_id = p_company and status = 'open' and created_at < now() - interval '1 day';
-  insert into public.cash_uploads (company_id, filename, months, mode, skipped) values (p_company, left(coalesce(p_filename, ''), 300), coalesce(p_months, '{}'), p_mode, greatest(0, coalesce(p_skipped, 0)))
+  insert into public.cash_uploads (company_id, filename, months, mode, skipped, directions)
+  values (p_company, left(coalesce(p_filename, ''), 300), coalesce(p_months, '{}'), p_mode, greatest(0, coalesce(p_skipped, 0)), p_directions)
   returning id into v_id;
   return v_id;
 end $$;
@@ -115,10 +121,15 @@ begin
   if not found or u.status <> 'open' then raise exception 'not allowed' using errcode = '42501'; end if;
   perform private.cash_editor(u.company_id);
   if u.mode = 'replace_months' then
-    delete from public.cash_entries e where e.company_id = u.company_id and e.upload_id is distinct from p_upload and to_char(e.day, 'YYYY-MM') = any (u.months);
+    -- Only the sides the upload holds, and never rows of another upload still being sent (a second press on Save).
+    delete from public.cash_entries e where e.company_id = u.company_id and e.upload_id is distinct from p_upload
+      and to_char(e.day, 'YYYY-MM') = any (u.months) and e.direction = any (u.directions)
+      and (e.upload_id is null or exists (select 1 from public.cash_uploads x where x.id = e.upload_id and x.status = 'done'));
     get diagnostics v_removed = row_count;
-    -- Uploads left with nothing go from the history.
+    -- Uploads left with nothing go from the history; the others show what is left of them.
     delete from public.cash_uploads x where x.company_id = u.company_id and x.id <> p_upload and x.status = 'done' and not exists (select 1 from public.cash_entries e where e.upload_id = x.id);
+    update public.cash_uploads x set rows = (select count(*) from public.cash_entries e where e.upload_id = x.id)
+      where x.company_id = u.company_id and x.id <> p_upload and x.status = 'done';
   end if;
   select count(*) into v_rows from public.cash_entries where upload_id = p_upload;
   update public.cash_uploads set status = 'done', rows = v_rows where id = p_upload;
@@ -232,9 +243,13 @@ do $$ declare c record; begin
   for c in select id from public.companies where kpi_config -> 'profile' ->> 'mode' = 'simple' loop perform private.cash_from_lines(c.id); end loop;
 end $$;
 
+-- Entries typed one by one have their own, generous limit (a day's receipts), apart from file uploads.
+insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('cash_entry', 'user', 3600, 600)
+  on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;
+
 revoke execute on function private.cash_editor(uuid), private.cash_row(uuid, uuid, text, jsonb), private.cash_from_lines(uuid) from public, anon, authenticated;
 do $$ declare f text; begin
-  foreach f in array array['public.cash_entries_list(uuid)', 'public.cash_upload_begin(uuid, text, text[], text, integer)', 'public.cash_upload_add(uuid, jsonb)',
+  foreach f in array array['public.cash_entries_list(uuid)', 'public.cash_upload_begin(uuid, text, text[], text, integer, text[])', 'public.cash_upload_add(uuid, jsonb)',
     'public.cash_upload_finish(uuid)', 'public.cash_upload_remove(uuid)', 'public.cash_entry_add(uuid, jsonb)', 'public.cash_entry_update(bigint, jsonb)',
     'public.cash_entry_delete(bigint)', 'public.cash_entries_clear(uuid)', 'public.cash_to_full(uuid)', 'public.cash_from_full(uuid)'] loop
     execute format('revoke execute on function %s from public, anon', f);
