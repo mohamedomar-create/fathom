@@ -159,7 +159,7 @@ function consecutiveTail(sorted: MonthData[]): MonthData[] {
 }
 
 /** Revenue for the next `h` months by one method, from monthly history (oldest first). */
-function projectRevenue(method: RevenueMethod, hist: number[], lastPeriod: string, h: number, growthOverride: number | null): number[] {
+export function projectRevenue(method: RevenueMethod, hist: number[], lastPeriod: string, h: number, growthOverride: number | null): number[] {
   const n = hist.length;
   const out: number[] = [];
   if (method === "seasonal") {
@@ -222,9 +222,9 @@ function projectRevenue(method: RevenueMethod, hist: number[], lastPeriod: strin
   return out;
 }
 
-const METHOD_NEEDS: Record<RevenueMethod, number> = { seasonal: 24, last_year: 12, trend: 6, average: 3 };
+export const METHOD_NEEDS: Record<RevenueMethod, number> = { seasonal: 24, last_year: 12, trend: 6, average: 3 };
 
-function mape(actual: number[], fc: number[]) {
+export function mape(actual: number[], fc: number[]) {
   const pairs = actual.map((a, i) => [a, fc[i]] as const).filter(([a]) => Math.abs(a) > 0);
   return pairs.length ? (mean(pairs.map(([a, f]) => Math.abs(f - a) / Math.abs(a))) * 100) : Infinity;
 }
@@ -377,22 +377,38 @@ function project(hist: MonthData[], revenue: number[], dv: ResolvedDrivers, sett
   return out;
 }
 
-/** Tests each eligible method by hiding the latest months and forecasting them from the months before. */
-function backtest(hist: MonthData[], settings: CompanySettings, a: Assumptions): Backtest | null {
-  const n = hist.length;
+/**
+ * Each eligible method tried on a monthly series (oldest first): the latest months are hidden, forecast from the months
+ * before, and the error measured. Best first; null when the series is too short to test.
+ */
+export function methodTrials(series: number[], periods: string[]): { H: number; actual: number[]; tried: { method: RevenueMethod; revenueMape: number; fc: number[] }[] } | null {
+  const n = series.length;
   const H = Math.min(6, Math.floor(n / 4));
   if (H < 2) return null;
-  const train = hist.slice(0, n - H), test = hist.slice(n - H);
-  const trainRev = train.map((m) => plCalc(m.pl).revenue);
-  const actualRev = test.map((m) => plCalc(m.pl).revenue);
+  const train = series.slice(0, n - H), actual = series.slice(n - H);
   const tried: { method: RevenueMethod; revenueMape: number; fc: number[] }[] = [];
   for (const method of Object.keys(METHOD_NEEDS) as RevenueMethod[]) {
     if (train.length < METHOD_NEEDS[method]) continue;
-    const fc = projectRevenue(method, trainRev, train[train.length - 1].period, H, null);
-    tried.push({ method, revenueMape: mape(actualRev, fc), fc });
+    const fc = projectRevenue(method, train, periods[n - H - 1], H, null);
+    tried.push({ method, revenueMape: mape(actual, fc), fc });
   }
   if (!tried.length) return null;
   tried.sort((x, y) => x.revenueMape - y.revenueMape);
+  return { H, actual, tried };
+}
+
+/** How far either side of a forecast month the likely range runs (a share of it), from the tested error. */
+export function rangeWidth(mapePct: number | null, monthsAhead: number, testedMonths: number | null): number {
+  const err = mapePct !== null ? Math.min(0.5, mapePct / 100) : 0.15;
+  return Math.min(0.6, err * Math.sqrt(monthsAhead / (testedMonths ?? 3)));
+}
+
+/** Tests each eligible method by hiding the latest months and forecasting them from the months before. */
+function backtest(hist: MonthData[], settings: CompanySettings, a: Assumptions): Backtest | null {
+  const trials = methodTrials(hist.map((m) => plCalc(m.pl).revenue), hist.map((m) => m.period));
+  if (!trials) return null;
+  const { H, tried, actual: actualRev } = trials;
+  const train = hist.slice(0, hist.length - H), test = hist.slice(hist.length - H);
   const best = tried[0];
   const months = project(train, best.fc, autoDrivers(train, settings, a, 12), settings);
   const avgRev = mean(actualRev.map(Math.abs)) || 1;
@@ -436,9 +452,8 @@ export function forecast(months: MonthData[], settings: CompanySettings, drivers
   const revenue = projectRevenue(method, revHist, last, used.horizon, used.revenueGrowth);
   const fm = project(hist, revenue, used, settings);
   // The likely range widens with distance, from the backtest error (the square-root rule for accumulating error).
-  const err = bt ? Math.min(0.5, bt.revenueMape / 100) : 0.15;
   fm.forEach((m, i) => {
-    const w = Math.min(0.6, err * Math.sqrt((i + 1) / (bt?.months ?? 3)));
+    const w = rangeWidth(bt ? bt.revenueMape : null, i + 1, bt?.months ?? null);
     m.revenueLow = m.P.revenue * (1 - w); m.revenueHigh = m.P.revenue * (1 + w);
   });
   const first12 = fm.slice(0, 12);
