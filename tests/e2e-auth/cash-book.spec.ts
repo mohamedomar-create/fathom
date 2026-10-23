@@ -26,11 +26,17 @@ function kioskBook(): Buffer {
 const BIG = /General Ledger|Trial Balance|Odoo|chart of accounts|balance sheet|book of record/i;
 
 async function noBigCompanyWords(page: Page, id: string) {
+  // Errors in the browser replace the whole page; they are collected so a failure names them.
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(`pageerror: ${e.message}`));
+  page.on("console", (m) => { if (m.type() === "error") errors.push(`console: ${m.text()}`); });
   for (const p of ["", "/in", "/out", "/cash", "/entries", "/upload", "/settings"]) {
+    errors.length = 0;
     await page.goto(`/cash/${id}${p}`);
     // Stays on its own page (a redirect is named here), then its tabs show; CI runners are slower than local ones.
     await expect(page).toHaveURL(new RegExp(`/cash/${id}${p}(\\?|$)`), { timeout: 15_000 });
-    await expect(page.getByTestId("cash-nav")).toBeVisible({ timeout: 15_000 });
+    const shown = await page.getByTestId("cash-nav").waitFor({ timeout: 15_000 }).then(() => true, () => false);
+    if (!shown) throw new Error(`/cash/${id}${p} shows no cash tabs. Page: ${(await page.locator("body").innerText()).slice(0, 600)} | Errors: ${errors.join(" | ").slice(0, 1500)}`);
     expect(await page.locator("body").innerText(), `/cash/${id}${p}`).not.toMatch(BIG);
   }
 }
