@@ -28,7 +28,9 @@ const BIG = /General Ledger|Trial Balance|Odoo|chart of accounts|balance sheet|b
 async function noBigCompanyWords(page: Page, id: string) {
   for (const p of ["", "/in", "/out", "/cash", "/entries", "/upload", "/settings"]) {
     await page.goto(`/cash/${id}${p}`);
-    await expect(page.getByTestId("cash-nav")).toBeVisible();
+    // Stays on its own page (a redirect is named here), then its tabs show; CI runners are slower than local ones.
+    await expect(page).toHaveURL(new RegExp(`/cash/${id}${p}(\\?|$)`), { timeout: 15_000 });
+    await expect(page.getByTestId("cash-nav")).toBeVisible({ timeout: 15_000 });
     expect(await page.locator("body").innerText(), `/cash/${id}${p}`).not.toMatch(BIG);
   }
 }
