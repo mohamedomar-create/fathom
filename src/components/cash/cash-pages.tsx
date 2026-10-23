@@ -132,7 +132,7 @@ export function CashOverview() {
           sub={f.change.ok ? <><Delta value={f.change.value} /> <span className="text-mute">{t.vsBefore}</span></> : undefined} />
         <Tile label={t.moneyOut} fig={ok(f.total.out)} show={(v) => money(v, cur)} k="out" testId="cash-out" />
         <Tile label={t.left} fig={ok(f.total.net)} show={(v) => money(v, cur)} neg={(v) => v < 0} k="net" testId="cash-left" />
-        <Tile label={t.kept} fig={f.total.netPct === null ? { ok: false, needs: "money_in" } : ok(f.total.netPct)} show={(v) => `${pct(v, 1)}%`} neg={(v) => v < 0} k="netPct" testId="cash-kept" />
+        <Tile label={t.kept} fig={f.total.netPct === null ? { ok: false, needs: "money_in" } : ok(f.total.netPct)} show={(v) => pct(v, 1)} neg={(v) => v < 0} k="netPct" testId="cash-kept" />
         <Tile label={t.cashToday} fig={f.cash} show={(v) => money(v, cur)} neg={(v) => v < 0} k="cash" testId="cash-today" />
         <Tile label={t.avgDay} fig={f.avgDay} show={(v) => money(v, cur)} k="avgDay" testId="cash-avg-day" />
       </div>

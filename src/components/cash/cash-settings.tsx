@@ -6,6 +6,7 @@ import { clearCashBook, saveCashSettings, switchToFull } from "@/app/cash/[id]/a
 import { deleteCompany } from "@/app/company/[id]/settings/actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { typedAmount } from "@/lib/cash/input";
 import { useT } from "@/lib/i18n/use-t";
 
 /** The business's name, currency and opening cash; the way to the full system; clear or delete. */
@@ -21,7 +22,9 @@ export function CashSettings() {
   const [pending, start] = useTransition();
   const field = "w-full rounded border border-line px-3 py-2";
   const save = () => start(async () => {
-    const opening = amount.trim() === "" ? null : { amount: Number(amount.replace(/,/g, "")), asOf };
+    const typed = typedAmount(amount);
+    if (amount.trim() !== "" && typed === null) return setMsg({ ok: false, text: t.badAmount });
+    const opening = typed === null ? null : { amount: typed, asOf };
     const r = await saveCashSettings(company.id, { name, currency, opening });
     setMsg(r.ok ? { ok: true, text: t.savedOk } : { ok: false, text: r.error });
     if (r.ok) router.refresh();

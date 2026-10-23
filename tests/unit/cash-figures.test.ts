@@ -79,7 +79,7 @@ describe("next three months", () => {
   it("the average of the last 3 complete months", () => {
     const f = cashForecast(cashFigures(BOOK, { opening: null, today: TODAY, range: "all" }).months, TODAY);
     expect(f).toEqual({ ok: true, value: { method: "average", points: [
-      { period: "2026-04", in: 2000, out: 4000 / 3, net: 2000 / 3 }, { period: "2026-05", in: 2000, out: 4000 / 3, net: 2000 / 3 }, { period: "2026-06", in: 2000, out: 4000 / 3, net: 2000 / 3 },
+      { period: "2026-04", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 }, { period: "2026-05", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 }, { period: "2026-06", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 },
     ] } });
   });
   it("with a year of months: last year's same month, grown by the recent change", () => {
@@ -110,5 +110,43 @@ describe("in short", () => {
   });
   it("every figure has a formula", () => {
     for (const d of CASH_DEFS) { expect(d.formula.length).toBeGreaterThan(5); expect(d.ar.formula.length).toBeGreaterThan(5); }
+  });
+});
+
+describe("review fixes: part months, future entries, forecast", () => {
+  it("the forecast's left over is always money in minus money out", () => {
+    const year = Array.from({ length: 15 }, (_, i) => { const p = `${2025 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`; return [e(`${p}-05`, "in", 100 + i * 10), e(`${p}-06`, "out", 80 + (i % 3) * 7)]; }).flat();
+    for (const book of [year, BOOK]) {
+      const months = cashFigures(book, { opening: null, today: "2026-04-15", range: "all" }).months;
+      const f = cashForecast(months, "2026-04-15");
+      if (!f.ok) throw new Error("expected a forecast");
+      for (const p of f.value.points) expect(p.net).toBeCloseTo(p.in - p.out, 6);
+    }
+  });
+  it("the forecast starts at the business's current month, never in the past", () => {
+    const f = cashForecast(cashFigures(BOOK, { opening: null, today: "2026-06-10", range: "all" }).months, "2026-06-10");
+    if (!f.ok) throw new Error("expected a forecast");
+    expect(f.value.points.map((p) => p.period)).toEqual(["2026-06", "2026-07", "2026-08"]);
+  });
+  it("a month still running is compared on the same days of the month before", () => {
+    const book = [...Array.from({ length: 30 }, (_, i) => e(`2026-09-${String(i + 1).padStart(2, "0")}`, "in", 100)), e("2026-10-01", "in", 100), e("2026-10-02", "in", 100)];
+    const f = cashFigures(book, { opening: null, today: "2026-10-03", range: "month" });
+    expect(f.periods).toEqual(["2026-10"]);
+    expect(f.change).toEqual({ ok: true, value: ((200 - 300) / 300) * 100 });
+  });
+  it("best and weakest months leave out the month still running and months with nothing in them", () => {
+    const book = [e("2026-01-05", "in", 100), e("2026-03-05", "in", 50), e("2026-04-02", "out", 500)];
+    const f = cashFigures(book, { opening: null, today: "2026-04-10", range: "all" });
+    expect(f.best).toEqual({ ok: true, value: { period: "2026-01", net: 100 } });
+    expect(f.worst).toEqual({ ok: true, value: { period: "2026-03", net: 50 } });
+  });
+  it("an entry dated after today does not become the latest month", () => {
+    const f = cashFigures([...BOOK, e("2026-05-01", "out", 1200, { category: "Rent" })], { opening: null, today: TODAY, range: "month" });
+    expect(f.periods).toEqual(["2026-03"]);
+  });
+  it("percentages in the summary carry one % sign", () => {
+    const s = cashSummary(cashFigures(BOOK, { opening: null, today: TODAY, range: "all" }), "EGP").join(" ");
+    expect(s).not.toContain("%%");
+    expect(s).toContain("33.3%");
   });
 });

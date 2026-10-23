@@ -66,17 +66,26 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
     const i = sum(here, "in"), u = sum(here, "out");
     return { period, in: i, out: u, net: r2(i - u) };
   }) : [];
-  const periods = months.slice(-Math.min(months.length, RANGE[o.range])).map((m) => m.period);
+  // The range ends with the latest month that has entries, never after the business's current month (a rent entry dated
+  // next month does not become "the latest month").
+  const thisMonth = o.today.slice(0, 7), todayDay = +o.today.slice(8, 10);
+  const upTo = months.filter((m) => m.period <= thisMonth && sorted.some((e) => e.day.startsWith(m.period)));
+  const anchor = upTo.length ? upTo[upTo.length - 1].period : months[months.length - 1]?.period;
+  const shown = anchor ? months.filter((m) => m.period <= anchor) : [];
+  const periods = shown.slice(-Math.min(shown.length, RANGE[o.range])).map((m) => m.period);
   const inRange = sorted.filter((e) => periods.includes(e.day.slice(0, 7)));
   const tIn = sum(inRange, "in"), tOut = sum(inRange, "out");
   const byP = new Map(months.map((m) => [m.period, m]));
-  const inOf = (ps: string[]) => (ps.every((p) => byP.has(p)) ? r2(ps.reduce((s, p) => s + byP.get(p)!.in, 0)) : null);
+  // A month still running is set against the same days of the month it is compared with.
+  const inDays = (p: string, maxDay: number) => r2(sorted.filter((e) => e.direction === "in" && e.day.startsWith(p) && +e.day.slice(8, 10) <= maxDay).reduce((s, e) => s + e.amount, 0));
+  const inOf = (ps: string[]) => (ps.every((p) => byP.has(p)) ? r2(ps.reduce((s, p, i) => s + (periods[i] === thisMonth ? inDays(p, todayDay) : byP.get(p)!.in), 0)) : null);
   const pct2 = (now: number, then: number | null, needs: Need): Fig<number> => (then === null ? { ok: false, needs } : !then ? { ok: false, needs: "money_in" } : { ok: true, value: ((now - then) / Math.abs(then)) * 100 });
   const n = periods.length;
   const before = periods.length ? Array.from({ length: n }, (_, i) => add(periods[0], i - n)) : [];
   const lastYear = periods.map((p) => add(p, -12));
   const sellDays = new Set(inRange.filter((e) => e.direction === "in").map((e) => e.day)).size;
-  const ranked = [...months].sort((a, b) => b.net - a.net);
+  // Best and weakest among complete months that have entries (not the month still running, not empty gaps).
+  const ranked = months.filter((m) => m.period < thisMonth && (m.in || m.out)).sort((a, b) => b.net - a.net);
   const named = inRange.filter((e) => e.direction === "in" && e.party.trim());
   const withPaid = sorted.some((e) => e.paid === true || e.paid === false);
   // Cash moves when an entry is paid: on its payment day, or its own day; an unpaid entry has not moved cash yet.
@@ -92,8 +101,8 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
     change: n ? pct2(tIn, inOf(before), "earlier_months") : { ok: false, needs: "two_months" },
     yearChange: n ? pct2(tIn, inOf(lastYear), "earlier_months") : { ok: false, needs: "two_months" },
     avgDay: sellDays ? { ok: true, value: tIn / sellDays } : { ok: false, needs: "money_in" },
-    best: months.length >= 2 ? { ok: true, value: { period: ranked[0].period, net: ranked[0].net } } : { ok: false, needs: "two_months" },
-    worst: months.length >= 2 ? { ok: true, value: { period: ranked[ranked.length - 1].period, net: ranked[ranked.length - 1].net } } : { ok: false, needs: "two_months" },
+    best: ranked.length >= 2 ? { ok: true, value: { period: ranked[0].period, net: ranked[0].net } } : { ok: false, needs: "two_months" },
+    worst: ranked.length >= 2 ? { ok: true, value: { period: ranked[ranked.length - 1].period, net: ranked[ranked.length - 1].net } } : { ok: false, needs: "two_months" },
     inBy: byName(inRange.filter((e) => e.direction === "in"), (e) => e.category, "Other"),
     outBy: byName(inRange.filter((e) => e.direction === "out"), (e) => e.category, "Other"),
     parties: named.length ? { ok: true, value: byName(named, (e) => e.party, "") } : { ok: false, needs: "names" },
@@ -114,18 +123,18 @@ export interface Forecast { method: "average" | "last_year"; points: Month[] }
 export function cashForecast(months: Month[], today: string): Fig<Forecast> {
   const done = months.filter((m) => m.period < today.slice(0, 7));
   if (done.length < 3) return { ok: false, needs: "three_months" };
-  const lastP = done[done.length - 1].period;
   const by = new Map(done.map((m) => [m.period, m]));
   const recent = done.slice(-3);
-  const avg = (k: "in" | "out" | "net") => recent.reduce((s, m) => s + m[k], 0) / 3;
+  const avg = (k: "in" | "out") => recent.reduce((s, m) => s + m[k], 0) / 3;
   const yearAgo = recent.map((m) => by.get(add(m.period, -12)));
   const seasonal = done.length >= 12 && yearAgo.every(Boolean);
-  const factor = (k: "in" | "out" | "net") => { const then = yearAgo.reduce((s, m) => s + (m?.[k] ?? 0), 0); return then > 0 ? recent.reduce((s, m) => s + m[k], 0) / then : null; };
-  const value = (p: string, k: "in" | "out" | "net") => {
+  const factor = (k: "in" | "out") => { const then = yearAgo.reduce((s, m) => s + (m?.[k] ?? 0), 0); return then > 0 ? recent.reduce((s, m) => s + m[k], 0) / then : null; };
+  const value = (p: string, k: "in" | "out") => {
     const f = factor(k), ly = by.get(add(p, -12));
     return seasonal && f !== null && ly ? ly[k] * f : avg(k);
   };
-  const points = [1, 2, 3].map((i) => { const p = add(lastP, i); return { period: p, in: value(p, "in"), out: value(p, "out"), net: value(p, "net") }; });
+  // From the business's current month on; left over is always money in − money out.
+  const points = [0, 1, 2].map((i) => { const p = add(today.slice(0, 7), i); const vi = value(p, "in"), vo = value(p, "out"); return { period: p, in: vi, out: vo, net: vi - vo }; });
   return { ok: true, value: { method: seasonal ? "last_year" : "average", points } };
 }
 
@@ -139,11 +148,11 @@ export function cashSummary(f: CashFigures, cur: string, lang: "en" | "ar" = "en
   const when = f.periods.length === 1 ? ml(f.periods[0]) : `${ml(f.periods[0])} – ${ml(f.periods[f.periods.length - 1])}`;
   const out: string[] = [];
   out.push(L(`${when}: ${m(f.total.in)} came in and ${m(f.total.out)} went out, leaving ${m(f.total.net)}`, `${when}: دخل ${m(f.total.in)} وخرج ${m(f.total.out)}، والمتبقي ${m(f.total.net)}`)
-    + (f.total.netPct !== null ? L(` (${pct(f.total.netPct, 1)}% of money in).`, ` (${pct(f.total.netPct, 1)}% من الداخل).`) : "."));
-  if (f.change.ok) out.push(L(`Money in was ${pct(f.change.value, 1)}% against the period before.`, `الداخل ${pct(f.change.value, 1)}% مقارنة بالفترة السابقة.`));
+    + (f.total.netPct !== null ? L(` (${pct(f.total.netPct, 1)} of money in).`, ` (${pct(f.total.netPct, 1)} من الداخل).`) : "."));
+  if (f.change.ok) out.push(L(`Money in was ${pct(f.change.value, 1)} against the period before.`, `الداخل ${pct(f.change.value, 1)} مقارنة بالفترة السابقة.`));
   if (f.avgDay.ok) out.push(L(`On an average selling day ${m(f.avgDay.value)} came in.`, `في يوم البيع المتوسط دخل ${m(f.avgDay.value)}.`));
   if (f.cash.ok) out.push(L(`Cash today: ${m(f.cash.value)}.`, `النقدية اليوم: ${m(f.cash.value)}.`));
-  if (f.outBy.length && f.total.out) out.push(L(`The largest spending is ${f.outBy[0].name}: ${m(f.outBy[0].amount)} (${pct((f.outBy[0].amount / f.total.out) * 100, 0)}% of money out).`, `أكبر بند صرف ${f.outBy[0].name}: ${m(f.outBy[0].amount)} (${pct((f.outBy[0].amount / f.total.out) * 100, 0)}% من الخارج).`));
+  if (f.outBy.length && f.total.out) out.push(L(`The largest spending is ${f.outBy[0].name}: ${m(f.outBy[0].amount)} (${pct((f.outBy[0].amount / f.total.out) * 100, 0)} of money out).`, `أكبر بند صرف ${f.outBy[0].name}: ${m(f.outBy[0].amount)} (${pct((f.outBy[0].amount / f.total.out) * 100, 0)} من الخارج).`));
   if (out.length < 5 && f.best.ok && f.worst.ok) out.push(L(`Best month ${ml(f.best.value.period)} (${m(f.best.value.net)} left); weakest ${ml(f.worst.value.period)} (${m(f.worst.value.net)}).`, `أفضل شهر ${ml(f.best.value.period)} (المتبقي ${m(f.best.value.net)})؛ وأضعفه ${ml(f.worst.value.period)} (${m(f.worst.value.net)}).`));
   return out.slice(0, 5);
 }
