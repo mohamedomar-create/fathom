@@ -6,7 +6,7 @@ import { OdooClient, OdooError } from "./client";
 import { DetailLines, trust } from "./schema";
 import type { ClassKey } from "@/lib/engine";
 import type { LedgerEntry } from "@/lib/ingest/extract";
-import { EXPENSE_CLASSES, expensesFromLedger, type ExpenseLine } from "@/lib/ingest/expenses";
+import { EXPENSE_CLASSES, expensesFromLedger, isStockAccount, type ExpenseLine } from "@/lib/ingest/expenses";
 import { stockFromLedger, type StockLedgerLine } from "@/lib/ingest/inventory";
 import { salesFromLedger, seriesOf, splitLabel, NO_CUSTOMER, type SalesLine } from "@/lib/ingest/sales";
 import { layerKind, moveKind, splitProduct, usageType, type LocationTypes, type MoveKind } from "@/lib/ingest/inventory";
@@ -205,7 +205,8 @@ export async function onHand(c: DetailCtx, loc: { names: Map<number, string> }):
 
 /** A synced account the journal lines are read for: revenue and cost accounts (sales, expenses) and stock accounts. */
 export interface LedgerAccount { odoo_id: number; code: string; name: string; cls: ClassKey }
-const ledgerAccounts = (accts: LedgerAccount[]) => accts.filter((a) => a.cls === "revenue" || a.cls === "inventory" || EXPENSE_CLASSES.has(a.cls));
+/** Revenue, costs, and the stock accounts goods are bought through (inventory, stock interim): the same set the upload reads. */
+export const ledgerAccounts = (accts: LedgerAccount[]) => accts.filter((a) => a.cls === "revenue" || EXPENSE_CLASSES.has(a.cls) || isStockAccount(a.cls, a.name));
 const ledgerDomain = (c: DetailCtx, accts: LedgerAccount[], range: { from: string; to: string }) => [
   ["parent_state", "=", "posted"], company(c), ["date", ">=", range.from], ["date", "<=", range.to], ["account_id", "in", ledgerAccounts(accts).map((a) => a.odoo_id)],
 ];
@@ -230,7 +231,15 @@ export async function ledgerPage(c: DetailCtx, accts: LedgerAccount[], range: { 
     list.push({ day: l.date.slice(0, 10), period: l.date.slice(0, 7), ref: l.move_id ? l.move_id[1] : "", label: (l.name || "").trim(), partner: l.partner_id ? l.partner_id[1] : "", amount: l.balance });
     entries.set(l.account_id[0], list);
   }
+  return { ...linesFromEntries(use, entries), read: page.length };
+}
+
+/**
+ * Journal entries by account as sales, expense and stock lines, exactly as the General Ledger upload makes them: expense
+ * lines include supplier bills on the stock accounts (purchases), stock postings come from the inventory accounts.
+ */
+export function linesFromEntries(use: LedgerAccount[], entries: Map<number, LedgerEntry[]>): { sales: SalesLine[]; expenses: ExpenseLine[]; stock: StockLedgerLine[] } {
   const lines = (pick: (a: LedgerAccount) => boolean) => use.filter(pick).map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id) ?? [] }));
-  const core = lines((a) => a.cls !== "inventory");
-  return { sales: salesFromLedger(core), expenses: expensesFromLedger(core), stock: stockFromLedger(lines((a) => a.cls === "inventory")), read: page.length };
+  const all = lines(() => true);
+  return { sales: salesFromLedger(all.filter((l) => l.cls !== "inventory")), expenses: expensesFromLedger(all), stock: stockFromLedger(lines((a) => a.cls === "inventory")) };
 }

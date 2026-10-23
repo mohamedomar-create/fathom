@@ -1,27 +1,26 @@
 "use client";
 import type { SalesLine } from "@/lib/ingest/sales";
 import { salesPeriods } from "@/lib/ingest/sales";
-import { addSalesLines, startSalesBatch } from "@/app/company/[id]/settings/sales-actions";
-import { ChunkStopped, orThrow, sendChunks, type ChunkOptions } from "@/lib/chunks";
+import { addSalesLines, finishSalesBatch, startSalesBatch } from "@/app/company/[id]/settings/sales-actions";
+import type { ChunkOptions } from "@/lib/chunks";
+import { saveStaged } from "@/lib/company/save-lines";
 
-/** Saves sales lines in chunks (split when the database is busy, retried when the connection drops), with progress. */
-export async function saveSales(companyId: string, source: "ledger" | "file", lines: SalesLine[], filename: string, report: Record<string, unknown> = {}, opts: { all?: boolean; onProgress?: ChunkOptions["onProgress"] } = {}): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
-  if (!lines.length) return { ok: true, saved: 0 };
-  const start = await startSalesBatch({ companyId, source, periods: salesPeriods(lines), filename: filename.slice(0, 300), report, ...(opts.all ? { all: true } : {}) });
-  if (!start.ok) return start;
+/**
+ * Saves sales lines as one staged save: chunks are held, then the months are replaced in one step at the
+ * finish. `months` adds months to replace that the lines may not cover (an import that replaced them); with `all` every
+ * month of the source goes. Either runs even with no lines, so old lines never outlive the months they came from.
+ */
+export async function saveSales(companyId: string, source: "ledger" | "file", lines: SalesLine[], filename: string, report: Record<string, unknown> = {}, opts: { all?: boolean; months?: string[]; onProgress?: ChunkOptions["onProgress"] } = {}): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+  const start = { companyId, source, periods: [...new Set([...salesPeriods(lines), ...(opts.months ?? [])])].sort(), filename: filename.slice(0, 300), report, ...(opts.all ? { all: true } : {}) };
   // Where a line was read (src) stays in the browser.
   const rows = lines.map((x) => {
-      const { src, ...l } = x;
-      void src;
-      return {
-      ...l, doc: l.doc.slice(0, 80), series: l.series.slice(0, 40), customer: l.customer.slice(0, 200), product: l.product.slice(0, 300), category: l.category.slice(0, 200), salesperson: l.salesperson.slice(0, 120),
-      };
-    });
-  let saved = 0;
-  try {
-    await sendChunks(rows, async (part, { last }) => { saved += (await orThrow(addSalesLines(companyId, start.batch, part, last))).saved; }, { onProgress: opts.onProgress });
-  } catch (e) {
-    return { ok: false, error: e instanceof ChunkStopped ? e.message : String(e) };
-  }
-  return { ok: true, saved };
+    const { src, ...l } = x;
+    void src;
+    return { ...l, doc: l.doc.slice(0, 80), series: l.series.slice(0, 40), customer: l.customer.slice(0, 200), product: l.product.slice(0, 300), category: l.category.slice(0, 200), salesperson: l.salesperson.slice(0, 120) };
+  });
+  return saveStaged(rows, {
+    open: () => startSalesBatch(start),
+    add: (batch, part, last, staged) => addSalesLines(companyId, batch, part, last, staged),
+    finish: (stage) => finishSalesBatch(start, stage),
+  }, { onProgress: opts.onProgress, finishEmpty: !!opts.all || !!opts.months?.length });
 }

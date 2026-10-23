@@ -6,6 +6,9 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
+import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
+
+const OVER_240 = "Saving more than 240 months at once needs the latest database update (migration 0035). Ask the site owner to run it.";
 
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Line = z.object({
@@ -23,15 +26,18 @@ const Line = z.object({
 const Start = z.object({
   companyId: z.string().uuid(),
   source: z.enum(["ledger", "file"]),
-  periods: z.array(Period).min(1).max(240),
+  periods: z.array(Period).min(1).max(600),
   filename: z.string().max(300).optional(),
   report: z.record(z.string(), z.unknown()).optional(),
   /** Replace all: every month of this source goes first, not only the file's months. */
   all: z.boolean().optional(),
 });
 
-/** Opens a batch: this source's expense lines for these months are replaced by the lines added next. */
-export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{ ok: true; batch: string } | { ok: false; error: string }> {
+/**
+ * Opens a save: this source's expense lines for these months are replaced by the lines added next, but only when the save
+ * finishes (finishExpenseBatch). `staged` is false only on a database without the stage functions (migration 0035).
+ */
+export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{ ok: true; batch: string; staged: boolean } | { ok: false; error: string }> {
   const v = Start.safeParse(input);
   if (!v.success) return { ok: false, error: "The expense data is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
@@ -39,29 +45,24 @@ export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{
   if (await limited(supabase, "expenses", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const periods = [...new Set(v.data.periods)].sort();
+    const st = await stageBegin(supabase, "expenses", { ...v.data, periods });
+    if (st.ok) return { ok: true, batch: st.stage, staged: true };
+    if (!st.missing) return st;
+    if (periods.length > 240) return { ok: false, error: OVER_240 };
     const { data, error } = await supabase.rpc("begin_expense_batch", {
       p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
       ...(v.data.all ? { p_all: true } : {}),
     });
-    if (!error) { await dropEmpty(supabase, v.data.companyId, v.data.source, data as string, sameFile(v.data), periods); return { ok: true, batch: data as string }; }
-    // A database without the function (its update not yet applied) does the same steps through the table rules,
-    // which let only the company's editors delete and add its expense lines.
-    if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "begin_expense_batch") };
-    const del = v.data.all
-      ? await supabase.from("expense_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source)
-      : await supabase.from("expense_lines").delete().eq("company_id", v.data.companyId).eq("source", v.data.source).in("period", periods);
-    if (del.error) return { ok: false, error: dbError(del.error, "expense_lines delete") };
-    const ins = await supabase.from("expense_batches").insert({ company_id: v.data.companyId, source: v.data.source, periods, filename: v.data.filename?.slice(0, 300) ?? null, report: (v.data.report ?? {}) as Json, created_by: user.id }).select("id").single();
-    if (ins.error) return { ok: false, error: dbError(ins.error, "expense_batches insert") };
-    await dropEmpty(supabase, v.data.companyId, v.data.source, ins.data.id, sameFile(v.data), periods);
-    return { ok: true, batch: ins.data.id };
+    if (error) return { ok: false, error: dbError(error, "begin_expense_batch") };
+    await dropEmpty(supabase, v.data.companyId, v.data.source, data as string, sameFile(v.data), periods);
+    return { ok: true, batch: data as string, staged: false };
   } catch (e) {
     return { ok: false, error: safeError(e, "startExpenseBatch") };
   }
 }
 
-/** Adds up to 4,000 lines to an open batch. */
-export async function addExpenseLines(companyId: string, batch: string, lines: z.input<typeof Line>[], last: boolean): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+/** Adds up to 4,000 lines to an open save. */
+export async function addExpenseLines(companyId: string, batch: string, lines: z.input<typeof Line>[], last: boolean, staged = false): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
   const ids = z.object({ companyId: z.string().uuid(), batch: z.string().uuid() }).safeParse({ companyId, batch });
   const ls = z.array(Line).min(1).max(4000).safeParse(lines);
   if (!ids.success) return { ok: false, error: "The expense lines are not valid." };
@@ -69,22 +70,30 @@ export async function addExpenseLines(companyId: string, batch: string, lines: z
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
+    if (staged) return await stageAdd(supabase, batch, ls.data);
     const { data, error } = await supabase.rpc("add_expense_lines", { p_batch: batch, p_lines: ls.data as unknown as Json });
-    if (error) {
-      if (error.code !== "PGRST202") return { ok: false, error: dbError(error, "add_expense_lines") };
-      // Without the function: the batch's months, then the lines through the table rules.
-      const b = await supabase.from("expense_batches").select("company_id, source, periods").eq("id", batch).single();
-      if (b.error || b.data.company_id !== companyId) return { ok: false, error: "The expense batch was not found." };
-      const rows = ls.data.filter((l) => b.data.periods.includes(l.period)).map((l) => ({ ...l, company_id: companyId, batch_id: batch, source: b.data.source }));
-      const ins = await supabase.from("expense_lines").insert(rows);
-      if (ins.error) return { ok: false, error: dbError(ins.error, "expense_lines insert") };
-      if (last) revalidatePath(`/company/${companyId}`, "layout");
-      return { ok: true, saved: rows.length };
-    }
+    if (error) return { ok: false, error: dbError(error, "add_expense_lines") };
     if (last) revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true, saved: data as number };
   } catch (e) {
     return { ok: false, error: safeError(e, "addExpenseLines") };
+  }
+}
+
+/** Finishes a staged save: the months are replaced and every line added in one step. */
+export async function finishExpenseBatch(input: z.input<typeof Start>, stage: string): Promise<{ ok: true; saved: number; sent: number } | { ok: false; error: string }> {
+  const v = Start.safeParse(input);
+  if (!v.success || !z.string().uuid().safeParse(stage).success) return { ok: false, error: "The expense data is not valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const f = await stageFinish(supabase, stage);
+    if (!f.ok) return f;
+    if (f.batch) await dropEmpty(supabase, v.data.companyId, v.data.source, f.batch, sameFile(v.data), [...new Set(v.data.periods)].sort());
+    revalidatePath(`/company/${v.data.companyId}`, "layout");
+    return { ok: true, saved: f.saved, sent: f.sent };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "finishExpenseBatch") };
   }
 }
 

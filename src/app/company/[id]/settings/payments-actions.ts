@@ -6,6 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
+import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
 import { controlAccountsOf, withProfile } from "@/lib/company/time-zone";
 
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -50,23 +51,28 @@ export async function saveAgedReport(input: z.input<typeof Aged>): Promise<{ ok:
 
 /** Opens a payments batch: the company's payments from this source (a payments file, or the General Ledger's bank and
  *  cash entries) for these months are replaced by the lines added next. */
-export async function startPaymentBatch(companyId: string, periods: string[], filename: string, source: "file" | "ledger" = "file"): Promise<{ ok: true; batch: string } | { ok: false; error: string }> {
-  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).min(1).max(240), filename: z.string().max(300), source: z.enum(["file", "ledger"]) }).safeParse({ companyId, periods, filename, source });
+export async function startPaymentBatch(companyId: string, periods: string[], filename: string, source: "file" | "ledger" = "file", all = false): Promise<{ ok: true; batch: string; staged: boolean } | { ok: false; error: string }> {
+  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).min(1).max(600), filename: z.string().max(300), source: z.enum(["file", "ledger"]) }).safeParse({ companyId, periods, filename, source });
   if (!v.success) return { ok: false, error: "The payments are not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, "payments", user.id)) return { ok: false, error: TOO_MANY };
   try {
-    const { data, error } = await supabase.rpc("begin_payment_batch", { p_company: companyId, p_periods: [...new Set(periods)].sort(), p_filename: filename, p_report: {} as Json, ...(source === "ledger" ? { p_source: source } : {}) });
+    const months = [...new Set(periods)].sort();
+    const st = await stageBegin(supabase, "payments", { companyId, source, periods: months, filename, all });
+    if (st.ok) return { ok: true, batch: st.stage, staged: true };
+    if (!st.missing) return st;
+    if (months.length > 240) return { ok: false, error: "Saving more than 240 months at once needs the latest database update (migration 0035). Ask the site owner to run it." };
+    const { data, error } = await supabase.rpc("begin_payment_batch", { p_company: companyId, p_periods: months, p_filename: filename, p_report: {} as Json, ...(source === "ledger" ? { p_source: source } : {}) });
     if (error) return { ok: false, error: dbError(error, "begin_payment_batch") };
-    return { ok: true, batch: data as string };
+    return { ok: true, batch: data as string, staged: false };
   } catch (e) {
     return { ok: false, error: safeError(e, "startPaymentBatch") };
   }
 }
 
-/** Adds up to 4,000 payments to an open batch. */
-export async function addPaymentLines(companyId: string, batch: string, lines: z.input<typeof Line>[], last: boolean): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
+/** Adds up to 4,000 payments to an open save. */
+export async function addPaymentLines(companyId: string, batch: string, lines: z.input<typeof Line>[], last: boolean, staged = false): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
   const ids = z.object({ companyId: z.string().uuid(), batch: z.string().uuid() }).safeParse({ companyId, batch });
   const ls = z.array(Line).min(1).max(4000).safeParse(lines);
   if (!ids.success) return { ok: false, error: "The payments are not valid." };
@@ -76,12 +82,28 @@ export async function addPaymentLines(companyId: string, batch: string, lines: z
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
+    if (staged) return await stageAdd(supabase, batch, ls.data);
     const { data, error } = await supabase.rpc("add_payment_lines", { p_batch: batch, p_lines: ls.data as unknown as Json });
     if (error) return { ok: false, error: dbError(error, "add_payment_lines") };
     if (last) revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true, saved: data as number };
   } catch (e) {
     return { ok: false, error: safeError(e, "addPaymentLines") };
+  }
+}
+
+/** Finishes a staged payments save: the source's payments in its months are replaced in one step (even by none). */
+export async function finishPaymentBatch(companyId: string, stage: string): Promise<{ ok: true; saved: number; sent: number } | { ok: false; error: string }> {
+  if (!z.object({ companyId: z.string().uuid(), stage: z.string().uuid() }).safeParse({ companyId, stage }).success) return { ok: false, error: "The payments are not valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  try {
+    const f = await stageFinish(supabase, stage);
+    if (!f.ok) return f;
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true, saved: f.saved, sent: f.sent };
+  } catch (e) {
+    return { ok: false, error: safeError(e, "finishPaymentBatch") };
   }
 }
 

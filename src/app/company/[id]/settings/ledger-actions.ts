@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { safeError } from "@/lib/action-error";
-import { clearLedger } from "@/lib/company/ledger-lines";
+import { clearLedger, type LedgerKind } from "@/lib/company/ledger-lines";
 
 const Input = z.object({ companyId: z.string().uuid(), periods: z.union([z.literal("all"), z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)).max(600)]) });
 
@@ -11,7 +11,7 @@ const Input = z.object({ companyId: z.string().uuid(), periods: z.union([z.liter
  * Before an accounts import saves its months: the sales and expense lines that came from the General Ledger for those
  * months (or all months, when everything is replaced) are removed, so they never outlive the accounts they came from.
  */
-export async function clearLedgerLines(companyId: string, periods: string[] | "all"): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function clearLedgerLines(companyId: string, periods: string[] | "all", kinds?: LedgerKind[]): Promise<{ ok: true } | { ok: false; error: string }> {
   const v = Input.safeParse({ companyId, periods });
   if (!v.success) return { ok: false, error: "Invalid request." };
   const { supabase, user } = await getUser();
@@ -21,7 +21,7 @@ export async function clearLedgerLines(companyId: string, periods: string[] | "a
   const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
   if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can do that." };
   try {
-    await clearLedger(supabase, v.data.companyId, v.data.periods);
+    await clearLedger(supabase, v.data.companyId, v.data.periods, kinds?.filter((k) => ["sales", "expenses", "stock"].includes(k)));
     return { ok: true };
   } catch (e) {
     return { ok: false, error: safeError(e, "clearLedgerLines") };

@@ -19,6 +19,7 @@ import { booksStartOf, withProfile } from "@/lib/company/time-zone";
 import { probe, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
 import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger } from "@/lib/company/ledger-lines";
+import { stageAdd, stageBegin, stageFinish, type StageKind } from "@/lib/company/line-stage";
 import { getUser } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 
@@ -38,6 +39,7 @@ type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 /** A sync stops sending requests after this long, so it ends cleanly inside the page's 60-second limit. */
 const SYNC_BUDGET_MS = 50_000;
 const DB_UPDATE = "The database security update for Odoo (migration 0025) is not applied yet. Ask the site owner to run it before connecting Odoo.";
+const STAGE_UPDATE = "The detail sync needs the latest database update (migration 0035). Ask the site owner to run it.";
 const missingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || e.code === "42883" || e.code === "42703";
 
 /** The caller's role in the company's organisation (null: not a member). Checked here as well as by the database. */
@@ -287,9 +289,10 @@ function monthsBetween(from: string, to: string): string[] {
 }
 
 /**
- * The detail behind the balances, in steps the browser calls one after another: sales lines by product, stock moves,
- * stock valuation and stock on hand, each saved through the same functions as the uploads (sales replace the company's
- * file sales; stock replaces all stock records), so a synced company reads like an uploaded one. One step reads one page;
+ * The detail behind the balances, in steps the browser calls one after another: journal lines, sales lines by product,
+ * stock moves, stock valuation and stock on hand, each saved through the same functions as the uploads (journal and sales
+ * lines replace the synced months only, in one step when their last page is in; stock replaces all stock records), so a
+ * synced company reads like an uploaded one. One step reads one page;
  * the first step takes the company's sync lock and the last releases it.
  */
 export async function syncOdooDetail(companyId: string, input?: DetailStepInput): Promise<Result<{ next: DetailStepInput | null; label: string; done: number; total: number }>> {
@@ -339,42 +342,50 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
       const { data: accRows, error: ae } = await supabase.from("source_accounts").select("code, name, class, odoo_id").eq("company_id", companyId).eq("version", comp?.data_version ?? 0).not("odoo_id", "is", null);
       if (ae) throw new DbError(ae);
       const accts = (accRows ?? []).map((a) => ({ odoo_id: a.odoo_id as number, code: a.code ?? "", name: a.name, cls: a.class as ClassKey }));
-      if (step.offset === 0) {
+      // The books loaded now are not Odoo's (an upload since the last sync): no journal lines are read and none are
+      // removed, so lines from that upload stay.
+      if (step.offset === 0 && accts.length) {
         total = await countLedger(d, accts, range);
-        // A sync replaces every journal line from earlier syncs or ledger uploads; three batches are filled page by page.
-        await clearLedger(supabase, companyId, "all");
+        // The synced months' journal lines replace those months only, when the last page is in: sales and expense lines
+        // as staged saves, stock postings in a fresh batch for those months.
         const periods = monthsBetween(start, end);
-        const open = async (fn: "begin_sales_batch" | "begin_expense_batch") => {
-          const b = await supabase.rpc(fn, { p_company: companyId, p_source: "ledger", p_periods: periods, p_filename: name, p_report: { kind: "odoo" } as Json });
-          if (b.error) throw new DbError(b.error);
-          return b.data as string;
+        await clearLedger(supabase, companyId, periods, ["stock"]);
+        const open = async (kind: StageKind) => {
+          const r = await stageBegin(supabase, kind, { companyId, source: "ledger", periods, filename: name, report: { kind: "odoo" } });
+          if (!r.ok) throw new Error(r.missing ? STAGE_UPDATE : r.error);
+          return r.stage;
         };
         const st = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: periods, p_filename: name });
-        batches = { sales: await open("begin_sales_batch"), expenses: await open("begin_expense_batch"), stock: st.error ? null : (st.data as string) };
+        batches = { sales: await open("sales"), expenses: await open("expenses"), stock: st.error ? null : (st.data as string) };
       }
-      if (total) {
+      if (total && batches) {
         const p = await ledgerPage(d, accts, range, step.offset);
         const strip = <T extends { src?: unknown }>(ls: T[]) => ls.map(({ src, ...l }) => { void src; return l; });
-        for (const [fn, b, ls] of [["add_sales_lines", batches?.sales, strip(p.sales)], ["add_expense_lines", batches?.expenses, strip(p.expenses)], ["add_stock_ledger_lines", batches?.stock, p.stock]] as const) {
+        for (const [b, ls] of [[batches.sales, strip(p.sales)], [batches.expenses, strip(p.expenses)]] as const) {
           if (!b || !ls.length) continue;
-          const r = await supabase.rpc(fn, { p_batch: b, p_lines: ls as unknown as Json });
+          for (let i = 0; i < ls.length; i += 5000) { const r = await stageAdd(supabase, b, ls.slice(i, i + 5000)); if (!r.ok) throw new Error(r.error); }
+        }
+        if (batches.stock && p.stock.length) {
+          const r = await supabase.rpc("add_stock_ledger_lines", { p_batch: batches.stock, p_lines: p.stock as unknown as Json });
           if (r.error) throw new DbError(r.error);
         }
       }
       done = Math.min(total, step.offset + PAGE.sales);
+      if (done >= total && batches) {
+        for (const b of [batches.sales, batches.expenses]) { if (!b) continue; const f = await stageFinish(supabase, b); if (!f.ok) throw new Error(f.error); }
+      }
     } else if (step.part === "sales") {
+      // Sales lines by product replace the uploaded sales files of the synced months only, when the last page is in.
       if (step.offset === 0) {
         total = await countPart(d, "sales", range);
-        const b = await supabase.rpc("begin_sales_batch", { p_company: companyId, p_source: "file", p_periods: monthsBetween(start, end), p_filename: name, p_report: { kind: "odoo", mode: "all" } as Json, p_all: true });
-        if (b.error) throw new DbError(b.error);
-        batch = b.data as string;
+        const r = await stageBegin(supabase, "sales", { companyId, source: "file", periods: monthsBetween(start, end), filename: name, report: { kind: "odoo" } });
+        if (!r.ok) throw new Error(r.missing ? STAGE_UPDATE : r.error);
+        batch = r.stage;
       }
       const lines = total ? await salesPage(d, range, step.offset) : [];
-      if (lines.length) {
-        const r = await supabase.rpc("add_sales_lines", { p_batch: batch!, p_lines: lines as unknown as Json });
-        if (r.error) throw new DbError(r.error);
-      }
+      for (let i = 0; i < lines.length; i += 5000) { const r = await stageAdd(supabase, batch!, lines.slice(i, i + 5000)); if (!r.ok) throw new Error(r.error); }
       done = Math.min(total, step.offset + PAGE.sales);
+      if (done >= total && batch) { const f = await stageFinish(supabase, batch); if (!f.ok) throw new Error(f.error); }
     } else if (step.part === "moves" || step.part === "valuation") {
       const loc = await readLocations(d);
       if (step.offset === 0) {

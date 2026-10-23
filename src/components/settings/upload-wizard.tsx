@@ -51,8 +51,9 @@ import { bookIssues, sheetIssues } from "@/lib/ingest/sorted";
 import { SheetRoles } from "@/components/upload/sheet-roles";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
-import { saveInventory, saveStockLedger } from "@/lib/company/save-inventory";
+import { saveStockLedger } from "@/lib/company/save-inventory";
 import { savePayments } from "@/lib/company/save-payments";
+import type { ChunkOptions } from "@/lib/chunks";
 import { InventoryStep } from "./inventory-upload";
 import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
@@ -461,7 +462,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   async function runPost(steps: PostStep[], from: number, doneMsg: string) {
     for (let i = from; i < steps.length; i++) {
       setSaveProgress({ what: steps[i].what, done: 0, of: 0 });
-      const r = await steps[i].run((done, of) => setSaveProgress({ what: steps[i].what, done, of }));
+      // A step that throws (a dropped connection) stops here like a refused one, so Continue can pick it up.
+      const r = await steps[i].run((done, of) => setSaveProgress({ what: steps[i].what, done, of })).catch((e: unknown) => ({ ok: false as const, error: (e as Error)?.message || "the connection dropped." }));
       if (!r.ok) {
         setSaveProgress(null);
         setPost({ steps, at: i, doneMsg });
@@ -483,55 +485,71 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     if (mode === "replace" && preview?.hasData && !confirm("Replace everything: all current months are removed and only this file is kept. You can undo this from Data health. Continue?")) return;
     setErr(null);
     start(async () => {
+      // The ledger's own lines (sales, expense, stock and payment lines) are worked out before anything is saved: if that
+      // fails, nothing has changed and the screen says so.
+      let derived: Awaited<ReturnType<typeof deriveInWorker>>;
       try {
-        const out = await commitImport({
+        derived = sheetsToken && res.lines.some(hasEntries) ? await deriveInWorker(sheetsToken) : { sales: [], expenses: [], stock: [], payments: { lines: [], errors: [] } };
+      } catch (e) {
+        console.error("derive failed", e);
+        setErr(`Nothing was saved: the ledger's lines could not be worked out (${(e as Error).message || "unknown error"}). Choose the file again and retry.`);
+        return;
+      }
+      let out: Awaited<ReturnType<typeof commitImport>>;
+      try {
+        out = await commitImport({
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
           report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(cutoffDay ? { cutoff: cutoffDay } : {}), source: ledgerFile ? "ledger" as const : "summary" as const, ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
         });
-        if (!out.ok) { setErr(out.error); return; }
-        // The figures are saved. What the ledger gives besides (sales, expense, stock and payment lines) is saved as steps,
-        // each in chunks with its progress; a step that stops can be continued from where it stopped, never left half done.
-        const filename = files.map((f) => f.name).join(" + ");
-        const addedPL = new Set(preview?.timeline.filter((t) => t.PL === "new").map((t) => t.period) ?? []);
-        // Lines taken from an earlier ledger never outlive the months they came from: the months this import replaces
-        // (all of them for "replace all") lose theirs first, even when this file (a Trial Balance, a P&L) has no lines.
-        const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
-        // Months before the books start are not trading: the ledger lines saved for them earlier go too.
-        const preStart = booksStart && mode !== "replace" ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
-        const keep = <T extends { period: string }>(ls: T[]) => ls.filter((l) => mode !== "add" || addedPL.has(l.period));
-        const loadedSales = new Set(salesLoaded), loadedExp = new Set(expensesLoaded);
-        // The ledger's own lines, worked out in the background worker from the same reading.
-        const derived = sheetsToken && res.lines.some(hasEntries) ? await deriveInWorker(sheetsToken) : { sales: [], expenses: [], stock: [], payments: { lines: [], errors: [] } };
-        const pay = derived.payments;
-        const payLines = keep(pay.lines);
-        const steps: PostStep[] = [];
-        if (mode !== "add" || preStart.length) steps.push({ what: "Clearing older ledger lines", run: () => clearLedgerLines(companyId, mode === "replace" ? "all" : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])]) });
-        const salesLedger = keep(derived.sales), salesFile = allSales.filter((l) => mode !== "add" || !loadedSales.has(l.period));
-        if (salesLedger.length) steps.push({ what: "Saving sales lines from the ledger", run: (on) => saveSales(companyId, "ledger", salesLedger, filename, {}, { onProgress: on }) });
-        if (salesFile.length) steps.push({ what: "Saving sales lines", run: (on) => saveSales(companyId, "file", salesFile, filename, {}, { onProgress: on }) });
-        const expLedger = keep(derived.expenses), expFile = allExp.filter((l) => mode !== "add" || !loadedExp.has(l.period));
-        if (expLedger.length) steps.push({ what: "Saving expense lines from the ledger", run: (on) => saveExpenses(companyId, "ledger", expLedger, filename, {}, { onProgress: on }) });
-        if (expFile.length) steps.push({ what: "Saving expense lines", run: (on) => saveExpenses(companyId, "file", expFile, filename, {}, { onProgress: on }) });
-        // The ledger's entries on the stock accounts: the accounts' side of the Inventory checks.
-        const stockLines = keep(derived.stock);
-        if (stockLines.length) steps.push({ what: "Saving stock entries from the ledger", run: (on) => saveStockLedger(companyId, stockLines, filename, on) });
-        // The ledger's bank and cash entries are the Payments in and out, named by the other side of each entry. They are
-        // saved only when every account's entries add up to its movement; otherwise the reason is said, never skipped quietly.
-        let payNote = "";
-        if (pay.errors.length) payNote = ` Payments in and out were not saved: ${pay.errors[0]}${pay.errors.length > 1 ? ` (and ${pay.errors.length - 1} more)` : ""}`;
-        else if (payLines.length) steps.push({ what: "Saving payments in and out", run: (on) => savePayments(companyId, "ledger", payLines, mode === "add" ? [] : touchedPL, filename, on) });
-        // Inventory sheets in the same upload go to Inventory.
-        if (invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length)) {
-          const parts = { layers: invParts.layers, moves: invParts.moves, onhand: invParts.onhand ?? undefined, products: invParts.products };
-          steps.push({ what: "Saving stock sheets", run: (on) => saveInventory(companyId, parts, filename, mode === "add" ? "add" : "replace", on) });
-        }
-        const months = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
-        await runPost(steps, 0, `${months.size} month${months.size === 1 ? "" : "s"} saved${payLines.length && !pay.errors.length ? `, with ${payLines.length} bank and cash payments` : ""}.${payNote}`);
       } catch (e) {
         console.error("import failed", e);
         setErr(`The import could not be saved (${(e as Error).message || "network error"}). If the file is very large, export a shorter date range and try again.`);
+        return;
       }
+      if (!out.ok) {
+        setErr(out.error);
+        // Checks that block only now (the data changed since the preview): load them so they can be accepted here.
+        if ("blocking" in out && out.blocking?.length && preview) setPreview({ ...preview, checks: [...preview.checks.filter((c) => !out.blocking!.some((b) => checkKey(b) === checkKey(c))), ...out.blocking] });
+        return;
+      }
+      // The figures are saved. What the ledger gives besides is saved as steps, each one a staged save that replaces its
+      // months in one go at its end; a step that stops is continued from there and never leaves a month half done.
+      const filename = files.map((f) => f.name).join(" + ");
+      const addedPL = new Set(preview?.timeline.filter((t) => t.PL === "new").map((t) => t.period) ?? []);
+      const replaceAll = mode === "replace";
+      // Lines taken from an earlier ledger never outlive the months they came from: the months this import replaces lose
+      // theirs, even when this file (a Trial Balance, a P&L) has no lines for them; months before the books start too.
+      const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
+      const preStart = booksStart && !replaceAll ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
+      const months = replaceAll ? [] : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])].sort();
+      const clears = replaceAll || months.length > 0;
+      // "Add only new months": one rule for every kind of line, the months whose accounts are new.
+      const keep = <T extends { period: string }>(ls: T[]) => ls.filter((l) => mode !== "add" || addedPL.has(l.period));
+      const pay = derived.payments;
+      const payLines = keep(pay.lines);
+      const steps: PostStep[] = [];
+      const ledgerOpts = (on: ChunkOptions["onProgress"]) => ({ all: replaceAll, months, onProgress: on });
+      if (clears) steps.push({ what: "Clearing older stock entries from the ledger", run: () => clearLedgerLines(companyId, replaceAll ? "all" : months, ["stock"]) });
+      const salesLedger = keep(derived.sales), salesFile = keep(allSales);
+      if (salesLedger.length || clears) steps.push({ what: "Saving sales lines from the ledger", run: (on) => saveSales(companyId, "ledger", salesLedger, filename, {}, ledgerOpts(on)) });
+      if (salesFile.length) steps.push({ what: "Saving sales lines", run: (on) => saveSales(companyId, "file", salesFile, filename, {}, { onProgress: on }) });
+      const expLedger = keep(derived.expenses), expFile = keep(allExp);
+      if (expLedger.length || clears) steps.push({ what: "Saving expense lines from the ledger", run: (on) => saveExpenses(companyId, "ledger", expLedger, filename, {}, ledgerOpts(on)) });
+      if (expFile.length) steps.push({ what: "Saving expense lines", run: (on) => saveExpenses(companyId, "file", expFile, filename, {}, { onProgress: on }) });
+      // The ledger's entries on the stock accounts: the accounts' side of the Inventory checks.
+      const stockLines = keep(derived.stock);
+      if (stockLines.length) steps.push({ what: "Saving stock entries from the ledger", run: (on) => saveStockLedger(companyId, stockLines, filename, on) });
+      // The ledger's bank and cash entries are the Payments in and out. They are saved only when every account's entries add
+      // up to its movement; otherwise the reason is said, and the replaced months still lose their old ledger payments.
+      let payNote = "";
+      if (pay.errors.length) payNote = ` Payments in and out were not saved: ${pay.errors[0]}${pay.errors.length > 1 ? ` (and ${pay.errors.length - 1} more)` : ""}`;
+      const payNow = pay.errors.length ? [] : payLines;
+      if (payNow.length || clears) steps.push({ what: pay.errors.length ? "Clearing older payments from the ledger" : "Saving payments in and out", run: (on) => savePayments(companyId, "ledger", payNow, months, filename, on, { all: replaceAll }) });
+      // Stock sheets in this upload are not saved here: they go through the Stock card, which checks every row.
+      const stockNote = invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length) ? " The stock sheets in this file were not saved: upload them on the Stock card." : "";
+      const saved = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
+      await runPost(steps, 0, `${saved.size} month${saved.size === 1 ? "" : "s"} saved${payNow.length ? `, with ${payNow.length} bank and cash payments` : ""}.${payNote}${stockNote}`);
     });
   }
 
@@ -741,7 +759,16 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const plWanted = cashRead.layouts.length > 0 && !demo && (plOn ?? (company.accounts.length === 0 || fromCashBook));
   const plMonths = plWanted ? [...new Set([...cashRead.sales, ...cashRead.expenses].map((l) => l.period))].sort() : [];
 
-  // 4 · Check (Inventory sheets only)
+  // 4 · Check (Inventory sheets only). Outside the demo they are saved only through the Stock card, which checks every row.
+  if (!res && !hasBooks && !salesRead && !expRead && invParts && !demo) {
+    return (
+      <div className="rounded-xl border border-line bg-card p-6" data-testid="stock-elsewhere">
+        {fileLine}
+        <p className="text-[15px]">These are stock exports. Upload them on the Stock card: it checks every row before anything is saved.</p>
+        <button onClick={() => { setKind("inventory"); setScreen("get"); }} className="mt-4 rounded bg-ink px-4 py-2 text-sm text-white" data-testid="go-stock">Go to the Stock card</button>
+      </div>
+    );
+  }
   if (!res && !hasBooks && !salesRead && !expRead && invParts) {
     return <InventoryStep parts={invParts} companyId={companyId} currency={currency} demo={demo} filename={files.map((f) => f.name).join(" + ")}
       rentalLocation={rentalLoc} onRental={setRentalLoc} rolesPanel={rolesPanel} fileLine={fileLine} rolesBlock={rolesBlock}
@@ -1076,7 +1103,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {demo
         ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || ingesting || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock} busy={previewing || ingesting} nextTestId="continue-timeline" hint={errorCount ? `Fix the problems first: ${issues.find((i) => i.severity === "error")?.message ?? ""}`.trim() : rolesHint} />}
+        : <WizardNav onBack={() => setScreen("upload")} next={previewing ? "Checking…" : "Next: save"} onNext={() => runPreview()} disabled={previewing || ingesting || (!res.periods.length && !res.slices.BS.length) || errorCount > 0 || rolesBlock || !!wrongKind} busy={previewing || ingesting} nextTestId="continue-timeline" hint={wrongKind ? `This looks like ${KIND_WORD[wrongKind]} file, not what this card saves. Switch above to continue.` : errorCount ? `Fix the problems first: ${issues.find((i) => i.severity === "error")?.message ?? ""}`.trim() : rolesHint} />}
     </div>
   );
 }

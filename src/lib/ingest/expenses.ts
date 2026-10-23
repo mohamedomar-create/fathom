@@ -38,7 +38,7 @@ const DEPRECIATION = new Set<ClassKey>(["cos_depreciation", "exp_depreciation"])
 const COST_OF_SALES = new Set<ClassKey>(["cos_variable", "cos_fixed"]);
 /** Balance-sheet accounts that goods bought for stock pass through: a vendor bill on them is a purchase from that supplier. */
 const STOCK_ACCOUNT = /stock interim|interim (received|delivered)|goods received|grni|inventory|stock|مخزون|بضاعة/i;
-const isStockAccount = (cls: ClassKey, name: string) => cls === "inventory" || cls === "wip" || ((cls === "other_cl" || cls === "other_ca") && STOCK_ACCOUNT.test(name));
+export const isStockAccount = (cls: ClassKey, name: string) => cls === "inventory" || cls === "wip" || ((cls === "other_cl" || cls === "other_ca") && STOCK_ACCOUNT.test(name));
 
 /** Accounts that hold what banks charge: fees, commissions and charges (English and Arabic names). */
 const BANK_COST = arRx(/bank\s*(charges?|fees?|commissions?|expenses?|costs?)|charges?\s*(&|and)\s*fees|(مصاريف|مصروفات|عمولات?|رسوم)\s*(بنكية|البنوك|بنك)/i);

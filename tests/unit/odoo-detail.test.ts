@@ -108,3 +108,26 @@ describe("journal lines, page by page (the first step of the stage)", async () =
     expect([sum(got.sales), sum(got.expenses)]).toEqual([sum(whole.sales), sum(whole.expenses)]);
   });
 });
+
+describe("D9: the sync takes supplier bills on stock accounts as purchases, like the upload", async () => {
+  const { ledgerAccounts, linesFromEntries } = await import("@/lib/odoo/detail");
+  const { expensesFromLedger } = await import("@/lib/ingest/expenses");
+  const accts = [
+    { odoo_id: 1, code: "4000", name: "Sales", cls: "revenue" as const },
+    { odoo_id: 2, code: "1200", name: "Inventory", cls: "inventory" as const },
+    { odoo_id: 3, code: "2105", name: "Stock Interim (Received)", cls: "other_cl" as const },
+    { odoo_id: 4, code: "2100", name: "Suppliers", cls: "ap" as const },
+    { odoo_id: 5, code: "5100", name: "Freight", cls: "exp_variable" as const },
+  ];
+  const e = (ref: string, partner: string, amount: number) => ({ day: "2026-09-10", period: "2026-09", ref, label: "", partner, amount });
+  const entries = new Map([[2, [e("BILL/2026/0001", "Medline", 500)]], [3, [e("BILL/2026/0002", "Swift", 300), e("STJ/2026/0009", "", -300)]], [5, [e("BILL/2026/0003", "DHL", 40)]]]);
+  it("reads the stock interim account, never the payables account", () => {
+    expect(ledgerAccounts(accts).map((a) => a.code)).toEqual(["4000", "1200", "2105", "5100"]);
+  });
+  it("gives the same expense lines as the upload's reader for the same entries", () => {
+    const got = linesFromEntries(ledgerAccounts(accts), entries);
+    const upload = expensesFromLedger(accts.map((a) => ({ code: a.code, name: a.name, cls: a.cls, excluded: false, entries: entries.get(a.odoo_id) ?? [] })));
+    expect(got.expenses).toEqual(upload);
+    expect(got.expenses.map((l) => [l.supplier, l.amount])).toEqual([["Medline", 500], ["Swift", 300], ["DHL", 40]]);
+  });
+});

@@ -128,6 +128,10 @@ export type Database = {
       get_published_sales: { Args: { p_token: string }; Returns: Json };
       begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };
+      stage_lines_begin: { Args: { p_company: string; p_kind: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
+      stage_lines_add: { Args: { p_stage: string; p_lines: Json }; Returns: number };
+      stage_lines_finish: { Args: { p_stage: string }; Returns: Json };
+      stage_lines_cancel: { Args: { p_stage: string }; Returns: undefined };
       add_expense_lines: { Args: { p_batch: string; p_lines: Json }; Returns: number };
       expense_summary: { Args: { p_company: string }; Returns: Json };
       get_published_expenses: { Args: { p_token: string }; Returns: Json };
