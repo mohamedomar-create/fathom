@@ -23,6 +23,24 @@ function kioskBook(): Buffer {
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
+/** A shop's own messy workbook: a title, headings on row 4 with units, dates in words, a section title, a bad date, a total, and a notes sheet. */
+function messyBook(): Buffer {
+  const ws = XLSX.utils.aoa_to_sheet([
+    ["Corner Shop"], ["Daily sheet"], [],
+    ["Date of sale", "Item", "Sales Amount (EGP)", "Expense Amount", "Balance", "Cashier"],
+    ["1-Mar-2026", "Tea and sugar", 1200, "", 1200, "Ali"],
+    ["Utilities", "", "", "", "", ""],
+    ["2 March 2026", "Electricity", "", 300, 900, "Ali"],
+    ["soon", "Juice", 50, "", 950, "Mona"],
+    ["Total", "", 1250, 300, "", ""],
+  ]);
+  const notes = XLSX.utils.aoa_to_sheet([["Customer", "Phone"], ["Nile", "0100"]]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "March 2026 shop");
+  XLSX.utils.book_append_sheet(wb, notes, "Notes");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+}
+
 const BIG = /General Ledger|Trial Balance|Odoo|chart of accounts|balance sheet|book of record/i;
 
 async function noBigCompanyWords(page: Page, id: string) {
@@ -125,4 +143,43 @@ test("a kiosk: its own cash book, its own sheet, figures, entries, and the way t
   // The companies list sends it to its cash book.
   await page.goto("/companies");
   await expect(page.getByTestId("cash-card")).toContainText("Corner Kiosk");
+});
+
+test("a messy shop workbook: what to fix is named by cell, a sheet that can't be read is left out, the rest saves", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Shop Owner", org: "Shop Advisory", email: newEmail("shop") });
+  await page.goto("/companies");
+  await page.getByTestId("add-company").click();
+  await page.getByTestId("tile-simple").click();
+  await page.getByLabel("Company name").fill("Corner Shop");
+  await page.getByRole("button", { name: "Create company" }).click();
+  await expect(page).toHaveURL(/\/cash\/[0-9a-f-]{36}$/);
+  const id = page.url().match(/\/cash\/([0-9a-f-]{36})/)![1];
+  await page.goto(`/cash/${id}/upload`);
+  await page.getByTestId("cash-file").setInputFiles({ name: "shop.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: messyBook() });
+  const shop = page.locator('[data-testid="cash-sheet"][data-sheet="March 2026 shop"]');
+  const notes = page.locator('[data-testid="cash-sheet"][data-sheet="Notes"]');
+  await expect(shop.getByTestId("cash-status")).toHaveAttribute("data-status", "ready", { timeout: 15_000 });
+  await expect(shop.getByTestId("cash-read-count")).toContainText("2 entries read");
+  // What to fix names the cell and its value; what was done for the owner is listed too.
+  await expect(shop.getByTestId("cash-advice-fix")).toContainText('A8 "soon"');
+  await expect(shop.getByTestId("cash-advice-info")).toContainText("F Cashier");
+  await expect(shop.getByTestId("cash-advice-info")).toContainText("running balance");
+  await expect(shop.getByTestId("cash-header-row")).toHaveValue("3");
+  // The sheet that holds no dates can't be read yet, and holds back Save until it is fixed or left out.
+  await expect(notes.getByTestId("cash-status")).toHaveAttribute("data-status", "blocked");
+  await expect(notes.getByTestId("cash-advice-fix")).toContainText("No date column was found");
+  await expect(page.getByTestId("cash-save")).toBeDisabled();
+  await expect(page.getByTestId("cash-blocked")).toContainText("Notes");
+  await notes.getByTestId("cash-leave-out").check();
+  await expect(page.getByTestId("cash-save")).toBeEnabled();
+  // The rows that could not be read come down as a sheet to fix.
+  const download = page.waitForEvent("download");
+  await shop.getByTestId("cash-unread").click();
+  expect((await download).suggestedFilename()).toContain("rows to fix");
+  await page.getByTestId("cash-save").click();
+  await expect(page.getByTestId("cash-saved")).toContainText("Saved 2 entries", { timeout: 30_000 });
+  await page.goto(`/cash/${id}?range=all`);
+  await expect(page.getByTestId("cash-in")).toContainText("1,200");
+  await expect(page.getByTestId("cash-out")).toContainText("300");
 });
