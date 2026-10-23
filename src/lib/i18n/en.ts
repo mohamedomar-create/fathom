@@ -8,6 +8,7 @@ import { sales } from "./areas/sales";
 import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
+import { simple } from "./areas/simple";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -75,7 +76,7 @@ export const en = {
   dataNav: {
     title: "Data",
     sub: "The General Ledger is your book of record. Everything else adds detail or checks it, in this order.",
-    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live" } as Record<string, string>,
+    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live", "/lines": "Lines" } as Record<string, string>,
   },
   settingsNav: {
     monthsLoaded: (n: number) => `${n} months loaded`,
@@ -122,6 +123,7 @@ export const en = {
   eu: eu.en,
   exp: exp.en,
   inv: inv.en,
+  simple: simple.en,
   bank: bank.en,
   state: state.en,
   rp: rp.en,

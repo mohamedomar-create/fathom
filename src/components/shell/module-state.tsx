@@ -41,7 +41,7 @@ function RetryButton() {
  * Shows a module's page only when it has figures to show: a failed read says so with a retry (never "upload your data"),
  * figures still being added up wait with a refresh, and figures that are not the latest carry a note with their time.
  */
-export function ModuleGate({ module, state, children }: { module: "sales" | "expenses" | "payments" | "inventory"; state: ModuleStatus; children: React.ReactNode }) {
+export function ModuleGate({ module, state, children }: { module: "sales" | "expenses" | "payments" | "inventory" | "lines"; state: ModuleStatus; children: React.ReactNode }) {
   const T = useT();
   const t = T.d.state;
   const name = t.modules[module] ?? module;

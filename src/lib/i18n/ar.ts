@@ -8,6 +8,7 @@ import { sales } from "./areas/sales";
 import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
+import { simple } from "./areas/simple";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -72,7 +73,7 @@ export const ar: Dict = {
   dataNav: {
     title: "البيانات",
     sub: "دفتر الأستاذ العام هو سجلك الأساسي. كل ما عداه يضيف تفاصيل أو يتحقق منه، بهذا الترتيب.",
-    tabs: { "": "الخطوات", "/upload": "الرفع", "/checks": "الفحوص والسجل", "/readiness": "الجاهزية", "/end-users": "المستخدمون النهائيون", "/odoo": "Odoo المباشر" },
+    tabs: { "": "الخطوات", "/upload": "الرفع", "/checks": "الفحوص والسجل", "/readiness": "الجاهزية", "/end-users": "المستخدمون النهائيون", "/odoo": "Odoo المباشر", "/lines": "السطور" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `عدد الأشهر المحمّلة: ${n}`,
@@ -119,6 +120,7 @@ export const ar: Dict = {
   eu: eu.ar,
   exp: exp.ar,
   inv: inv.ar,
+  simple: simple.ar,
   bank: bank.ar,
   state: state.ar,
   rp: rp.ar,

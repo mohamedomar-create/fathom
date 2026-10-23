@@ -17,7 +17,7 @@ export const state = area(
     staleNoTime: "The latest figures couldn't be loaded. Showing the last figures read.",
     unchecked: "couldn't be checked just now",
     dependency: (m: string) => `${m} couldn't be read just now, so the parts of this page that use them are left out or marked unchecked. Your data is safe.`,
-    modules: { sales: "Sales", expenses: "Expenses", payments: "Payments", inventory: "Stock" } as Record<string, string>,
+    modules: { sales: "Sales", expenses: "Expenses", payments: "Payments", inventory: "Stock", lines: "Sales and expenses" } as Record<string, string>,
   },
   {
     failedTitle: (m: string) => `تعذّر تحميل ${m} الآن`,
@@ -34,6 +34,6 @@ export const state = area(
     staleNoTime: "تعذّر تحميل أحدث الأرقام. تُعرض آخر أرقام تمت قراءتها.",
     unchecked: "تعذّر التحقق الآن",
     dependency: (m: string) => `تعذّرت قراءة ${m} الآن، لذا تُستبعد أجزاء هذه الصفحة التي تعتمد عليها أو تُعلَّم بأنها لم يُتحقق منها. بياناتك محفوظة.`,
-    modules: { sales: "المبيعات", expenses: "المصروفات", payments: "المدفوعات", inventory: "المخزون" },
+    modules: { sales: "المبيعات", expenses: "المصروفات", payments: "المدفوعات", inventory: "المخزون", lines: "المبيعات والمصروفات" },
   },
 );
