@@ -169,3 +169,122 @@ grant execute on function public.stage_lines_begin(uuid, text, text, text[], tex
 grant execute on function public.stage_lines_add(uuid, jsonb) to authenticated;
 grant execute on function public.stage_lines_finish(uuid) to authenticated;
 grant execute on function public.stage_lines_cancel(uuid) to authenticated;
+
+-- ---------------------------------------------------------------- clearing stock never races a saving import (D18)
+create or replace function private.clear_scope(p_company uuid, p_scope text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cfg jsonb;
+begin
+  if p_scope = 'financials' then
+    delete from public.sales_batches where company_id = p_company and source = 'ledger';
+    delete from public.expense_batches where company_id = p_company and source = 'ledger';
+    delete from public.stock_ledger_batches where company_id = p_company;
+    delete from public.payment_batches where company_id = p_company and source = 'ledger';
+    delete from public.account_balances where company_id = p_company;
+    delete from public.source_accounts where company_id = p_company;
+    delete from public.imports where company_id = p_company;
+    delete from public.commentary where company_id = p_company;
+    delete from public.reports where company_id = p_company;
+    -- No figures left: the books read as empty, and the opening and Trial Balance check that described them go too.
+    select kpi_config into v_cfg from public.companies where id = p_company;
+    update public.companies set data_version = 0, last_synced_at = null,
+      kpi_config = case when v_cfg ? 'profile' then jsonb_set(v_cfg, '{profile}', (v_cfg -> 'profile') - 'openingAsAt' - 'tbCheck') else v_cfg end
+     where id = p_company;
+  elsif p_scope = 'sales' then
+    delete from public.sales_batches where company_id = p_company;
+  elsif p_scope = 'expenses' then
+    delete from public.expense_batches where company_id = p_company;
+  elsif p_scope = 'stock' then
+    -- An import the background runner is saving holds its job row: wait for nobody, refuse instead. Jobs still waiting or
+    -- being prepared are stopped and removed with the stock (D18).
+    begin
+      perform 1 from public.import_jobs where company_id = p_company for update nowait;
+    exception when lock_not_available then
+      raise exception 'A stock import is being saved right now; clear stock again once it has finished';
+    end;
+    if exists (select 1 from public.import_jobs where company_id = p_company and status in ('checking', 'saving')) then
+      raise exception 'A stock import is being saved right now; clear stock again once it has finished';
+    end if;
+    delete from public.import_jobs where company_id = p_company;
+    delete from public.stock_layers where company_id = p_company;
+    delete from public.stock_moves where company_id = p_company;
+    delete from public.stock_onhand where company_id = p_company;
+    delete from public.inventory_products where company_id = p_company;
+    delete from public.inventory_batches where company_id = p_company;
+    delete from public.inventory_rollups where company_id = p_company;
+    delete from private.inventory_marks where company_id = p_company;
+  elsif p_scope = 'payments' then
+    delete from public.aged_reports where company_id = p_company;
+    delete from public.payment_batches where company_id = p_company;
+    select kpi_config into v_cfg from public.companies where id = p_company;
+    update public.companies set kpi_config = jsonb_set(v_cfg, '{profile}', (v_cfg -> 'profile') - 'controlAccounts') where id = p_company and v_cfg ? 'profile';
+  elsif p_scope = 'end_users' then
+    delete from public.end_user_map where company_id = p_company;
+    delete from public.agency_statement_batches where company_id = p_company;
+  else
+    raise exception 'unknown scope %', p_scope;
+  end if;
+end $$;
+revoke execute on function private.clear_scope(uuid, text) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------- a deleted company's stored files (D17)
+-- The rows go first, in one transaction; the files after. Once the company is gone its editors no longer exist, so an
+-- admin of the organisation that holds the record of the deletion may still remove its files.
+create or replace function private.import_file_removable(p_name text)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_seg text := split_part(p_name, '/', 1);
+  v_company uuid;
+begin
+  if v_seg !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false; end if;
+  v_company := v_seg::uuid;
+  if exists (select 1 from public.companies where id = v_company) then
+    return private.is_member(private.company_org(v_company), 'editor');
+  end if;
+  return exists (select 1 from public.company_data_audit a where a.company_id = v_company and a.action = 'delete_company' and private.is_member(a.org_id, 'admin'));
+end $$;
+revoke execute on function private.import_file_removable(text) from public, anon;
+grant execute on function private.import_file_removable(text) to authenticated;
+
+do $$
+begin
+  if to_regclass('storage.objects') is not null then
+    execute 'drop policy if exists imports_delete on storage.objects';
+    execute $p$create policy imports_delete on storage.objects for delete to authenticated using (
+      bucket_id = 'imports' and private.import_file_removable(name))$p$;
+  end if;
+end $$;
+
+-- Files that could not be removed after a company was deleted are kept on the record of the deletion.
+create or replace function public.note_files_left(p_company uuid, p_left integer)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare v_id bigint;
+begin
+  if p_left is null or p_left < 0 or p_left > 100000 then raise exception 'invalid count' using errcode = '22023'; end if;
+  select id into v_id from public.company_data_audit
+   where company_id = p_company and action = 'delete_company' and private.is_member(org_id, 'admin')
+   order by id desc limit 1;
+  if v_id is null then raise exception 'not allowed' using errcode = '42501'; end if;
+  update public.company_data_audit set counts = counts || jsonb_build_object('files_left', p_left) where id = v_id;
+end $$;
+revoke execute on function public.note_files_left(uuid, integer) from public, anon;
+grant execute on function public.note_files_left(uuid, integer) to authenticated;
+
+-- ---------------------------------------------------------------- previews have their own allowance (D23)
+-- Checking an upload (preview) is read-only and runs again on every mapping change; saving keeps its 60 an hour.
+insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('import_preview', 'user', 3600, 300)
+on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;

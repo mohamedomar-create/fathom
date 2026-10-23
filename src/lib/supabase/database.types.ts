@@ -125,6 +125,7 @@ export type Database = {
       data_reset_preview: { Args: { p_company: string }; Returns: Json };
       clear_company_data: { Args: { p_company: string; p_scope: string; p_confirm: number }; Returns: Json };
       delete_company: { Args: { p_company: string; p_name: string }; Returns: Json };
+      note_files_left: { Args: { p_company: string; p_left: number }; Returns: undefined };
       get_published_sales: { Args: { p_token: string }; Returns: Json };
       begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };

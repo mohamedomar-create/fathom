@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, Download, Loader2, XCircle } from "lucide-
 import { actOnJob, importError, isActiveHere, jobErrors, listJobs, originalLink, pendingJob, type JobView } from "@/lib/imports/jobs";
 import { ODOO_TEMPLATES, type ExportKey } from "@/lib/ingest/odoo-templates";
 import { cn } from "@/lib/cn";
+import { canRetry } from "@/lib/imports/retry";
 
 /**
  * Recent imports of a company, read straight from the database every few seconds while one is running: where each one is
@@ -112,12 +113,13 @@ function JobCard({ j, now, reload, onContinue }: { j: JobView; now: number; relo
       )}
       {j.message && <p className={cn("mt-2 rounded px-3 py-2 text-[13px]", j.status === "failed" ? "bg-red-bg text-red" : "bg-amber/10")} data-testid="import-job-message">{j.message.replace(/^[A-Z_]+: /, "")}</p>}
       {interrupted && <p className="mt-2 rounded bg-amber/10 px-3 py-2 text-[13px]">The upload stopped before every row was sent (the page was closed or the connection dropped). {canContinue ? "Choose the same files again to continue where it stopped." : "Start the import again from this browser."}</p>}
+      {j.status === "failed" && !canRetry(j, now) && <p className="mt-2 text-[13px] text-mute" data-testid="import-choose-again">This import&apos;s rows are no longer kept. To try again, choose the files again above.</p>}
       {msg && <p className="mt-2 rounded bg-red-bg px-3 py-2 text-[13px] text-red" role="alert">{msg}</p>}
       <div className="mt-3 flex flex-wrap gap-2 text-[13px]">
         {(c.invalid > 0 || j.status === "needs_review") && <button type="button" className="rounded border border-line px-3 py-1.5" data-testid="import-show-errors"
           onClick={async () => { if (errors) { setErrors(null); return; } try { setErrors(await jobErrors(j.id)); } catch (e) { setMsg(importError(e)); } }}>{errors ? "Hide the rows with problems" : "Show the rows with problems"}</button>}
         {j.status === "needs_review" && <button type="button" disabled={acting} className="rounded bg-brand-d px-3 py-1.5 text-white disabled:opacity-40" data-testid="import-accept" onClick={() => act("accept")}>Import the valid rows only</button>}
-        {j.status === "failed" && <button type="button" disabled={acting} className="rounded bg-brand-d px-3 py-1.5 text-white disabled:opacity-40" data-testid="import-retry" onClick={() => act("retry")}>Try again</button>}
+        {canRetry(j, now) && <button type="button" disabled={acting} className="rounded bg-brand-d px-3 py-1.5 text-white disabled:opacity-40" data-testid="import-retry" onClick={() => act("retry")}>Try again</button>}
         {canContinue && <button type="button" className="rounded bg-brand-d px-3 py-1.5 text-white" data-testid="import-continue" onClick={() => onContinue!(j.id)}>Continue</button>}
         {(["queued", "needs_review", "failed"].includes(j.status) || interrupted) && <button type="button" disabled={acting} className="rounded border border-line px-3 py-1.5 disabled:opacity-40" data-testid="import-cancel" onClick={() => act("cancel")}>Stop this import</button>}
       </div>

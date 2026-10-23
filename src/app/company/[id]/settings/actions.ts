@@ -5,9 +5,10 @@ import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
 import { LOCATION_TYPES, mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
+import { acceptChecks, stillAccepted, type AcceptedItem } from "@/lib/company/accept";
 import { checkKey, type Check } from "@/lib/company/checks";
 import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/lib/company/import-schema";
-import { planImport, statementMoves, unresolved, type MonthDiff, type Overlap, type TimelineCell, type VersionAccount } from "@/lib/company/import-plan";
+import { planImport, statementMoves, type MonthDiff, type Overlap, type TimelineCell, type VersionAccount } from "@/lib/company/import-plan";
 import { isPL } from "@/lib/company/build";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { keepLedgerInStep } from "@/lib/company/ledger-lines";
@@ -23,7 +24,7 @@ import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 
-export interface AcceptedItem { key: string; title: string; period?: string; reason: string; by: string; at: string }
+export type { AcceptedItem } from "@/lib/company/accept";
 export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[] }
 type Plan = z.output<typeof PlanSchema>;
 
@@ -57,7 +58,17 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
   const zeroMonths = d.opening ? await zeroBasedMonths(supabase, d.companyId, current) : [];
   const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths });
+  // The stored accounts plus the file's: the database keeps at most 8,000 per version.
+  if (plan.accounts.length > 8000) throw new Error(`After this upload the company would hold ${plan.accounts.length.toLocaleString("en")} accounts; at most 8,000 can be kept. Exclude parent, total or unused accounts, or choose "Replace all".`);
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
+}
+
+/** Whether this user is an admin of the company's organisation. */
+async function adminOf(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, userId: string): Promise<boolean> {
+  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
+  if (!co) return false;
+  const { data: m } = await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", userId).maybeSingle();
+  return m?.role === "admin";
 }
 
 function openingBasisOf(opening: Plan["opening"], checks: Check[]): OpeningBasis {
@@ -71,10 +82,10 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   if (!v.success) return { ok: false, error: invalidImport(v.error, input) };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, "import", user.id)) return { ok: false, error: TOO_MANY };
+  if (await limited(supabase, "import_preview", user.id)) return { ok: false, error: TOO_MANY };
   try {
     const { plan, prevAccepted, hasData } = await buildPlan(supabase, v.data);
-    const ok = new Set(prevAccepted.map((a) => a.key));
+    const ok = new Set(stillAccepted(plan.checks, prevAccepted).map((a) => a.key));
     return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData, overlap: plan.overlap } };
   } catch (e) {
     return { ok: false, error: safeError(e, "previewImport") };
@@ -90,22 +101,12 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
   try {
     const d = v.data;
     const { plan, prevAccepted, notes } = await buildPlan(supabase, d);
-    const prevKeys = new Set(prevAccepted.map((a) => a.key));
-    const newKeys = new Set(d.accept?.keys ?? []);
-    const blocking = unresolved(plan.checks, [...prevKeys, ...newKeys]);
+    // Accepted issues carry into this version only while they fail by the same amount; serious file checks need an admin.
+    const isAdmin = await adminOf(supabase, d.companyId, user.id);
+    const { accepted, blocking, refused } = acceptChecks(plan.checks, prevAccepted, d.accept, { by: user.email ?? user.id, isAdmin }, new Date().toISOString());
+    if (refused) return { ok: false, error: refused, blocking };
     if (blocking.length) return { ok: false, error: `${blocking.length} check${blocking.length > 1 ? "s" : ""} failed. Fix the mapping, or accept ${blocking.length > 1 ? "them" : "it"} with a reason.`, blocking };
     if (!plan.accounts.length) return { ok: false, error: "Nothing to import: every line is excluded or has no amounts." };
-    // Accepted issues that still fail are carried into this version, with their original reason.
-    const now = new Date().toISOString();
-    const accepted: AcceptedItem[] = [];
-    for (const c of plan.checks) {
-      if (c.severity !== "block") continue;
-      const key = checkKey(c);
-      if (accepted.some((a) => a.key === key)) continue;
-      const prev = prevAccepted.find((a) => a.key === key);
-      if (prev) accepted.push(prev);
-      else if (newKeys.has(key) && d.accept) accepted.push({ key, title: c.title, period: c.period, reason: d.accept.reason, by: user.email ?? user.id, at: now });
-    }
     const fileNotes = [...d.report.flips, ...d.report.notes];
     const allNotes = d.mode !== "replace" ? [...new Set([...notes, ...fileNotes])].slice(-30) : fileNotes;
     const wrote = (st: "PL" | "BS") => plan.timeline.filter((t) => t[st] === "new" || t[st] === "overwrite").map((t) => t.period);
@@ -113,7 +114,9 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     if (d.mode === "add" && !touched.PL.length && !touched.BS.length) return { ok: false, error: "Nothing new to add: every month in this file is already loaded." };
     const { version } = await saveCompanyData(supabase, d.companyId, plan.accounts, {
       kind: "upload", filename: d.filename,
-      report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300), openingBasis: openingBasisOf(d.opening, plan.checks) } as unknown as Json,
+      report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300), openingBasis: openingBasisOf(d.opening, plan.checks),
+        // The file checks were worked out in the browser (the server re-runs the balance checks on the merged books itself).
+        browserChecks: [...new Set(d.extra.map((c) => c.id))] } as unknown as Json,
     }, allNotes);
     // The person's class choices become the company's account map: the next upload and every Odoo sync keep them.
     await rememberClasses(supabase, d.companyId, rememberedEntries(d.report.mapping, d.accounts));

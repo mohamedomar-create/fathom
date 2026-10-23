@@ -24,6 +24,8 @@ export interface CompanyBundle {
   accounts: AccountLine[];
   commentary: Record<string, string>;
   readOnly: boolean;
+  /** The signed-in person's role in the company's organisation (absent in the demo). */
+  role?: string;
   lastUpdated?: string | null;
   orgName?: string;
   notes?: string[];

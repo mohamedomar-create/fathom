@@ -118,3 +118,23 @@ describe("the end-user pages with a statement", () => {
     expect(match.unmatchedLines.map((l) => l.hospital)).toEqual(["Ordered Hospital"]);
   });
 });
+
+describe("D8: nothing on the statement is dropped without a word", async () => {
+  const { mergeStatementLines } = await import("@/lib/ingest/agency-statement");
+  it("a line with a value but no readable date is named", () => {
+    const g = grid([["not a date", "5", "5", "Disposable", "مستشفى النور", null, null, null, 3000, 420, 3420], [new Date(Date.UTC(2025, 3, 10)), "6", null, "x", "مستشفى النور", null, null, null, 100, 14, 114]]);
+    const r = readAgencyStatement(g)!;
+    expect(r.lines).toHaveLength(1);
+    expect(r.issues.join(" ")).toMatch(/1 line has a value but no readable date/);
+  });
+  it("two real deliveries with no delivery note are both kept; the same delivery note on two sheets counts once, and the merge is counted", () => {
+    const line = (sheet: string, dn: string, value = 500) => ({ day: "2025-04-10", dn, ref: "", hospital: "مستشفى النور", funding: "", region: "", value, sheet });
+    const reads = [
+      { sheet: "SOA", lines: [line("SOA", ""), line("SOA", ""), line("SOA", "DN-1")], total: 1500, beforeStart: { lines: 0, value: 0 }, issues: [] },
+      { sheet: "Spare parts", lines: [line("Spare parts", "DN-1")], total: 500, beforeStart: { lines: 0, value: 0 }, issues: [] },
+    ];
+    const r = mergeStatementLines(reads, new Set(["SOA", "Spare parts"]));
+    expect(r.lines).toHaveLength(3);
+    expect(r.merged).toBe(1);
+  });
+});

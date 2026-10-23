@@ -49,13 +49,14 @@ export function readAgencyStatement(g: Grid, opts: { booksStart?: string | null 
   const issues: string[] = [];
   const before = { lines: 0, value: 0 };
   const dns = new Map<string, number>();
-  let endValue: number | null = null, noHospital = 0, badVat = 0;
+  let endValue: number | null = null, noHospital = 0, badVat = 0, undated = 0;
   for (let i = hi + 1; i < g.rows.length; i++) {
     const r = g.rows[i] ?? [];
     if (/^end$/i.test(text(at(r, "date"))) || /^end$/i.test(text(at(r, "hospital")))) { endValue = cleanNum(at(r, "value")); continue; }
     const value = cleanNum(at(r, "value"));
     const day = parseDay(at(r, "date"));
-    if (!day || value === null || value === 0) continue; // collection rows and blank rows
+    if (value === null || value === 0) continue; // collection rows and blank rows
+    if (!day) { undated++; continue; }
     const hospital = text(at(r, "hospital"));
     if (!hospital) { noHospital++; continue; }
     const vat = cleanNum(at(r, "vat"));
@@ -68,8 +69,29 @@ export function readAgencyStatement(g: Grid, opts: { booksStart?: string | null 
   const total = Math.round(lines.reduce((s, l) => s + l.value, 0) * 100) / 100;
   if (endValue !== null && Math.abs(endValue - (total + before.value)) > 1) issues.push(`The End row says ${endValue}, but the lines read add up to ${Math.round((total + before.value) * 100) / 100}.`);
   if (noHospital) issues.push(`${noHospital} line${noHospital === 1 ? " has" : "s have"} a value but no hospital and ${noHospital === 1 ? "was" : "were"} not read.`);
+  if (undated) issues.push(`${undated} line${undated === 1 ? " has" : "s have"} a value but no readable date and ${undated === 1 ? "was" : "were"} not read.`);
   if (badVat) issues.push(`${badVat} line${badVat === 1 ? "'s" : "s'"} VAT is not 14% of the value.`);
   const dup = [...dns].filter(([, n]) => n > 1).length;
   if (dup) issues.push(`${dup} delivery note${dup === 1 ? " appears" : "s appear"} more than once with the same value.`);
   return { sheet: g.name, lines, total, beforeStart: { lines: before.lines, value: Math.round(before.value * 100) / 100 }, issues };
+}
+
+/**
+ * The lines of the sheets picked, as one list. A delivery note names one delivery, so the same note (with the same day,
+ * value and hospital) on two sheets counts once; lines without a delivery note are all kept, since two real deliveries can
+ * look alike. `merged` is how many lines were counted once.
+ */
+export function mergeStatementLines(reads: AgencyStatement[], picked: Set<string>): { lines: AgencyLine[]; merged: number } {
+  const seen = new Set<string>();
+  const lines: AgencyLine[] = [];
+  let merged = 0;
+  for (const l of reads.filter((r) => picked.has(r.sheet)).flatMap((r) => r.lines)) {
+    if (l.dn) {
+      const k = `${l.day}|${l.value}|${l.hospital}|${l.dn}`;
+      if (seen.has(k)) { merged++; continue; }
+      seen.add(k);
+    }
+    lines.push(l);
+  }
+  return { lines, merged };
 }

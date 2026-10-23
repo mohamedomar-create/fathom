@@ -19,3 +19,9 @@ export function cutoffMessage(late: Dated[], cutoff: string): string {
   const shown = late.slice(0, 4).map((l) => `${l.doc || "a line"} ${when(l)}`).join(", ");
   return `${late.length} line${late.length > 1 ? "s" : ""} dated after the cut-off, ${fmtDay(cutoff)}, ${late.length > 1 ? "are" : "is"} left out (${total.toLocaleString("en-US", { maximumFractionDigits: 2 })}): ${shown}${late.length > 4 ? "…" : ""}.`;
 }
+
+/** Cash-book and bank-statement lines (money in as sales, money out as expenses) cut at the same date as every other file. */
+export function cutBooks<S extends Dated, E extends Dated>(cash: { sales: S[]; expenses: E[] }, bank: { sales: S[]; expenses: E[] }, cutoff: string | undefined): { cash: { sales: S[]; expenses: E[] }; bank: { sales: S[]; expenses: E[] }; late: Dated[] } {
+  const cs = cutLines(cash.sales, cutoff), ce = cutLines(cash.expenses, cutoff), bs = cutLines(bank.sales, cutoff), be = cutLines(bank.expenses, cutoff);
+  return { cash: { sales: cs.kept, expenses: ce.kept }, bank: { sales: bs.kept, expenses: be.kept }, late: [...cs.late, ...ce.late, ...bs.late, ...be.late] };
+}

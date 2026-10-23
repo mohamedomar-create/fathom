@@ -28,7 +28,7 @@ export const PlanSchema = z.object({
     confidence: z.number().min(0).max(1).nullable().optional(),
     mapped_by: z.enum(["auto", "user", "system"]).optional(),
     ref: Ref.optional(),
-  })).min(1).max(20_000),
+  })).min(1).max(8000),
   controls: z.array(z.object({ metric: z.enum(["revenue", "gross_profit", "net_income", "ta", "tl", "te", "tle"]), period: Period, value: z.number().finite(), source: z.string().max(400), months: z.number().int().min(1).max(MAX_MONTHS).optional() })).max(3000).default([]),
   extra: z.array(CheckSchema).max(5000).default([]),
   ranges: z.record(Period, z.number().int().min(1).max(MAX_MONTHS)).default({}),
@@ -73,6 +73,7 @@ export function invalidImport(err: z.ZodError, input?: unknown): string {
     const sent = (input as { ranges?: Record<string, unknown> } | undefined)?.ranges?.[p];
     return `The import data is not valid: a P&L column for ${/^\d{4}-\d{2}$/.test(p) ? mlabel(p) : p} covers ${typeof sent === "number" ? sent : "too many"} months; at most ${max} can be read.`;
   }
+  if (path[0] === "accounts" && path.length === 1 && i.code === "too_big") return `The import data is not valid: the file has ${(input as { accounts?: unknown[] } | undefined)?.accounts?.length ?? "too many"} accounts; at most 8,000 accounts can be kept. Exclude parent, total or unused accounts and try again.`;
   if (path[0] === "controls" && path.includes("months") && i.code === "too_big") return `The import data is not valid: a total in the file covers more than ${max} months.`;
   const what = FIELD[path.find((x) => FIELD[x]) ?? ""];
   if (what && i.code === "too_big") return `The import data is not valid: too many ${what} in one upload (at most ${max}). Upload fewer months or split the file.`;

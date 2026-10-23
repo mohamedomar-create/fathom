@@ -97,3 +97,7 @@ select pg_temp.login('lso@x.test');
 select pg_temp.check('an outsider cannot open a save', pg_temp.fails($$select public.stage_lines_begin((select co from ids), 'sales', 'file', array['2026-01'], 'x', '{}'::jsonb, false)$$), 'refused');
 select pg_temp.check('an outsider sees no staged rows', pg_temp.fails($$select count(*) from private.line_stage_chunks$$), 'refused');
 reset role;
+
+-- D23: previewing an upload has its own allowance (300 an hour), apart from saving (60 an hour).
+select pg_temp.check('previews have their own allowance', (select window_s || ' ' || max_hits || ' ' || subject_kind from private.rate_scopes where scope = 'import_preview'), '3600 300 user');
+select pg_temp.check('saving keeps 60 an hour', (select window_s || ' ' || max_hits from private.rate_scopes where scope = 'import'), '3600 60');

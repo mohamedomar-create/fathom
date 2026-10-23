@@ -110,14 +110,17 @@ export async function parseFiles(files: { name: string; data: ArrayBuffer; expor
     } else if (kind === "onhand") {
       for (const o of r.onhand) rows.push({ line: null, data: { as_of: opts.asOf, product: cut(o.product, 300), code: cut(o.code, 120), location: cut(o.location, 200), lot: cut(o.lot, 120), qty: o.qty, value: o.value } });
     } else {
-      for (const p of r.products ?? []) if (p.code) rows.push({ line: null, data: { code: cut(p.code, 120), name: cut(p.name, 300), category: cut(p.category, 200), cost: p.cost, type: cut(p.type, 60) } });
+      // Products are kept by their internal reference: one without it cannot be saved, and the job says so by name.
+      for (const p of r.products ?? []) rows.push(p.code
+        ? { line: null, data: { code: cut(p.code, 120), name: cut(p.name, 300), category: cut(p.category, 200), cost: p.cost, type: cut(p.type, 60) } }
+        : { line: null, error: cut(`${p.name || "A product"} has no internal reference: products are kept by it, so this one is not saved. Add it in Odoo and export again.`, 300) });
     }
     for (const i of r.issues) rows.push({ line: i.line, error: cut(i.message, 300) });
     // In sheet order, so a person reading the errors finds each row where it is.
     rows.sort((a, b) => (a.line ?? Infinity) - (b.line ?? Infinity));
     const months = [...new Set([...r.layers, ...r.moves].map((x) => x.period))].sort();
     return {
-      name: f.name, export: f.export, kind, records: rows.map((x, k) => ({ n: k + 1, ...x })), valid: rows.length - r.issues.length, invalid: r.issues.length,
+      name: f.name, export: f.export, kind, records: rows.map((x, k) => ({ n: k + 1, ...x })), valid: rows.filter((x) => !x.error).length, invalid: rows.filter((x) => x.error).length,
       skipped: r.skipped, withIds: r.withIds, months, value: Math.round(r.layers.reduce((s, l) => s + l.value, 0) * 100) / 100, ...(late ? { afterCutoff: late } : {}),
     };
   });

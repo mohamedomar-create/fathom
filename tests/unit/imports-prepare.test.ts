@@ -70,3 +70,14 @@ describe("the background reader", () => {
     expect(m.records.map((x) => x.data?.odoo_key)).toEqual(["sml_1"]);
   });
 });
+
+describe("D7: a product without an internal reference is named, never dropped silently", () => {
+  it("rows without a code become row problems the job lists (products are kept by their code)", async () => {
+    const PRODUCTS = [["Name", "Product Category", "Internal Reference", "Cost"], ["Mask", "All / PPE", "P1", 3], ["Gloves", "All / PPE", "", 2]];
+    const r = await parseFiles([{ name: "Products.xlsx", data: await xlsx(PRODUCTS), export: "product.template" }], { rentalLocation: null, asOf: "2026-10-01" });
+    const f = r.files[0];
+    expect(f.valid).toBe(1);
+    expect(f.invalid).toBe(1);
+    expect(f.records.find((x) => x.error)?.error).toMatch(/Gloves.*internal reference/i);
+  });
+});

@@ -2,7 +2,7 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { money, pct, type AgencyLine } from "@/lib/engine";
-import { readAgencyStatement, type AgencyStatement } from "@/lib/ingest/agency-statement";
+import { mergeStatementLines, readAgencyStatement, type AgencyStatement } from "@/lib/ingest/agency-statement";
 import { readInWorker } from "@/lib/imports/worker-client";
 import type { Grid } from "@/lib/ingest/extract";
 import { Preflight } from "@/components/preflight/preflight";
@@ -36,10 +36,7 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
   const cur = c.settings.currency;
   const now = useMemo(() => resolveEndUsers(data), [data]);
 
-  const lines = useMemo(() => {
-    const seen = new Set<string>();
-    return (reads ?? []).filter((r) => picked.has(r.sheet)).flatMap((r) => r.lines).filter((l) => { const k = `${lineKey(l)}|${l.dn}`; if (seen.has(k)) return false; seen.add(k); return true; });
-  }, [reads, picked]);
+  const { lines, merged } = useMemo(() => mergeStatementLines(reads ?? [], picked), [reads, picked]);
   const next = useMemo(() => (lines.length ? resolveEndUsers(data, lines) : null), [data, lines]);
   const largest = reads?.slice().sort((a, b) => b.lines.length - a.lines.length)[0];
 
@@ -120,6 +117,7 @@ export function AgencyStatementUpload({ data, booksStart }: { data: EndUserData;
             <div className="max-w-4xl rounded border border-line p-3 text-[13.5px]" data-testid="statement-effect">
               <p>Agency sales placed on a hospital: <b>{cov(now)}</b> now → <b data-testid="statement-coverage">{cov(next)}</b> with this statement ({next.match.byDoc.size} invoices matched).</p>
               <p>Agency sales stay <b>{money(next.analysis.total, cur)}</b> (the same as Odoo&apos;s); receivables are not touched.</p>
+              {merged > 0 && <p className="text-mute" data-testid="statement-merged">{merged} line{merged === 1 ? " appears" : "s appear"} on more than one sheet with the same delivery note, and {merged === 1 ? "is" : "are"} counted once.</p>}
               <p className="text-mute">{next.match.unmatchedLines.length} statement lines ({money(next.match.unmatchedLines.reduce((s, l) => s + l.value, 0), cur, true)}) match no Odoo invoice and will be listed as not invoiced; {next.match.unmatchedInvoices.length} Odoo invoices stay Unmapped.</p>
               <button className="mt-2 rounded bg-brand-d px-3 py-1 text-sm text-white" disabled={pending || !lines.length} onClick={save}>Save the statement</button>
             </div>

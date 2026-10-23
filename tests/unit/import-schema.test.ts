@@ -14,6 +14,15 @@ describe("what an upload may send to be saved", () => {
     expect(v.success).toBe(true);
   });
 
+  it("D14: at most 8,000 accounts, as the database keeps, with a message that says so", () => {
+    const accounts = Array.from({ length: 8001 }, (_, i) => ({ code: String(100000 + i), name: `Account ${i}`, cls: "other_ca", amounts: { "2026-10": 1 } }));
+    const input = plan({ accounts });
+    const v = PlanSchema.safeParse(input);
+    expect(v.success).toBe(false);
+    if (!v.success) expect(invalidImport(v.error, input)).toMatch(/8,000 accounts/);
+    expect(PlanSchema.safeParse(plan({ accounts: accounts.slice(0, 8000) })).success).toBe(true);
+  });
+
   it("an impossible span is still refused, with a message that says what and why", () => {
     const input = plan({ ranges: { "2026-10": 601 } });
     const v = PlanSchema.safeParse(input);

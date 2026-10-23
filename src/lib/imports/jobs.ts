@@ -8,6 +8,7 @@ import { ODOO_TEMPLATES } from "@/lib/ingest/odoo-templates";
 import type { ParseResult, StagedRecord } from "./prepare";
 import { parseInWorker } from "./worker-client";
 import { isTransient, missingOf, stageRows, type Range } from "./stage";
+import { handOffOutcome } from "./handoff";
 
 /**
  * An import, from the browser straight to Supabase (never through the web server):
@@ -180,18 +181,17 @@ export async function startImport(companyId: string, mode: ImportMode, files: Im
   } finally { activeHere.delete(job); }
 }
 
-class Refused extends Error {}
 /** Asks the server to read the stored files and send their rows. False: it could not take over (the page does it). */
 async function handOff(job: string, mappings: Record<string, SavedMapping>): Promise<boolean> {
+  let status: number | null = null, body: { error?: unknown } | null = null;
   try {
     const r = await fetch(`/api/imports/${job}/stage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mappings }) });
-    // The server's preflight refused the stored file: the page must not send its rows either.
-    if (r.status === 422) { const why = String((await r.json().catch(() => ({})) as { error?: string }).error ?? ""); if (/^PREFLIGHT/.test(why)) throw new Refused(why); }
-    return r.status === 202;
-  } catch (e) {
-    if (e instanceof Refused) throw e;
-    return false;
-  }
+    status = r.status;
+    body = r.status === 202 ? null : await r.json().catch(() => null);
+  } catch { /* no answer: the page sends the rows */ }
+  const out = handOffOutcome(status, body);
+  if ("refused" in out) throw new Error(out.refused);
+  return out.by === "server";
 }
 
 /** Rows the database holds for a file, from its held ranges. */

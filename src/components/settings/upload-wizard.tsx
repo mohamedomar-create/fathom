@@ -17,6 +17,7 @@ import { TwoBox } from "@/components/upload/two-box";
 import { ChoiceCard, WizardNav, WizardSteps, WizardTitle, type Screen } from "@/components/upload/wizard-shell";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
+import { ADMIN_ONLY } from "@/lib/company/accept";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { deriveInWorker, ingestInWorker, putSheets, readForUpload } from "@/lib/imports/worker-client";
@@ -61,7 +62,7 @@ import { PaymentsUpload } from "@/components/payments/payments-upload";
 import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
 import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
-import { cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
+import { cutBooks, cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
 import { fmtDay } from "@/lib/ingest/odoo";
 
 const NO_RAW: RawLine[] = [];
@@ -151,8 +152,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [plOn, setPlOn] = useState<boolean | null>(null);
   const [plMap, setPlMap] = useState<Record<string, ClassKey>>({});
   const bankRead = useMemo(() => readBooks<BankOverride, BankLayout>(sheetsAs("bank"), bankOv, readBankStatement), [sheetsAs, bankOv]);
-  const allSales = useMemo(() => [...(salesRead?.lines ?? []), ...cashRead.sales, ...bankRead.sales], [salesRead, cashRead, bankRead]);
-  const allExp = useMemo(() => [...(expRead?.lines ?? []), ...cashRead.expenses, ...bankRead.expenses], [expRead, cashRead, bankRead]);
+  // Cash-book and bank lines follow the same cut-off as every other file.
+  const books = useMemo(() => cutBooks(cashRead, bankRead, opts.cutoff), [cashRead, bankRead, opts.cutoff]);
+  const allSales = useMemo(() => [...(salesRead?.lines ?? []), ...books.cash.sales, ...books.bank.sales], [salesRead, books]);
+  const allExp = useMemo(() => [...(expRead?.lines ?? []), ...books.cash.expenses, ...books.bank.expenses], [expRead, books]);
   const hasBooks = cashRead.layouts.length + bankRead.layouts.length > 0;
   const rolesNeed = !!allGrids && kind !== "opening" && needsConfirm(guesses, roles);
   // The workbook as a whole: the owner's own summary figures against what was read from every tab, and copied tabs.
@@ -248,7 +251,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const res = outcome?.res ?? null, ingestErr = outcome?.err ?? null, raw = outcome?.raw ?? NO_RAW, booksStart = outcome?.booksStart ?? null;
 
   // The cut-off: what the person chose, or else the last day anything in the file is dated.
-  const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines)].filter((d): d is string => !!d).sort().pop());
+  const cutoffDay = opts.cutoff ?? ([res?.lastDay, lastDayOf(salesFile?.lines), lastDayOf(expFile?.lines), lastDayOf([...cashRead.sales, ...cashRead.expenses, ...bankRead.sales, ...bankRead.expenses])].filter((d): d is string => !!d).sort().pop());
   const cutoffField = cutoffDay && (
     <label className="mb-4 flex flex-wrap items-center gap-2 text-sm" data-testid="cutoff">
       <span className="font-medium">Cut-off date</span>
@@ -277,6 +280,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <span className="text-mute">Your opening balances: the balance sheet at {fmtDay(asAtDay)}. The books start the next day, {fmtDay(booksStart!)}.</span>
     </label>
   );
+  const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   const dateFields = kind === "opening" ? asAtField : <>{cutoffField}{startField}</>;
   // No opening balances loaded and none in this file: balances start from zero (allowed, and said plainly).
   const firstMonth = res?.openingFrom ?? null;
@@ -313,12 +317,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const issues = useMemo(() => [
     ...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : []),
     ...([["sales", salesCut.late], ["expenses", expCut.late]] as const).filter(([, late]) => late.length && opts.cutoff).map(([k, late]) => ({ id: `cutoff:${k}`, severity: "check" as const, sheet: late[0].src?.sheet ?? "", message: cutoffMessage(late, opts.cutoff!), fix: "settings" as const })),
+    ...(books.late.length && opts.cutoff ? [{ id: "cutoff:books", severity: "check" as const, sheet: "", message: cutoffMessage(books.late, opts.cutoff), fix: "settings" as const }] : []),
     ...bookIssues([...cashRead.layouts, ...bankRead.layouts]),
     ...[...cashRead.failed.map((n) => ({ n, what: "a cash book" })), ...bankRead.failed.map((n) => ({ n, what: "a bank statement" }))].map(({ n, what }) => ({ id: `role:${n}`, severity: "check" as const, sheet: n, message: `${n.split(" › ").pop()} could not be read as ${what}. Change what it is under "Your sheets".`, fix: "settings" as const })),
     ...sheetIssues(guesses, (sh) => IMPORTED.has(roleOf(sh))),
     ...(tie ? tieMessages(tie).map((m, i) => ({ id: `tie:${m.sheet}:${m.row ?? ""}:${m.col ?? ""}:${i}`, severity: m.severity, sheet: m.sheet, row: m.row, col: m.col, message: m.message, fix: (m.row !== undefined ? "cell" : "settings") as "cell" | "settings" })) : []),
     ...(demo ? [] : layoutIssues(fingerprints, savedLayouts ?? {}, layoutOk)),
-  ], [res, fileChecks, salesRead, expRead, salesCut, expCut, opts.cutoff, cashRead, bankRead, guesses, roleOf, tie, demo, fingerprints, savedLayouts, layoutOk]);
+  ], [res, fileChecks, salesRead, expRead, salesCut, expCut, books.late, opts.cutoff, cashRead, bankRead, guesses, roleOf, tie, demo, fingerprints, savedLayouts, layoutOk]);
   const errorCount = issues.filter((i) => i.severity === "error").length;
   const fixAt = (sheet: string, f: (o: { cells?: Record<string, number | string | null>; skipRows?: number[] }) => { cells?: Record<string, number | string | null>; skipRows?: number[] }) => {
     setPreview(null);
@@ -457,6 +462,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   }
 
   const blocking = preview?.checks.filter((c) => c.severity === "block" && !c.accepted && !c.existing) ?? [];
+  // Failures that mean the books themselves do not add up: only an admin may accept them (the server checks it too).
+  const adminOnly = blocking.filter((c) => ADMIN_ONLY.has(c.id));
 
   // The steps after the figures are saved, run in order with their progress; a stopped step is continued from there.
   async function runPost(steps: PostStep[], from: number, doneMsg: string) {
@@ -563,7 +570,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const salesToSave = allSales.filter((l) => salesMode !== "new" || !salesLoaded.includes(l.period));
   const expOverlap = expensePeriods(allExp).filter((p) => expensesLoaded.includes(p));
   const expToSave = allExp.filter((l) => expMode !== "new" || !expensesLoaded.includes(l.period));
-  const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
   // The file holds another kind of data than the one picked: say so, and offer to switch.
   const found: Record<Kind, boolean> = { opening: kind === "opening" && !!res, accounts: kind !== "opening" && !!res, sales: allSales.length > 0, expenses: allExp.length > 0, inventory: !!invParts, payments: false };
   const wrongKind: Kind | null = kind && !found[kind] ? (["accounts", "sales", "expenses", "inventory"] as Kind[]).find((k) => found[k]) ?? null : null;
@@ -757,7 +763,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // A cash-basis P&L from the cash books (on unless the company already has accounts).
   const fromCashBook = company.accounts.some((a) => a.name === "Sales (cash book)");
   const plWanted = cashRead.layouts.length > 0 && !demo && (plOn ?? (company.accounts.length === 0 || fromCashBook));
-  const plMonths = plWanted ? [...new Set([...cashRead.sales, ...cashRead.expenses].map((l) => l.period))].sort() : [];
+  const plMonths = plWanted ? [...new Set([...books.cash.sales, ...books.cash.expenses].map((l) => l.period))].sort() : [];
 
   // 4 · Check (Inventory sheets only). Outside the demo they are saved only through the Stock card, which checks every row.
   if (!res && !hasBooks && !salesRead && !expRead && invParts && !demo) {
@@ -811,11 +817,11 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
               // Financials first: if the P&L cannot be built, nothing is saved (no half upload).
               let plSaved = 0;
               if (plWanted) {
-                const accounts = cashAccounts(cashRead.sales, cashRead.expenses, plMap);
+                const accounts = cashAccounts(books.cash.sales, books.cash.expenses, plMap);
                 const periods = [...new Set(accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
                 // An entry that moved month since the last upload of this cash book (a December-dated payment now under
                 // JANUARY) must not stay behind: the month either side is rewritten too when it holds only cash-book figures.
-                const cashNames = new Set(["Sales (cash book)", ...cashCostColumns(cashRead.expenses).map((c) => c.name)]);
+                const cashNames = new Set(["Sales (cash book)", ...cashCostColumns(books.cash.expenses).map((c) => c.name)]);
                 const onlyCash = (p: string) => company.accounts.some((a) => a.amounts[p] && cashNames.has(a.name)) && company.accounts.every((a) => !a.amounts[p] || !isPL(a.cls) || cashNames.has(a.name));
                 const edges = periods.length && expMode !== "new" ? [addMonths(periods[0], -1), addMonths(periods[periods.length - 1], 1)].filter((p) => !periods.includes(p) && onlyCash(p)) : [];
                 const pl = await commitImport({
@@ -862,8 +868,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         )}
         {tie && <WorkbookTieout tie={tie} currency={currency} />}
         {cashRead.layouts.length > 0 && !demo && (
-          <CashPL on={plWanted} onToggle={setPlOn} columns={cashCostColumns(cashRead.expenses)} map={plMap} onMap={(n, c) => setPlMap((m) => ({ ...m, [n]: c }))}
-            revenue={cashRead.sales.reduce((a, l) => a + l.amount, 0)} hasAccounts={company.accounts.length > 0 && !fromCashBook} currency={currency} />
+          <CashPL on={plWanted} onToggle={setPlOn} columns={cashCostColumns(books.cash.expenses)} map={plMap} onMap={(n, c) => setPlMap((m) => ({ ...m, [n]: c }))}
+            revenue={books.cash.sales.reduce((a, l) => a + l.amount, 0)} hasAccounts={company.accounts.length > 0 && !fromCashBook} currency={currency} />
         )}
         <div className="mb-4 grid max-w-4xl grid-cols-2 gap-3 sm:grid-cols-4" data-testid="books-preview">
           <Stat label="Months" value={String(months.length)} sub={months.length ? monthsText(months) : ""} />
@@ -1036,7 +1042,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <div className="mt-4 rounded-lg border-2 border-red/50 p-4 text-[14px]" data-testid="accept-box">
             <p className="mb-2 font-medium">Something doesn&apos;t add up.</p>
             <CheckList checks={blocking} />
-            <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={acceptOn} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Save anyway</label>
+            {adminOnly.length > 0 && company.role !== "admin" && <p className="mt-3 text-red" data-testid="admin-only">Only an admin of this company can accept {adminOnly.map((c) => `"${c.title}"`).join(", ")}. Fix it in the file, or ask an admin to save this upload.</p>}
+            <label className="mt-3 flex items-center gap-2"><input type="checkbox" checked={acceptOn} disabled={adminOnly.length > 0 && company.role !== "admin"} onChange={(e) => setAcceptOn(e.target.checked)} data-testid="accept-check" /> Save anyway</label>
             {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why is it right? (at least 10 letters)" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
           </div>
         )}

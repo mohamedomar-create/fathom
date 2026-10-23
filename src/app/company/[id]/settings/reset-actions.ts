@@ -72,11 +72,16 @@ export async function deleteCompanyFully(companyId: string, name: string): Promi
   const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
   if (mem?.role !== "admin") return { ok: false, error: "Only organisation admins can delete a company." };
   if (await limited(supabase, "reset", companyId)) return { ok: false, error: TOO_MANY };
-  // Files before the company: removing them needs the company (whose admins may remove its files). Name and role are
-  // checked above, so the delete that follows has nothing left to refuse.
-  const filesLeft = await removeFiles(supabase, before.preview.files);
+  // The rows first, all or nothing, so a refused delete never leaves a company whose files are already gone; then the
+  // files (an admin of the organisation that holds the record of the deletion may still remove them). Files that could
+  // not be removed are kept on that record.
   const { error } = await supabase.rpc("delete_company", { p_company: companyId, p_name: name });
   if (error) return { ok: false, error: dbError(error, "deleteCompanyFully") };
+  const filesLeft = await removeFiles(supabase, before.preview.files);
+  if (filesLeft) {
+    const { error: noteError } = await supabase.rpc("note_files_left", { p_company: companyId, p_left: filesLeft });
+    if (noteError) console.error("delete company: files left not recorded", noteError.message);
+  }
   revalidatePath("/companies");
   return { ok: true, filesLeft };
 }

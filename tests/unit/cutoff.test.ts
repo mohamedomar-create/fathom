@@ -92,3 +92,20 @@ describe("no account left unmapped (register D12)", () => {
     expect(classify("Sales Manual Discount", "", null, {}, "5410").cls).toBe("revenue");
   });
 });
+
+describe("D6: cash books and bank statements follow the cut-off too", async () => {
+  const { cutBooks } = await import("@/lib/ingest/cutoff");
+  const l = (day: string, amount: number, doc = "") => ({ day, period: day.slice(0, 7), amount, doc });
+  it("drops cash-book and bank lines after the cut-off, and says which", () => {
+    const r = cutBooks({ sales: [l("2026-12-30", 100), l("2027-01-02", 50, "CB-9")], expenses: [l("2027-01-03", -20)] }, { sales: [l("2027-01-04", 70, "NBE")], expenses: [l("2026-12-31", -5)] }, "2026-12-31");
+    expect(r.cash.sales.map((x) => x.amount)).toEqual([100]);
+    expect(r.cash.expenses).toEqual([]);
+    expect(r.bank.sales).toEqual([]);
+    expect(r.bank.expenses.map((x) => x.amount)).toEqual([-5]);
+    expect(r.late.map((x) => x.amount).sort()).toEqual([-20, 50, 70]);
+  });
+  it("keeps everything when there is no cut-off", () => {
+    const cash = { sales: [l("2027-01-02", 50)], expenses: [] };
+    expect(cutBooks(cash, { sales: [], expenses: [] }, undefined).cash).toEqual(cash);
+  });
+});
