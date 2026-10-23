@@ -1,6 +1,7 @@
 "use client";
 import { expensePeriods, type ExpenseLine } from "@/lib/ingest/expenses";
 import { addExpenseLines, finishExpenseBatch, startExpenseBatch } from "@/app/company/[id]/settings/expense-actions";
+import { discardEmptyBatch } from "@/app/company/[id]/settings/ledger-actions";
 import type { ChunkOptions } from "@/lib/chunks";
 import { saveStaged } from "@/lib/company/save-lines";
 
@@ -21,5 +22,6 @@ export async function saveExpenses(companyId: string, source: "ledger" | "file",
     open: () => startExpenseBatch(start),
     add: (batch, part, last, staged) => addExpenseLines(companyId, batch, part, last, staged),
     finish: (stage) => finishExpenseBatch(start, stage),
+    discard: (batch) => discardEmptyBatch(companyId, "expenses", batch),
   }, { onProgress: opts.onProgress, finishEmpty: !!opts.all || !!opts.months?.length });
 }

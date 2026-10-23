@@ -17,6 +17,7 @@ import { TwoBox } from "@/components/upload/two-box";
 import { ChoiceCard, WizardNav, WizardSteps, WizardTitle, type Screen } from "@/components/upload/wizard-shell";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
+import { keepForMode } from "@/lib/company/add-mode";
 import { ADMIN_ONLY } from "@/lib/company/accept";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
@@ -531,8 +532,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       const preStart = booksStart && !replaceAll ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
       const months = replaceAll ? [] : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])].sort();
       const clears = replaceAll || months.length > 0;
-      // "Add only new months": one rule for every kind of line, the months whose accounts are new.
-      const keep = <T extends { period: string }>(ls: T[]) => ls.filter((l) => mode !== "add" || addedPL.has(l.period));
+      const keep = <T extends { period: string }>(ls: T[]) => keepForMode(ls, mode, addedPL);
       const pay = derived.payments;
       const payLines = keep(pay.lines);
       const steps: PostStep[] = [];
@@ -932,7 +932,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock} nextTestId="expenses-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setExpMode(expOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !expRead.lines.length || rolesBlock || !!wrongKind} nextTestId="expenses-next" hint={wrongKind ? `This looks like ${KIND_WORD[wrongKind]} file, not what this card saves. Switch above to continue.` : errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }
@@ -981,7 +981,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
           ? <WizardNav onBack={() => setScreen("upload")} next="Create a free account to save" href="/login?mode=signup" nextTestId="commit-import" />
-          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock} nextTestId="sales-next" hint={errorCount ? "Fix the problems first." : rolesHint} />}
+          : <WizardNav onBack={() => setScreen("upload")} next="Next: save" onNext={() => { setSalesMode(salesOverlap.length ? null : "changed"); setScreen("save"); }} disabled={errorCount > 0 || !salesRead.lines.length || rolesBlock || !!wrongKind} nextTestId="sales-next" hint={wrongKind ? `This looks like ${KIND_WORD[wrongKind]} file, not what this card saves. Switch above to continue.` : errorCount ? "Fix the problems first." : rolesHint} />}
       </div>
     );
   }

@@ -75,6 +75,12 @@ select public.stage_lines_finish((select id from st where k = 's2'));
 select pg_temp.check('replace all leaves only the new months', pg_temp.sales((select co from ids)), '2026-04=10');
 select pg_temp.check('emptied batches are gone', (select count(*)::text from public.sales_batches where company_id = (select co from ids)), '1');
 
+-- Replace all with nothing new: every line of the source goes (a new ledger with no sales lines at all).
+insert into st values ('s4', public.stage_lines_begin((select co from ids), 'sales', 'ledger', array[]::text[], 'gl4.xlsx', '{}'::jsonb, true));
+select pg_temp.check('replace all with no lines saves nothing', (public.stage_lines_finish((select id from st where k = 's4')) ->> 'saved'), '0');
+select pg_temp.check('and leaves no ledger sales lines', pg_temp.sales((select co from ids)), '');
+select pg_temp.check('no months without replace all is still refused', pg_temp.fails($$select public.stage_lines_begin((select co from ids), 'sales', 'ledger', array[]::text[], 'x', '{}'::jsonb, false)$$), 'refused');
+
 -- More than 240 months in one save (a long ledger).
 insert into st values ('s3', public.stage_lines_begin((select co from ids), 'sales', 'file',
   (select array_agg(to_char(date '2000-01-01' + make_interval(months => g), 'YYYY-MM')) from generate_series(0, 299) g), 'long.xlsx', '{}'::jsonb, false));

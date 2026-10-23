@@ -56,4 +56,16 @@ describe("saveStaged (D19: nothing half-saved)", () => {
     expect(await saveStaged([], f, { chunk: instant })).toEqual({ ok: true, saved: 0 });
     expect(f.log).toEqual([]);
   });
+
+  it("on a database without staging, a save with no lines discards the empty upload it opened", async () => {
+    const f = { ...fake({ staged: false }), discard: async (b: string) => { f.log.push(`discard:${b}`); return { ok: true as const }; } };
+    const r = await saveStaged([], f, { finishEmpty: true, chunk: instant });
+    expect(r).toEqual({ ok: true, saved: 0 });
+    expect(f.log).toEqual(["open", "discard:b"]);
+  });
+  it("lines saved on that path keep their upload", async () => {
+    const f = { ...fake({ staged: false }), discard: async (b: string) => { f.log.push(`discard:${b}`); return { ok: true as const }; } };
+    await saveStaged(rows, f, { chunk: instant });
+    expect(f.log.some((x) => x.startsWith("discard"))).toBe(false);
+  });
 });

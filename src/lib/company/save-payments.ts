@@ -1,5 +1,6 @@
 "use client";
 import { addPaymentLines, finishPaymentBatch, startPaymentBatch } from "@/app/company/[id]/settings/payments-actions";
+import { discardEmptyBatch } from "@/app/company/[id]/settings/ledger-actions";
 import type { PaymentLine } from "@/lib/ingest/payments";
 import type { ChunkOptions } from "@/lib/chunks";
 import { saveStaged } from "@/lib/company/save-lines";
@@ -19,5 +20,6 @@ export async function savePayments(companyId: string, source: "file" | "ledger",
     open: () => startPaymentBatch(companyId, months.length ? months : [new Date().toISOString().slice(0, 7)], filename.slice(0, 300), source, !!opts.all),
     add: (batch, part, last, staged) => addPaymentLines(companyId, batch, part, last, staged),
     finish: (stage) => finishPaymentBatch(companyId, stage),
+    discard: (batch) => discardEmptyBatch(companyId, "payments", batch),
   }, { finishEmpty: true, onProgress });
 }

@@ -52,7 +52,7 @@ export async function saveAgedReport(input: z.input<typeof Aged>): Promise<{ ok:
 /** Opens a payments batch: the company's payments from this source (a payments file, or the General Ledger's bank and
  *  cash entries) for these months are replaced by the lines added next. */
 export async function startPaymentBatch(companyId: string, periods: string[], filename: string, source: "file" | "ledger" = "file", all = false): Promise<{ ok: true; batch: string; staged: boolean } | { ok: false; error: string }> {
-  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).min(1).max(600), filename: z.string().max(300), source: z.enum(["file", "ledger"]) }).safeParse({ companyId, periods, filename, source });
+  const v = z.object({ companyId: z.string().uuid(), periods: z.array(Period).max(600), filename: z.string().max(300), source: z.enum(["file", "ledger"]), all: z.boolean() }).refine((d) => d.periods.length > 0 || d.all).safeParse({ companyId, periods, filename, source, all });
   if (!v.success) return { ok: false, error: "The payments are not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
@@ -62,6 +62,8 @@ export async function startPaymentBatch(companyId: string, periods: string[], fi
     const st = await stageBegin(supabase, "payments", { companyId, source, periods: months, filename, all });
     if (st.ok) return { ok: true, batch: st.stage, staged: true };
     if (!st.missing) return st;
+    // A database without 0035 cannot open a save with no months: nothing changes, as before.
+    if (!months.length) return { ok: true, batch: "", staged: false };
     if (months.length > 240) return { ok: false, error: "Saving more than 240 months at once needs the latest database update (migration 0035). Ask the site owner to run it." };
     const { data, error } = await supabase.rpc("begin_payment_batch", { p_company: companyId, p_periods: months, p_filename: filename, p_report: {} as Json, ...(source === "ledger" ? { p_source: source } : {}) });
     if (error) return { ok: false, error: dbError(error, "begin_payment_batch") };

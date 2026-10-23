@@ -5,6 +5,8 @@ export interface StagedSave<T> {
   open: () => Promise<{ ok: true; batch: string; staged: boolean } | Fail>;
   add: (batch: string, part: T[], last: boolean, staged: boolean) => Promise<{ ok: true; saved: number } | Fail>;
   finish: (batch: string) => Promise<{ ok: true; saved: number; sent: number } | Fail>;
+  /** Without staging: removes the upload opened for a save that ended up with no lines (an empty upload would read as data). */
+  discard?: (batch: string) => Promise<{ ok: true } | Fail>;
 }
 
 /**
@@ -24,7 +26,10 @@ export async function saveStaged<T>(rows: T[], s: StagedSave<T>, opts: { finishE
   } catch (e) {
     return { ok: false, error: e instanceof ChunkStopped ? e.message : String(e) };
   }
-  if (!open.staged) return { ok: true, saved };
+  if (!open.staged) {
+    if (!saved && open.batch && s.discard) { const d = await s.discard(open.batch); if (!d.ok) return d; }
+    return { ok: true, saved };
+  }
   const f = await s.finish(open.batch);
   if (!f.ok) return f;
   return { ok: true, saved: f.saved };

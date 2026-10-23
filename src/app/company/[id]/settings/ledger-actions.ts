@@ -48,3 +48,22 @@ export async function removeLineUpload(companyId: string, kind: "sales" | "expen
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
+
+const Discard = z.object({ companyId: z.string().uuid(), kind: z.enum(["sales", "expenses", "payments"]), batchId: z.string().uuid() });
+/** Removes an upload opened for a save that ended with no lines (databases without staging, migration 0035). */
+export async function discardEmptyBatch(companyId: string, kind: "sales" | "expenses" | "payments", batchId: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const v = Discard.safeParse({ companyId, kind, batchId });
+  if (!v.success) return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const t = { sales: ["sales_batches", "sales_lines"], expenses: ["expense_batches", "expense_lines"], payments: ["payment_batches", "payment_lines"] } as const;
+  // payment tables are not in the generated types; the calls are the same shape.
+  const [batches, lines] = t[v.data.kind];
+  const { count, error: countError } = await supabase.from(lines as "sales_lines").select("id", { count: "exact", head: true }).eq("batch_id", v.data.batchId);
+  if (countError) return { ok: false, error: safeError(countError, "discardEmptyBatch") };
+  if (count) return { ok: true };
+  const { error } = await supabase.from(batches as "sales_batches").delete().eq("id", v.data.batchId).eq("company_id", v.data.companyId);
+  if (error) return { ok: false, error: safeError(error, "discardEmptyBatch") };
+  revalidatePath(`/company/${v.data.companyId}`, "layout");
+  return { ok: true };
+}

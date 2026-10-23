@@ -43,12 +43,13 @@ begin
   if not private.is_member(private.company_org(p_company), 'editor') then raise exception 'not allowed' using errcode = '42501'; end if;
   if p_kind not in ('sales', 'expenses', 'payments') then raise exception 'unknown kind'; end if;
   if p_source not in ('ledger', 'file') then raise exception 'unknown source'; end if;
-  if coalesce(array_length(p_periods, 1), 0) = 0 or array_length(p_periods, 1) > 600 then raise exception 'periods required (1 to 600)'; end if;
+  -- No months only with replace all: a new upload with no lines of this kind clears every month of the source.
+  if (coalesce(array_length(p_periods, 1), 0) = 0 and not p_all) or array_length(p_periods, 1) > 600 then raise exception 'periods required (1 to 600)'; end if;
   if exists (select 1 from unnest(p_periods) p where p !~ '^\d{4}-(0[1-9]|1[0-2])$') then raise exception 'bad period'; end if;
   -- Saves left open for a day (the page was closed) are cleared.
   delete from private.line_stages where company_id = p_company and created_at < now() - interval '1 day';
   insert into private.line_stages (company_id, kind, source, periods, filename, report, replace_all, created_by)
-  values (p_company, p_kind, p_source, (select array_agg(distinct p order by p) from unnest(p_periods) p), left(p_filename, 300),
+  values (p_company, p_kind, p_source, coalesce((select array_agg(distinct p order by p) from unnest(p_periods) p), '{}'), left(p_filename, 300),
           coalesce(p_report, '{}'::jsonb), coalesce(p_all, false), (select auth.uid()))
   returning id into v;
   return v;

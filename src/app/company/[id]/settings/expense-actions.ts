@@ -7,6 +7,7 @@ import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
+import { clearLedger } from "@/lib/company/ledger-lines";
 
 const OVER_240 = "Saving more than 240 months at once needs the latest database update (migration 0035). Ask the site owner to run it.";
 
@@ -26,12 +27,12 @@ const Line = z.object({
 const Start = z.object({
   companyId: z.string().uuid(),
   source: z.enum(["ledger", "file"]),
-  periods: z.array(Period).min(1).max(600),
+  periods: z.array(Period).max(600),
   filename: z.string().max(300).optional(),
   report: z.record(z.string(), z.unknown()).optional(),
   /** Replace all: every month of this source goes first, not only the file's months. */
   all: z.boolean().optional(),
-});
+}).refine((d) => d.periods.length > 0 || d.all, { message: "Too small: expected array to have >=1 items", path: ["periods"] });
 
 /**
  * Opens a save: this source's expense lines for these months are replaced by the lines added next, but only when the save
@@ -48,6 +49,11 @@ export async function startExpenseBatch(input: z.input<typeof Start>): Promise<{
     const st = await stageBegin(supabase, "expenses", { ...v.data, periods });
     if (st.ok) return { ok: true, batch: st.stage, staged: true };
     if (!st.missing) return st;
+    // A database without 0035: replace all with nothing new clears the source's ledger lines directly.
+    if (!periods.length) {
+      if (v.data.source === "ledger") await clearLedger(supabase, v.data.companyId, "all", ["expenses"]);
+      return { ok: true, batch: "", staged: false };
+    }
     if (periods.length > 240) return { ok: false, error: OVER_240 };
     const { data, error } = await supabase.rpc("begin_expense_batch", {
       p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,

@@ -2,6 +2,7 @@
 import type { SalesLine } from "@/lib/ingest/sales";
 import { salesPeriods } from "@/lib/ingest/sales";
 import { addSalesLines, finishSalesBatch, startSalesBatch } from "@/app/company/[id]/settings/sales-actions";
+import { discardEmptyBatch } from "@/app/company/[id]/settings/ledger-actions";
 import type { ChunkOptions } from "@/lib/chunks";
 import { saveStaged } from "@/lib/company/save-lines";
 
@@ -22,5 +23,6 @@ export async function saveSales(companyId: string, source: "ledger" | "file", li
     open: () => startSalesBatch(start),
     add: (batch, part, last, staged) => addSalesLines(companyId, batch, part, last, staged),
     finish: (stage) => finishSalesBatch(start, stage),
+    discard: (batch) => discardEmptyBatch(companyId, "sales", batch),
   }, { onProgress: opts.onProgress, finishEmpty: !!opts.all || !!opts.months?.length });
 }
