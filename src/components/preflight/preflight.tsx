@@ -38,7 +38,7 @@ export const WIZARD_HANDS_ON: IssueCode[] = ["missing_values", "invalid_numbers"
  * for the person, the decisions only they can make, a before/after preview and the cleaned file to download. Nothing is
  * imported here; the cleaned copy goes on only when every rule passes. A file with nothing to decide passes straight on.
  */
-export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, onReady, autoPass = true, stopOnLeftOut = true, handOn = [], allowNone = false, simple = false }: {
+export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, onReady, autoPass = true, stopOnLeftOut = true, handOn = [], allowNone = false }: {
   module: PreflightModule;
   grids: Grid[];
   moduleLabel: string;
@@ -52,8 +52,6 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
   handOn?: IssueCode[];
   /** When no sheet can be imported, go on anyway: the next step says why for each sheet. */
   allowNone?: boolean;
-  /** A Simple-mode company's Sales or Expenses sheet: checked with the Simple columns (channel, paid, payment date). */
-  simple?: boolean;
 }) {
   const [decisions, setDecisions] = useState<Decisions>({});
   const [run, setRun] = useState<PreflightRun | null>(null);
@@ -63,10 +61,10 @@ export function Preflight({ module, grids, moduleLabel, fileName, stockMapping, 
 
   useEffect(() => {
     const n = ++seq.current;
-    preflightInWorker(grids, module, decisions, stockMapping, undefined, simple)
+    preflightInWorker(grids, module, decisions, stockMapping)
       .then((r) => { if (n === seq.current) { setRun(r); setError(null); } })
       .catch((e: Error) => { if (n === seq.current) setError(e.message || "The file could not be checked."); });
-  }, [grids, module, decisions, stockMapping, simple]);
+  }, [grids, module, decisions, stockMapping]);
 
   // Nothing to decide and nothing blocking: the cleaned copy goes on at once (the summary still lists what was fixed).
   useEffect(() => {

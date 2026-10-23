@@ -26,6 +26,8 @@ import { malformedId } from "@/proxy";
 describe("addresses whose ids can't be ids", () => {
   const id = "1c8c55b3-4c99-4511-9948-9f6a0b5e94f0";
   it("are caught", () => {
+    for (const p of ["/cash/not-a-uuid", "/cash/1/upload"]) expect(malformedId(p), p).toBe(true);
+    expect(malformedId(`/cash/${id}/upload`)).toBe(false);
     for (const p of ["/company/not-a-uuid/summary", `/company/${"9".repeat(300)}`, `/company/${id}/reports/not-a-uuid`]) expect(malformedId(p), p).toBe(true);
   });
   it("real ones and other pages pass", () => {

@@ -7,7 +7,6 @@ import { classify } from "./classify";
 import { mostlyBills, VENDOR_HDR } from "./sales";
 import { CARD_SPEND, COGS_SUPPLIER, CUSTOMER_DOCS, DEPRECIATION_SUPPLIER, GOV_PAYMENTS, EXPENSE_JOURNAL, LENDER_TAG, NO_SUPPLIER, UNNAMED_LENDER } from "@/lib/engine/expenses";
 import { docKind, isBillDoc, seriesOf } from "@/lib/engine/series";
-import { parseFixedVar, parsePaid, simpleFieldOf, headingKey } from "./simple-cols";
 
 /**
  * Expense lines for the Expenses sector, from two places:
@@ -28,9 +27,6 @@ export interface ExpenseLine {
   category: string;
   label: string;
   amount: number;
-  /** Simple mode only: whether the expense was paid, and the day it was paid. */
-  paid?: boolean | null;
-  paidOn?: string | null;
   /** Where the line was read (files only): the sheet and its row as uploaded. Never saved. */
   src?: { sheet: string; row: number };
 }
@@ -120,7 +116,7 @@ export function expensesFromLedger(lines: { code: string; name: string; cls: Cla
 
 // ---------------------------------------------------------------- purchases exports
 
-export type ExpenseField = "date" | "period" | "doc" | "supplier" | "account" | "category" | "label" | "untaxed" | "total" | "paid" | "paidOn" | "fixedVar";
+export type ExpenseField = "date" | "period" | "doc" | "supplier" | "account" | "category" | "label" | "untaxed" | "total";
 const FIELD_RX: [ExpenseField, RegExp][] = [
   ["untaxed", arRx(/^(untaxed( total| amount)?|amount untaxed|total untaxed|tax excluded|subtotal|sub ?total|price subtotal|net( amount| total)?|المبلغ قبل الضريبة|الصافي|الإجمالي قبل الضريبة)$/i)],
   ["total", arRx(/^(total|amount|amount total|total amount|total in currency|total signed|value|الإجمالي|الاجمالي|القيمة|المبلغ|إجمالي)$/i)],
@@ -133,8 +129,7 @@ const FIELD_RX: [ExpenseField, RegExp][] = [
   ["label", arRx(/^(product|description|label|item|details|narration|memo|البيان|الصنف|الوصف|المنتج)$/i)],
 ];
 /** A heading's field; a required-mark "*" is ignored, and an amount "(excl. VAT)" is the amount before tax. */
-export const expenseFieldOf = (h: string, simple = false): ExpenseField | null => {
-  if (simple) { const f = simpleFieldOf(h); if (f && f !== "channel") return f; }
+export const expenseFieldOf = (h: string): ExpenseField | null => {
   const excl = /\((excl\.?|excluding|before|without) (vat|tax)\)/i.test(h);
   const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
   const f = FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
@@ -161,10 +156,10 @@ export interface ExpenseLayout {
   errors: CellError[];
 }
 /** The person's corrections: what a column holds (by column index), retyped cells and rows left out (sheet as uploaded). */
-export interface ExpenseOverride extends Fixes { cols?: Partial<Record<number, ExpenseField | null>>; /** Choices remembered from an earlier upload, by heading (Simple mode). */ named?: Record<string, ExpenseField> }
+export interface ExpenseOverride extends Fixes { cols?: Partial<Record<number, ExpenseField | null>> }
 
 /** Reads a purchases export or the expenses template, or returns null when the sheet is not one. */
-export function readExpenseGrid(g: Grid, ov: ExpenseOverride = {}, opts: { simple?: boolean } = {}): { lines: ExpenseLine[]; layout: ExpenseLayout } | null {
+export function readExpenseGrid(g: Grid, ov: ExpenseOverride = {}): { lines: ExpenseLine[]; layout: ExpenseLayout } | null {
   const fixed = applyFixes(g.rows, ov);
   const rowNo: number[] = [];
   fixed.forEach((r, i) => { if (r && r.some((c) => str(c) !== "")) rowNo.push(i); });
@@ -174,30 +169,26 @@ export function readExpenseGrid(g: Grid, ov: ExpenseOverride = {}, opts: { simpl
   for (let r = 0; r < Math.min(rows.length, 25); r++) {
     const heads = rows[r].map((v) => str(v));
     if (heads.some((h) => LEDGER_HDR.test(normAr(h)))) return null;
-    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : ov.named?.[headingKey(h)] ?? expenseFieldOf(h, opts.simple)));
-    // A payment date with no other date is the expense's own date.
-    if (opts.simple && !fields.includes("date") && fields.includes("paidOn") && !(fields.indexOf("paidOn") in cols)) fields[fields.indexOf("paidOn")] = "date";
+    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : expenseFieldOf(h)));
     const has = (f: ExpenseField) => fields.includes(f);
     if (!(has("untaxed") || has("total")) || !(has("date") || has("period")) || !(has("supplier") || has("account") || has("category") || has("label"))) continue;
     // Purchases, not sales: a vendor / supplier heading, mostly vendor-bill numbers, or iReport's expenses template.
-    // Simple mode: the person chose the Expenses sheet, so no supplier is needed to tell it from sales.
-    const vendor = opts.simple || template || heads.some((h) => VENDOR_HDR.test(normAr(h.replace(/\s*\*\s*$/, "")))) || mostlyBills(rows.slice(r + 1), fields.indexOf("doc"));
+    const vendor = template || heads.some((h) => VENDOR_HDR.test(normAr(h.replace(/\s*\*\s*$/, "")))) || mostlyBills(rows.slice(r + 1), fields.indexOf("doc"));
     if (!vendor) return null;
-    return readList({ g, rows, rowNo, r, heads, marks: [], errors: [] }, fields, ov, template, !!opts.simple);
+    return readList({ g, rows, rowNo, r, heads, marks: [], errors: [] }, fields, ov, template);
   }
   return null;
 }
 
 interface Ctx { g: Grid; rows: Cell[][]; rowNo: number[]; r: number; heads: string[]; marks: Marks; errors: { row: number; col: number; text: string; message: string }[] }
 
-function readList(ctx: Ctx, fields: (ExpenseField | null)[], ov: ExpenseOverride, template: boolean, simple = false) {
+function readList(ctx: Ctx, fields: (ExpenseField | null)[], ov: ExpenseOverride, template: boolean) {
   const { g, rows, r, heads } = ctx;
   const sheet = g.name;
   const col = (f: ExpenseField) => fields.indexOf(f);
   const cAmt = col("untaxed") >= 0 ? col("untaxed") : col("total");
   const cDate = col("date"), cPer = col("period");
   const order = detectDateOrder(rows.slice(r + 1).map((x) => x[cDate])).order ?? "dmy";
-  const paidOrder = col("paidOn") >= 0 ? detectDateOrder(rows.slice(r + 1).map((x) => x[col("paidOn")])).order ?? order : order;
   const lines: ExpenseLine[] = [];
   const text = (x: Cell[], f: ExpenseField) => (col(f) >= 0 ? str(x[col(f)]).replace(/\s+/g, " ") : "");
   const err = (i: number, c: number, message: string) => { ctx.errors.push({ row: i, col: c, text: shown(rows[i][c]), message }); ctx.marks[i] = { role: "error", note: message }; };
@@ -229,17 +220,10 @@ function readList(ctx: Ctx, fields: (ExpenseField | null)[], ov: ExpenseOverride
     const account = text(x, "account"), category = text(x, "category"), label = text(x, "label");
     const what = account || category || label;
     if (!ctx.marks[i]) ctx.marks[i] = { role: "entry" };
-    // Simple mode: a fixed / variable column decides the cost class; paid or not, and the payment day, are kept.
-    const paidOn = simple && col("paidOn") >= 0 ? parseDay(x[col("paidOn")], paidOrder) : null;
-    if (simple && col("paidOn") >= 0 && str(x[col("paidOn")]) && !paidOn) err(i, col("paidOn"), `"${shown(x[col("paidOn")])}" is not a date`);
-    const paid = simple && col("paid") >= 0 ? parsePaid(x[col("paid")]) : null;
-    const said = simple && col("fixedVar") >= 0 ? parseFixedVar(x[col("fixedVar")]) : null;
     lines.push({
       day, period, doc, series: seriesOf(doc), supplier: text(x, "supplier") || NO_SUPPLIER,
-      account: what || "No account", cls: said ?? clsOf(account.replace(/^[\d.\-\s]+/, "") || category || label), category: category || account.replace(/^[\d.\-\s]+/, "") || label || "No category",
-      label: label.slice(0, 200), amount: round2(amount),
-      ...(simple ? { paid: paid ?? (paidOn ? true : null), paidOn } : {}),
-      src: { sheet, row: ctx.rowNo[i] },
+      account: what || "No account", cls: clsOf(account.replace(/^[\d.\-\s]+/, "") || category || label), category: category || account.replace(/^[\d.\-\s]+/, "") || label || "No category",
+      label: label.slice(0, 200), amount: round2(amount), src: { sheet, row: ctx.rowNo[i] },
     });
   }
   // Odoo shows vendor bills as negative amounts (money going out): turned positive, refunds stay the other way.

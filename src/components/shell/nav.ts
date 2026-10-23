@@ -2,11 +2,10 @@ import {
   CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Hospital,
   type LucideIcon,
 } from "lucide-react";
-import type { CompanyMode } from "@/lib/company/mode";
 
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Starts a second group (a line above it in the rail). */ group?: boolean }
 
-export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "overview";
+export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -66,31 +65,10 @@ export const SECTORS: Sector[] = [
   },
 ];
 
-/**
- * Simple mode (sales and expenses only): an Overview built from the lines, then Sales and Expenses. Sectors that need
- * an ERP's books (Financials, Inventory, Payments, Banking) are not shown.
- */
-const SIMPLE: Sector[] = [
-  {
-    key: "overview", label: "Overview", items: [
-      { href: "simple", label: "Overview", title: "Overview", icon: LayoutDashboard },
-      { href: "simple/cash", label: "Cash & forecast", title: "Cash and Forecast", icon: Waves },
-    ],
-  },
-  { ...SECTORS.find((s) => s.key === "sales")!, items: SECTORS.find((s) => s.key === "sales")!.items.filter((i) => i.href !== "sales/end-users") },
-  SECTORS.find((s) => s.key === "expenses")!,
-];
-
-/** The sectors shown to a company in this mode. */
-export function sectorsFor(mode: CompanyMode = "full"): Sector[] {
-  return mode === "simple" ? SIMPLE : SECTORS;
-}
-
 /** The sector a page belongs to, from its path relative to the company (e.g. "sales/products"). */
-export function sectorOf(rel: string, mode: CompanyMode = "full"): Sector {
+export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
   const first = r.split("/")[0];
-  if (mode === "simple") return sectorsFor("simple").find((s) => s.key === (first === "sales" || first === "expenses" ? first : "overview"))!;
   const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env";
 import { isUuid } from "@/lib/ids";
 
-const PROTECTED = ["/companies", "/company", "/dashboard", "/admin", "/account"];
+const PROTECTED = ["/companies", "/company", "/cash", "/dashboard", "/admin", "/account"];
 
 /** Refreshes the Supabase session cookie on every request and guards app routes. */
 export async function proxy(request: NextRequest) {
@@ -37,6 +37,7 @@ export async function proxy(request: NextRequest) {
 /** /company/<id>/… and /company/<id>/reports/<rid> whose ids are not ids. */
 export function malformedId(path: string): boolean {
   const seg = path.split("/");
+  if (seg[1] === "cash" && seg.length >= 3) return !isUuid(seg[2]);
   if (seg[1] !== "company" || seg.length < 3) return false;
   if (!isUuid(seg[2])) return true;
   return seg[3] === "reports" && seg.length > 4 && seg[4] !== "" && !isUuid(seg[4]);

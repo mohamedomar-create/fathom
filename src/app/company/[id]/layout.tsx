@@ -3,6 +3,9 @@ import { CompanyShell } from "@/components/shell/company-shell";
 import { UserMenu } from "@/components/shell/user-menu";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
+import { redirect } from "next/navigation";
+import { loadCompanyMeta } from "@/lib/company/meta";
+import { modeOf } from "@/lib/company/mode";
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
   const { id } = await params;
@@ -13,6 +16,8 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 
 export default async function CompanyLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // A small business on the cash book has its own pages, and never loads the full system's figures.
+  if (modeOf((await loadCompanyMeta(id)).kpiConfig) === "simple") redirect(`/cash/${id}`);
   const bundle = await loadCompanyBundle(id);
   const { user } = await getUser();
   return (

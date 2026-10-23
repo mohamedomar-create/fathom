@@ -60,19 +60,6 @@ export const EXPENSE_RULES: ListRules = {
   amount: ["untaxed", "total"],
 };
 
-/** Simple mode (a Sales and an Expenses sheet, no ERP): the readers' Simple matching, with channel, paid, payment date
- * and fixed or variable as fields of their own, so a "Payment date" is never mistaken for a second Date. */
-const SIMPLE_FIELDS: FieldSpec[] = [
-  { key: "channel", label: "Channel", type: "text", heading: "Channel" }, { key: "paid", label: "Paid", type: "text", heading: "Paid" },
-  { key: "paidOn", label: "Payment date", type: "date", heading: "Payment date" },
-];
-export const SIMPLE_SALES_RULES: ListRules = { ...SALES_RULES, fields: [...SALES_RULES.fields, ...SIMPLE_FIELDS], fieldOf: (h) => salesFieldOf(str(h), true) };
-export const SIMPLE_EXPENSE_RULES: ListRules = {
-  ...EXPENSE_RULES,
-  fields: [...EXPENSE_RULES.fields, ...SIMPLE_FIELDS.filter((f) => f.key !== "channel"), { key: "fixedVar", label: "Fixed or variable", type: "text", heading: "Fixed or variable" }],
-  fieldOf: (h) => expenseFieldOf(str(h), true),
-};
-
 export const AGENCY_RULES: ListRules = {
   name: "Agency statement",
   fields: [

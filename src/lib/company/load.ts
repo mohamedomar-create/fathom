@@ -1,4 +1,3 @@
-import { modeOf, openingCashOf } from "./mode";
 import { LOCATION_TYPES, type LocationType, type LocationTypes } from "@/lib/ingest/inventory";
 import { cache } from "react";
 import "server-only";
@@ -123,6 +122,5 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
     accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config),
-    mode: modeOf(c.kpi_config), openingCash: openingCashOf(c.kpi_config),
   };
 });

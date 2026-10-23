@@ -1,7 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { deleteCompanyFully } from "./reset-actions";
-import { withMode, withOpeningCash } from "@/lib/company/mode";
 import { z } from "zod";
 import type { ClassKey } from "@/lib/engine";
 import { LOCATION_TYPES, mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
@@ -196,8 +195,6 @@ const ProfileSchema = z.object({
   ai_context: z.object({ goals: z.string().max(2000), strategy: z.string().max(2000), market: z.string().max(2000), position: z.string().max(2000), other: z.string().max(2000) }),
   time_zone: z.string().max(64).refine(validTimeZone, "Choose a time zone from the list").nullable().optional(),
   books_start: z.string().regex(/^\d{4}-\d{2}-01$/, "Choose the month the books start").nullable().optional(),
-  mode: z.enum(["simple", "full"]).optional(),
-  opening_cash: z.object({ amount: z.number().finite().min(-1e13).max(1e13), asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Choose the day of the opening cash") }).nullable().optional(),
 });
 
 export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise<{ ok: boolean; error?: string }> {
@@ -207,15 +204,11 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   if (!user) return { ok: false, error: "Please sign in again." };
   // The time zone is kept with the company's other settings (kpi_config), never overwriting them.
   let kpi: Json | undefined;
-  if (v.data.time_zone !== undefined || v.data.books_start !== undefined || v.data.mode || v.data.opening_cash !== undefined) {
+  if (v.data.time_zone !== undefined || v.data.books_start !== undefined) {
     const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", v.data.companyId).maybeSingle();
     if (e1) return { ok: false, error: dbError(e1, "saveProfile") };
     if (!row) return { ok: false, error: "You do not have permission to change this." };
-    let cfg: unknown = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}) });
-    // The mode only changes what is shown: no line or figure is touched when it changes.
-    if (v.data.mode) cfg = withMode(cfg, v.data.mode);
-    if (v.data.opening_cash !== undefined) cfg = withOpeningCash(cfg, v.data.opening_cash);
-    kpi = cfg as Json;
+    kpi = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}) }) as Json;
   }
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,

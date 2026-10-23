@@ -8,7 +8,7 @@ import { sales } from "./areas/sales";
 import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
-import { simple } from "./areas/simple";
+import { cash } from "./areas/cash";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -38,7 +38,7 @@ export const en = {
     people: "User management",
     logout: "Logout",
   },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", overview: "Overview" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -61,8 +61,6 @@ export const en = {
     "expenses/accounts": ["Accounts", "Expenses by Account"],
     "expenses/suppliers": ["Suppliers", "Suppliers"],
     "expenses/trend": ["Trend", "Expenses Trend"],
-    simple: ["Overview", "Overview"],
-    "simple/cash": ["Cash & forecast", "Cash and Forecast"],
     inventory: ["Overview", "Inventory Overview"],
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
@@ -76,7 +74,7 @@ export const en = {
   dataNav: {
     title: "Data",
     sub: "The General Ledger is your book of record. Everything else adds detail or checks it, in this order.",
-    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live", "/lines": "Lines" } as Record<string, string>,
+    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live" } as Record<string, string>,
   },
   settingsNav: {
     monthsLoaded: (n: number) => `${n} months loaded`,
@@ -123,7 +121,7 @@ export const en = {
   eu: eu.en,
   exp: exp.en,
   inv: inv.en,
-  simple: simple.en,
+  cash: cash.en,
   bank: bank.en,
   state: state.en,
   rp: rp.en,

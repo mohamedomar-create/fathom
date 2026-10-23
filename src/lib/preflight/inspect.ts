@@ -5,7 +5,7 @@ import { arRx, cleanNum, detectDateOrder, normAr, parsePeriod, type Cell, type D
 import { guessRole, ROLE_LABEL, type SheetRole } from "@/lib/ingest/roles";
 import { readAged } from "@/lib/ingest/aged";
 import { paymentsHeadingGap, readPayments } from "@/lib/ingest/payments";
-import { AGENCY_RULES, EXPENSE_RULES as FULL_EXPENSE_RULES, groupLabel, SALES_RULES as FULL_SALES_RULES, SIMPLE_EXPENSE_RULES, SIMPLE_SALES_RULES, STOCK_KEYS, stockRules, type ListRules } from "./rules";
+import { AGENCY_RULES, EXPENSE_RULES, groupLabel, SALES_RULES, STOCK_KEYS, stockRules, type ListRules } from "./rules";
 import type { Decisions, PreflightColumn, PreflightIssue, PreflightModule, PreflightReport, SheetDecision, SheetReport, SheetStatus } from "./types";
 
 const MODULE_LABEL: Record<PreflightModule, string> = {
@@ -248,9 +248,6 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
 
   // Values in the fields the import reads.
   let dateOrder: DateOrder | null = d.dateOrder ?? null;
-  // A Simple sheet's payment date follows the Date column's order when its own dates don't settle it (as the reader does).
-  const dateCol = plan.columns.find((c) => c.field === "date");
-  const mainOrder = dateCol ? detectDateOrder(data.map((i) => g.rows[i]?.[dateCol.index]).filter((v) => !empty(v))).order : null;
   const textNum = new Map<number, number[]>(), badNum = new Map<number, number[]>(), errCell = new Map<number, number[]>();
   for (const c of plan.columns) {
     const spec = rules.fields.find((x) => x.key === c.field);
@@ -267,7 +264,7 @@ function listChecks(ctx: Ctx, rules: ListRules, opts: { module: PreflightModule 
       const forms = new Set(vals.map(dateForm));
       const found = detectDateOrder(vals);
       if (!dateOrder) dateOrder = found.order;
-      const needsOrder = forms.has("numeric") && !found.order && !(c.field === "paidOn" && mainOrder);
+      const needsOrder = forms.has("numeric") && !found.order;
       if (needsOrder && !d.dateOrder) add(ctx, { code: "date_order", level: "fix", fix: "decision", cols: [c.letter], message: `Dates in column ${c.letter} such as "${text(vals.find((v) => dateForm(v) === "numeric"))}" could be day/month or month/day: no date in the file settles it.`, action: "Say how the dates are written. It is never guessed, because a wrong guess moves sales between months." });
       const bad = data.filter((i) => { const v = g.rows[i]?.[c.index]; return !empty(v) && !(typeof v === "string" && ERROR_TEXT.test(v.trim())) && dateForm(v) === "invalid"; });
       if (bad.length) add(ctx, { code: "invalid_dates", level: decided("fix", Boolean(d.dropInvalid)), fix: "decision", rows: listed(bad.map((i) => rowNo(g, i))), cols: [c.letter], message: `${plural(bad.length, "cell")} in column ${c.letter} are not dates (${rowsText(bad.map((i) => rowNo(g, i)))}).`, action: d.dropInvalid ? "Those rows are left out and listed as rejected, as you approved." : "Correct them in the file, or approve leaving those rows out." });
@@ -324,8 +321,7 @@ function copies(grids: Grid[]): Map<string, string> {
 }
 
 /** Inspect every sheet of an upload for one import. `decisions` are the person's answers so far. */
-export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { decisions?: Decisions; stockMapping?: Record<string, string>; stockKey?: string; simple?: boolean } = {}): PreflightReport {
-  const { SALES_RULES, EXPENSE_RULES } = listRules(opts.simple);
+export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { decisions?: Decisions; stockMapping?: Record<string, string>; stockKey?: string } = {}): PreflightReport {
   const cp = copies(grids);
   const sheets = grids.map((g): SheetReport => {
     const d: SheetDecision = { ...(opts.decisions?.[g.name] ?? {}) };
@@ -386,7 +382,7 @@ export function inspectWorkbook(grids: Grid[], module: PreflightModule, opts: { 
     return { ...out, role, roleLabel, include, status: statusOf(ctx.issues), issues: ctx.issues, ...(stockKey ? { stockKey } : {}) };
   });
   const included = sheets.filter((s) => s.include);
-  return { module, sheets, ready: included.length > 0 && included.every((s) => s.status === "ready"), ...(opts.simple ? { simple: true } : {}) };
+  return { module, sheets, ready: included.length > 0 && included.every((s) => s.status === "ready") };
 }
 
 /** A row of headings this import knows: two or more fields, one of them required. */
@@ -410,12 +406,8 @@ function bestStockKey(g: Grid): (typeof STOCK_KEYS)[number] {
   return best;
 }
 
-/** The sales and bills rules: a Simple-mode company's sheets are matched with the Simple columns. */
-const listRules = (simple?: boolean) => (simple ? { SALES_RULES: SIMPLE_SALES_RULES, EXPENSE_RULES: SIMPLE_EXPENSE_RULES } : { SALES_RULES: FULL_SALES_RULES, EXPENSE_RULES: FULL_EXPENSE_RULES });
-
 /** The rules a sheet was checked with (for cleaning and for the column picker). */
-export function rulesFor(module: PreflightModule, report: SheetReport, simple?: boolean): ListRules | null {
-  const { SALES_RULES, EXPENSE_RULES } = listRules(simple);
+export function rulesFor(module: PreflightModule, report: SheetReport): ListRules | null {
   if (module === "agency") return AGENCY_RULES;
   if (module === "stock") return stockRules((report.stockKey as (typeof STOCK_KEYS)[number] | undefined) ?? STOCK_KEY_OF[report.role as SheetRole] ?? "stock.valuation.layer");
   if (report.role === "sales" && module !== "payments") return SALES_RULES;

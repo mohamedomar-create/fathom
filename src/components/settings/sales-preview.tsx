@@ -7,23 +7,20 @@ import type { Grid } from "@/lib/ingest/extract";
 export const FIELD_LABEL: Record<SalesField, string> = {
   date: "Date", period: "Month", doc: "Invoice number", customer: "Customer", product: "Product", category: "Category", salesperson: "Salesperson",
   qty: "Quantity", untaxed: "Amount before tax", total: "Amount (with tax)", cost: "Cost", margin: "Margin",
-  channel: "Channel", paid: "Paid or not", paidOn: "Payment date",
 };
 const FIELDS = Object.keys(FIELD_LABEL) as SalesField[];
-/** Columns read only in Simple mode. */
-const SIMPLE_ONLY = new Set<string>(["channel", "paid", "paidOn", "fixedVar"]);
 
 export interface SalesRead { lines: SalesLine[]; layouts: SalesLayout[] }
 
 /** Reads every sales sheet with the user's corrections. */
-export function readSales(grids: Grid[], ov: Record<string, SalesOverride>, simple = false, named?: Record<string, SalesField>): SalesRead {
+export function readSales(grids: Grid[], ov: Record<string, SalesOverride>): SalesRead {
   const lines: SalesLine[] = [], layouts: SalesLayout[] = [];
-  for (const g of grids) { const r = readSalesGrid(g, named ? { ...ov[g.name], named } : ov[g.name], { simple }); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
+  for (const g of grids) { const r = readSalesGrid(g, ov[g.name]); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
   return { lines, layouts };
 }
 
 /** How a sales export was read: the columns (correctable), the months, the total and a sample, before anything is saved. */
-export function SalesPreview({ read, currency, overrides, onChange, simple = false }: { read: SalesRead; currency: string; overrides: Record<string, SalesOverride>; onChange: (o: Record<string, SalesOverride>) => void; simple?: boolean }) {
+export function SalesPreview({ read, currency, overrides, onChange }: { read: SalesRead; currency: string; overrides: Record<string, SalesOverride>; onChange: (o: Record<string, SalesOverride>) => void }) {
   const ps = salesPeriods(read.lines);
   const total = read.lines.reduce((s, l) => s + l.amount, 0);
   const customers = new Set(read.lines.map((l) => l.customer)).size, products = new Set(read.lines.map((l) => l.product)).size;
@@ -54,7 +51,7 @@ export function SalesPreview({ read, currency, overrides, onChange, simple = fal
                     onChange={(e) => onChange({ ...overrides, [l.sheet]: { ...(overrides[l.sheet] ?? {}), cols: { ...overrides[l.sheet]?.cols, [c.col]: (e.target.value || null) as SalesField | null } } })}
                     className="rounded border-0 bg-band px-1 py-0.5">
                     <option value="">not used</option>
-                    {FIELDS.filter((f) => simple || !SIMPLE_ONLY.has(f)).map((f) => <option key={f} value={f}>{FIELD_LABEL[f]}</option>)}
+                    {FIELDS.map((f) => <option key={f} value={f}>{FIELD_LABEL[f]}</option>)}
                   </select>
                 </label>
               ))}

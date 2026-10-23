@@ -1,4 +1,3 @@
-import { modeOf } from "@/lib/company/mode";
 import { getUser } from "@/lib/supabase/server";
 import { booksStartOf } from "@/lib/company/time-zone";
 import { loadCompanyMeta } from "@/lib/company/meta";
@@ -21,9 +20,6 @@ export default async function DataUploadPage({ params, searchParams }: { params:
     loadAccountMap(supabase, id),
     supabase.from("input_profiles").select("kind, headings").eq("company_id", id),
   ]);
-  // Simple mode: what each column of the Sales and Expenses sheets held last time, by heading.
-  const { data: chosen } = await supabase.from("import_templates").select("export_key, mapping").eq("company_id", id).in("export_key", ["simple:sales", "simple:expenses"]);
-  const savedColumns = Object.fromEntries((chosen ?? []).map((t) => [t.export_key.slice("simple:".length), t.mapping as Record<string, string>]));
   // Months that already have sales from a file: a new sales file asks before replacing them.
   const salesLoaded = [...new Set((batches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
   const expensesLoaded = [...new Set((expBatches ?? []).flatMap((b) => (b.periods as string[] | null) ?? []))].sort();
@@ -39,7 +35,7 @@ export default async function DataUploadPage({ params, searchParams }: { params:
       <p className="mb-5 text-mute">Nothing is saved until you press Save. Undo an upload under Checks &amp; history.</p>
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data. Ask an admin of the organisation for editor access.</p>
-      ) : c && <UploadWizard key={step ?? "any"} companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={setupStep} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} ledgerLoaded={facts.ledger} simple={modeOf(c.kpi_config) === "simple"} savedColumns={savedColumns as never} />}
+      ) : c && <UploadWizard key={step ?? "any"} companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={setupStep} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} ledgerLoaded={facts.ledger} />}
     </div>
   );
 }

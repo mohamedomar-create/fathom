@@ -5,8 +5,8 @@ import { CLASS_LABEL } from "@/lib/ingest/classes";
  * iReport's own input templates: one layout per kind of data, read exactly (no guessing). Each sheet carries a marker
  * in its first cell so the importer recognises it, and every account row says which iReport class it belongs to.
  */
-export type TemplateKind = "financials" | "sales" | "expenses" | "opening" | "simple-sales" | "simple-expenses";
-export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales", "expenses", "opening", "simple-sales", "simple-expenses"];
+export type TemplateKind = "financials" | "sales" | "expenses" | "opening";
+export const TEMPLATE_KINDS: TemplateKind[] = ["financials", "sales", "expenses", "opening"];
 
 export const MARK_PREFIX = "iReport template";
 export const MARK = {
@@ -102,29 +102,3 @@ export function templateMonths(year: number, fyStart: number) {
   const first = `${year}-${String(fyStart).padStart(2, "0")}`;
   return { opening: addMonths(first, -1), months: Array.from({ length: 12 }, (_, i) => addMonths(first, i)) };
 }
-
-/**
- * Simple mode's sheets: plain headings in row 1 (no marker), read like any sheet a person keeps, so their own sheet with
- * the same headings works too. * = required. "list" columns offer a drop-down.
- */
-export interface SimpleCol { head: string; required: boolean; kind: "date" | "number" | "text" | "list"; options?: string[]; width: number; help: [string, string] }
-export const SIMPLE_SALES_COLS: SimpleCol[] = [
-  { head: "Date *", required: true, kind: "date", width: 14, help: ["The day of the sale, e.g. 15/01/2026.", "تاريخ البيع، مثل ١٥/٠١/٢٠٢٦."] },
-  { head: "Net amount *", required: true, kind: "number", width: 16, help: ["What the customer pays, before VAT. Negative for a refund.", "قيمة البيع قبل الضريبة. بالسالب للمرتجع."] },
-  { head: "Customer", required: false, kind: "text", width: 28, help: ["Who bought, written the same way every time.", "اسم العميل بنفس الطريقة دائمًا."] },
-  { head: "Product", required: false, kind: "text", width: 28, help: ["The product or service sold.", "المنتج أو الخدمة."] },
-  { head: "Quantity", required: false, kind: "number", width: 12, help: ["Units sold.", "الكمية."] },
-  { head: "Cost of sales", required: false, kind: "number", width: 16, help: ["What the goods sold cost you (for the gross margin).", "تكلفة البضاعة المباعة (لحساب مجمل الربح)."] },
-  { head: "Channel", required: false, kind: "text", width: 16, help: ["How it was sold: shop, online, wholesale…", "طريقة البيع: متجر، أونلاين، جملة…"] },
-  { head: "Paid", required: false, kind: "list", options: ["Yes", "No"], width: 10, help: ["Yes once the customer has paid, No while it is owed.", "نعم بعد الدفع، لا إذا كان مستحقًا."] },
-  { head: "Payment date", required: false, kind: "date", width: 14, help: ["The day the money came in.", "تاريخ التحصيل."] },
-];
-export const SIMPLE_EXPENSE_COLS: SimpleCol[] = [
-  { head: "Date *", required: true, kind: "date", width: 14, help: ["The day of the expense, e.g. 15/01/2026.", "تاريخ المصروف."] },
-  { head: "Net amount *", required: true, kind: "number", width: 16, help: ["The amount before VAT. Negative for a refund.", "المبلغ قبل الضريبة. بالسالب للمرتجع."] },
-  { head: "Category *", required: true, kind: "text", width: 24, help: ["What it was for: rent, salaries, marketing… written the same way every time.", "البند: إيجار، رواتب، تسويق… بنفس الطريقة دائمًا."] },
-  { head: "Supplier", required: false, kind: "text", width: 28, help: ["Who was paid.", "المورد."] },
-  { head: "Fixed or variable", required: false, kind: "list", options: ["Fixed", "Variable"], width: 16, help: ["Fixed: the same every month (rent). Variable: grows with sales (packaging).", "ثابت: لا يتغير مع المبيعات (إيجار). متغير: يزيد مع المبيعات (تغليف)."] },
-  { head: "Paid", required: false, kind: "list", options: ["Yes", "No"], width: 10, help: ["Yes once paid, No while you still owe it.", "نعم بعد الدفع، لا إذا كان مستحقًا عليك."] },
-  { head: "Payment date", required: false, kind: "date", width: 14, help: ["The day the money went out.", "تاريخ الدفع."] },
-];

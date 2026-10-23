@@ -6,7 +6,7 @@ import { useCompany } from "@/lib/company/context";
 import { useDict } from "@/lib/i18n/context";
 import { LangSwitch } from "./lang-switch";
 import { LogoMark } from "./logo";
-import { sectorOf, sectorsFor } from "./nav";
+import { SECTORS, sectorOf } from "./nav";
 import { cn } from "@/lib/cn";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -19,9 +19,9 @@ export function TopBar({ right }: { right?: React.ReactNode }) {
   const q = qs ? `?${qs}` : "";
   const rel = pathname.slice(c.basePath.length);
   const elsewhere = rel.startsWith("/reports") || rel.startsWith("/settings") || rel.startsWith("/data");
-  const here = sectorOf(rel, c.mode).key;
+  const here = sectorOf(rel).key;
   const tabs = [
-    ...sectorsFor(c.mode).map((s) => ({ key: s.key as string, href: `${c.basePath}/${s.items[0].href}`, label: d.sectors[s.key], keepQuery: true, active: !elsewhere && here === s.key })),
+    ...SECTORS.map((s) => ({ key: s.key as string, href: `${c.basePath}/${s.items[0].href}`, label: d.sectors[s.key], keepQuery: true, active: !elsewhere && here === s.key })),
     { key: "reports", href: `${c.basePath}/reports`, label: d.shell.reports, keepQuery: false, active: rel.startsWith("/reports") },
     { key: "data", href: `${c.basePath}/data`, label: d.shell.data, keepQuery: false, active: rel.startsWith("/data") },
     { key: "settings", href: `${c.basePath}/settings/profile`, label: d.shell.settings, keepQuery: false, active: rel.startsWith("/settings") },

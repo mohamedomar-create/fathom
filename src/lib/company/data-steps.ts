@@ -3,7 +3,7 @@
 // control account), then review. Each step's status comes from what is loaded and what its checks say.
 import { mlabel } from "@/lib/engine";
 
-export type StepId = "setup" | "opening" | "ledger" | "tb" | "sales" | "stock" | "ageing" | "review" | "expenses";
+export type StepId = "setup" | "opening" | "ledger" | "tb" | "sales" | "stock" | "ageing" | "review";
 export type StepStatus = "todo" | "done" | "verified" | "issues" | "locked" | "unchecked";
 export interface DataStep {
   id: StepId; n: number; title: string; role: string; status: StepStatus; detail: string;
@@ -96,31 +96,4 @@ export function dataSteps(s: DataStatus): DataStep[] {
   const review = steps[steps.length - 1];
   if (!locked && !s.openChecks && !tb) { review.status = "todo"; review.detail = "Add the Trial Balance check to prove the books, then review."; }
   return steps;
-}
-
-/** What Simple mode's Data steps need: the opening cash and the months each sheet covers. */
-export interface SimpleStatus { basePath: string; openingCash: { amount: number; asOf: string } | null; sales: string[]; expenses: string[] }
-
-/**
- * Simple mode (a Sales and an Expenses sheet, no ERP): settings, then the two sheets, in any order. Nothing is locked;
- * the figures need only what each sheet holds.
- */
-export function simpleSteps(s: SimpleStatus): DataStep[] {
-  const up = (step: string) => `${s.basePath}/data/upload?step=${step}`;
-  const sheet = (id: "sales" | "expenses", n: number, title: string, needs: string, months: string[]): DataStep => {
-    const m = [...months].sort();
-    return {
-      id, n, title, role: "Your sheet", status: m.length ? "done" : "todo",
-      detail: m.length ? `${span(m[0], m[m.length - 1])} loaded. Upload again to add months or replace them.` : `Needs at least ${needs}. Download the template, or upload your own sheet: the columns are found for you.`,
-      file: "Excel (.xlsx) or CSV", action: { label: m.length ? "Upload more" : "Upload", href: up(id) },
-    };
-  };
-  const cash = s.openingCash;
-  return [
-    { id: "setup", n: 1, title: "Company settings", role: "Settings", status: cash ? "done" : "todo",
-      detail: cash ? `Opening cash ${cash.amount.toLocaleString("en-US")} on ${cash.asOf}.` : "Set the currency, financial year and your opening cash (for the cash balance and runway).",
-      action: { label: cash ? "Check" : "Set up", href: `${s.basePath}/settings/profile` } },
-    sheet("sales", 2, "Sales sheet", "a date and an amount per sale", s.sales),
-    sheet("expenses", 3, "Expenses sheet", "a date, an amount and a category per expense", s.expenses),
-  ];
 }

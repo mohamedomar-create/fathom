@@ -7,23 +7,20 @@ import type { Grid } from "@/lib/ingest/extract";
 export const EXPENSE_FIELD_LABEL: Record<ExpenseField, string> = {
   date: "Date", period: "Month", doc: "Bill number", supplier: "Supplier", account: "Account", category: "Expense type", label: "Description",
   untaxed: "Amount before tax", total: "Amount (with tax)",
-  paid: "Paid or not", paidOn: "Payment date", fixedVar: "Fixed or variable",
 };
 const FIELDS = Object.keys(EXPENSE_FIELD_LABEL) as ExpenseField[];
-/** Columns read only in Simple mode. */
-const SIMPLE_ONLY = new Set<string>(["channel", "paid", "paidOn", "fixedVar"]);
 
 export interface ExpensesRead { lines: ExpenseLine[]; layouts: ExpenseLayout[] }
 
 /** Reads every expenses sheet with the person's corrections. */
-export function readExpenses(grids: Grid[], ov: Record<string, ExpenseOverride>, simple = false, named?: Record<string, ExpenseField>): ExpensesRead {
+export function readExpenses(grids: Grid[], ov: Record<string, ExpenseOverride>): ExpensesRead {
   const lines: ExpenseLine[] = [], layouts: ExpenseLayout[] = [];
-  for (const g of grids) { const r = readExpenseGrid(g, named ? { ...ov[g.name], named } : ov[g.name], { simple }); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
+  for (const g of grids) { const r = readExpenseGrid(g, ov[g.name]); if (r) { for (const l of r.lines) lines.push(l); layouts.push(r.layout); } }
   return { lines, layouts };
 }
 
 /** How a purchases file was read: what each column holds (correctable), before anything is saved. */
-export function ExpensesPreview({ read, currency, overrides, onChange, simple = false }: { read: ExpensesRead; currency: string; overrides: Record<string, ExpenseOverride>; onChange: (o: Record<string, ExpenseOverride>) => void; simple?: boolean }) {
+export function ExpensesPreview({ read, currency, overrides, onChange }: { read: ExpensesRead; currency: string; overrides: Record<string, ExpenseOverride>; onChange: (o: Record<string, ExpenseOverride>) => void }) {
   const ps = expensePeriods(read.lines);
   const suppliers = new Set(read.lines.map((l) => l.supplier)).size;
   return (
@@ -47,7 +44,7 @@ export function ExpensesPreview({ read, currency, overrides, onChange, simple = 
                   onChange={(e) => onChange({ ...overrides, [l.sheet]: { ...(overrides[l.sheet] ?? {}), cols: { ...overrides[l.sheet]?.cols, [c.col]: (e.target.value || null) as ExpenseField | null } } })}
                   className="rounded border-0 bg-band px-1 py-0.5">
                   <option value="">not used</option>
-                  {FIELDS.filter((f) => simple || !SIMPLE_ONLY.has(f)).map((f) => <option key={f} value={f}>{EXPENSE_FIELD_LABEL[f]}</option>)}
+                  {FIELDS.map((f) => <option key={f} value={f}>{EXPENSE_FIELD_LABEL[f]}</option>)}
                 </select>
               </label>
             ))}

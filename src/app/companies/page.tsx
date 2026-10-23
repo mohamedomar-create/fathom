@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { BarChart3, Database, FileText, Settings } from "lucide-react";
+import { BarChart3, Database, FileText, Settings, Upload, Wallet } from "lucide-react";
+import { modeOf } from "@/lib/company/mode";
 import { money, pct } from "@/lib/engine";
 import { loadPortfolio } from "@/lib/company/portfolio";
 import { AppBar } from "@/components/shell/app-bar";
@@ -21,7 +22,9 @@ function ago(iso: string | null, t: Dict["home"]) {
 export default async function CompaniesPage() {
   const { items, orgs, email } = await loadPortfolio();
   const org = orgs[0];
-  const t = (await getDict()).home;
+  const dict = await getDict();
+  const t = dict.home;
+  const cashT = dict.cash;
   const lang = await getLang();
   return (
     <>
@@ -45,6 +48,18 @@ export default async function CompaniesPage() {
             const rev = months.slice(-12).map((m) => (m.pl.revenue ?? 0));
             const score = a && a.onTrack + a.offTrack ? (a.onTrack / (a.onTrack + a.offTrack)) * 100 : null;
             const risks = a?.findings.filter((f) => f.kind === "risk").length ?? 0;
+            // A small business on the cash book: its own pages, nothing from the full system.
+            if (modeOf(c.kpi_config) === "simple") return (
+              <div key={c.id} className="fade-up rounded-lg border border-line bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition hover:shadow-md" data-testid="cash-card">
+                <Link href={`/cash/${c.id}`} className="block truncate text-lg font-medium hover:underline">{c.name}</Link>
+                <div className="text-xs text-mute">{cashT.tag}</div>
+                <div className="mt-4 flex gap-2 border-t border-line pt-3 text-sm">
+                  <Link href={`/cash/${c.id}`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><Wallet className="h-4 w-4 text-brand-d" />{cashT.nav[""]}</Link>
+                  <Link href={`/cash/${c.id}/upload`} className="flex items-center gap-1.5 rounded px-2.5 py-1 hover:bg-band"><Upload className="h-4 w-4 text-brand-d" />{cashT.nav.upload}</Link>
+                  <Link href={`/cash/${c.id}/settings`} className="ms-auto flex items-center gap-1.5 rounded px-2.5 py-1 text-mute hover:bg-band"><Settings className="h-4 w-4" />{cashT.nav.settings}</Link>
+                </div>
+              </div>
+            );
             return (
               <div key={c.id} className="fade-up rounded-lg border border-line bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition hover:shadow-md">
                 <div className="flex items-start justify-between gap-3">

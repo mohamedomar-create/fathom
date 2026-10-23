@@ -12,8 +12,6 @@ import type { StepId } from "@/lib/company/data-steps";
 import { fromWire } from "@/lib/company/inventory-wire";
 import { subLedgerStatus } from "@/lib/company/data-status";
 import { DataSteps, type DataFacts } from "@/components/data/data-steps";
-import { SimpleDataSteps } from "@/components/simple/simple-steps";
-import { modeOf, openingCashOf } from "@/lib/company/mode";
 
 /** The sub-ledger checks need every summary: they arrive after the steps, which show at once. */
 async function WithSubLedgers({ id, facts }: { id: string; facts: DataFacts }) {
@@ -36,15 +34,6 @@ export default async function DataStepsPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const { supabase } = await getUser();
   const meta = await loadCompanyMeta(id);
-  if (modeOf(meta.kpiConfig) === "simple") {
-    // The months each sheet covers (the uploaded lines); none when the database can't say yet.
-    const months = async (kind: "sales" | "expenses") => {
-      const { data } = await supabase.rpc("line_months", { p_company: id, p_kind: kind, p_source: "file" });
-      return Object.keys((data ?? {}) as Record<string, unknown>);
-    };
-    const [sales, expenses] = await Promise.all([months("sales"), months("expenses")]);
-    return <SimpleDataSteps status={{ openingCash: openingCashOf(meta.kpiConfig), sales, expenses }} />;
-  }
   const facts = await loadDataFacts(supabase, id, meta.dataVersion);
   return <Suspense fallback={<DataSteps facts={facts} sub={null} />}><WithSubLedgers id={id} facts={facts} /></Suspense>;
 }

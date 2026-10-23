@@ -23,7 +23,7 @@ export function cleanWorkbook(grids: Grid[], report: PreflightReport, decisions:
     const g = grids.find((x) => x.name === s.sheet);
     const d = decisions[s.sheet] ?? {};
     if (!g || !(d.include ?? s.include) || s.status === "cannot_import") continue;
-    const rules = rulesFor(report.module, s, report.simple);
+    const rules = rulesFor(report.module, s);
     if (!rules || s.headerRow < 0) {
       // Accounts, ageing and payments sheets: their readers handle the layout; the copy is the sheet as uploaded.
       const copy = { ...g, rows: g.rows.map(copyRow), ...(g.formulas ? { formulas: { ...g.formulas } } : {}) };

@@ -8,7 +8,7 @@ import { sales } from "./areas/sales";
 import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
-import { simple } from "./areas/simple";
+import { cash } from "./areas/cash";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -36,7 +36,7 @@ export const ar: Dict = {
     people: "إدارة المستخدمين",
     logout: "تسجيل الخروج",
   },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", overview: "نظرة عامة" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -58,8 +58,6 @@ export const ar: Dict = {
     "expenses/accounts": ["الحسابات", "المصروفات حسب الحساب"],
     "expenses/suppliers": ["الموردون", "الموردون"],
     "expenses/trend": ["الاتجاه", "اتجاه المصروفات"],
-    simple: ["نظرة عامة", "نظرة عامة"],
-    "simple/cash": ["النقدية والتوقعات", "النقدية والتوقعات"],
     inventory: ["نظرة عامة", "نظرة عامة على المخزون"],
     "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
     "inventory/movements": ["الحركات", "حركات المخزون"],
@@ -73,7 +71,7 @@ export const ar: Dict = {
   dataNav: {
     title: "البيانات",
     sub: "دفتر الأستاذ العام هو سجلك الأساسي. كل ما عداه يضيف تفاصيل أو يتحقق منه، بهذا الترتيب.",
-    tabs: { "": "الخطوات", "/upload": "الرفع", "/checks": "الفحوص والسجل", "/readiness": "الجاهزية", "/end-users": "المستخدمون النهائيون", "/odoo": "Odoo المباشر", "/lines": "السطور" },
+    tabs: { "": "الخطوات", "/upload": "الرفع", "/checks": "الفحوص والسجل", "/readiness": "الجاهزية", "/end-users": "المستخدمون النهائيون", "/odoo": "Odoo المباشر" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `عدد الأشهر المحمّلة: ${n}`,
@@ -120,7 +118,7 @@ export const ar: Dict = {
   eu: eu.ar,
   exp: exp.ar,
   inv: inv.ar,
-  simple: simple.ar,
+  cash: cash.ar,
   bank: bank.ar,
   state: state.ar,
   rp: rp.ar,

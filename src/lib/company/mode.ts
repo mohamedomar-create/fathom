@@ -1,9 +1,9 @@
 import { PROFILE_KEY } from "./config-keys";
 
 /**
- * How a company uses the app. "full": every module, for companies with an ERP's books. "simple": a Sales sheet and an
- * Expenses sheet only. Both use the same data and the same figures; switching only changes what is shown, so nothing
- * is ever lost. A company with no mode set is Full.
+ * How a company uses the app. "full": every module, for companies with an accounting system's books. "simple": the
+ * small-business cash book (/cash/[id]), with its own entries, pages and figures, separate from the full system.
+ * Switching copies the data across once and deletes nothing. A company with no mode set is Full.
  */
 export type CompanyMode = "full" | "simple";
 export interface OpeningCash { amount: number; asOf: string }
@@ -21,10 +21,13 @@ export function modeOf(kpiConfig: unknown): CompanyMode {
 
 export const withMode = (kpiConfig: unknown, mode: CompanyMode) => withPatch(kpiConfig, { mode });
 
-/** The cash the company held on a day, the starting point for its cash balance and runway in Simple mode. */
+/** The cash the business held on a day: where the cash book's "cash today" starts. */
 export function openingCashOf(kpiConfig: unknown): OpeningCash | null {
   const v = profileOf(kpiConfig).openingCash as Partial<OpeningCash> | undefined;
   return v && typeof v.amount === "number" && Number.isFinite(v.amount) && typeof v.asOf === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.asOf) ? { amount: v.amount, asOf: v.asOf } : null;
 }
 
 export const withOpeningCash = (kpiConfig: unknown, cash: OpeningCash | null) => withPatch(kpiConfig, { openingCash: cash });
+
+/** The cash book's remembered column choices (heading → what it holds). */
+export const withCashColumns = (kpiConfig: unknown, map: Record<string, string>) => withPatch(kpiConfig, { cashColumns: map });

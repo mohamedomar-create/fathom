@@ -1,7 +1,7 @@
 import ExcelJS from "exceljs";
 import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { COSTS_DEFINITION } from "@/lib/engine/expenses";
-import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, SIMPLE_EXPENSE_COLS, SIMPLE_SALES_COLS, templateMonths, type SimpleCol, type TemplateKind } from "./spec";
+import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
 import type { FinancialsFill, FillRow } from "./fill";
 
 const TEAL = "FF0B6E70", BAND = "FFF5F5F3", INPUT = "FFFFFBEA", MUTE = "FF76766F";
@@ -17,8 +17,6 @@ export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Pro
   if (kind === "financials") financials(wb, o);
   else if (kind === "expenses") expenses(wb, o);
   else if (kind === "opening") opening(wb, o);
-  else if (kind === "simple-sales") simple(wb, o, "Sales", SIMPLE_SALES_COLS, ["One row per sale. Only Date and Net amount are needed; the other columns add detail (customers, margin, cash, what is owed).", "صف لكل عملية بيع. يكفي التاريخ والمبلغ؛ الأعمدة الأخرى تضيف التفاصيل."]);
-  else if (kind === "simple-expenses") simple(wb, o, "Expenses", SIMPLE_EXPENSE_COLS, ["One row per expense. Date, Net amount and Category are needed; the other columns add detail.", "صف لكل مصروف. يلزم التاريخ والمبلغ والبند؛ الأعمدة الأخرى تضيف التفاصيل."]);
   else sales(wb, o);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -202,29 +200,5 @@ function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
     const cell = ws.getRow(5 + i).getCell(c);
     cell.numFmt = NUM;
     cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [0, 1e15], showErrorMessage: true, error: "A positive number: put credits in the Credit column." };
-  }
-}
-
-/** Simple mode: a Read me and one plain sheet, headings in row 1, ready to fill or to copy into a sheet of one's own. */
-function simple(wb: ExcelJS.Workbook, o: TemplateOptions, name: string, cols: SimpleCol[], intro: [string, string]) {
-  readMe(wb, `iReport · ${name} sheet${o.company ? ` · ${o.company}` : ""}`, [
-    intro,
-    [`Amounts in ${o.currency}, as plain numbers. Dates as date cells or written day first (15/01/2026).`, "المبالغ أرقامًا فقط. التاريخ يوم/شهر/سنة."],
-    ["You can keep your own sheet instead: iReport finds these columns by their headings, in English or Arabic, wherever the table starts.", "يمكنك رفع جدولك الخاص: يتعرف iReport على الأعمدة من عناوينها بالعربية أو الإنجليزية."],
-    ["COLUMNS", "الأعمدة"],
-    ...cols.map((c) => [`${c.head}: ${c.help[0]}`, c.help[1]] as [string, string]),
-  ]);
-  const ws = wb.addWorksheet(name, { views: [{ state: "frozen", ySplit: 1 }] });
-  const h = ws.getRow(1);
-  cols.forEach((c, i) => { h.getCell(i + 1).value = c.head; ws.getColumn(i + 1).width = c.width; });
-  header(h);
-  for (let i = 0; i < 3000; i++) {
-    const r = ws.getRow(2 + i);
-    cols.forEach((c, j) => {
-      const cell = r.getCell(j + 1);
-      if (c.kind === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
-      if (c.kind === "number") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
-      if (c.kind === "list" && c.options) cell.dataValidation = { type: "list", allowBlank: true, formulae: [`"${c.options.join(",")}"`], showErrorMessage: true, error: `Choose ${c.options.join(" or ")}.` };
-    });
   }
 }

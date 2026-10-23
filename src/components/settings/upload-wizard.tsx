@@ -29,11 +29,11 @@ import type { ImportMode } from "@/lib/company/import-plan";
 import { CheckList, OverwriteDiffs, Timeline } from "./import-timeline";
 import { cn } from "@/lib/cn";
 import { isPL } from "@/lib/company/build";
-import type { SalesField, SalesOverride } from "@/lib/ingest/sales";
+import type { SalesOverride } from "@/lib/ingest/sales";
 import { saveSales } from "@/lib/company/save-sales";
 import { FIELD_LABEL, readSales, SalesPreview } from "./sales-preview";
 import { salesPeriods } from "@/lib/ingest/sales";
-import { expensePeriods, type ExpenseField, type ExpenseOverride } from "@/lib/ingest/expenses";
+import { expensePeriods, type ExpenseOverride } from "@/lib/ingest/expenses";
 import { saveExpenses } from "@/lib/company/save-expenses";
 import { saveExpensesAs, saveSalesAs, type SaveMode } from "@/lib/company/save-modes";
 import { clearLedgerLines } from "@/app/company/[id]/settings/ledger-actions";
@@ -61,8 +61,7 @@ import { readInventorySheets } from "@/lib/ingest/inventory-sheets";
 import { OdooImport } from "@/components/imports/odoo-import";
 import { PaymentsUpload } from "@/components/payments/payments-upload";
 import { fingerprintAccounts, fingerprintBills, fingerprintSales, layoutIssues, type SavedLayouts } from "@/lib/ingest/layout-profile";
-import { saveColumnChoices, saveLayouts } from "@/app/company/[id]/settings/layout-actions";
-import { headingKey } from "@/lib/ingest/simple-cols";
+import { saveLayouts } from "@/app/company/[id]/settings/layout-actions";
 import { diagnostic, type Diagnostic } from "@/lib/ingest/diagnostic";
 import { cutBooks, cutLines, cutoffMessage } from "@/lib/ingest/cutoff";
 import { fmtDay } from "@/lib/ingest/odoo";
@@ -80,7 +79,7 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false, simple = false, savedColumns = {} }: { companyId: string; ledgerLoaded?: boolean; /** Simple mode: what each column held last time, by heading. */ savedColumns?: { sales?: Record<string, SalesField>; expenses?: Record<string, ExpenseField> }; /** Simple mode: the card chosen decides what each sheet is, and the simple columns are read. */ simple?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false }: { companyId: string; ledgerLoaded?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
   const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" || setupStep === "tb" ? "accounts" : null);
@@ -109,10 +108,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [roles, setRoles] = useState<Record<string, SheetRole>>({});
   const [rolesOk, setRolesOk] = useState(false);
   // On the opening balances card every sheet is read as accounts (a plain list of balances looks like a summary).
-  const roleOf = useCallback((sheet: string): SheetRole => (kind === "opening" ? "statement"
-    // Simple mode: the Sales card reads every sheet as sales, the Expenses card as expenses (unless the person changes it).
-    : simple && (kind === "sales" || kind === "expenses") ? roles[sheet] ?? (kind === "sales" ? "sales" : "bills")
-    : roles[sheet] ?? guesses.find((x) => x.sheet === sheet)?.role ?? "summary"), [roles, guesses, kind, simple]);
+  const roleOf = useCallback((sheet: string): SheetRole => (kind === "opening" ? "statement" : roles[sheet] ?? guesses.find((x) => x.sheet === sheet)?.role ?? "summary"), [roles, guesses, kind]);
   const sheetsAs = useCallback((r: SheetRole) => { const gs = (allGrids ?? []).filter((g) => roleOf(g.name) === r); return gs.length ? gs : null; }, [allGrids, roleOf]);
   const grids = useMemo(() => sheetsAs("statement"), [sheetsAs]);
   const [overrides, setOverrides] = useState<Overrides>({});
@@ -135,13 +131,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // Sales exports (invoice lines or a pivot) uploaded alongside, or instead of, the accounting files.
   const salesGrids = useMemo(() => sheetsAs("sales"), [sheetsAs]);
   const [salesOv, setSalesOv] = useState<Record<string, SalesOverride>>({});
-  const salesFile = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv, simple, simple ? savedColumns.sales : undefined) : null), [salesGrids, salesOv, simple, savedColumns.sales]);
+  const salesFile = useMemo(() => (salesGrids ? readSales(salesGrids, salesOv) : null), [salesGrids, salesOv]);
   const salesCut = useMemo(() => cutRead(salesFile, opts.cutoff), [salesFile, opts.cutoff]);
   const salesRead = salesCut.read;
   // Purchases (vendor bills, the expenses template) uploaded alongside, or instead of, the accounting files.
   const expGrids = useMemo(() => sheetsAs("bills"), [sheetsAs]);
   const [expOv, setExpOv] = useState<Record<string, ExpenseOverride>>({});
-  const expFile = useMemo(() => (expGrids ? readExpenses(expGrids, expOv, simple, simple ? savedColumns.expenses : undefined) : null), [expGrids, expOv, simple, savedColumns.expenses]);
+  const expFile = useMemo(() => (expGrids ? readExpenses(expGrids, expOv) : null), [expGrids, expOv]);
   const expCut = useMemo(() => cutRead(expFile, opts.cutoff), [expFile, opts.cutoff]);
   const expRead = expCut.read;
   // Cash books and bank statements give both: money out (expenses) and money in (sales).
@@ -319,20 +315,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     ...(salesRead?.layouts ?? []).map(fingerprintSales), ...(expRead?.layouts ?? []).map(fingerprintBills),
   ], [res, salesRead, expRead]);
   useEffect(() => { if (done && !demo && fingerprints.length) void saveLayouts(companyId, fingerprints); }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Simple mode: what the person said each column holds is remembered by heading for the next upload of the sheet.
-  useEffect(() => {
-    if (!done || demo || !simple) return;
-    const chosen = <F extends string>(layouts: { sheet: string; columns: { col: number; header: string }[] }[], ov: Record<string, { cols?: Partial<Record<number, F | null>> }>, prev: Record<string, F> = {}) => {
-      const out: Record<string, string> = { ...prev };
-      for (const l of layouts) for (const [c, f] of Object.entries(ov[l.sheet]?.cols ?? {})) {
-        const h = l.columns.find((x) => x.col === Number(c))?.header;
-        if (h && f) out[headingKey(h)] = f as string;
-      }
-      return out;
-    };
-    if (salesFile?.layouts.length) void saveColumnChoices(companyId, "sales", chosen(salesFile.layouts, salesOv, savedColumns.sales));
-    if (expFile?.layouts.length) void saveColumnChoices(companyId, "expenses", chosen(expFile.layouts, expOv, savedColumns.expenses));
-  }, [done]); // eslint-disable-line react-hooks/exhaustive-deps
   const issues = useMemo(() => [
     ...(res ? financialIssues(res, fileChecks) : []), ...(salesRead ? salesIssues(salesRead.layouts) : []), ...(expRead ? expenseIssues(expRead.layouts) : []),
     ...([["sales", salesCut.late], ["expenses", expCut.late]] as const).filter(([, late]) => late.length && opts.cutoff).map(([k, late]) => ({ id: `cutoff:${k}`, severity: "check" as const, sheet: late[0].src?.sheet ?? "", message: cutoffMessage(late, opts.cutoff!), fix: "settings" as const })),
@@ -601,12 +583,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
         <div className="grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {!simple && <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => { setKind("opening"); setScreen("get"); }} testId="pick-opening" />}
-          {!simple && <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />}
-          <ChoiceCard icon="🧾" title="My sales" sub={simple ? "Your Sales sheet: a date and an amount per sale." : "Invoices: who bought what."} onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
-          <ChoiceCard icon="💸" title="My expenses" sub={simple ? "Your Expenses sheet: a date, an amount and a category." : "Bills and costs: who you pay."} onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
-          {!simple && <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => { setKind("inventory"); setScreen("get"); }} testId="pick-inventory" />}
-          {!demo && !simple && <ChoiceCard icon="🤝" title="Receivables and payments" sub="Odoo's ageing reports and payments: who owes what, who paid." onClick={() => { setKind("payments"); setScreen("get"); }} testId="pick-payments" />}
+          <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => { setKind("opening"); setScreen("get"); }} testId="pick-opening" />
+          <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
+          <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
+          <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
+          <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => { setKind("inventory"); setScreen("get"); }} testId="pick-inventory" />
+          {!demo && <ChoiceCard icon="🤝" title="Receivables and payments" sub="Odoo's ageing reports and payments: who owes what, who paid." onClick={() => { setKind("payments"); setScreen("get"); }} testId="pick-payments" />}
         </div>
       </div>
     );
@@ -676,7 +658,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {pf && (
           <div className="max-w-4xl">
             <WizardTitle title="Check the file" hint="Each sheet is checked against what this import needs before anything is imported." />
-            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} stopOnLeftOut={false} allowNone handOn={WIZARD_HANDS_ON} simple={simple && (kind === "sales" || kind === "expenses")} />
+            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} stopOnLeftOut={false} allowNone handOn={WIZARD_HANDS_ON} />
             <WizardNav onBack={() => { setPf(null); setScreen("upload"); }} />
           </div>
         )}
@@ -945,7 +927,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} />
         </div>
         {box}
-        {more(<ExpensesPreview read={expRead} currency={currency} overrides={expOv} onChange={setExpOv} simple={simple} />)}
+        {more(<ExpensesPreview read={expRead} currency={currency} overrides={expOv} onChange={setExpOv} />)}
         {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo
@@ -994,7 +976,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <Stat label="Problems" value={String(errorCount)} tone={errorCount ? "bad" : "ok"} />
         </div>
         {box}
-        {more(<SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} simple={simple} />)}
+        {more(<SalesPreview read={salesRead} currency={currency} overrides={salesOv} onChange={setSalesOv} />)}
         {saving && saveProgress && <SaveProgress what={saveProgress.what} done={saveProgress.done} of={saveProgress.of} />}
           {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
         {demo

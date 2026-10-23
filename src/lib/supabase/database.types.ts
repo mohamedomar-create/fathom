@@ -37,6 +37,7 @@ export type ReportRow = {
 export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null; sale_order: string | null; end_user: string | null; map_method: "order" | "contact" | "shipping" | null; note: string | null }
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type CashUploadRow = { id: string; company_id: string; filename: string; months: string[]; mode: "add" | "replace_months"; status: "open" | "done"; rows: number; skipped: number; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type PaymentBatchRow = { id: string; company_id: string; filename: string | null; periods: string[]; report: Json; source: "file" | "ledger"; created_by: string | null; created_at: string }
 export type AgedReportRow = { id: string; company_id: string; side: "receivable" | "payable"; as_of: string; buckets: string[]; totals: Json; findings: Json; filename: string | null; created_by: string | null; created_at: string }
@@ -72,6 +73,7 @@ export type Database = {
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
+      cash_uploads: Table<CashUploadRow, "company_id">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
       aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
@@ -130,6 +132,17 @@ export type Database = {
       begin_expense_batch: { Args: { p_company: string; p_source: string; p_periods: string[]; p_filename?: string; p_report?: Json; p_all?: boolean }; Returns: string };
       line_months: { Args: { p_company: string; p_kind: string; p_source: string }; Returns: Json };
       simple_lines: { Args: { p_company: string }; Returns: Json };
+      cash_entries_list: { Args: { p_company: string }; Returns: Json };
+      cash_upload_begin: { Args: { p_company: string; p_filename: string; p_months: string[]; p_mode: string; p_skipped?: number }; Returns: string };
+      cash_upload_add: { Args: { p_upload: string; p_entries: Json }; Returns: number };
+      cash_upload_finish: { Args: { p_upload: string }; Returns: Json };
+      cash_upload_remove: { Args: { p_upload: string }; Returns: number };
+      cash_entry_add: { Args: { p_company: string; p_entry: Json }; Returns: number };
+      cash_entry_update: { Args: { p_id: number; p_entry: Json }; Returns: undefined };
+      cash_entry_delete: { Args: { p_id: number }; Returns: undefined };
+      cash_entries_clear: { Args: { p_company: string }; Returns: number };
+      cash_to_full: { Args: { p_company: string }; Returns: Json };
+      cash_from_full: { Args: { p_company: string }; Returns: number };
       add_line: { Args: { p_company: string; p_kind: string; p_line: Json }; Returns: number };
       update_line: { Args: { p_kind: string; p_id: number; p_line: Json }; Returns: undefined };
       delete_line: { Args: { p_kind: string; p_id: number }; Returns: undefined };
