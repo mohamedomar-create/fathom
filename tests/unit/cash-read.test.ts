@@ -20,7 +20,7 @@ describe("reading a small company's sheets", () => {
     const r = readCashGrid(g("Moves", [["Date", "Type", "Category", "Amount"], ["2026-03-01", "Sale", "Drinks", 50], ["2026-03-01", "Expense", "Ice", 20], ["2026-03-02", "?", "x", 5]]))!;
     expect(r.layout).toBe("typed");
     expect(brief(r.entries)).toEqual(["2026-03-01 in 50", "2026-03-01 out 20"]);
-    expect(r.skipped).toEqual([{ sheet: "Moves", row: 4, reason: 'type "?" is neither money in nor money out' }]);
+    expect(r.skipped).toEqual([{ sheet: "Moves", row: 4, reason: 'type "?" is neither money in nor money out', code: "badType", cell: "B4", value: "?" }]);
   });
   it("a Sales sheet and an Expenses sheet, told apart by their names", () => {
     const b = readCashBook([
@@ -67,7 +67,10 @@ describe("reading a small company's sheets", () => {
     const r = readCashGrid(g("Book", [["When", "Takings", "Spent"], ["01/03/2026", 10, 4]]), { map: { when: "date", takings: "in", spent: "out" } })!;
     expect(brief(r.entries)).toEqual(["2026-03-01 in 10", "2026-03-01 out 4"]);
   });
-  it("a sheet with no date or no amount column is not a cash sheet", () => {
-    expect(readCashGrid(g("Notes", [["Name", "Phone"], ["A", "1"]]))).toBeNull();
+  it("a sheet with no date or no amount column is kept, cannot be read yet, and says what is missing", () => {
+    const r = readCashGrid(g("Notes", [["Name", "Phone"], ["A", "1"]]))!;
+    expect(r).toMatchObject({ layout: "none", status: "blocked", entries: [] });
+    expect(r.notes.map((n) => n.code)).toContain("noDate");
+    expect(readCashGrid(g("Empty", [[], [null]]))).toBeNull();
   });
 });
