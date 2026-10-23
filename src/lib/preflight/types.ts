@@ -72,6 +72,8 @@ export interface SheetReport {
 
 export interface PreflightReport {
   module: PreflightModule;
+  /** Checked as a Simple-mode company's Sales or Expenses sheet (the Simple columns). */
+  simple?: boolean;
   sheets: SheetReport[];
   /** At least one sheet goes to the import and every sheet that goes is ready. */
   ready: boolean;

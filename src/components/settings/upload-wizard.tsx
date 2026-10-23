@@ -676,7 +676,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {pf && (
           <div className="max-w-4xl">
             <WizardTitle title="Check the file" hint="Each sheet is checked against what this import needs before anything is imported." />
-            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} stopOnLeftOut={false} allowNone handOn={WIZARD_HANDS_ON} />
+            <Preflight module={pfModule} moduleLabel={pfLabel} grids={pf.grids} fileName={pf.files.map((f) => f.name).join(" + ")} onReady={pfReady} stopOnLeftOut={false} allowNone handOn={WIZARD_HANDS_ON} simple={simple && (kind === "sales" || kind === "expenses")} />
             <WizardNav onBack={() => { setPf(null); setScreen("upload"); }} />
           </div>
         )}

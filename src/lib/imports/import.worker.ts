@@ -21,7 +21,7 @@ self.onmessage = async (e: MessageEvent<WorkerRequest>) => {
     } else if (m.type === "payments") {
       post({ id: m.id, type: "payments", plan: planPaymentsUpload(m.grids ?? await readWorkbooks(m.files), { currency: m.currency }) });
     } else if (m.type === "preflight") {
-      post({ id: m.id, type: "preflight", ...runPreflight(m.grids, m.module, m.decisions, m.stockMapping, m.stockKey) });
+      post({ id: m.id, type: "preflight", ...runPreflight(m.grids, m.module, m.decisions, m.stockMapping, m.stockKey, m.simple) });
     } else if (m.type === "sample") {
       const samples = [];
       for (const f of m.files) samples.push(await sampleFile(f.name, f.data, m.saved, f.export ?? null));
