@@ -1,12 +1,12 @@
 "use client";
-import { Database, FileSpreadsheet, Plus, Sparkles } from "lucide-react";
+import { Database, FileSpreadsheet, Plus, Receipt, Sparkles } from "lucide-react";
 import { useState, useTransition } from "react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import { createCompany, createDemoCompany } from "./actions";
 import { useDict } from "@/lib/i18n/context";
 
-type Src = "upload" | "odoo";
+type Src = "upload" | "odoo" | "simple";
 
 export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
   const t = useDict().home;
@@ -14,6 +14,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const tiles: { k: Src | "demo"; title: string; text: string; icon: React.ReactNode }[] = [
+    { k: "simple", title: t.tiles.simple[0], text: t.tiles.simple[1], icon: <Receipt className="h-6 w-6" /> },
     { k: "upload", title: t.tiles.upload[0], text: t.tiles.upload[1], icon: <FileSpreadsheet className="h-6 w-6" /> },
     { k: "odoo", title: t.tiles.odoo[0], text: t.tiles.odoo[1], icon: <Database className="h-6 w-6" /> },
     { k: "demo", title: t.tiles.demo[0], text: t.tiles.demo[1], icon: <Sparkles className="h-6 w-6" /> },
@@ -25,10 +26,10 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
         <div className="label">{t.sourceSystem}</div>
         <h2 className="mb-5 text-2xl font-light">{src ? t.details : t.where}</h2>
         {!src ? (
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             {tiles.map((t) => (
               <button key={t.k} disabled={pending} onClick={() => t.k === "demo" ? start(async () => { const r = await createDemoCompany(); if (r?.error) setErr(r.error); }) : setSrc(t.k)}
-                className="rounded-lg border border-line p-4 text-start transition hover:border-brand hover:shadow-sm disabled:opacity-50">
+                data-testid={`tile-${t.k}`} className="rounded-lg border border-line p-4 text-start transition hover:border-brand hover:shadow-sm disabled:opacity-50">
                 <div className="mb-3 text-brand-d">{t.icon}</div>
                 <div className="font-medium">{t.title}</div>
                 <div className="mt-1 text-xs text-mute">{t.text}</div>
@@ -37,7 +38,8 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
           </div>
         ) : (
           <form action={(fd) => start(async () => { setErr(null); const r = await createCompany(fd); if (r?.error) setErr(r.error); })} className="grid gap-4 sm:grid-cols-2">
-            <input type="hidden" name="source" value={src} />
+            <input type="hidden" name="source" value={src === "simple" ? "upload" : src} />
+            {src === "simple" && <input type="hidden" name="mode" value="simple" />}
             <label className="sm:col-span-2"><span className="label mb-1 block">{t.name}</span>
               <input name="name" required maxLength={160} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" placeholder={t.namePlaceholder} /></label>
             {orgs.length > 1 && (

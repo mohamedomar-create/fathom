@@ -6,7 +6,7 @@ import { useCompany } from "@/lib/company/context";
 import { cn } from "@/lib/cn";
 import { Tip } from "@/components/ui/tooltip";
 import { useDict } from "@/lib/i18n/context";
-import { SECTORS, sectorOf } from "./nav";
+import { sectorOf, sectorsFor } from "./nav";
 
 export function IconRail() {
   const c = useCompany();
@@ -15,7 +15,7 @@ export function IconRail() {
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
   if (pathname.includes("/settings") || pathname.includes("/reports") || /\/data(\/|$)/.test(pathname)) return null;
-  const sector = sectorOf(pathname.slice(c.basePath.length));
+  const sector = sectorOf(pathname.slice(c.basePath.length), c.mode);
   const items = sector.items;
   return (
     <>
@@ -45,7 +45,7 @@ export function IconRail() {
       </aside>
       {/* mobile nav */}
       <nav className="sticky top-12 z-20 flex gap-1 overflow-x-auto border-b border-line bg-white px-2 py-1.5 md:hidden no-print" aria-label={d.shell.sections}>
-        {SECTORS.filter((s) => s.key !== sector.key).map((s) => (
+        {sectorsFor(c.mode).filter((s) => s.key !== sector.key).map((s) => (
           <Link prefetch={false} key={s.key} href={`${c.basePath}/${s.items[0].href}${q}`} data-testid={`sector-${s.key}`} className="flex shrink-0 items-center rounded-full border border-line px-3 py-1 text-xs text-[#555]">{d.sectors[s.key]}</Link>
         ))}
         <span className="mx-1 w-px shrink-0 bg-line" aria-hidden="true" />

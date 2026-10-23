@@ -1,3 +1,4 @@
+import type { CompanyMode, OpeningCash } from "./mode";
 import type { LocationTypes } from "@/lib/ingest/inventory";
 import type { Assumptions, ForecastDrivers, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
 
@@ -47,4 +48,8 @@ export interface CompanyBundle {
   booksFromZero?: boolean;
   /** Forecast drivers the company has saved. */
   forecast?: ForecastDrivers;
+  /** How the company uses the app (absent: Full). Simple shows only what a Sales and an Expenses sheet can support. */
+  mode?: CompanyMode;
+  /** Simple mode: the cash held on a day, the start of the cash balance and runway. */
+  openingCash?: OpeningCash | null;
 }

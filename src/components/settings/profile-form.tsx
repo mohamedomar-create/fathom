@@ -8,7 +8,7 @@ import type { ResetPreview } from "@/lib/company/reset";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null }
+export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null; mode?: "simple" | "full"; opening_cash?: { amount: number; asOf: string } | null }
 /** Every time zone the browser knows, the company's own first if the list lacks it. */
 const zones = (own: string | null | undefined) => {
   const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Africa/Cairo", "UTC"];
@@ -22,7 +22,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand disabled:bg-band";
   const save = () => start(async () => {
-    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}), ...(v.books_start !== undefined ? { books_start: v.books_start || null } : {}) });
+    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}), ...(v.books_start !== undefined ? { books_start: v.books_start || null } : {}), ...(v.mode ? { mode: v.mode } : {}), ...(v.opening_cash !== undefined ? { opening_cash: v.opening_cash } : {}) });
     setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save" });
     if (r.ok) router.refresh();
   });
@@ -37,12 +37,35 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
   );
   return (
     <div className="space-y-8">
+      {v.mode && <section className="rounded-md border border-line p-4" data-testid="mode-section">
+        <h2 className="text-xl font-light">How this company uses iReport</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Mode">
+          {([["simple", "Simple: sales and expenses", "A Sales sheet and an Expenses sheet. Profit, cash, runway, risks and a forecast from those two alone."], ["full", "Full: all modules", "Financials, sales, stock, receivables and payables from an ERP such as Odoo."]] as const).map(([k, title, text]) => (
+            <label key={k} className={cn("cursor-pointer rounded-md border p-3", v.mode === k ? "border-brand bg-brand-bg" : "border-line")}>
+              <input type="radio" name="mode" className="me-2" disabled={readOnly} checked={v.mode === k} onChange={() => setV({ ...v, mode: k })} data-testid={`mode-${k}`} />
+              <span className="font-medium">{title}</span>
+              <span className="mt-1 block text-[12.5px] text-mute">{text}</span>
+            </label>
+          ))}
+        </div>
+        <p className="mt-2 text-[12.5px] text-mute">Switching keeps every line and figure already loaded; it only changes what is shown. Saved with the profile.</p>
+        {v.mode === "simple" && <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label><span className="label mb-1 block">Opening cash</span>
+            <input disabled={readOnly} type="number" step="0.01" className={field} value={v.opening_cash?.amount ?? ""} data-testid="opening-cash"
+              onChange={(e) => setV({ ...v, opening_cash: e.target.value === "" ? null : { amount: Number(e.target.value), asOf: v.opening_cash?.asOf ?? new Date().toISOString().slice(0, 10) } })} />
+            <span className="mt-1 block text-[12.5px] text-mute">Cash in the bank and in hand on the day below. Cash balance and runway start from it.</span></label>
+          <label><span className="label mb-1 block">On this day</span>
+            <input disabled={readOnly || !v.opening_cash} type="date" className={field} value={v.opening_cash?.asOf ?? ""} data-testid="opening-cash-date"
+              onChange={(e) => v.opening_cash && setV({ ...v, opening_cash: { ...v.opening_cash, asOf: e.target.value } })} /></label>
+        </div>}
+      </section>}
       <section className="grid gap-4 sm:grid-cols-2">
         <label className="sm:col-span-2"><span className="label mb-1 block">Company name</span><input disabled={readOnly} className={field} value={v.name} onChange={(e) => setV({ ...v, name: e.target.value })} /></label>
         <label><span className="label mb-1 block">Currency</span><input disabled={readOnly} className={cn(field, "uppercase")} maxLength={6} value={v.currency} onChange={(e) => setV({ ...v, currency: e.target.value })} /></label>
         <label><span className="label mb-1 block">Financial year starts</span>
           <select disabled={readOnly} className={field} value={v.fy_start_month} onChange={(e) => setV({ ...v, fy_start_month: Number(e.target.value) })}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></label>
         <label><span className="label mb-1 block">Corporate tax rate %</span><input disabled={readOnly} type="number" step="0.1" className={field} value={v.tax_rate} onChange={(e) => setV({ ...v, tax_rate: Number(e.target.value) })} /></label>
+        {v.mode !== "simple" && <>
         <label><span className="label mb-1 block">Time zone</span>
           <select disabled={readOnly} className={field} value={v.time_zone ?? ""} onChange={(e) => setV({ ...v, time_zone: e.target.value || null })} data-testid="time-zone">
             <option value="">None: dates as the Odoo export shows them (recommended)</option>
@@ -52,6 +75,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
         <label><span className="label mb-1 block">Books start in Odoo</span>
           <input disabled={readOnly} type="month" className={field} value={v.books_start?.slice(0, 7) ?? ""} onChange={(e) => setV({ ...v, books_start: /^\d{4}-\d{2}$/.test(e.target.value) ? `${e.target.value}-01` : null })} data-testid="books-start-profile" />
           <span className="mt-1 block text-[12.5px] text-mute">Everything dated before it (Odoo&apos;s opening entry included) is the opening balance. Empty: every month is trading.</span></label>
+        </>}
         <label><span className="label mb-1 block">Industry</span><input disabled={readOnly} className={field} value={v.industry ?? ""} onChange={(e) => setV({ ...v, industry: e.target.value })} placeholder="e.g. Medical devices distribution" /></label>
       </section>
       <section>

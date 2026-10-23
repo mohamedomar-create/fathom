@@ -6,6 +6,8 @@ import { demoCompany } from "@/lib/company/demo";
 import { saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
+import { withMode } from "@/lib/company/mode";
+import type { Json } from "@/lib/supabase/database.types";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 type EditableOrg = { ok: true; supabase: Supa; user: { id: string }; orgId: string } | { ok: false; error: string };
@@ -26,6 +28,8 @@ const CompanySchema = z.object({
   fy_start_month: z.coerce.number().int().min(1).max(12).default(1),
   tax_rate: z.coerce.number().min(0).max(99).default(22.5),
   source: z.enum(["upload", "odoo"]).default("upload"),
+  /** Simple mode: a Sales and an Expenses sheet only. Absent: Full. */
+  mode: z.enum(["simple", "full"]).optional(),
   org_id: z.string().uuid().optional().or(z.literal("")),
 });
 
@@ -38,6 +42,7 @@ export async function createCompany(formData: FormData): Promise<{ error: string
   const { supabase, user, orgId } = ctx;
   const { data, error } = await supabase.from("companies").insert({
     org_id: orgId, name: v.name, currency: v.currency.toUpperCase(), fy_start_month: v.fy_start_month, tax_rate: v.tax_rate / 100, source: v.source, created_by: user.id,
+    ...(v.mode === "simple" ? { kpi_config: withMode({}, "simple") as Json } : {}),
   }).select("id").single();
   if (error) return { error: dbError(error, "createCompany") };
   revalidatePath("/companies");

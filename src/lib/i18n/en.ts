@@ -37,7 +37,7 @@ export const en = {
     people: "User management",
     logout: "Logout",
   },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", overview: "Overview" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -60,6 +60,8 @@ export const en = {
     "expenses/accounts": ["Accounts", "Expenses by Account"],
     "expenses/suppliers": ["Suppliers", "Suppliers"],
     "expenses/trend": ["Trend", "Expenses Trend"],
+    simple: ["Overview", "Overview"],
+    "simple/cash": ["Cash & forecast", "Cash and Forecast"],
     inventory: ["Overview", "Inventory Overview"],
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
