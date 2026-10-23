@@ -17,7 +17,7 @@ export async function saveSales(companyId: string, source: "ledger" | "file", li
   const rows = lines.map((x) => {
     const { src, ...l } = x;
     void src;
-    return { ...l, doc: l.doc.slice(0, 80), series: l.series.slice(0, 40), customer: l.customer.slice(0, 200), product: l.product.slice(0, 300), category: l.category.slice(0, 200), salesperson: l.salesperson.slice(0, 120) };
+    return { ...l, doc: l.doc.slice(0, 80), series: l.series.slice(0, 40), customer: l.customer.slice(0, 200), product: l.product.slice(0, 300), category: l.category.slice(0, 200), salesperson: l.salesperson.slice(0, 120), ...(l.channel !== undefined ? { channel: l.channel.slice(0, 120) } : {}) };
   });
   return saveStaged(rows, {
     open: () => startSalesBatch(start),

@@ -3,6 +3,7 @@ import { headerPeriod, str, type Grid, type LedgerEntry } from "./extract";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { checkSalesTemplate, templateMarkOf } from "./template";
 import { isBillDoc, seriesOf } from "@/lib/engine/series";
+import { parsePaid, simpleFieldOf, headingKey } from "./simple-cols";
 
 /**
  * Sales lines for the Sales and Business Lines sectors, from two places:
@@ -31,6 +32,10 @@ export interface SalesLine {
   mapMethod?: "order" | "contact" | "shipping";
   /** A line with no end-user link: its description, where an agency order number may be read ("( PRO 501 / 22 ) …"). */
   note?: string;
+  /** Simple mode only: how it was sold ("Online", "Shop"), whether it was paid, and the day it was paid. */
+  channel?: string;
+  paid?: boolean | null;
+  paidOn?: string | null;
   /** Where the line was read (sales files only): the sheet and its row as uploaded. Never saved. */
   src?: { sheet: string; row: number };
 }
@@ -72,7 +77,7 @@ export function salesFromLedger(lines: { cls: string | null; excluded: boolean; 
 
 // ---------------------------------------------------------------- sales exports
 
-export type SalesField = "date" | "doc" | "customer" | "product" | "category" | "salesperson" | "qty" | "untaxed" | "total" | "cost" | "margin" | "period";
+export type SalesField = "date" | "doc" | "customer" | "product" | "category" | "salesperson" | "qty" | "untaxed" | "total" | "cost" | "margin" | "period" | "channel" | "paid" | "paidOn";
 const FIELD_RX: [SalesField, RegExp][] = [
   ["untaxed", arRx(/^(untaxed( total| amount)?( signed)?|amount untaxed|total untaxed|tax excluded|subtotal|sub ?total|price subtotal|net (sales|amount|revenue|total)|net sales amount|sales value|revenue|net|المبلغ قبل الضريبة|الصافي|صافي المبيعات|الإجمالي قبل الضريبة|قيمة المبيعات|المبيعات|الإيراد)$/i)],
   ["total", arRx(/^(total|amount|amount total|total amount|grand total|value|الإجمالي|الاجمالي|القيمة|المبلغ|إجمالي)$/i)],
@@ -88,7 +93,8 @@ const FIELD_RX: [SalesField, RegExp][] = [
   ["margin", arRx(/^(margin|gross margin|profit|الربح|هامش الربح|مجمل الربح)$/i)],
 ];
 /** A heading's field; a required-mark "*" and "(excl. VAT)" are ignored, as in iReport's sales template. */
-export const salesFieldOf = (h: string): SalesField | null => {
+export const salesFieldOf = (h: string, simple = false): SalesField | null => {
+  if (simple) { const f = simpleFieldOf(h); if (f && f !== "fixedVar") return f; }
   const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
   return FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
 };
@@ -128,10 +134,10 @@ export interface SalesLayout {
   errors: CellError[];
 }
 /** The person's corrections: what a column holds (by column index), retyped cells and rows left out (sheet as uploaded). */
-export interface SalesOverride extends Fixes { cols?: Partial<Record<number, SalesField | null>> }
+export interface SalesOverride extends Fixes { cols?: Partial<Record<number, SalesField | null>>; /** Choices remembered from an earlier upload, by heading (Simple mode). */ named?: Record<string, SalesField> }
 
 /** Reads a sales export, or returns null when the sheet is not one (an accounting report goes to the accounting reader). */
-export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLine[]; layout: SalesLayout } | null {
+export function readSalesGrid(g: Grid, ov: SalesOverride = {}, opts: { simple?: boolean } = {}): { lines: SalesLine[]; layout: SalesLayout } | null {
   const fixed = applyFixes(g.rows, ov);
   const rowNo: number[] = [];
   fixed.forEach((r, i) => { if (r && r.some((c) => str(c) !== "")) rowNo.push(i); });
@@ -142,13 +148,14 @@ export function readSalesGrid(g: Grid, ov: SalesOverride = {}): { lines: SalesLi
     if (heads.some((h) => ACCOUNT_HDR.test(normAr(h)))) return null;
     // Purchases (vendor bills, the expenses template) are read by the expenses reader.
     if (templateMarkOf(g) === "expenses" || heads.some((h) => VENDOR_HDR.test(normAr(h.replace(/\s*\*\s*$/, ""))))) return null;
-    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : salesFieldOf(h)));
+    const fields = heads.map((h, c) => (c in cols ? cols[c] ?? null : ov.named?.[headingKey(h)] ?? salesFieldOf(h, opts.simple)));
     if (mostlyBills(rows.slice(r + 1), fields.indexOf("doc"))) return null;
     const has = (f: SalesField) => fields.includes(f);
     const months = heads.map((h, c) => ({ c, p: headerPeriod(h) })).filter((x) => x.p && x.p.months === 1);
     const ctx: Ctx = { g, rows, rowNo, r, heads, marks: [], errors: [] };
     // A list: an amount column and something to group by (customer or product), with a date or month on each row.
-    if ((has("untaxed") || has("total")) && (has("customer") || has("product")) && (has("date") || has("period"))) return finish(ctx, ov, readList(ctx, fields));
+    // Simple mode (the person chose the Sales sheet): a date and an amount are enough.
+    if ((has("untaxed") || has("total")) && (opts.simple || has("customer") || has("product")) && (has("date") || has("period"))) return finish(ctx, ov, readList(ctx, fields, !!opts.simple));
     // A pivot: a product, category or customer column and two or more month columns.
     const dim = fields.findIndex((f) => f === "product" || f === "category" || f === "customer");
     // Without a Product / Category / Customer heading, only Odoo's pivot layout counts: an empty corner cell and a measure
@@ -180,13 +187,14 @@ function finish(ctx: Ctx, ov: SalesOverride, out: { lines: SalesLine[]; layout: 
   return { lines: out.lines, layout: { ...out.layout, rowNo, trace, errors } };
 }
 
-function readList(ctx: Ctx, fields: (SalesField | null)[]) {
+function readList(ctx: Ctx, fields: (SalesField | null)[], simple = false) {
   const { g, rows, r, heads } = ctx;
   const sheet = g.name;
   const col = (f: SalesField) => fields.indexOf(f);
   const cAmt = col("untaxed") >= 0 ? col("untaxed") : col("total");
   const cDate = col("date"), cPer = col("period");
   const order = detectDateOrder(rows.slice(r + 1).map((x) => x[cDate])).order ?? "dmy";
+  const paidOrder = col("paidOn") >= 0 ? detectDateOrder(rows.slice(r + 1).map((x) => x[col("paidOn")])).order ?? order : order;
   const lines: SalesLine[] = [];
   let qtyFlipped = 0;
   const text = (x: Cell[], f: SalesField) => (col(f) >= 0 ? str(x[col(f)]).replace(/\s+/g, " ") : "");
@@ -220,10 +228,15 @@ function readList(ctx: Ctx, fields: (SalesField | null)[]) {
     // A credit note takes goods back: Odoo can print its quantity positive beside a negative amount.
     let qty = col("qty") >= 0 ? cleanNum(x[col("qty")]) : null;
     if (qty !== null && qty > 0 && amount < 0) { qty = -qty; qtyFlipped++; }
+    // Simple mode: how it was sold and whether (and when) it was paid. A payment day means it was paid.
+    const paidOn = simple && col("paidOn") >= 0 ? parseDay(x[col("paidOn")], paidOrder) : null;
+    if (simple && col("paidOn") >= 0 && str(x[col("paidOn")]) && !paidOn) err(i, col("paidOn"), `"${shown(x[col("paidOn")])}" is not a date`);
+    const paid = simple && col("paid") >= 0 ? parsePaid(x[col("paid")]) : null;
     lines.push({
       day, period, doc, series: seriesOf(doc), customer: text(x, "customer") || NO_CUSTOMER,
       product: lab.product, category: text(x, "category") || lab.category, salesperson: text(x, "salesperson"),
       qty, amount: Math.round(amount * 100) / 100, cost: cost === null ? null : Math.round(cost * 100) / 100,
+      ...(simple ? { channel: text(x, "channel"), paid: paid ?? (paidOn ? true : null), paidOn } : {}),
       src: { sheet, row: ctx.rowNo[i] },
     });
   }

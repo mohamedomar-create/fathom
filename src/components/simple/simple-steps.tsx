@@ -4,6 +4,7 @@ import { CheckCircle2, CircleDashed, Download } from "lucide-react";
 import { useCompany } from "@/lib/company/context";
 import { simpleSteps, type SimpleStatus } from "@/lib/company/data-steps";
 import { cn } from "@/lib/cn";
+import { templateHref } from "@/components/setup/readiness-view";
 
 /**
  * Simple mode's Data steps: the company settings, then the Sales and Expenses sheets in any order, each with its blank
@@ -12,7 +13,7 @@ import { cn } from "@/lib/cn";
 export function SimpleDataSteps({ status }: { status: Omit<SimpleStatus, "basePath"> }) {
   const c = useCompany();
   const steps = simpleSteps({ ...status, basePath: c.basePath });
-  const template: Record<string, string> = { sales: "/api/templates/simple-sales", expenses: "/api/templates/simple-expenses" };
+  const template: Record<string, string> = { sales: templateHref("simple-sales", c), expenses: templateHref("simple-expenses", c) };
   return (
     <div data-testid="simple-steps">
       <ol className="space-y-3">

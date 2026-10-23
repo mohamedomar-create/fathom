@@ -23,6 +23,9 @@ const Line = z.object({
   category: z.string().max(200),
   label: z.string().max(200),
   amount: z.number().finite(),
+  // Simple mode only (migration 0036): paid or not, the day it was paid.
+  paid: z.boolean().nullable().optional(),
+  paidOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
 });
 const Start = z.object({
   companyId: z.string().uuid(),

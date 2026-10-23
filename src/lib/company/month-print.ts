@@ -12,12 +12,20 @@ export type MonthPrint = { n: number; print: string };
 const SEP = "\u001f";
 const int = (x: number | null | undefined, scale: number) => (x === null || x === undefined ? "" : String(Math.round(x * scale)));
 
-export function salesLineText(l: { day: string | null; doc: string; customer: string; product: string; qty: number | null; amount: number; cost: number | null }): string {
-  return [l.day ?? "", l.doc.slice(0, 80), l.customer.slice(0, 200), l.product.slice(0, 300), int(l.amount, 100), int(l.qty, 10_000), int(l.cost, 100)].join(SEP);
+// Simple mode's columns (channel, paid, payment day) join a line's text only when it carries one: Full-mode lines keep
+// exactly the fingerprint they had, and a sale or expense that became paid makes its month "changed".
+const paidPart = (l: { paid?: boolean | null; paidOn?: string | null }) => [l.paid === undefined || l.paid === null ? "" : String(l.paid), l.paidOn ?? ""];
+
+export function salesLineText(l: { day: string | null; doc: string; customer: string; product: string; qty: number | null; amount: number; cost: number | null; channel?: string; paid?: boolean | null; paidOn?: string | null }): string {
+  const base = [l.day ?? "", l.doc.slice(0, 80), l.customer.slice(0, 200), l.product.slice(0, 300), int(l.amount, 100), int(l.qty, 10_000), int(l.cost, 100)];
+  const simple = !!l.channel || (l.paid !== undefined && l.paid !== null) || !!l.paidOn;
+  return (simple ? [...base, (l.channel ?? "").slice(0, 120), ...paidPart(l)] : base).join(SEP);
 }
 
-export function expenseLineText(l: { day: string | null; doc: string; supplier: string; account: string; label: string; amount: number }): string {
-  return [l.day ?? "", l.doc.slice(0, 80), l.supplier.slice(0, 200), l.account.slice(0, 200), l.label.slice(0, 200), int(l.amount, 100)].join(SEP);
+export function expenseLineText(l: { day: string | null; doc: string; supplier: string; account: string; label: string; amount: number; paid?: boolean | null; paidOn?: string | null }): string {
+  const base = [l.day ?? "", l.doc.slice(0, 80), l.supplier.slice(0, 200), l.account.slice(0, 200), l.label.slice(0, 200), int(l.amount, 100)];
+  const simple = (l.paid !== undefined && l.paid !== null) || !!l.paidOn;
+  return (simple ? [...base, ...paidPart(l)] : base).join(SEP);
 }
 
 const hex = (b: ArrayBuffer) => Array.from(new Uint8Array(b), (x) => x.toString(16).padStart(2, "0")).join("");
