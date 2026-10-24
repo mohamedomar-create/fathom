@@ -15,7 +15,7 @@ export const SCOPES = {
 export type Scope = keyof typeof SCOPES;
 
 /** The database has no rate_limit_hit yet (0016 not applied). */
-const missingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || e.code === "42883" || /rate_limit_hit/.test(e.message ?? "") && /not find|does not exist/.test(e.message ?? "");
+export const missingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || e.code === "42883" || /rate_limit_hit/.test(e.message ?? "") && /not find|does not exist/.test(e.message ?? "");
 
 /**
  * Shared rate limit, counted in the database so it holds across server instances. The subject is the user, company or

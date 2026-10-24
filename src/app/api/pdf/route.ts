@@ -3,7 +3,7 @@ import { z } from "zod";
 import { htmlToPdf } from "@/lib/pdf/render";
 import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
-import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
+import { clientIp, limited, missingFn, TOO_MANY } from "@/lib/rate-limit";
 import { localLimiter } from "@/lib/local-limit";
 
 export const runtime = "nodejs";
@@ -27,7 +27,8 @@ export async function POST(req: Request) {
   const b = parsed.data;
   const { supabase, user } = await getUser();
   const ip = clientIp(req);
-  // Who may render: a signed-in user, a valid public report link, or the demo report. Each is limited across instances.
+  // Who may render: a signed-in user, a valid public report link, or the demo report. Signed-in users, a link and the demo
+  // as a whole are limited across instances; a signed-out address on this server.
   let over: boolean;
   if (user) over = await limited(supabase, "pdf_render_user", user.id);
   else if (b.token) {
@@ -37,9 +38,16 @@ export async function POST(req: Request) {
     over = ipOver(ip);
     if (!over) {
       const link = await supabase.rpc("rate_limit_link", { p_token: b.token });
-      over = link.error ? await limited(supabase, "pdf_render_token", b.token.slice(0, 16)) : link.data === false;
+      over = link.error ? (missingFn(link.error) ? await limited(supabase, "pdf_render_token", b.token.slice(0, 16)) : true) : link.data === false;
     }
-  } else if (b.demo) over = ipOver(ip);
+  } else if (b.demo) {
+    // The demo also has one allowance shared by every signed-out visitor, across server instances (0038).
+    over = ipOver(ip);
+    if (!over) {
+      const demo = await supabase.rpc("rate_limit_demo");
+      over = demo.error ? (missingFn(demo.error) ? await limited(supabase, "pdf_render_ip", ip) : true) : demo.data === false;
+    }
+  }
   else return NextResponse.json({ error: "Please sign in" }, { status: 401 });
   if (over) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${b.title.replace(/</g, "")}</title>

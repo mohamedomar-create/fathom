@@ -10,10 +10,14 @@
 --       issues and every customer line, whatever pages the report shows. Each part is now sent only with its page.
 --  M01  signed-out callers could count any rate limit (lock out an address, or fill the table). They now count only a
 --       real published link's PDF allowance; the address limit is kept by the server.
+--       A new row must also belong to the same company as the row it hangs off (an account, a batch, a report), so no
+--       one can add figures under another company's account or batch.
 -- Also: TRUNCATE, TRIGGER and REFERENCES are taken from signed-in and signed-out users; a profile's email is no longer
 -- editable by its owner. Only adds triggers and functions and narrows grants; safe to run again. The guards skip work
 -- done inside the database's own functions (they run as their owner), so uploads, saves and clears are unchanged.
 set client_min_messages = warning;
+-- Adding triggers locks each table briefly; give up rather than queue behind live traffic (run it again if it times out).
+set lock_timeout = '5s';
 
 -- ---------------------------------------------------------------- the guards
 -- Columns no client statement may change. Checked only when the statement comes from a signed-in or signed-out caller;
@@ -57,6 +61,25 @@ begin
   return new;
 end $$;
 
+-- A child row's company is its parent's: checked on insert and update for signed-in and signed-out callers.
+-- Arguments: the parent table and the column that points at it.
+create or replace function private.tenant_parent()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  ref text;
+  ok boolean;
+begin
+  if current_user not in ('authenticated', 'anon') then return new; end if;
+  ref := to_jsonb(new) ->> tg_argv[1];
+  if ref is null then return new; end if;
+  execute format('select exists (select 1 from %s p where p.id::text = $1 and p.company_id = $2)', tg_argv[0]) into ok using ref, new.company_id;
+  if not ok then raise exception '% belongs to another company', tg_argv[1] using errcode = '42501'; end if;
+  return new;
+end $$;
+
 -- Puts both triggers on every public table that has the columns, so a table added later is covered by running this
 -- again (the database test fails while any table is missing them).
 create or replace function private.install_tenant_guards()
@@ -86,6 +109,19 @@ begin
                      r.relname, (select string_agg(quote_literal(x), ', ') from unnest(au) x));
     end if;
     execute format('revoke truncate, trigger, references on public.%I from public, anon, authenticated', r.relname);
+  end loop;
+  -- Every link from a company table to another company table (other than the company itself).
+  for r in
+    select c.conrelid::regclass as child, c.confrelid::regclass as parent, a.attname::text as col
+      from pg_constraint c join pg_attribute a on a.attrelid = c.conrelid and a.attnum = c.conkey[1]
+     where c.contype = 'f' and c.connamespace = 'public'::regnamespace and array_length(c.conkey, 1) = 1
+       and c.confrelid <> 'public.companies'::regclass
+       and exists (select 1 from pg_attribute x where x.attrelid = c.conrelid and x.attname = 'company_id' and not x.attisdropped)
+       and exists (select 1 from pg_attribute x where x.attrelid = c.confrelid and x.attname = 'company_id' and not x.attisdropped)
+  loop
+    execute format('drop trigger if exists %I on %s', 'tenant_parent_' || r.col, r.child);
+    execute format('create trigger %I before insert or update on %s for each row execute function private.tenant_parent(%L, %L)',
+                   'tenant_parent_' || r.col, r.child, r.parent::text, r.col);
   end loop;
 end $$;
 revoke execute on function private.install_tenant_guards() from public;
@@ -156,6 +192,32 @@ begin
   return true;
 end $$;
 revoke execute on function public.rate_limit_link(text) from public;
+
+-- Signed-out renders of the demo report: one shared allowance for all visitors (60 an hour), on top of the server's
+-- per-address limit, so the cost of rendering is bounded whatever the number of server instances.
+insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('pdf_render_demo', 'anon', 3600, 60)
+  on conflict (scope) do update set window_s = excluded.window_s, max_hits = excluded.max_hits;
+create or replace function public.rate_limit_demo()
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  s private.rate_scopes;
+  n integer;
+begin
+  select * into s from private.rate_scopes where scope = 'pdf_render_demo';
+  perform pg_advisory_xact_lock(hashtext('pdf_render_demo'));
+  delete from private.rate_events where key = 'pdf_render_demo:all' and at < now() - make_interval(secs => s.window_s);
+  select count(*) into n from private.rate_events where key = 'pdf_render_demo:all';
+  if n >= s.max_hits then return false; end if;
+  insert into private.rate_events (key) values ('pdf_render_demo:all');
+  return true;
+end $$;
+revoke execute on function public.rate_limit_demo() from public;
+grant execute on function public.rate_limit_demo() to anon, authenticated;
 grant execute on function public.rate_limit_link(text) to anon, authenticated;
 revoke execute on function public.rate_limit_hit(text, text) from public, anon;
 grant execute on function public.rate_limit_hit(text, text) to authenticated;
@@ -174,6 +236,9 @@ as $$
        from jsonb_array_elements(case when jsonb_typeof(p_sections) = 'array' then p_sections else '[]'::jsonb end) x
       where x ->> 'key' = p_key limit 1),
     p_key not in ('cf', 'bank', 'bank_outlook', 'realprofit'))
+  -- Only the report's pages: anything else (a commentary under another name) is never shown.
+  and p_key in ('cover', 'summary', 'kpis', 'explorer', 'profitability', 'cashflow', 'pl', 'bs', 'cf', 'trend', 'growth', 'goalseek',
+                'forecast', 'sales', 'expenses', 'bank', 'bank_outlook', 'realprofit', 'basis')
 $$;
 
 -- Any page beyond the cover reads the accounts (statements, KPIs, and the revenue the Sales and Expenses pages compare with).
@@ -209,7 +274,7 @@ begin
   return jsonb_build_object(
     'report', to_jsonb(r) - 'created_by' - 'share_token',
     'company', jsonb_build_object('id', c.id, 'name', c.name, 'currency', c.currency, 'fy_start_month', c.fy_start_month,
-                                  'tax_rate', c.tax_rate, 'kpi_config', case when v_fig then c.kpi_config else '{}'::jsonb end,
+                                  'tax_rate', c.tax_rate, 'kpi_config', case when v_fig then coalesce(c.kpi_config, '{}'::jsonb) - 'profile' else '{}'::jsonb end,
                                   'notes', case when v_basis then c.notes else '[]'::jsonb end, 'source', c.source),
     'org', jsonb_build_object('name', o.name, 'logo_url', o.logo_url, 'brand_colour', o.brand_colour, 'disclaimer', o.disclaimer, 'report_footer', o.report_footer),
     'accounts', case when not v_fig then '[]'::jsonb else coalesce((
@@ -217,7 +282,7 @@ begin
         select s.sort_order, jsonb_build_object('id', s.id, 'code', s.code, 'name', s.name, 'statement', s.statement, 'class', s.class,
                'amounts', jsonb_object_agg(b.period, b.amount)) as a
           from public.source_accounts s
-          join public.account_balances b on b.account_id = s.id and b.period between v_from and r.period_end
+          join public.account_balances b on b.account_id = s.id and b.company_id = c.id and b.period between v_from and r.period_end
          where s.company_id = c.id and s.version = c.data_version
          group by s.id
       ) x), '[]'::jsonb) end,
@@ -290,3 +355,4 @@ end $$;
 revoke execute on function public.get_published_expenses(text) from public;
 grant execute on function public.get_published_expenses(text) to anon, authenticated;
 reset client_min_messages;
+reset lock_timeout;

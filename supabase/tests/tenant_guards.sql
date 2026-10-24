@@ -5,7 +5,8 @@
 \set QUIET on
 
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
-  ('ta@x.test', '{"full_name":"Tamer"}', now()), ('tb@x.test', '{"full_name":"Tarek"}', now()), ('tv@x.test', '{"full_name":"Tala"}', now());
+  ('ta@x.test', '{"full_name":"Tamer"}', now()), ('tb@x.test', '{"full_name":"Tarek"}', now()), ('tv@x.test', '{"full_name":"Tala"}', now()),
+  ('tx@x.test', '{"full_name":"Taha"}', now());
 grant select on all tables in schema public to authenticated;
 
 create function pg_temp.check(label text, got text, want text) returns void language plpgsql as $f$
@@ -32,11 +33,12 @@ end $f$;
 insert into public.memberships (org_id, user_id, role) values
   (pg_temp.home('tb@x.test'), pg_temp.uid('ta@x.test'), 'editor'),
   (pg_temp.home('tb@x.test'), pg_temp.uid('tv@x.test'), 'viewer');
-insert into public.companies (org_id, name) values (pg_temp.home('ta@x.test'), 'Guard A'), (pg_temp.home('tb@x.test'), 'Guard B');
+insert into public.companies (org_id, name) values (pg_temp.home('ta@x.test'), 'Guard A'), (pg_temp.home('tb@x.test'), 'Guard B'), (pg_temp.home('tx@x.test'), 'Stranger Co');
 create temp table ids as select
   (select id from public.companies where name = 'Guard A') as co_a, (select id from public.companies where name = 'Guard B') as co_b,
   pg_temp.home('ta@x.test') as org_a, pg_temp.home('tb@x.test') as org_b,
-  pg_temp.uid('ta@x.test') as ua, pg_temp.uid('tb@x.test') as ub, pg_temp.uid('tv@x.test') as uv;
+  pg_temp.uid('ta@x.test') as ua, pg_temp.uid('tb@x.test') as ub, pg_temp.uid('tv@x.test') as uv,
+  (select id from public.companies where name = 'Stranger Co') as co_x;
 grant select on ids to authenticated;
 
 -- Rows of company B in the tables an editor can write directly.
@@ -45,7 +47,9 @@ insert into public.source_accounts (company_id, code, name, statement, class, ve
 insert into public.account_balances (account_id, company_id, period, amount)
   select s.id, s.company_id, p, 1000 from public.source_accounts s, (values ('2026-08'), ('2026-09')) v(p) where s.company_id = (select co_b from ids);
 insert into public.reports (company_id, title, period_end, sections, created_by) values ((select co_b from ids), 'Board pack', '2026-09', '[]', (select ub from ids));
-insert into public.commentary (company_id, period_key, section, body, updated_by) values ((select co_b from ids), 'month:2026-09', 'pl', 'Margin held', (select ub from ids));
+insert into public.commentary (company_id, period_key, section, body, updated_by) values ((select co_b from ids), 'month:2026-09', 'pl', 'Margin held', (select ub from ids)),
+  ((select co_b from ids), 'month:2026-09', 'zzz', 'Internal only', (select ub from ids));
+update public.companies set kpi_config = '{"gpm":{"target":40},"profile":{"compareWith":"00000000-0000-0000-0000-000000000000"}}' where name = 'Guard B';
 insert into public.account_map (company_id, key, cls, name) values ((select co_b from ids), '#4000', 'revenue', 'Sales of goods');
 insert into public.sales_batches (company_id, source, filename, periods, created_by) values ((select co_b from ids), 'file', 'b.xlsx', '{2026-09}', (select ub from ids));
 insert into public.sales_lines (company_id, batch_id, source, period, day, customer, amount)
@@ -76,6 +80,27 @@ reset role;
 select pg_temp.check('every company row stayed in company B',
   (select count(*)::text from (select company_id from public.source_accounts union all select company_id from public.account_balances union all select company_id from public.reports
      union all select company_id from public.commentary union all select company_id from public.sales_lines union all select company_id from public.account_map) x where company_id = (select co_a from ids)), '0');
+
+-- (The ids are what a share link or a guess gives a stranger; read here as the owner.)
+alter table ids add column acct_b uuid, add column batch_b uuid;
+update ids set acct_b = (select id from public.source_accounts where company_id = co_b and code = '4000'), batch_b = (select id from public.sales_batches where company_id = co_b);
+-- A new row cannot hang off another company's parent (an account, a batch, a report): a stranger with their own company
+-- cannot add figures to a company they only know an account id of.
+select pg_temp.login('tx@x.test');
+select pg_temp.check('a balance cannot be added to another company''s account',
+  pg_temp.err(format($q$insert into public.account_balances (account_id, company_id, period, amount) values (%L, (select co_x from ids), '2026-07', 99999999)$q$, (select acct_b from ids))), '42501');
+select pg_temp.check('a sales line cannot be added to another company''s batch',
+  pg_temp.err(format($q$insert into public.sales_lines (company_id, batch_id, source, period, amount) values ((select co_x from ids), %L, 'file', '2026-07', 1)$q$, (select batch_b from ids))), '42501');
+reset role;
+select pg_temp.check('no stranger figures reached company B''s accounts', (select count(*)::text from public.account_balances where period = '2026-07'), '0');
+select pg_temp.check('every child table checks its parent''s company', coalesce((
+  select string_agg(distinct c.conrelid::regclass::text, ', ')
+    from pg_constraint c
+   where c.contype = 'f' and c.connamespace = 'public'::regnamespace and array_length(c.conkey, 1) = 1
+     and exists (select 1 from pg_attribute a where a.attrelid = c.conrelid and a.attname = 'company_id' and not a.attisdropped)
+     and exists (select 1 from pg_attribute a where a.attrelid = c.confrelid and a.attname = 'company_id' and not a.attisdropped)
+     and c.confrelid <> 'public.companies'::regclass
+     and not exists (select 1 from pg_trigger t where t.tgrelid = c.conrelid and t.tgname = 'tenant_parent_' || (select attname from pg_attribute where attrelid = c.conrelid and attnum = c.conkey[1]))), ''), '');
 
 -- Every table that holds a company, organisation, author or parent link carries the guard, so a new table cannot miss it.
 select pg_temp.check('every guarded column is covered by the guard trigger', coalesce((
@@ -139,6 +164,11 @@ select pg_temp.check('a real link is allowed 20 renders an hour', (select bool_a
 select pg_temp.check('the 21st is refused', public.rate_limit_link('tok-guard-0000000000000000000000')::text, 'false');
 reset role;
 
+set role anon;
+select pg_temp.check('demo renders are limited across all signed-out visitors', (select bool_and(public.rate_limit_demo()) from generate_series(1, 60))::text, 'true');
+select pg_temp.check('the 61st demo render in the hour is refused', public.rate_limit_demo()::text, 'false');
+reset role;
+
 -- ---------------------------------------------------------------- 5. H01: a public link carries only the sections it shows
 set role anon;
 select pg_temp.check('cover only: no accounts', (public.get_published_report('tok-guard-0000000000000000000000') -> 'accounts')::text, '[]');
@@ -148,12 +178,14 @@ select pg_temp.check('cover only: no commentary', (public.get_published_report('
 select pg_temp.check('cover only: no accepted issues', (public.get_published_report('tok-guard-0000000000000000000000') -> 'accepted')::text, '[]');
 select pg_temp.check('cover only: no sales', coalesce(public.get_published_sales('tok-guard-0000000000000000000000')::text, 'null'), 'null');
 select pg_temp.check('cover only: no expenses', coalesce(public.get_published_expenses('tok-guard-0000000000000000000000')::text, 'null'), 'null');
+select pg_temp.check('cover only: a commentary under an unknown page name stays out', (public.get_published_report('tok-guard-0000000000000000000000') -> 'commentary' ? 'zzz')::text, 'false');
 select pg_temp.check('cover only: no customer name anywhere', (public.get_published_report('tok-guard-0000000000000000000000')::text like '%Customer 122%')::text, 'false');
 reset role;
 update public.reports set sections = (select jsonb_agg(jsonb_build_object('key', k, 'enabled', k in ('cover', 'pl'))) from unnest(array['cover', 'summary', 'kpis', 'explorer',
      'profitability', 'cashflow', 'pl', 'bs', 'cf', 'trend', 'growth', 'goalseek', 'forecast', 'sales', 'expenses', 'bank', 'bank_outlook', 'realprofit', 'basis']) k) where title = 'Board pack';
 set role anon;
 select pg_temp.check('with the P&L: its accounts', jsonb_array_length(public.get_published_report('tok-guard-0000000000000000000000') -> 'accounts')::text, '2');
+select pg_temp.check('with the P&L: KPI targets but not the company profile', (public.get_published_report('tok-guard-0000000000000000000000') -> 'company' -> 'kpi_config')::text, '{"gpm": {"target": 40}}');
 select pg_temp.check('with the P&L: only the P&L commentary', (select string_agg(k, ',') from jsonb_object_keys(public.get_published_report('tok-guard-0000000000000000000000') -> 'commentary') k), 'pl');
 select pg_temp.check('basis off: still no accepted issues', (public.get_published_report('tok-guard-0000000000000000000000') -> 'accepted')::text, '[]');
 reset role;
