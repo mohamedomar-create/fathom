@@ -103,6 +103,8 @@ export type Database = {
       restore_company_version: { Args: { p_company: string; p_version: number }; Returns: string };
       hit_rate_limit: { Args: { p_key: string; p_window_s: number; p_max: number }; Returns: boolean };
       rate_limit_hit: { Args: { p_scope: string; p_subject: string }; Returns: boolean };
+      rate_limit_link: { Args: { p_token: string }; Returns: boolean };
+      transfer_company: { Args: { p_company: string; p_target_org: string }; Returns: undefined };
       odoo_secret: { Args: { p_company: string }; Returns: string | null };
       company_balances: { Args: { p_company: string; p_version: number }; Returns: Json };
       save_aged_report: { Args: { p_company: string; p_side: string; p_as_of: string; p_buckets: string[]; p_totals: Json; p_findings: Json; p_filename: string; p_items: Json }; Returns: number };

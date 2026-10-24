@@ -4,9 +4,13 @@ import { htmlToPdf } from "@/lib/pdf/render";
 import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
 import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
+import { localLimiter } from "@/lib/local-limit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+/** Signed-out renders from one address: 5 in 10 minutes on this server (pdf_render_ip in the database before 0038). */
+const ipOver = localLimiter(600_000, 5);
 
 const Body = z.object({
   html: z.string().min(10).max(3_500_000),
@@ -29,8 +33,13 @@ export async function POST(req: Request) {
   else if (b.token) {
     const { data } = await supabase.rpc("get_published_report", { p_token: b.token });
     if (!data) return NextResponse.json({ error: "Report not found" }, { status: 404 });
-    over = (await limited(supabase, "pdf_render_ip", ip)) || (await limited(supabase, "pdf_render_token", b.token.slice(0, 16)));
-  } else if (b.demo) over = await limited(supabase, "pdf_render_ip", ip);
+    // The link's allowance is counted in the database, only for a real link (0038); before 0038 the older counter.
+    over = ipOver(ip);
+    if (!over) {
+      const link = await supabase.rpc("rate_limit_link", { p_token: b.token });
+      over = link.error ? await limited(supabase, "pdf_render_token", b.token.slice(0, 16)) : link.data === false;
+    }
+  } else if (b.demo) over = ipOver(ip);
   else return NextResponse.json({ error: "Please sign in" }, { status: 401 });
   if (over) return NextResponse.json({ error: TOO_MANY }, { status: 429 });
   const doc = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${b.title.replace(/</g, "")}</title>

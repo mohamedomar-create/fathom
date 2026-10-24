@@ -51,7 +51,8 @@ select pg_temp.check('five renders allowed', (select bool_and(public.rate_limit_
 select pg_temp.check('sixth render refused', public.rate_limit_hit('pdf_render_ip', '10.0.0.9')::text, 'false');
 reset role;
 set role anon;
-select pg_temp.check('signed-out caller may count an address', public.rate_limit_hit('pdf_render_ip', '10.0.0.10')::text, 'true');
+-- Since 0038 signed-out callers count no limit here (only a real link's, through rate_limit_link).
+select pg_temp.check('signed-out caller may not count an address', pg_temp.err($q$select public.rate_limit_hit('pdf_render_ip', '10.0.0.10')$q$), '42501');
 select pg_temp.check('signed-out caller may not count a user', pg_temp.err($q$select public.rate_limit_hit('pdf_render_user', 'someone')$q$), '42501');
 reset role;
 

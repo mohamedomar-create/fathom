@@ -5,7 +5,7 @@
 
 -- Supabase grants every table to signed-in users by default; 0025 must take the key back from that, so grant first and
 -- run the migration again (it is safe to repeat).
-grant all on public.odoo_connections to authenticated;
+grant select, insert, update, delete on public.odoo_connections to authenticated;
 \i supabase/migrations/0025_odoo_security.sql
 
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
