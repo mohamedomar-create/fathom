@@ -131,7 +131,10 @@ test("after 30 minutes without activity people are warned, then signed out; a lo
   await expect(back).toHaveURL(/\/companies/);
   // An active page tells the server it is still in use.
   expect((await back.request.get("/api/seen")).status()).toBe(204);
-  await back.context().addCookies([{ name: "ir_seen", value: String(Date.now() - 31 * 60_000), url: back.url() }]);
+  // Leave the app first: an open page's own requests (link prefetches) would refresh the stamp straight away.
+  const site = back.url();
+  await back.goto("about:blank");
+  await back.context().addCookies([{ name: "ir_seen", value: String(Date.now() - 31 * 60_000), url: site }]);
   await back.goto("/companies");
   await expect(back).toHaveURL(/\/login\?.*reason=idle/);
 });
