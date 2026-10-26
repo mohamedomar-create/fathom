@@ -14,13 +14,17 @@ const BOOK: Entry[] = [
   e("2026-02-03", "in", 2000, { category: "Drinks", party: "Nile", paid: true }),
   e("2026-02-20", "in", 1500, { category: "Drinks", party: "Giza", paid: true }),
   e("2026-02-01", "out", 1200, { category: "Rent", paid: true }),
-  e("2026-03-14", "in", 1000, { category: "Snacks", party: "Giza", paid: true, paidOn: "2026-04-02" }),
+  e("2026-03-14", "in", 1000, { category: "Snacks", party: "Giza", paid: true, paidOn: "2026-03-20" }),
   e("2026-03-01", "out", 1200, { category: "Rent", paid: true }),
   e("2026-03-15", "out", 100, { category: "", paid: true }),
 ];
 const TODAY = "2026-04-15";
 
 describe("money in and out", () => {
+  it("a credit sale counts in the month it was paid, not the month it was made", () => {
+    const g = cashFigures([e("2026-01-20", "in", 500, { paid: true, paidOn: "2026-02-05" }), e("2026-01-03", "out", 100)], { opening: null, today: TODAY, range: "all" });
+    expect(g.months.map((m) => [m.period, m.in, m.out])).toEqual([["2026-01", 0, 100], ["2026-02", 500, 0]]);
+  });
   const f = cashFigures(BOOK, { opening: null, today: TODAY, range: "all" });
   it("each month, gaps as zero", () => {
     expect(f.months.map((m) => [m.period, m.in, m.out, m.net])).toEqual([["2026-01", 1000, 1200, -200], ["2026-02", 3500, 1200, 2300], ["2026-03", 1000, 1300, -300]]);
@@ -60,9 +64,9 @@ describe("cash balance", () => {
   });
   it("opening + money that moved since (unpaid not yet; paid on its payment day)", () => {
     const f = cashFigures(BOOK, { opening: { amount: 10000, asOf: "2025-12-31" }, today: TODAY, range: "all" });
-    // In: 1,000 + 2,000 + 1,500 + 1,000 (paid 2 Apr) = 5,500. Out: 1,200 × 3 + 100 = 3,700. Unpaid 500 in and 300 out left out.
+    // In: 1,000 + 2,000 + 1,500 + 1,000 (paid 20 Mar) = 5,500. Out: 1,200 × 3 + 100 = 3,700. Unpaid 500 in and 300 out left out.
     expect(f.cash).toEqual({ ok: true, value: 11800 });
-    expect(f.balances.map((b) => [b.period, b.balance])).toEqual([["2026-01", 9800], ["2026-02", 12100], ["2026-03", 10800], ["2026-04", 11800]]);
+    expect(f.balances.map((b) => [b.period, b.balance])).toEqual([["2026-01", 9800], ["2026-02", 12100], ["2026-03", 11800]]);
   });
 });
 

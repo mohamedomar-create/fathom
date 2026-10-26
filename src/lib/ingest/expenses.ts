@@ -38,6 +38,8 @@ const DEPRECIATION = new Set<ClassKey>(["cos_depreciation", "exp_depreciation"])
 const COST_OF_SALES = new Set<ClassKey>(["cos_variable", "cos_fixed"]);
 /** Balance-sheet accounts that goods bought for stock pass through: a vendor bill on them is a purchase from that supplier. */
 const STOCK_ACCOUNT = /stock interim|interim (received|delivered)|goods received|grni|inventory|stock|مخزون|بضاعة/i;
+/** Names of costs that mention stock (write-offs, losses, adjustments, carriage, purchases, cost of goods sold): costs, not stock bought. */
+const STOCK_COST_WORDS = arRx(/write[- ]?off|adjust|loss|losses|shrink|damage|expired|transport|freight|carriage|purchases|cost|عجز|تالف|هالك|تسويه|نقل|شحن|مشتريات|تكلفه|تكلفة/i);
 export const isStockAccount = (cls: ClassKey, name: string) => cls === "inventory" || cls === "wip" || ((cls === "other_cl" || cls === "other_ca") && STOCK_ACCOUNT.test(name));
 
 /** Accounts that hold what banks charge: fees, commissions and charges (English and Arabic names). */
@@ -198,7 +200,7 @@ function readList(ctx: Ctx, fields: (ExpenseField | null)[], ov: ExpenseOverride
     if (!clsCache.has(t)) {
       // A bill on a stock account (inventory, stock interim) buys goods for stock: kept with its balance-sheet class, never a
       // cost (the P&L reading would call every name a running cost).
-      const b = classify(t, "", "BS").cls;
+      const b = STOCK_COST_WORDS.test(normAr(t)) ? null : classify(t, "", "BS").cls;
       const c = b && isStockAccount(b, t) ? b : classify(t, "", "PL").cls;
       clsCache.set(t, c && (EXPENSE_CLASSES.has(c) || isStockAccount(c, t)) ? c : null);
     }

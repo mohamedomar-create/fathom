@@ -44,6 +44,8 @@ alter table public.cash_entries add column if not exists kind text not null defa
 alter table public.cash_entries add column if not exists edited_at timestamptz;
 alter table public.cash_entries add column if not exists deleted_at timestamptz;
 alter table public.cash_entries drop constraint if exists cash_entries_kind;
+-- Entries saved before kinds existed took the default: money out among them is an expense, not a sale.
+update public.cash_entries set kind = 'expense' where direction = 'out' and kind = 'sale';
 alter table public.cash_entries add constraint cash_entries_kind check (
   (direction = 'in' and kind in ('sale', 'collection', 'other_income', 'capital', 'loan', 'transfer')) or (direction = 'out' and kind in ('expense', 'purchase', 'asset', 'drawings', 'loan_repayment', 'transfer')));
 create index if not exists cash_entries_company_day on public.cash_entries (company_id, day);
@@ -54,11 +56,15 @@ create table if not exists public.cash_entry_history (
   id bigserial primary key,
   company_id uuid not null references public.companies (id) on delete cascade,
   entry_id bigint,
-  action text not null check (action in ('update', 'delete', 'clear')),
+  action text not null,
   old jsonb not null default '{}'::jsonb,
   actor uuid default auth.uid(),
   at timestamptz not null default now()
 );
+-- update / delete: one entry changed; replaced: taken out by a file replacing its month; upload_removed: its upload was
+-- taken back; clear: everything went.
+alter table public.cash_entry_history drop constraint if exists cash_entry_history_action_check;
+alter table public.cash_entry_history add constraint cash_entry_history_action_check check (action in ('update', 'delete', 'clear', 'replaced', 'upload_removed'));
 create index if not exists cash_entry_history_company on public.cash_entry_history (company_id, at desc);
 alter table public.cash_entry_history enable row level security;
 drop policy if exists cash_entry_history_read on public.cash_entry_history;
@@ -82,7 +88,7 @@ drop policy if exists cash_uploads_read on public.cash_uploads;
 create policy cash_uploads_read on public.cash_uploads for select to authenticated using (private.is_member(private.company_org(company_id)));
 drop policy if exists cash_entries_read on public.cash_entries;
 create policy cash_entries_read on public.cash_entries for select to authenticated
-  using (private.is_member(private.company_org(company_id)) and (upload_id is null or exists (select 1 from public.cash_uploads u where u.id = upload_id and u.status = 'done')));
+  using (private.is_member(private.company_org(company_id)) and deleted_at is null and (upload_id is null or exists (select 1 from public.cash_uploads u where u.id = upload_id and u.status = 'done')));
 revoke all on public.cash_uploads, public.cash_entries from anon;
 revoke insert, update, delete on public.cash_uploads, public.cash_entries from authenticated;
 grant select on public.cash_uploads, public.cash_entries to authenticated;
@@ -165,13 +171,18 @@ begin
   perform private.cash_editor(u.company_id);
   if u.mode = 'replace_months' then
     -- Only the sides the upload holds, and never rows of another upload still being sent (a second press on Save).
-    delete from public.cash_entries e where e.company_id = u.company_id and e.upload_id is distinct from p_upload
-      and to_char(e.day, 'YYYY-MM') = any (u.months) and e.direction = any (u.directions)
-      and (e.upload_id is null or exists (select 1 from public.cash_uploads x where x.id = e.upload_id and x.status = 'done'));
+    -- Each entry that goes is kept in the history.
+    with gone as (
+      delete from public.cash_entries e where e.company_id = u.company_id and e.upload_id is distinct from p_upload
+        and to_char(e.day, 'YYYY-MM') = any (u.months) and e.direction = any (u.directions)
+        and (e.upload_id is null or exists (select 1 from public.cash_uploads x where x.id = e.upload_id and x.status = 'done'))
+      returning e.*)
+    insert into public.cash_entry_history (company_id, entry_id, action, old, actor)
+    select g.company_id, g.id, 'replaced', to_jsonb(g), (select auth.uid()) from gone g where g.deleted_at is null;
     get diagnostics v_removed = row_count;
     -- Uploads left with nothing go from the history; the others show what is left of them.
     delete from public.cash_uploads x where x.company_id = u.company_id and x.id <> p_upload and x.status = 'done' and not exists (select 1 from public.cash_entries e where e.upload_id = x.id);
-    update public.cash_uploads x set rows = (select count(*) from public.cash_entries e where e.upload_id = x.id)
+    update public.cash_uploads x set rows = (select count(*) from public.cash_entries e where e.upload_id = x.id and e.deleted_at is null)
       where x.company_id = u.company_id and x.id <> p_upload and x.status = 'done';
   end if;
   select count(*) into v_rows from public.cash_entries where upload_id = p_upload;
@@ -185,7 +196,9 @@ declare v_company uuid; v_count integer;
 begin
   select company_id into v_company from public.cash_uploads where id = p_upload;
   perform private.cash_editor(v_company);
-  select count(*) into v_count from public.cash_entries where upload_id = p_upload;
+  insert into public.cash_entry_history (company_id, entry_id, action, old, actor)
+  select company_id, id, 'upload_removed', to_jsonb(e), (select auth.uid()) from public.cash_entries e where upload_id = p_upload and deleted_at is null;
+  get diagnostics v_count = row_count;
   delete from public.cash_uploads where id = p_upload;
   return v_count;
 end $$;
@@ -238,8 +251,8 @@ end $$;
 -- named; the cash book's own copied months are replaced each time, so later corrections carry over.
 create or replace function private.cash_full_plan(p_company uuid) returns jsonb language sql stable security definer set search_path = '' as $$
   with live as (select * from public.cash_entries where company_id = p_company and deleted_at is null),
-  own_s as (select id from public.sales_batches where company_id = p_company and (report ->> 'from' = 'cash_book' or filename = 'From the cash book')),
-  own_e as (select id from public.expense_batches where company_id = p_company and (report ->> 'from' = 'cash_book' or filename = 'From the cash book')),
+  own_s as (select id from public.sales_batches where company_id = p_company and report ->> 'from' = 'cash_book'),
+  own_e as (select id from public.expense_batches where company_id = p_company and report ->> 'from' = 'cash_book'),
   sm as (select distinct to_char(day, 'YYYY-MM') p from live where kind = 'sale'),
   em as (select distinct to_char(day, 'YYYY-MM') p from live where kind in ('expense', 'purchase')),
   s_skip as (select p from sm where exists (select 1 from public.sales_lines l where l.company_id = p_company and l.source = 'file' and l.period = sm.p and l.batch_id not in (select id from own_s))),
@@ -263,13 +276,16 @@ create or replace function public.cash_to_full(p_company uuid) returns jsonb lan
 declare v_plan jsonb; v_months text[]; v_b uuid; v_s integer := 0; v_e integer := 0;
 begin
   perform private.cash_editor(p_company);
+  -- Two switches at once take turns, so the copies are never made twice.
+  perform pg_advisory_xact_lock(hashtext('cash_to_full:' || p_company::text));
   v_plan := private.cash_full_plan(p_company);
+  -- Every earlier copy goes first (a month emptied or now skipped keeps none), then the months to copy are written.
+  delete from public.sales_lines l using public.sales_batches b where b.id = l.batch_id and b.company_id = p_company and b.report ->> 'from' = 'cash_book';
+  delete from public.sales_batches where company_id = p_company and report ->> 'from' = 'cash_book';
+  delete from public.expense_lines l using public.expense_batches b where b.id = l.batch_id and b.company_id = p_company and b.report ->> 'from' = 'cash_book';
+  delete from public.expense_batches where company_id = p_company and report ->> 'from' = 'cash_book';
   select coalesce(array_agg(x), '{}') into v_months from jsonb_array_elements_text(v_plan -> 'sales' -> 'copy') x;
   if cardinality(v_months) > 0 then
-    delete from public.sales_lines l using public.sales_batches b where b.id = l.batch_id and l.company_id = p_company and l.period = any (v_months)
-      and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book');
-    delete from public.sales_batches b where b.company_id = p_company and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book')
-      and not exists (select 1 from public.sales_lines l where l.batch_id = b.id);
     insert into public.sales_batches (company_id, source, filename, periods, report, created_by)
     values (p_company, 'file', 'From the cash book', v_months, '{"from": "cash_book"}', auth.uid()) returning id into v_b;
     insert into public.sales_lines (company_id, batch_id, source, day, period, doc, series, customer, product, category, salesperson, amount, paid, paid_on)
@@ -279,10 +295,6 @@ begin
   end if;
   select coalesce(array_agg(x), '{}') into v_months from jsonb_array_elements_text(v_plan -> 'expenses' -> 'copy') x;
   if cardinality(v_months) > 0 then
-    delete from public.expense_lines l using public.expense_batches b where b.id = l.batch_id and l.company_id = p_company and l.period = any (v_months)
-      and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book');
-    delete from public.expense_batches b where b.company_id = p_company and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book')
-      and not exists (select 1 from public.expense_lines l where l.batch_id = b.id);
     insert into public.expense_batches (company_id, source, filename, periods, report, created_by)
     values (p_company, 'file', 'From the cash book', v_months, '{"from": "cash_book"}', auth.uid()) returning id into v_b;
     insert into public.expense_lines (company_id, batch_id, source, day, period, doc, series, supplier, account, category, label, amount, paid, paid_on, cls)

@@ -45,7 +45,7 @@ export interface RoleGuess {
   notes: string[];
 }
 
-const PRICE_HDR = arRx(/^(price|prices|unit price|retail price|wholesale price|selling price|cost|unit cost|cost price|standard cost|code|sku|item code|product code|item|product|product name|سعر|السعر|سعر البيع|سعر الوحدة|التكلفة|تكلفة|كود|الكود|كود الصنف|الصنف|المنتج)\b/i);
+const PRICE_HDR = arRx(/^(price|prices|unit price|retail price|wholesale price|selling price|cost|unit cost|cost price|standard cost|code|sku|item code|product code|item|product|product name|سعر|السعر|سعر البيع|سعر الوحدة|التكلفة|تكلفة|كود|الكود|كود الصنف|الصنف|المنتج)(?=\s|$|[:\-–.(/])/i);
 const DATE_HDR = arRx(/^(date|التاريخ|تاريخ)$/i);
 
 const numbers = (rows: Cell[][]) => { let n = 0; for (const r of rows) for (const v of r ?? []) if (typeof v === "number") n++; return n; };

@@ -26,6 +26,21 @@ describe("a money in / money out cash book in the full upload", () => {
     expect(sum(c.entries.filter((e) => e.direction === "out"))).toBe(290);
   });
 
+  it.each([["رصيد"], ["Running balance"], ["Balance"]])("a %s column is never read as a cost", (bal) => {
+    const rows = [["التاريخ", "البيان", "وارد", "منصرف", bal], ["2026-03-01", "مبيعات", 400, null, 1400], ["2026-03-02", "إيجار", null, 150, 1250],
+      ["2026-03-03", "مبيعات", 500, null, 1750], ["2026-03-04", "كهرباء", null, 90, 1660]];
+    const r = readFullCashBook({ name: "Cash", rows: rows as never })!;
+    expect(sum(r.sales)).toBe(900);
+    expect(sum(r.expenses)).toBe(240);
+  });
+
+  it("two money-in columns are both read", () => {
+    const rows = [["Date", "Details", "Cash sales", "Card sales", "Rent"], ["2026-03-01", "Day 1", 100, 50, null], ["2026-03-02", "Day 2", 120, 200, null], ["2026-03-03", "Rent", null, null, 300], ["2026-03-04", "Day 4", 80, null, null]];
+    const r = readFullCashBook({ name: "Cash", rows: rows as never })!;
+    expect(sum(r.sales)).toBe(550);
+    expect(sum(r.expenses)).toBe(300);
+  });
+
   it("a column headed like money in that ends up with nothing read as money in is a problem to fix, never all good", () => {
     const rows = [["Date", "Description", "Money in", "Rent", "Power"], ["2026-03-01", "Week 1", "", 100, 20], ["2026-03-08", "Week 2", "", 100, 25], ["2026-03-15", "Week 3", "", 100, 30]];
     const r = readFullCashBook({ name: "Cash", rows: rows as never });

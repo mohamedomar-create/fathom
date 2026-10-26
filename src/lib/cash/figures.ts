@@ -69,7 +69,9 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
   const all = [...entries].sort((a, b) => a.day.localeCompare(b.day));
   // Money in and out, months, averages, best month and the forecast are trading that came in or went out: not the owner's
   // money, loans, transfers or equipment, and not a credit sale until it is paid.
-  const sorted = all.filter((e) => isTradingKind(kindOf(e)) && e.paid !== false);
+  // A credit sale paid later counts in the month the money came.
+  const sorted = all.filter((e) => isTradingKind(kindOf(e)) && e.paid !== false)
+    .map((e) => (e.paid && e.paidOn ? { ...e, day: e.paidOn } : e)).sort((a, b) => a.day.localeCompare(b.day));
   const sum = (l: Entry[], d: "in" | "out") => r2(l.filter((e) => e.direction === d).reduce((s, e) => s + e.amount, 0));
   const first = sorted[0]?.day.slice(0, 7), last = sorted[sorted.length - 1]?.day.slice(0, 7);
   const months: Month[] = first && last ? span(first, last).map((period) => {

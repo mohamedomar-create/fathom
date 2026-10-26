@@ -20,7 +20,7 @@ const INITIAL = arRx(/^(initial balance|opening balance|balance forward|solde (i
 const INITIAL_GROUP = arRx(/initial|opening|beginning|افتتاحي|أول المدة|اول المدة|بداية المدة|بداية الفترة|رصيد سابق|الرصيد السابق|ما قبله|solde initial/i);
 const END_GROUP = arRx(/^(end(ing)?( balance)?|closing( balance)?|balance|رصيد آخر المدة|رصيد اخر المدة|رصيد نهاية المدة|رصيد نهاية الفترة|الرصيد الختامي|رصيد ختامي|الرصيد النهائي|الرصيد|رصيد|solde final)$/i);
 const GRAND_TOTAL = arRx(/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي|الإجمالي العام|المجموع الكلي)$/i);
-const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)\b/i);
+const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)(?=\s|$|[:\-–.])/i);
 const PARTNER_HDR = arRx(/^(partner|customer|الشريك|العميل|الطرف|partenaire)$/i);
 const LABEL_HDR = arRx(/^(communication|label|description|memo|البيان|الوصف|البيان التفصيلي|libellé)$/i);
 const ASSETS_HEAD = arRx(/^(assets|total assets|الأصول|الاصول|actif)$/i);

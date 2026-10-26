@@ -8,7 +8,7 @@ const NAME = arRx(/^(account|account name|name|الحساب|اسم الحساب|
 const DEBIT = arRx(/^(debit|مدين)$/i);
 const CREDIT = arRx(/^(credit|دائن)$/i);
 const BALANCE = arRx(/^(balance|ending balance|الرصيد)$/i);
-const TOTAL = arRx(/^(total|الإجمالي|اجمالي|إجمالي|المجموع)\b/i);
+const TOTAL = arRx(/^(total|الإجمالي|اجمالي|إجمالي|المجموع)(?=\s|$|[:\-–.])/i);
 const head = (v: Cell) => normAr(String(v ?? "").trim());
 
 /** Accounts with their (debit − credit) balance, from a sheet laid out as Code | Account | Debit | Credit (or Balance). */

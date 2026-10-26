@@ -23,3 +23,10 @@ describe("a vendor-bills file with stock purchases", () => {
     expect(costs.map((c) => c.name).sort()).toEqual(["Electricity", "Rent"]);
   });
 });
+
+describe("costs whose names mention stock stay costs", () => {
+  it.each(["Inventory write-off", "Inventory adjustment", "Stock losses", "عجز المخزون", "Stock transport", "Merchandise purchases", "تكلفة البضاعة المباعة", "Cost of goods sold"])("%s is a cost", (account) => {
+    const r = readExpenseGrid({ name: "Bills", rows: [["Bill Date", "Number", "Vendor", "Account", "Untaxed Amount"], ["2026-03-02", "BILL/1", "A Supplier", account, 1000], ["2026-03-03", "BILL/2", "B Supplier", "Rent", 500]] as never })!;
+    expect(r.lines.every((l) => isCostLine(l.cls))).toBe(true);
+  });
+});

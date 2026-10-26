@@ -48,3 +48,15 @@ describe("total rows, in English and Arabic", () => {
     expect(s.entries.reduce((a, e) => a + e.amount, 0)).toBe(1200);
   });
 });
+
+describe("no Arabic word is followed by \\b in a pattern", () => {
+  it("every reader ends Arabic words with a space, a colon or the end, never \\b (which never matches after Arabic)", async () => {
+    const { readdirSync, readFileSync, statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const files: string[] = [];
+    const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.tsx?$/.test(f)) files.push(p); } };
+    walk("src/lib");
+    const bad = files.flatMap((f) => readFileSync(f, "utf8").split("\n").map((l, i) => ({ f, i: i + 1, l })).filter(({ l }) => /[؀-ۿ]\)\\b/.test(l)).map(({ f, i }) => `${f}:${i}`));
+    expect(bad).toEqual([]);
+  });
+});

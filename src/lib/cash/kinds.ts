@@ -28,17 +28,21 @@ export const KIND_LABEL: Record<Kind, { en: string; ar: string }> = {
   loan_repayment: { en: "Loan repayment", ar: "سداد قرض" },
 };
 
-// Words, English and Arabic (spelled as normAr spells them), checked in this order: the first match wins.
+// Words, English and Arabic (spelled as normAr spells them), checked in this order: the first match wins. Phrases are
+// narrow on purpose: how a customer paid ("InstaPay transfer", "تحويل فودافون كاش") is not what the entry is, and a
+// business named "Capital Pharmacy" is a customer, not the owner's money. When unsure, a plain sale or expense.
 const RULES: { d: "in" | "out"; k: Kind; w: string[] }[] = [
-  { d: "out", k: "loan_repayment", w: ["loan repayment", "repay", "repayment", "instalment", "installment", "قسط", "سداد قرض", "سداد القرض", "اقساط"] },
-  { d: "in", k: "loan", w: ["loan", "borrow", "قرض", "سلفه من"] },
-  { d: "in", k: "capital", w: ["capital", "owner", "investment", "invested", "راس مال", "راس المال", "من المالك", "مساهمه", "تمويل من"] },
-  { d: "out", k: "drawings", w: ["drawing", "drawings", "owner withdrawal", "personal", "مسحوبات", "سحب شخصي", "شخصي"] },
-  { d: "out", k: "asset", w: ["equipment", "fridge", "furniture", "machine", "laptop", "computer", "car", "vehicle", "asset", "معدات", "جهاز", "اجهزه", "اثاث", "سياره", "ثلاجه", "اصول", "ماكينه"] },
-  { d: "in", k: "collection", w: ["collection", "collected", "received from", "invoice", "تحصيل", "تحصيلات", "سداد من"] },
-  { d: "in", k: "transfer", w: ["transfer", "from bank", "تحويل", "من البنك"] },
-  { d: "out", k: "transfer", w: ["transfer", "deposit to bank", "to bank", "تحويل", "ايداع", "للبنك"] },
-  { d: "out", k: "purchase", w: ["purchase", "purchases", "stock", "goods", "inventory", "مشتريات", "بضاعه", "شراء بضاعه", "مخزون"] },
+  // Running costs of things the business owns are expenses, never equipment.
+  { d: "out", k: "expense", w: ["repair", "repairs", "maintenance", "service", "fuel", "petrol", "diesel", "gas", "insurance", "صيانه", "تصليح", "اصلاح", "بنزين", "وقود", "سولار", "تامين"] },
+  { d: "out", k: "loan_repayment", w: ["loan repayment", "repay loan", "repay the loan", "loan instalment", "loan installment", "قسط القرض", "قسط قرض", "سداد القرض", "سداد قرض", "اقساط القرض"] },
+  { d: "in", k: "loan", w: ["loan received", "loan from", "bank loan", "borrowed", "قرض", "سلفه من"] },
+  { d: "in", k: "capital", w: ["owner capital", "capital injection", "capital from", "owner investment", "owner's money", "owners money", "from owner", "from the owner", "owner deposit", "راس مال", "راس المال", "من المالك", "تمويل من المالك", "زياده راس المال"] },
+  { d: "out", k: "drawings", w: ["drawings", "owner drawings", "owner withdrawal", "owner's withdrawal", "personal use", "for the owner", "مسحوبات", "سحب شخصي", "سحب المالك", "مسحوبات شخصيه"] },
+  { d: "out", k: "asset", w: ["equipment", "furniture", "fridge", "new machine", "machine purchase", "new laptop", "laptop purchase", "new computer", "computer purchase", "car purchase", "vehicle purchase", "asset", "معدات", "اثاث", "ثلاجه", "شراء جهاز", "شراء سياره", "شراء ماكينه", "اصول"] },
+  { d: "in", k: "collection", w: ["collection", "collected from", "payment of invoice", "تحصيل", "تحصيلات", "سداد من عميل", "سداد فاتوره"] },
+  { d: "in", k: "transfer", w: ["from bank", "from the bank", "atm", "bank withdrawal", "cash withdrawal", "between accounts", "own account", "من البنك", "سحب من البنك", "سحب نقدي"] },
+  { d: "out", k: "transfer", w: ["deposit to bank", "bank deposit", "to bank", "to the bank", "between accounts", "own account", "ايداع", "ايداع بالبنك", "ايداع بنكي", "للبنك"] },
+  { d: "out", k: "purchase", w: ["purchase", "purchases", "stock", "goods", "inventory", "merchandise", "مشتريات", "بضاعه", "شراء بضاعه", "مخزون"] },
   { d: "in", k: "other_income", w: ["interest", "other income", "rent received", "فوائد", "فايده", "ايراد اخر", "ايرادات اخري"] },
 ];
 
@@ -47,6 +51,6 @@ const words = (s: string) => ` ${normAr(s).toLowerCase().replace(/[^\p{L}\p{N}]+
 /** The kind an entry's words suggest; a plain sale (money in) or expense (money out) when nothing else fits. */
 export function detectKind(d: "in" | "out", text: string): Kind {
   const t = words(text);
-  for (const r of RULES) if (r.d === d && r.w.some((w) => t.includes(` ${normAr(w)} `) || (w.includes(" ") && t.includes(normAr(w))))) return r.k;
+  for (const r of RULES) if (r.d === d && r.w.some((w) => t.includes(` ${words(w).trim()} `))) return r.k;
   return d === "in" ? "sale" : "expense";
 }

@@ -10,6 +10,12 @@ describe("what each cash book entry is", () => {
     ["out", "Rent", "expense"], ["out", "Electricity", "expense"], ["out", "Stock purchase", "purchase"], ["out", "مشتريات بضاعة", "purchase"],
     ["out", "Owner drawings", "drawings"], ["out", "مسحوبات شخصية", "drawings"], ["out", "New fridge (equipment)", "asset"], ["out", "شراء جهاز", "asset"],
     ["out", "Loan repayment", "loan_repayment"], ["out", "قسط القرض", "loan_repayment"], ["out", "Deposit to bank", "transfer"],
+    // How customers and suppliers pay is not what the entry is (panel review): an InstaPay sale is a sale.
+    ["in", "Instapay transfer from Ahmed", "sale"], ["in", "تحويل من العميل", "sale"], ["in", "تحويل فودافون كاش", "sale"], ["out", "Transfer to supplier", "expense"],
+    ["in", "Owner Trading order", "sale"], ["in", "Capital Pharmacy", "sale"], ["in", "Investment Group order", "sale"], ["in", "Received from Hala", "sale"],
+    ["out", "Car fuel", "expense"], ["out", "Car repair", "expense"], ["out", "Computer repair", "expense"], ["out", "Machine maintenance", "expense"],
+    ["out", "صيانة جهاز", "expense"], ["out", "بنزين سيارة", "expense"], ["out", "Personal care supplies", "expense"], ["out", "Rent instalment", "expense"],
+    ["out", "قسط التأمين", "expense"], ["out", "Bank deposit", "transfer"], ["in", "Cash from bank (ATM)", "transfer"], ["out", "Merchandise purchases", "purchase"],
   ])("%s · %s → %s", (dir, text, kind) => {
     expect(detectKind(dir as "in" | "out", text)).toBe(kind);
   });

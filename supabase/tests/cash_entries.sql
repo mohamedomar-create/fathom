@@ -55,6 +55,7 @@ select public.cash_upload_add((select id from st where k = 'u2'), '[{"day":"2026
 select pg_temp.check('replacing a month says how many went', (public.cash_upload_finish((select id from st where k = 'u2')) ->> 'removed'), '2');
 select pg_temp.check('only that month was replaced', (select string_agg(to_char(day, 'YYYY-MM') || ':' || amount, ',' order by day) from public.cash_entries where company_id = (select co from ids)), '2026-01:1000,2026-01:300,2026-02:900');
 select pg_temp.check('the replaced upload''s count follows what is left of it', (select rows::text from public.cash_uploads where id = (select id from st where k = 'u1')), '2');
+select pg_temp.check('replaced entries are recorded in the history', (select string_agg(old ->> 'amount', ',' order by (old ->> 'amount')::numeric) from public.cash_entry_history where company_id = (select co from ids) and action = 'replaced'), '60,800');
 
 -- The viewer reads, never writes; an outsider sees nothing.
 select pg_temp.login('cbv@x.test');
@@ -76,6 +77,7 @@ select pg_temp.check('copying back is skipped while the cash book has entries', 
 
 -- Undo one upload; clear needs an admin; deleting the company removes everything.
 select pg_temp.check('an upload can be taken back', public.cash_upload_remove((select id from st where k = 'u2'))::text, '1');
+select pg_temp.check('a taken-back upload is recorded in the history', (select string_agg(old ->> 'amount', ',') from public.cash_entry_history where company_id = (select co from ids) and action = 'upload_removed'), '900');
 select pg_temp.check('clearing everything', public.cash_entries_clear((select co from ids))::text, '2');
 select pg_temp.check('switching back fills an empty cash book from the lines', public.cash_from_full((select co from ids))::text, '3');
 
@@ -117,8 +119,11 @@ select pg_temp.check('the old amount is in the history', (select (old ->> 'amoun
 select pg_temp.check('the entry shows as edited', (select (e ->> 'edited') from jsonb_array_elements(public.cash_entries_list((select co from k))) e where (e ->> 'id')::bigint = (select id from ke where n = 'rent')), 'true');
 select public.cash_entry_delete((select id from ke where n = 'rent'));
 select pg_temp.check('a deleted entry leaves the list', (select count(*) from jsonb_array_elements(public.cash_entries_list((select co from k))) e where (e ->> 'id')::bigint = (select id from ke where n = 'rent'))::text, '0');
-select pg_temp.check('but is kept and recorded', (select (deleted_at is not null)::text from public.cash_entries where id = (select id from ke where n = 'rent'))
+select pg_temp.check('members no longer read a deleted entry', (select count(*)::text from public.cash_entries where id = (select id from ke where n = 'rent')), '0');
+reset role;
+select pg_temp.check('but it is kept and recorded', (select (deleted_at is not null)::text from public.cash_entries where id = (select id from ke where n = 'rent'))
   || ' ' || (select string_agg(action, ',' order by id) from public.cash_entry_history where entry_id = (select id from ke where n = 'rent')), 'true update,delete');
+select pg_temp.login('cba@x.test');
 select pg_temp.check('the history cannot be written directly', pg_temp.err($$delete from public.cash_entry_history$$), '42501');
 select pg_temp.check('a deleted entry cannot be edited', pg_temp.err(format($$select public.cash_entry_update(%s, '{"day":"2026-03-03","direction":"out","amount":1}'::jsonb)$$, (select id from ke where n = 'rent'))), '42501');
 
@@ -141,9 +146,23 @@ select pg_temp.login('cba@x.test');
 select public.cash_entry_add((select co from k), '{"day":"2026-04-02","direction":"in","amount":80,"category":"Sales"}'::jsonb);
 select pg_temp.check('a month with another file is skipped and named', (select (r -> 'skipped' ->> 'sales') from (select public.cash_to_full((select co from k)) r) x), '["2026-04"]');
 select pg_temp.check('its lines are left as they were', (select string_agg(period || ':' || amount, ',' order by period) from public.sales_lines where company_id = (select co from k)), '2026-03:1200.00,2026-04:50.00');
+-- A month emptied in the cash book loses its copied lines on the next switch; the other file's month is untouched.
+select public.cash_entry_delete((select id from ke where n = 'sale'));
+select public.cash_to_full((select co from k));
+select pg_temp.check('an emptied month is not left with stale copies', (select string_agg(period || ':' || amount, ',' order by period) from public.sales_lines where company_id = (select co from k)), '2026-04:50.00');
+select pg_temp.check('no copied batch keeps an old month', (select count(*)::text from public.sales_batches where company_id = (select co from k) and report ->> 'from' = 'cash_book'), '0');
+-- Only the cash book's own copies are replaced: a file the person happened to name like it is theirs.
+reset role;
+insert into public.sales_batches (company_id, source, filename, periods) values ((select co from k), 'file', 'From the cash book', '{2026-05}');
+insert into public.sales_lines (company_id, batch_id, source, period, amount) select (select co from k), id, 'file', '2026-05', 70 from public.sales_batches where company_id = (select co from k) and filename = 'From the cash book';
+select pg_temp.login('cba@x.test');
+select public.cash_entry_add((select co from k), '{"day":"2026-05-02","direction":"in","amount":90,"category":"Sales"}'::jsonb);
+select pg_temp.check('a file named like the copies is the person''s own', (select (r -> 'skipped' ->> 'sales') from (select public.cash_to_full((select co from k)) r) x)
+  || ' ' || (select string_agg(period || ':' || amount, ',' order by period) from public.sales_lines where company_id = (select co from k)), '["2026-04", "2026-05"] 2026-04:50.00,2026-05:70.00');
+select pg_temp.check('two switches at once take turns', (select (prosrc like '%pg_advisory_xact_lock%')::text from pg_proc where oid = 'public.cash_to_full(uuid)'::regprocedure), 'true');
 -- Clearing is recorded.
 select public.cash_entries_clear((select co from k));
-select pg_temp.check('a clear is recorded with its count', (select action || ':' || (old ->> 'entries') from public.cash_entry_history where company_id = (select co from k) and action = 'clear'), 'clear:6');
+select pg_temp.check('a clear is recorded with its count', (select action || ':' || (old ->> 'entries') from public.cash_entry_history where company_id = (select co from k) and action = 'clear'), 'clear:7');
 reset role;
 delete from public.companies where id = (select co from ids);
 select pg_temp.check('a deleted company leaves no entries', (select count(*) from public.cash_entries)::text || (select count(*) from public.cash_uploads)::text, '00');

@@ -166,7 +166,7 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
   raw.forEach((r) => {
     // Movement exports are per account, but their grand-total row ("Total") must still go.
     if (r.template) return;
-    const isTotal = r.kind === "movement" ? !r.code && /^\s*(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(r.name) : SUBTOTAL.test(r.name);
+    const isTotal = r.kind === "movement" ? !r.code && /^\s*(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)(?=\s|$|[:\-–.])/i.test(r.name) : SUBTOTAL.test(r.name);
     if (isTotal && !(r.stmt === "BS" && /^\s*net (profit|income|loss|earnings)/i.test(r.name))) {
       skip.add(r.key); issues.subtotals.push(`${r.sheet} row ${r.row}: '${r.label}' (name looks like a computed total)`); removed[r.key] = "a total: iReport works out totals itself";
     }

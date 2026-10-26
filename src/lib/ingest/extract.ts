@@ -371,7 +371,7 @@ export function extractLong(g: Grid, rows: Cell[][], num: (v: Cell) => number | 
       const per = parsePeriod(rows[rr][dat], order);
       if (!lab && !per) continue;
       if (!lab) { mark(tr, rr, { role: "unused", note: "no account on this line" }); continue; }
-      if (!per) { mark(tr, rr, /^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab) ? { role: "total", note: "iReport works out totals itself" } : { role: "unused", note: "no date or month on this line" }); continue; }
+      if (!per) { mark(tr, rr, /^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)(?=\s|$|[:\-–.])/i.test(lab) ? { role: "total", note: "iReport works out totals itself" } : { role: "unused", note: "no date or month on this line" }); continue; }
       const cell = (c: number) => { const v = num(rows[rr][c]); if (badAmount(rows[rr][c], v)) bad(tr, rr, c, rows[rr][c]); return v; };
       const errs = tr?.errs.length ?? 0;
       const v = deb !== undefined && cre !== undefined ? (cell(deb) ?? 0) - (cell(cre) ?? 0) : cell(amt!);
@@ -439,7 +439,7 @@ export function extractLedger(g: Grid, rows: Cell[][], num: (v: Cell) => number 
         if (cur) { cur.opening += amt; mark(tr, rr, { role: "opening", ref: cur.key }); }
         continue;
       }
-      if (/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i.test(lab)) { cur = null; mark(tr, rr, { role: "total", note: "iReport works out totals itself" }); continue; }
+      if (/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي)(?=\s|$|[:\-–.])/i.test(lab)) { cur = null; mark(tr, rr, { role: "total", note: "iReport works out totals itself" }); continue; }
       const { code, name } = splitCode(lab);
       cur = accounts.get(lab) ?? { key: `${g.name}|gl|${lab}`, sheet: g.name, row: rr + 1, label: lab, code, name, section: "", stmt: null, kind: "movement", values: {}, opening: 0 };
       accounts.set(lab, cur);

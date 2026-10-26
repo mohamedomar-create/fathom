@@ -102,6 +102,7 @@ const IN_BANNER = arRx(/^(cash ?in|money ?in|in|income|incomings?|receipts?|rece
 const IN_HDR = arRx(/^(store|shop|customer|client|buyer|sales|revenue|receipts?|received from|from|العميل|المحل|المشتري|المبيعات|من)$/i);
 const OUT_HDR = arRx(/(cost|expense|supplier|vendor|paid to|payment|salar|wage|rent|personnel|personel|staff|utilit|transport|marketing|packag|production|مصروف|مورد|تكلفة|رواتب|مرتبات|إيجار|ايجار)/i);
 const LEDGER_HDR = arRx(/^(debit|credit|balance|dr|cr|مدين|دائن|الرصيد)$/i);
+const DC_HDR = arRx(/^(debit|credit|dr|cr|مدين|دائن)$/i);
 const TOTAL_ROW = TOTAL_LABEL;
 
 const isNum = (v: Cell) => typeof v === "number" && Number.isFinite(v);
@@ -148,8 +149,10 @@ export function cashBookShape(rows: Cell[][], formulas: Record<string, string> =
     const hr = rows[h] ?? [];
     const texts = hr.map(head);
     if (!texts.some((t) => DATE_HDR.test(t)) || texts.filter(Boolean).length < 3) continue;
-    // Debit / credit / balance columns make a ledger, a journal or a bank statement: other readers'.
-    if (texts.some((t) => LEDGER_HDR.test(t))) return null;
+    // Debit / credit columns make a ledger, a journal or a bank statement: other readers'. A balance column does too,
+    // unless the sheet has money-in or money-out headings ("وارد | منصرف | رصيد" is a shop's cash book).
+    const inOut = hr.some((v) => typeof v === "string" && !DC_HDR.test(head(v)) && ["in", "out"].includes(headingField(v) ?? ""));
+    if (texts.some((t) => DC_HDR.test(t)) || (!inOut && texts.some((t) => LEDGER_HDR.test(t)))) return null;
     // Banners above the headings ("Cash OUT" … "Cash IN") say where each side starts and which way the money goes.
     const banners: { col: number; dir: CashDir }[] = [];
     for (let r = 0; r < h; r++) (rows[r] ?? []).forEach((v, c) => {
@@ -218,11 +221,14 @@ function shapeBlock(rows: Cell[][], h: number, c0: number, c1: number, rowTotals
  */
 function splitInOut(b: CashBlock, hr: Cell[]): CashBlock[] {
   const kind = (c: number) => headingField(str(hr[c]));
-  const ins = b.amounts.filter((a) => kind(a.col) === "in");
-  const outs = b.amounts.filter((a) => kind(a.col) !== "in");
-  if (!ins.length) return [b];
-  if (!outs.length) return [{ ...b, dir: "in", amounts: [ins[0]] }];
-  return [{ ...b, dir: "in", amounts: [ins[0]], vat: null }, { ...b, dir: "out", amounts: outs }];
+  // A running balance ("رصيد", "Running balance") is neither money in nor a cost.
+  const amounts = b.amounts.filter((a) => kind(a.col) !== "balance");
+  const ins = amounts.filter((a) => kind(a.col) === "in");
+  const outs = amounts.filter((a) => kind(a.col) !== "in");
+  if (!ins.length) return amounts.length ? [{ ...b, amounts }] : [];
+  // Every money-in column is read (cash sales and card sales), each on its own.
+  const inBlocks = ins.map((a, i) => ({ ...b, dir: "in" as const, amounts: [a], vat: i === 0 && !outs.length ? b.vat : null }));
+  return outs.length ? [...inBlocks, { ...b, dir: "out", amounts: outs }] : inBlocks;
 }
 
 interface Section { month: number | null; year: number | null; sales: boolean; heading: string; sub: string; firstDate: string | null }
