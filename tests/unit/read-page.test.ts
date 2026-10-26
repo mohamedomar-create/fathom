@@ -14,7 +14,7 @@ vi.mock("@anthropic-ai/sdk", async (orig) => {
   }
   return { ...actual, default: Fake };
 });
-const db = { company: { org_id: "o1" } as { org_id: string } | null, role: "editor" as string | null, user: { id: "u1" } as { id: string } | null, over: false, budget: true, rpcs: [] as string[] };
+const db = { company: { org_id: "o1" } as { org_id: string } | null, role: "editor" as string | null, user: { id: "u1" } as { id: string } | null, over: false, busy: false, budget: true, rpcs: [] as string[] };
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => ({
     user: db.user,
@@ -27,7 +27,7 @@ vi.mock("@/lib/supabase/server", () => ({
     },
   }),
 }));
-vi.mock("@/lib/rate-limit", () => ({ limited: async () => db.over }));
+vi.mock("@/lib/rate-limit", () => ({ limits: async () => (db.busy ? "error" : db.over ? "over" : "ok"), BUSY: "The service is busy just now. Please try again in a minute." }));
 
 const { readPage, ReadError } = await import("@/lib/ai/read-page");
 const { POST } = await import("@/app/api/companies/[id]/read-page/route");
@@ -52,7 +52,7 @@ async function post(body: Uint8Array | null, check?: unknown) {
 beforeEach(() => {
   parse.mockReset();
   process.env.ANTHROPIC_API_KEY = "test";
-  Object.assign(db, { company: { org_id: "o1" }, role: "editor", user: { id: "u1" }, over: false, budget: true, rpcs: [] });
+  Object.assign(db, { company: { org_id: "o1" }, role: "editor", user: { id: "u1" }, over: false, busy: false, budget: true, rpcs: [] });
 });
 
 describe("the page reader", () => {
@@ -95,6 +95,14 @@ describe("the read-page route", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).read).toEqual(PAGE);
     expect(db.rpcs).toEqual(["ai_budget_ok", "record_ai_usage"]);
+  });
+
+  it("when the limit cannot be checked, it says try again in a minute, not tomorrow", async () => {
+    db.busy = true;
+    const res = await post(await onePagePdf());
+    expect(res.status).toBe(503);
+    expect((await res.json()).error).toContain("try again in a minute");
+    expect(parse).not.toHaveBeenCalled();
   });
 
   it("an organisation over its AI allowance is told so, and nothing is read", async () => {

@@ -11,7 +11,7 @@ export const aiCostMicros = (u: Usage) => Math.round(
 
 export const OVER_BUDGET = "This organisation's AI allowance for the month is used up. It renews on the 1st; an owner can raise it.";
 
-/** True while the organisation is under its monthly AI allowance and the site under its daily cap. A failed check is "no". */
+/** True while the organisation is under its monthly AI allowance. A failed check is "no". */
 export async function aiBudgetOk(supabase: SupabaseClient, orgId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("ai_budget_ok", { p_org: orgId });
   if (error) { console.error("ai budget check failed", { code: error.code, error: error.message }); return false; }

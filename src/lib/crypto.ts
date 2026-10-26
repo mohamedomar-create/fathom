@@ -26,7 +26,7 @@ function ring(): { current: string; keys: Map<string, Buffer> } {
   let current = "";
   for (const part of (process.env.ENCRYPTION_KEYS ?? "").split(",").map((x) => x.trim()).filter(Boolean)) {
     const [id, k] = part.split(":");
-    if (!id || !k || !/^[a-z0-9]{1,12}$/i.test(id)) throw new Error("ENCRYPTION_KEYS must look like k2:<base64>,k1:<base64>.");
+    if (!id || !k || !/^[a-z0-9]{1,12}$/.test(id)) throw new Error("ENCRYPTION_KEYS must look like k2:<base64>,k1:<base64> (key ids in lowercase letters and digits).");
     keys.set(id, bytes(k, `ENCRYPTION_KEYS (${id})`));
     current ||= id;
   }

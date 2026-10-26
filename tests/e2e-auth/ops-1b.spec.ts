@@ -22,4 +22,9 @@ test("the owner sees this month's AI use and sets the allowance", async ({ page 
   await expect(box.getByRole("status")).toContainText("Allowance saved.");
   await page.reload();
   await expect(page.getByTestId("ai-allowance")).toContainText("of $35 this month");
+  // An emptied box is never saved as 0 (which would stop AI for the organisation).
+  await page.getByTestId("ai-limit").fill("");
+  await page.getByTestId("ai-save").click();
+  await page.reload();
+  await expect(page.getByTestId("ai-allowance")).toContainText("of $35 this month");
 });

@@ -1,10 +1,15 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 
-/** Removes anything that could identify a company or person: emails, long numbers (amounts, ids), cookies, bodies, queries. */
+/**
+ * Removes anything that could identify a company or person: emails, every number (amounts, ids, phones), quoted names,
+ * the values a database error repeats ("Key (…)=(…)"); cookies, bodies and queries are dropped from the event below.
+ */
 const scrub = (t: string) => t
   .replace(/[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi, "[email]")
-  .replace(/\d[\d,.]*\d|\d/g, (m) => (m.replace(/\D/g, "").length > 4 ? "[number]" : m));
+  .replace(/(Key \([^)]*\)=)\([^)]*\)/g, "$1([value])")
+  .replace(/"[^"]*"|'[^']*'/g, "[text]")
+  .replace(/\d[\d,.]*\d|\d/g, "[number]");
 
 type Event = { message?: string; request?: { url?: string; cookies?: unknown; data?: unknown; headers?: Record<string, string> }; user?: { id?: string; email?: string }; [k: string]: unknown };
 

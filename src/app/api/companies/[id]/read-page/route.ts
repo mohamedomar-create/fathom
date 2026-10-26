@@ -3,7 +3,7 @@ import { aiBudgetOk, OVER_BUDGET, recordAiUsage, type Usage } from "@/lib/ai/bud
 import { z } from "zod";
 import { PDFDocument } from "pdf-lib";
 import { getUser } from "@/lib/supabase/server";
-import { limited } from "@/lib/rate-limit";
+import { BUSY, limits } from "@/lib/rate-limit";
 import { ReadError, readPage } from "@/lib/ai/read-page";
 import { MAX_PAGE_BYTES } from "@/lib/ingest/pdf-schema";
 
@@ -41,8 +41,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!check.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
 
   // Reading costs money: 200 pages a day per company and 400 a day per person.
-  if ((await limited(supabase, "pdf_read_company", id)) || (await limited(supabase, "pdf_read_user", user.id)))
-    return NextResponse.json({ error: "The daily limit for reading PDF pages has been reached. Try again tomorrow, or export the report from Odoo as Excel." }, { status: 429 });
+  const limit = await limits(supabase, [["pdf_read_company", id], ["pdf_read_user", user.id]]);
+  if (limit === "error") return NextResponse.json({ error: BUSY }, { status: 503 });
+  if (limit === "over") return NextResponse.json({ error: "The daily limit for reading PDF pages has been reached. Try again tomorrow, or export the report from Odoo as Excel." }, { status: 429 });
   if (!(await aiBudgetOk(supabase, company.org_id))) return NextResponse.json({ error: OVER_BUDGET }, { status: 429 });
 
   let used: Usage | null = null;

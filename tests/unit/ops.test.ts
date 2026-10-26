@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
-import { limited } from "@/lib/rate-limit";
+import { limited, checkLimit } from "@/lib/rate-limit";
 import { scrubEvent } from "@/lib/report-error";
 import { healthAnswer, REQUIRED_SCHEMA, schemaBehind, resetSchemaCache } from "@/lib/schema";
 import { aiCostMicros } from "@/lib/ai/budget";
@@ -17,6 +17,11 @@ describe("rate limits fail closed", () => {
     expect(await limited(fake({ error: { code: "PGRST202", message: "Could not find rate_limit_hit" } }), "export", "u")).toBe(true);
   });
   it("within the limit passes", async () => expect(await limited(fake({ data: true }), "export", "u")).toBe(false));
+  it("a check that could not be made is told apart from a limit reached", async () => {
+    expect(await checkLimit(fake({ error: { code: "57014", message: "timeout" } }), "export", "u")).toBe("error");
+    expect(await checkLimit(fake({ data: false }), "export", "u")).toBe("over");
+    expect(await checkLimit(fake({ data: true }), "export", "u")).toBe("ok");
+  });
 });
 
 describe("error reports carry no company data", () => {
@@ -29,6 +34,11 @@ describe("error reports carry no company data", () => {
     expect(e.message).toBe("Upload for [email] failed at [number] EGP");
     expect(e.request).toEqual({ url: "https://app/x", headers: { "user-agent": "UA" } });
     expect(e.user).toEqual({ id: "u1" });
+  });
+  it("small amounts, grouped phone numbers, quoted names and database key values are removed too", () => {
+    expect(scrubEvent({ message: "Total 1,234 vs 12.50, call +20 100 123 4567" }).message).toBe("Total [number] vs [number], call +[number] [number] [number] [number]");
+    expect(scrubEvent({ message: 'duplicate key: Key (company_id, name)=(1f2e, Acme Trading) already exists' }).message).toBe("duplicate key: Key (company_id, name)=([value]) already exists");
+    expect(scrubEvent({ message: `account "Cash at Bank" and 'شركة النور' not found` }).message).toBe("account [text] and [text] not found");
   });
 });
 

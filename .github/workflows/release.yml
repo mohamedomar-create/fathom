@@ -1,17 +1,22 @@
 name: Release tag
-# Each push to the production branch gets a tag (vYYYY.MM.DD-<sha7>) and release notes from the commit subjects since the
-# last tag, so every deployed version can be named and rolled back to.
+# Each production commit that passed CI gets a tag (vYYYY.MM.DD-<sha7>) and release notes from the commit subjects since
+# the last tag, so every deployed version can be named and rolled back to.
 on:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [claude/sharp-pasteur-ms9hn6]
 permissions:
   contents: write
+concurrency: release
 jobs:
   tag:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.workflow_run.head_sha }}
           fetch-depth: 0
       - name: Tag and write the notes
         env:
@@ -24,4 +29,4 @@ jobs:
           prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           range=${prev:+$prev..}HEAD
           { echo "Production at $sha."; echo; git log --no-merges --format='- %s' "$range" | head -100; } > notes.md
-          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md
+          gh release create "$tag" --target "$(git rev-parse HEAD)" --title "$tag" --notes-file notes.md

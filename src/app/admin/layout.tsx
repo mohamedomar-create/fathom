@@ -4,8 +4,13 @@ import { AppBar } from "@/components/shell/app-bar";
 import { getUser } from "@/lib/supabase/server";
 import { getDict } from "@/lib/i18n/server";
 import { MfaBanner } from "@/components/auth/mfa-banner";
+import { SchemaGate } from "@/components/shell/schema-gate";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  return <SchemaGate><AdminLayoutInner>{children}</AdminLayoutInner></SchemaGate>;
+}
+
+async function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
   const { data: m } = await supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();

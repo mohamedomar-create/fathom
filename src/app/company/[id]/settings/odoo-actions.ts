@@ -213,8 +213,9 @@ export async function rekeyOdoo(companyId: string): Promise<Result<true>> {
     let next: string;
     try { next = reencrypt(enc, bindingOf(companyId, conn.url, conn.db, conn.login)); }
     catch (e) { throw new Error(/again|no longer on the server/.test((e as Error).message) ? (e as Error).message : "Enter the API key again: the saved key doesn't belong to this connection."); }
-    const { error } = await supabase.rpc("odoo_rekey", { p_company: companyId, p_key_enc: next });
-    if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
+    // Only if the saved key is still the one read here: a key saved meanwhile is never put back to the old one.
+    const { error } = await supabase.rpc("odoo_rekey", { p_company: companyId, p_old: enc, p_new: next });
+    if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); if (error.code === "40001") throw new Error("The saved key changed meanwhile. Open the page again."); throw new DbError(error); }
     await audit(supabase, companyId, "test", true, "the saved API key was re-encrypted under the server's current key");
     revalidatePath(`/company/${companyId}/data/odoo`);
     return { ok: true, data: true };

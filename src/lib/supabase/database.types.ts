@@ -105,7 +105,8 @@ export type Database = {
       schema_version: { Args: Record<string, never>; Returns: number };
       ai_budget_ok: { Args: { p_org: string }; Returns: boolean };
       record_ai_usage: { Args: { p_org: string; p_kind: string; p_input: number; p_output: number; p_micros: number }; Returns: undefined };
-      odoo_rekey: { Args: { p_company: string; p_key_enc: string }; Returns: undefined };
+      odoo_rekey: { Args: { p_company: string; p_old: string; p_new: string }; Returns: undefined };
+      ai_usage_month: { Args: { p_org: string }; Returns: number };
       accept_invite: { Args: { p_id: string }; Returns: string };
       decline_invite: { Args: { p_id: string }; Returns: undefined };
       transfer_ownership: { Args: { p_org: string; p_user: string }; Returns: undefined };

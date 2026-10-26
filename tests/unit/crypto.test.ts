@@ -80,3 +80,12 @@ describe("which saved keys still use an old encryption key", () => {
     expect(usesOldKey("v2.aa.bb.cc")).toBe(true);
   });
 });
+
+describe("key ids", () => {
+  it("are lowercase letters and digits, as the database expects", () => {
+    process.env.ENCRYPTION_KEYS = `K2:${Buffer.alloc(32, 2).toString("base64")}`;
+    expect(() => encrypt("x", "a")).toThrow(/ENCRYPTION_KEYS/);
+    delete process.env.ENCRYPTION_KEYS;
+  });
+});
+

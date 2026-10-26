@@ -15,8 +15,8 @@ export function AiAllowance({ orgId, usd, usedMicros, isOwner }: { orgId: string
       <h3 className="font-medium">{a.aiTitle}</h3>
       <p className="mb-3 text-sm text-mute">{a.aiUsed(used.toFixed(2), String(usd))}</p>
       {isOwner && (
-        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { const r = await setAiAllowance(orgId, Number(value)); setMsg(r.ok ? a.aiSaved : r.error ?? null); }); }}>
-          <label className="text-sm">{a.aiLimit} <input type="number" min={0} max={200} step={1} value={value} onChange={(e) => setValue(e.target.value)} data-testid="ai-limit"
+        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); start(async () => { const r = await setAiAllowance(orgId, value); setMsg(r.ok ? a.aiSaved : r.error ?? null); }); }}>
+          <label className="text-sm">{a.aiLimit} <input type="number" required min={0} max={200} step={1} value={value} onChange={(e) => setValue(e.target.value)} data-testid="ai-limit"
             className="ms-2 w-24 rounded border border-line px-2 py-1" /></label>
           <button disabled={pending} className="rounded bg-brand-d px-3 py-1.5 text-sm text-white disabled:opacity-60" data-testid="ai-save">{a.save}</button>
         </form>

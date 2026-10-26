@@ -168,8 +168,9 @@ export async function restoreOrganisation(orgId: string): Promise<Result> {
 }
 
 /** The owner sets the organisation's monthly AI allowance (commentary and PDF reading), 0 to 200 dollars. */
-export async function setAiAllowance(orgId: string, usd: number): Promise<Result> {
-  const v = z.object({ orgId: Uuid, usd: z.number().int().min(0).max(200) }).safeParse({ orgId, usd });
+export async function setAiAllowance(orgId: string, usd: string): Promise<Result> {
+  // From the form as typed: an empty box is never read as 0 (which would stop AI for the organisation).
+  const v = z.object({ orgId: Uuid, usd: z.string().trim().regex(/^\d{1,3}$/).transform(Number).pipe(z.number().max(200)) }).safeParse({ orgId, usd });
   if (!v.success) return { ok: false, error: "Enter a whole number of dollars from 0 to 200." };
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };

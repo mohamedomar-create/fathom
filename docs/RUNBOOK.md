@@ -12,7 +12,7 @@ For the site owner and whoever is on call. No secrets or company data belong in 
 - Before pasting, pause the background jobs, then turn them back on:
   `select cron.alter_job(jobid, active := false) from cron.job where jobname like 'ireport-%';` (and `active := true`).
 - Release: fast-forward the production branch `claude/sharp-pasteur-ms9hn6` to the tested commit. Vercel deploys it;
-  `.github/workflows/release.yml` tags it `vYYYY.MM.DD-<sha7>` with notes.
+  `.github/workflows/release.yml` tags it `vYYYY.MM.DD-<sha7>` with notes once CI has passed on it.
 - After a release: CI green on the production branch, Vercel shows "Deployment has completed", `/api/health` is 200,
   and the Supabase logs show no new 500s or refusals from normal use.
 
@@ -40,12 +40,16 @@ For the site owner and whoever is on call. No secrets or company data belong in 
      is, it is key `k1`). Redeploy.
   3. Each company with a saved key shows "Re-encrypt the key" on Data, Odoo live to its admins; press it once per
      company.
-  4. When none is left, remove the old key from `ENCRYPTION_KEYS` (and `ENCRYPTION_KEY`). Redeploy.
+  4. Check none is left (read-only, in the SQL editor; `k2` is the new key's id):
+     `select company_id from public.odoo_connections where api_key_enc <> '' and api_key_enc not like 'v3.k2.%';`
+     Every company listed still needs an admin to press "Re-encrypt the key" (or to enter its API key again).
+  5. When the list is empty, remove the old key from `ENCRYPTION_KEYS` (and `ENCRYPTION_KEY`). Redeploy.
+  Key ids are lowercase letters and digits (`k2`, not `K2`).
 - **Odoo API key**: made in Odoo by the read-only "iReport Reader" user, with an end date; the Odoo tab warns 14 days
   before it ends. Revoke it in Odoo at once if it may have leaked; then Disconnect in iReport.
-- **Anthropic**: set a monthly spend limit in the Anthropic console. Inside iReport each organisation has an AI allowance
-  (default 20 US$ a month; the owner changes it on Organisation) and the site has a daily cap of 50 US$
-  (`private.ops_settings`, key `ai_daily_usd`).
+- **Anthropic**: set a monthly spend limit in the Anthropic console: it is the cap for the whole site. Inside iReport each
+  organisation has an AI allowance (default 20 US$ a month; the owner changes it on Organisation), counted from what
+  each reply really used.
 - **Supabase and Vercel**: two-step sign-in on, and a second admin with two-step sign-in, so one lost phone cannot lock
   the site.
 
