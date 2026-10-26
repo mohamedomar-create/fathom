@@ -256,3 +256,10 @@ do $$ declare f text; begin
     execute format('grant execute on function %s to authenticated', f);
   end loop;
 end $$;
+
+-- The tenant guards (0038) on the new tables. Live, 0038 runs before this file, so put them on here; on a fresh
+-- database 0038 runs after and covers them itself.
+do $$
+begin
+  if to_regprocedure('private.install_tenant_guards()') is not null then perform private.install_tenant_guards(); end if;
+end $$;
