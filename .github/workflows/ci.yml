@@ -2,6 +2,9 @@ name: CI
 on:
   push:
   pull_request:
+# Read the code, nothing more: no job writes to the repository or its packages.
+permissions:
+  contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
@@ -12,6 +15,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Fails on a known high or critical advisory in what the site runs (dev tools are left out).
+      - run: npm audit --omit=dev --audit-level=high
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test

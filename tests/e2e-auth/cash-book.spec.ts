@@ -85,12 +85,14 @@ test("a kiosk: its own cash book, its own sheet, figures, entries, and the way t
   await page.getByTestId("cash-save").click();
   await expect(page.getByTestId("cash-saved")).toContainText("Saved 7 entries", { timeout: 30_000 });
 
-  // The overview: money in 4,500, out 3,600, left 900; cash needs the opening cash.
+  // The overview: money that came in 4,000 (the unpaid 500 waits until it is paid; sold 4,500 is said beside it),
+  // out 3,600, left 400; cash needs the opening cash.
   await page.goto(`/cash/${id}?range=all`);
   await expect(page.getByTestId("cash-summary")).toBeVisible();
-  await expect(page.getByTestId("cash-in")).toContainText("4,500");
+  await expect(page.getByTestId("cash-in")).toContainText("4,000");
   await expect(page.getByTestId("cash-out")).toContainText("3,600");
-  await expect(page.getByTestId("cash-left")).toContainText("900");
+  await expect(page.getByTestId("cash-left")).toContainText("400");
+  await expect(page.getByTestId("cash-sold")).toContainText("Sold EGP 4,500");
   await expect(page.getByTestId("cash-today")).toHaveAttribute("data-needs", "opening_cash");
   await page.getByTestId("cash-left").getByRole("button").click();
   await expect(page.getByTestId("cash-formula")).toContainText("Money in − Money out");
@@ -130,6 +132,7 @@ test("a kiosk: its own cash book, its own sheet, figures, entries, and the way t
   // To the full system: the entries become its sales and expense lines; and back.
   await page.goto(`/cash/${id}/settings`);
   await page.getByTestId("cash-to-full").click();
+  await expect(page.getByTestId("cash-to-full-preview")).toContainText("Copied: sales for");
   await page.getByTestId("cash-to-full-dialog").getByRole("button", { name: "Switch to the full system" }).click();
   await expect(page).toHaveURL(new RegExp(`/company/${id}`), { timeout: 30_000 });
   await page.goto(`/company/${id}/sales?type=year&end=2026-03`);
