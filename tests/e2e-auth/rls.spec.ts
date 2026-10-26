@@ -36,8 +36,10 @@ test("a stranger's token reads and changes nothing in another organisation", asy
   // Writes are refused or touch nothing.
   const patch = await api.patch(`${URL}/rest/v1/companies?id=eq.${company}`, { headers: b.h, data: { name: "pwned" } });
   expect(await patch.json()).toEqual([]);
+  // Companies are deleted only through delete_company (0039): a direct delete is refused for everyone.
   const del = await api.delete(`${URL}/rest/v1/companies?id=eq.${company}`, { headers: b.h });
-  expect(await del.json()).toEqual([]);
+  expect(del.ok()).toBe(false);
+  expect((await del.json()).code).toBe("42501");
   expect((await api.post(`${URL}/rest/v1/memberships`, { headers: b.h, data: { org_id: org.id, user_id: (await b.rows("profiles?select=id"))[0].id, role: "admin" } })).ok()).toBe(false);
   expect((await api.post(`${URL}/rest/v1/commentary`, { headers: b.h, data: { company_id: company, period_key: "month:2026-09", section: "kpis", body: "x" } })).ok()).toBe(false);
   expect((await api.post(`${URL}/rest/v1/rpc/save_company_version`, { headers: b.h, data: { p_company: company, p_accounts: [] } })).ok()).toBe(false);

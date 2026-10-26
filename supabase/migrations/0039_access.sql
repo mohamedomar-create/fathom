@@ -324,6 +324,7 @@ begin
   update public.companies set deleted_at = now() where id = p_company;
   delete from private.inventory_marks where company_id = p_company;
   delete from private.summary_marks where company_id = p_company;
+  if to_regclass('public.import_jobs') is not null then perform private.stop_imports(p_company); end if;
   return v_preview -> 'modules';
 end $$;
 
@@ -352,6 +353,7 @@ begin
   end if;
   perform private.audit_org(p_org, 'org_deleted', v_name, null, '{}');
   update public.organizations set deleted_at = now() where id = p_org;
+  perform private.stop_imports(c.id) from public.companies c where c.org_id = p_org;
   perform private.ensure_home_org(v_user);
 end $$;
 
@@ -403,6 +405,8 @@ returns void language plpgsql security definer set search_path = '' as $$
 declare v_user uuid := auth.uid(); v_email text; v_blocking text;
 begin
   if v_user is null then raise exception 'not signed in' using errcode = '42501'; end if;
+  if not private.mfa_satisfied() then raise exception 'Enter your two-step sign-in code first.' using errcode = '42501', hint = 'mfa_required'; end if;
+  perform private.require_recent();
   select lower(email) into v_email from auth.users where id = v_user;
   if p_email is null or lower(trim(p_email)) <> v_email then
     raise exception 'The email you typed does not match your account.' using errcode = 'P0001';
@@ -411,6 +415,7 @@ begin
     from public.memberships m join public.organizations o on o.id = m.org_id
    where m.user_id = v_user and m.role = 'admin'
      and exists (select 1 from public.memberships x where x.org_id = m.org_id and x.user_id <> v_user)
+     and o.deleted_at is null
      and (o.owner_id = v_user or not exists (select 1 from public.memberships x where x.org_id = m.org_id and x.user_id <> v_user and x.role = 'admin'));
   if v_blocking is not null then
     raise exception 'Hand % to another admin first, or delete it.', v_blocking using errcode = 'P0001';
@@ -418,7 +423,7 @@ begin
   delete from public.organizations o
    where exists (select 1 from public.memberships m where m.org_id = o.id and m.user_id = v_user)
      and not exists (select 1 from public.memberships m where m.org_id = o.id and m.user_id <> v_user);
-  delete from public.invites where email = v_email and accepted_at is null;
+  update public.invites set declined_at = now() where email = v_email and accepted_at is null and declined_at is null;
   delete from auth.users where id = v_user;
 end $$;
 
@@ -430,10 +435,214 @@ begin
   end if;
 end $$;
 
+
+-- ---------------------------------------------------------------- review fixes
+-- A two-step session is needed for everything once a person has turned two-step sign-in on: a password alone opens nothing.
+create or replace function private.mfa_satisfied()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select coalesce(auth.jwt() ->> 'aal', '') = 'aal2' or (select auth.uid()) is null
+      or not exists (select 1 from auth.mfa_factors f where f.user_id = (select auth.uid()) and f.status = 'verified');
+$$;
+revoke execute on function private.mfa_satisfied() from public, anon;
+grant execute on function private.mfa_satisfied() to authenticated;
+
+create or replace function private.is_member(o uuid, min_role public.member_role default 'viewer')
+returns boolean language sql stable security definer set search_path = '' as $$
+  select private.mfa_satisfied() and exists (
+    select 1 from public.memberships m join public.organizations g on g.id = m.org_id and g.deleted_at is null
+    where m.org_id = o and m.user_id = (select auth.uid())
+      and case min_role when 'viewer' then true
+                        when 'editor' then m.role in ('editor', 'admin')
+                        else m.role = 'admin' end
+  );
+$$;
+
+-- Destructive actions need a password (or email-link) sign-in from the last 10 minutes, whatever the page did.
+create or replace function private.require_recent()
+returns void language plpgsql stable security definer set search_path = '' as $$
+declare v_last numeric;
+begin
+  if (select auth.uid()) is null then return; end if;
+  select max((a ->> 'timestamp')::numeric) into v_last from jsonb_array_elements(coalesce(auth.jwt() -> 'amr', '[]'::jsonb)) a
+   where a ->> 'method' in ('password', 'otp', 'magiclink', 'recovery', 'email/signup', 'invite');
+  if v_last is null or extract(epoch from now()) - v_last > 600 then
+    raise exception 'Please confirm your password and try again.' using errcode = '42501', hint = 'reauth_required';
+  end if;
+end $$;
+revoke execute on function private.require_recent() from public, anon, authenticated;
+
+create or replace function private.org_audit_mfa() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.action in ('role_changed', 'member_removed', 'invite_sent', 'invite_resent', 'invite_cancelled', 'owner_changed', 'org_deleted', 'org_restored', 'mfa_reset')
+     or (new.action = 'member_added' and new.target_user is distinct from new.actor) then
+    perform private.require_aal2();
+  end if;
+  if new.action in ('member_removed', 'owner_changed', 'org_deleted', 'mfa_reset') then perform private.require_recent(); end if;
+  return new;
+end $$;
+create or replace function private.company_audit_mfa() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.action in ('clear_all', 'delete_company', 'transfer_company', 'restore_company') then perform private.require_aal2(); end if;
+  if new.action in ('clear_all', 'delete_company', 'transfer_company') then perform private.require_recent(); end if;
+  return new;
+end $$;
+create or replace function private.cash_clear_mfa() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if new.action = 'clear' then perform private.require_aal2(); perform private.require_recent(); end if;
+  return new;
+end $$;
+
+-- Companies are deleted only through delete_company (soft, recorded, checked); never straight from the table.
+drop policy if exists co_delete on public.companies;
+revoke delete on public.companies from authenticated;
+-- Nobody is added to an organisation without answering an invitation (the database functions add owners and invitees).
+drop policy if exists mem_insert on public.memberships;
+revoke insert on public.memberships from authenticated;
+
+-- An invitation keeps its address; any other change is recorded (and is an admin action).
+create or replace function private.invites_guard() returns trigger language plpgsql set search_path = '' as $$
+begin
+  if tg_op = 'UPDATE' and current_user in ('authenticated', 'anon') and new.email is distinct from old.email then
+    raise exception 'An invitation keeps its email address; cancel it and invite the new address.' using errcode = '42501';
+  end if;
+  -- Open for at most 14 days from now.
+  if new.expires_at > now() + interval '14 days 1 minute' then new.expires_at := now() + interval '14 days'; end if;
+  return new;
+end $$;
+drop trigger if exists invites_guard on public.invites;
+create trigger invites_guard before insert or update on public.invites for each row execute function private.invites_guard();
+create or replace function private.invites_audit() returns trigger language plpgsql security definer set search_path = '' as $$
+declare v_org uuid := coalesce(new.org_id, old.org_id);
+begin
+  if not exists (select 1 from public.organizations where id = v_org) then return null; end if;
+  if tg_op = 'INSERT' then perform private.audit_org(v_org, 'invite_sent', new.email, null, jsonb_build_object('role', new.role));
+  elsif tg_op = 'UPDATE' then
+    if new.accepted_at is not null and old.accepted_at is null then perform private.audit_org(v_org, 'invite_accepted', new.email, null, '{}');
+    elsif new.declined_at is not null and old.declined_at is null then perform private.audit_org(v_org, 'invite_declined', new.email, null, '{}');
+    elsif new is distinct from old then perform private.audit_org(v_org, 'invite_resent', new.email, null, jsonb_build_object('role', new.role));
+    end if;
+  elsif old.accepted_at is null and old.declined_at is null then perform private.audit_org(v_org, 'invite_cancelled', old.email, null, '{}');
+  end if;
+  return null;
+end $$;
+
+-- The owner resets two-step sign-in only for people who belong to the owner's organisations alone.
+create or replace function public.reset_member_mfa(p_org uuid, p_user uuid)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not exists (select 1 from public.organizations where id = p_org and deleted_at is null and owner_id = (select auth.uid())) then
+    raise exception 'Only the owner can do this.' using errcode = '42501';
+  end if;
+  if p_user = (select auth.uid()) or not exists (select 1 from public.memberships where org_id = p_org and user_id = p_user)
+     or exists (select 1 from public.memberships m join public.organizations g on g.id = m.org_id
+                 where m.user_id = p_user and g.owner_id is distinct from (select auth.uid()) and g.owner_id is distinct from p_user) then
+    raise exception 'This person also belongs to other organisations; they reset it themselves, or ask support.' using errcode = '42501';
+  end if;
+  perform private.audit_org(p_org, 'mfa_reset', (select email from public.profiles where id = p_user), p_user, '{}');
+  if to_regclass('auth.mfa_factors') is not null then execute 'delete from auth.mfa_factors where user_id = $1' using p_user; end if;
+end $$;
+
+-- A deleted organisation's stored files: its owner removes them right after deleting it (the figures stay for 14 days).
+create or replace function private.import_file_removable(p_name text)
+returns boolean language plpgsql stable security definer set search_path = '' as $$
+declare v_seg text := split_part(p_name, '/', 1); v_company uuid;
+begin
+  if v_seg !~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then return false; end if;
+  v_company := v_seg::uuid;
+  if exists (select 1 from public.companies c join public.organizations g on g.id = c.org_id
+              where c.id = v_company and g.deleted_at is not null and g.owner_id = (select auth.uid())) then
+    return private.mfa_satisfied();
+  end if;
+  if exists (select 1 from public.companies where id = v_company and deleted_at is null) then
+    return private.is_member(private.company_org(v_company), 'editor');
+  end if;
+  return exists (select 1 from public.company_data_audit a where a.company_id = v_company and a.action = 'delete_company' and private.is_member(a.org_id, 'admin'));
+end $$;
+
+-- Background imports of a deleted company stop.
+create or replace function private.stop_imports(p_company uuid) returns void language sql security definer set search_path = '' as $$
+  update public.import_jobs set status = 'cancelled', message = 'Stopped: the company was deleted.'
+   where company_id = p_company and status in ('preparing', 'queued', 'checking', 'needs_review');
+$$;
+revoke execute on function private.stop_imports(uuid) from public, anon, authenticated;
+create or replace function public.rate_limit_link(p_token text)
+returns boolean
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  r public.reports;
+  s private.rate_scopes;
+  k text;
+  n integer;
+begin
+  if p_token is null or length(p_token) < 20 or length(p_token) > 100 then return false; end if;
+  select * into r from public.reports where share_token = p_token and status = 'published' and (expires_at is null or expires_at > now())
+    -- A deleted company's or organisation's links stop at once (they come back if it is brought back).
+    and exists (select 1 from public.companies lc join public.organizations lg on lg.id = lc.org_id where lc.id = reports.company_id and lc.deleted_at is null and lg.deleted_at is null);
+  if not found then return false; end if;
+  select * into s from private.rate_scopes where scope = 'pdf_render_token';
+  k := 'pdf_render_token:' || r.id;
+  delete from private.rate_events where key = k and at < now() - make_interval(secs => s.window_s);
+  select count(*) into n from private.rate_events where key = k;
+  if n >= s.max_hits then return false; end if;
+  insert into private.rate_events (key) values (k);
+  return true;
+end $$;
+create or replace function public.get_published_report(p_token text)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare
+  r public.reports;
+  c public.companies;
+  o public.organizations;
+  v_from text;
+  v_fig boolean;
+  v_basis boolean;
+begin
+  if p_token is null or length(p_token) < 20 or length(p_token) > 100 then return null; end if;
+  select * into r from public.reports where share_token = p_token and status = 'published' and (expires_at is null or expires_at > now())
+    -- A deleted company's or organisation's links stop at once (they come back if it is brought back).
+    and exists (select 1 from public.companies lc join public.organizations lg on lg.id = lc.org_id where lc.id = reports.company_id and lc.deleted_at is null and lg.deleted_at is null);
+  if not found then return null; end if;
+  select * into c from public.companies where id = r.company_id;
+  select * into o from public.organizations where id = c.org_id;
+  v_from := to_char(to_date(r.period_end || '-01', 'YYYY-MM-DD') - interval '35 months', 'YYYY-MM');
+  v_fig := private.report_shows_figures(r.sections);
+  v_basis := private.report_shows(r.sections, 'basis');
+  return jsonb_build_object(
+    'report', to_jsonb(r) - 'created_by' - 'share_token',
+    'company', jsonb_build_object('id', c.id, 'name', c.name, 'currency', c.currency, 'fy_start_month', c.fy_start_month,
+                                  'tax_rate', c.tax_rate, 'kpi_config', case when v_fig then coalesce(c.kpi_config, '{}'::jsonb) - 'profile' else '{}'::jsonb end,
+                                  'notes', case when v_basis then c.notes else '[]'::jsonb end, 'source', c.source),
+    'org', jsonb_build_object('name', o.name, 'logo_url', o.logo_url, 'brand_colour', o.brand_colour, 'disclaimer', o.disclaimer, 'report_footer', o.report_footer),
+    'accounts', case when not v_fig then '[]'::jsonb else coalesce((
+      select jsonb_agg(x.a order by x.sort_order) from (
+        select s.sort_order, jsonb_build_object('id', s.id, 'code', s.code, 'name', s.name, 'statement', s.statement, 'class', s.class,
+               'amounts', jsonb_object_agg(b.period, b.amount)) as a
+          from public.source_accounts s
+          join public.account_balances b on b.account_id = s.id and b.company_id = c.id and b.period between v_from and r.period_end
+         where s.company_id = c.id and s.version = c.data_version
+         group by s.id
+      ) x), '[]'::jsonb) end,
+    'commentary', coalesce((select jsonb_object_agg(cm.section, cm.body) from public.commentary cm
+                            where cm.company_id = c.id and cm.period_key = r.period_type || ':' || r.period_end
+                              and private.report_shows(r.sections, cm.section)), '{}'::jsonb),
+    'accepted', case when not v_basis then '[]'::jsonb else coalesce((
+                  select (select jsonb_agg(jsonb_build_object('title', x ->> 'title', 'period', x ->> 'period', 'reason', x ->> 'reason'))
+                            from jsonb_array_elements(coalesce(i.report -> 'accepted', '[]'::jsonb)) x)
+                    from public.imports i where i.company_id = c.id and i.data_version = c.data_version and i.action = 'import'
+                   order by i.created_at desc limit 1), '[]'::jsonb) end
+  );
+end $$;
+
+
 -- ---------------------------------------------------------------- grants
 revoke execute on function private.audit_org(uuid, text, text, uuid, jsonb), private.require_aal2(), private.purge_deleted(),
   private.my_invite(uuid), private.org_audit_mfa(), private.company_audit_mfa(), private.cash_clear_mfa(), private.odoo_key_mfa(),
-  private.org_marks_guard(), private.company_marks_guard(), private.first_admin_owns(), private.memberships_audit(), private.invites_audit()
+  private.org_marks_guard(), private.company_marks_guard(), private.first_admin_owns(), private.memberships_audit(), private.invites_audit(),
+  private.invites_guard()
   from public, anon, authenticated;
 do $$ declare f text; begin
   foreach f in array array['public.my_invites()', 'public.accept_invite(uuid)', 'public.decline_invite(uuid)', 'public.transfer_ownership(uuid, uuid)',

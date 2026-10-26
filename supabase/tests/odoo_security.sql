@@ -22,7 +22,7 @@ create function pg_temp.home(e text) returns uuid language sql as $f$ select org
 create function pg_temp.login(e text) returns void language plpgsql as $f$
 begin
   reset role;
-  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.uid(e))::text, false);
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.uid(e), 'amr', json_build_array(json_build_object('method','password','timestamp', extract(epoch from now())::int)))::text, false);
   set role authenticated;
 end $f$;
 create function pg_temp.err(q text) returns text language plpgsql as $f$

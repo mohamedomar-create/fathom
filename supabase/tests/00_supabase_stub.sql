@@ -22,3 +22,5 @@ grant execute on all functions in schema auth to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
 alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
+-- Supabase Auth's two-step sign-in factors (only what the database functions read).
+create table if not exists auth.mfa_factors (id uuid primary key default gen_random_uuid(), user_id uuid not null, status text not null default 'unverified', factor_type text not null default 'totp');

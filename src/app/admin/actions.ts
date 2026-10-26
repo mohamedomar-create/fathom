@@ -5,6 +5,7 @@ import { z } from "zod";
 import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { getUser } from "@/lib/supabase/server";
+import { orgFiles, removeFiles } from "@/lib/company/remove-files";
 
 type Result = { ok: boolean; error?: string };
 const Uuid = z.string().uuid();
@@ -107,8 +108,13 @@ export async function deleteOrganisation(orgId: string, typedName: string): Prom
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };
   { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
+  // The files are listed while the companies are still visible, the rows go first (all or nothing), then the files:
+  // a refused delete never leaves companies whose files are already gone.
+  const files = await orgFiles(supabase, v.data.orgId);
   const { error } = await supabase.rpc("delete_organisation", { p_org: v.data.orgId, p_name: v.data.typedName });
   if (error) return { ok: false, error: dbError(error, "deleteOrganisation") };
+  const left = await removeFiles(supabase, files);
+  if (left) console.error("delete organisation: stored files left", left);
   revalidatePath("/", "layout");
   return { ok: true };
 }

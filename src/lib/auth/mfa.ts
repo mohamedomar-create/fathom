@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { codeStillNeeded } from "./levels";
 
 /** The person's confirmed authenticator-app factor, if any. */
 export async function totpFactor(supabase: SupabaseClient): Promise<{ id: string } | null> {
@@ -10,7 +11,7 @@ export async function totpFactor(supabase: SupabaseClient): Promise<{ id: string
 /** True when the session still needs the code (a factor is set up but this session signed in with the password only). */
 export async function needsCode(supabase: SupabaseClient): Promise<boolean> {
   const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
-  return data?.nextLevel === "aal2" && data.currentLevel !== "aal2";
+  return codeStillNeeded(data);
 }
 
 /** Checks a 6-digit code against the person's factor; the session becomes a two-step one. Returns an error, or null. */

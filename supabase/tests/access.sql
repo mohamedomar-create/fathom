@@ -16,10 +16,11 @@ end $f$;
 create temp table uids as select email, id from auth.users where email like 'a_@x.test';
 grant select on uids to authenticated;
 create function pg_temp.uid(e text) returns uuid language sql as $f$ select id from uids where email = e $f$;
-create function pg_temp.login(e text, aal text default 'aal1') returns void language plpgsql as $f$
+-- A sign-in by password `age` seconds ago (a fresh one by default); `method` 'totp' alone is a code without a password.
+create function pg_temp.login(e text, aal text default 'aal1', age int default 0, method text default 'password') returns void language plpgsql as $f$
 begin
   reset role;
-  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.uid(e), 'aal', aal)::text, false);
+  perform set_config('request.jwt.claims', json_build_object('sub', pg_temp.uid(e), 'aal', aal, 'amr', json_build_array(json_build_object('method', method, 'timestamp', extract(epoch from now())::int - age)))::text, false);
   set role authenticated;
 end $f$;
 create function pg_temp.err(sql text) returns text language plpgsql as $f$
@@ -125,4 +126,73 @@ select pg_temp.check('older than 14 days is removed, newer is kept', (select str
 
 select pg_temp.check('visitors cannot run the access functions', (select bool_or(has_function_privilege('anon', p.oid, 'execute'))::text from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   where n.nspname = 'public' and p.proname in ('my_invites', 'accept_invite', 'decline_invite', 'transfer_ownership', 'deleted_items', 'restore_company', 'restore_organisation', 'reset_member_mfa')), 'false');
+
+-- Review fixes.
+reset role;
+insert into public.companies (org_id, name) values ((select id from o), 'Kept Co'), ((select id from o), 'Linked Co');
+select pg_temp.login('aa@x.test', 'aal2');
+select pg_temp.check('a company cannot be deleted straight from the table', pg_temp.err(format('delete from public.companies where name = %L', 'Kept Co')) || ' ' || (select count(*)::text from public.companies where name = 'Kept Co'), '42501 1');
+select pg_temp.check('nobody is added without an invitation', pg_temp.err(format('insert into public.memberships (org_id, user_id, role) values (%L, %L, %L)', (select id from o), pg_temp.uid('late@x.test'), 'admin')), '42501');
+insert into public.invites (org_id, email, role) values ((select id from o), 'swap@x.test', 'viewer');
+select pg_temp.check('an invitation keeps its email address', pg_temp.err(format('update public.invites set email = %L where email = %L', 'other@x.test', 'swap@x.test')), '42501');
+update public.invites set expires_at = now() + interval '1 year' where email = 'swap@x.test';
+select pg_temp.check('an invitation stays open at most 14 days', (select (expires_at <= now() + interval '14 days 1 minute')::text from public.invites where email = 'swap@x.test'), 'true');
+
+-- Deleting needs a password sign-in from the last 10 minutes; a two-step code alone is not one.
+select pg_temp.login('aa@x.test', 'aal2', 1200);
+select pg_temp.check('an old sign-in cannot delete a company', pg_temp.msg(format('select public.delete_company(%L, %L)', (select id from public.companies where name = 'Kept Co'), 'Kept Co')), 'Please confirm your password and try again.');
+select pg_temp.login('aa@x.test', 'aal2', 0, 'totp');
+select pg_temp.check('a code alone is not a fresh sign-in', pg_temp.err(format('select public.delete_company(%L, %L)', (select id from public.companies where name = 'Kept Co'), 'Kept Co')), '42501');
+select pg_temp.login('ao@x.test', 'aal2', 1200);
+select pg_temp.check('removing a person needs a fresh sign-in', pg_temp.err(format('delete from public.memberships where org_id = %L and user_id = %L', (select id from o), pg_temp.uid('ai@x.test'))), '42501');
+
+-- Once two-step sign-in is on, a password-only session opens nothing.
+reset role;
+insert into auth.mfa_factors (user_id, status) values (pg_temp.uid('ae@x.test'), 'verified');
+select pg_temp.login('ae@x.test', 'aal1');
+select pg_temp.check('with two-step on, a password-only session sees no companies', (select count(*)::text from public.companies where org_id = (select id from o)), '0');
+select pg_temp.check('nor can it delete the account', pg_temp.err(format('select public.delete_my_account(%L)', 'ae@x.test')), '42501');
+select pg_temp.login('ae@x.test', 'aal2');
+select pg_temp.check('after the code it sees them', ((select count(*) from public.companies where org_id = (select id from o)) > 0)::text, 'true');
+reset role;
+delete from auth.mfa_factors where user_id = pg_temp.uid('ae@x.test');
+
+-- A deleted company's share link stops, and its background imports stop.
+insert into public.reports (company_id, period_end, status, share_token) values ((select id from public.companies where name = 'Linked Co'), '2026-09', 'published', 'tok-linked-co-0000000000000');
+insert into public.import_jobs (company_id, kind, mode, status) values ((select id from public.companies where name = 'Linked Co'), 'inventory', 'replace', 'queued');
+select pg_temp.check('the link works before', (public.get_published_report('tok-linked-co-0000000000000') is not null)::text, 'true');
+select pg_temp.login('aa@x.test', 'aal2');
+select public.delete_company((select id from public.companies where name = 'Linked Co'), 'Linked Co');
+reset role;
+select pg_temp.check('a deleted company''s link stops', (public.get_published_report('tok-linked-co-0000000000000') is null)::text || ' ' || public.rate_limit_link('tok-linked-co-0000000000000')::text, 'true false');
+select pg_temp.check('its background imports stop', (select status from public.import_jobs where company_id = (select id from public.companies where name = 'Linked Co')), 'cancelled');
+
+-- The owner resets two-step sign-in only for people who belong to the owner's organisations alone.
+insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values ('elsewhere@x.test', '{"org_name":"Other Org"}', now());
+insert into uids select email, id from auth.users where email = 'elsewhere@x.test';
+insert into public.memberships (org_id, user_id, role) values ((select id from o), pg_temp.uid('elsewhere@x.test'), 'editor');
+insert into public.memberships (org_id, user_id, role) select org_id, pg_temp.uid('ae@x.test'), 'viewer' from public.memberships where user_id = pg_temp.uid('elsewhere@x.test') and org_id <> (select id from o);
+select pg_temp.login('ao@x.test', 'aal2');
+select pg_temp.check('the owner cannot reset someone who belongs to another organisation', pg_temp.err(format('select public.reset_member_mfa(%L, %L)', (select id from o), pg_temp.uid('ae@x.test'))), '42501');
+
+-- A person with an open invitation can still delete their account; the invitation is marked declined.
+select pg_temp.login('aa@x.test', 'aal2');
+insert into public.invites (org_id, email, role) values ((select id from o), 'elsewhere@x.test', 'viewer');
+reset role;
+delete from public.memberships where user_id = pg_temp.uid('ae@x.test') and org_id in (select org_id from public.memberships where user_id = pg_temp.uid('elsewhere@x.test') and org_id <> (select id from o));
+delete from public.memberships where user_id = pg_temp.uid('elsewhere@x.test') and org_id = (select id from o);
+select pg_temp.login('elsewhere@x.test');
+select pg_temp.check('an open invitation does not stop account deletion', pg_temp.msg(format('select public.delete_my_account(%L)', 'elsewhere@x.test')), 'none');
+reset role;
+select pg_temp.check('and it is marked declined', (select (declined_at is not null)::text from public.invites where email = 'elsewhere@x.test'), 'true');
+
+-- A deleted organisation's stored files can be removed by its owner (the app removes them right after deleting).
+reset role;
+create temp table kept as select id from public.companies where name = 'Kept Co';
+grant select on kept to authenticated;
+select pg_temp.login('ao@x.test', 'aal2');
+select public.delete_organisation((select id from o), 'Acc Org');
+select pg_temp.check('the owner can remove a deleted organisation''s files', private.import_file_removable((select id from kept)::text || '/job/file.xlsx')::text, 'true');
+select pg_temp.login('aa@x.test', 'aal2');
+select pg_temp.check('an admin cannot', private.import_file_removable((select id from kept)::text || '/job/file.xlsx')::text, 'false');
 delete from public.organizations where id = (select id from o);

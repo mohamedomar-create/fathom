@@ -9,7 +9,7 @@ grant select on all tables in schema public to authenticated;
 -- Runs `sql` as the signed-in user `uid`; returns 'OK' or the error message.
 create function pg_temp.as_user(sql text, uid uuid) returns text language plpgsql as $f$
 begin
-  perform set_config('request.jwt.claims', json_build_object('sub', uid)::text, true);
+  perform set_config('request.jwt.claims', json_build_object('sub', uid, 'amr', json_build_array(json_build_object('method','password','timestamp', extract(epoch from now())::int)))::text, true);
   set local role authenticated;
   execute sql;
   reset role;

@@ -3,7 +3,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useDict } from "@/lib/i18n/context";
 import { createClient } from "@/lib/supabase/client";
-import { idleState, IDLE_MS, WARN_MS, type IdleState } from "@/lib/auth/idle";
+import { heartbeatDue, idleState, IDLE_MS, WARN_MS, type IdleState } from "@/lib/auth/idle";
 
 /** Last activity in any tab of this browser (milliseconds), so a busy tab keeps the quiet ones signed in. */
 const ACTIVE_KEY = "ir_active";
@@ -28,11 +28,17 @@ export function SessionWatch() {
   const [idle, setIdle] = useState<IdleState>("active");
   const seen = useRef(false);
   const local = useRef(0);
+  const beat = useRef(0);
   const pathRef = useRef("");
   useEffect(() => { pathRef.current = path + (query ? `?${query}` : ""); }, [path, query]);
   // Signed out after 30 minutes with no activity in any tab, warned 2 minutes before.
   useEffect(() => {
-    const touch = () => { const now = Date.now(); if (now - local.current > 5_000) { local.current = now; writeActive(now); } };
+    const touch = () => {
+      const now = Date.now();
+      if (now - local.current > 5_000) { local.current = now; writeActive(now); }
+      // Tell the server too (its idle check only sees requests), at most every 5 minutes.
+      if (seen.current && heartbeatDue(beat.current, now)) { beat.current = now; void fetch("/api/seen", { cache: "no-store" }).catch(() => {}); }
+    };
     local.current = 0;
     touch();
     const tick = () => {

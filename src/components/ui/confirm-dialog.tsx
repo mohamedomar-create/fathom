@@ -28,11 +28,13 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [hasCode, setHasCode] = useState(false);
+  // With `reauth`, confirm waits until it is known whether a code is needed too.
+  const [checked, setChecked] = useState(!reauth);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-  const ready = (!typeToConfirm || typed.trim().toLowerCase() === typeToConfirm.trim().toLowerCase()) && (!reauth || (!!password && (!hasCode || code.trim().length >= 6)));
+  const ready = (!typeToConfirm || typed.trim().toLowerCase() === typeToConfirm.trim().toLowerCase()) && (!reauth || (checked && !!password && (!hasCode || code.trim().length >= 6)));
   // Proves who it is: signs in again with the password (and the code), so the session is fresh for the server's check.
   const confirmIdentity = async (): Promise<string | null> => {
     const supabase = createClient();
@@ -47,7 +49,10 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
     <Dialog open={open} onOpenChange={(o) => {
       setOpen(o);
       if (!o) { setTyped(""); setError(null); setPassword(""); setCode(""); }
-      else if (reauth) void totpFactor(createClient()).then((f) => setHasCode(!!f));
+      else if (reauth) {
+        setChecked(false);
+        void totpFactor(createClient()).then((f) => setHasCode(!!f)).catch(() => setHasCode(false)).finally(() => setChecked(true));
+      }
     }}>
       <DialogTrigger asChild>{trigger}</DialogTrigger>
       <DialogContent title={title} className="w-[min(520px,calc(100vw-24px))] p-6" data-testid={testId}>

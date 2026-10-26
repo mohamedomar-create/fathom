@@ -77,6 +77,9 @@ test("two-step sign-in: an admin turns it on, signs in with the code, and confir
   await page.getByTestId("mfa-code").fill("000000");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByRole("status")).toContainText("That code is not right");
+  // A password-only session cannot open the app's pages: they send it back to the code.
+  await page.goto("/companies");
+  await expect(page).toHaveURL(/\/login\?.*mfa=1/);
   await page.getByTestId("mfa-code").fill(totp(secret));
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/companies/);
@@ -119,10 +122,15 @@ test("after 30 minutes without activity people are warned, then signed out; a lo
   await page.waitForURL(/\/login\?reason=idle/, { timeout: 30_000 });
   await expect(page.getByRole("status")).toContainText("signed out after 30 minutes");
 
-  // The server's own check: a last-seen stamp over 30 minutes old ends the session on the next visit.
+  // The server's own check: a last-seen stamp over 30 minutes old ends the session on the next visit. A stamp left from
+  // an earlier session is cleared while signed out, so it never ends the next sign-in.
   const back = await (await browser.newContext()).newPage();
+  await back.goto("/login");
+  await back.context().addCookies([{ name: "ir_seen", value: String(Date.now() - 31 * 60_000), url: back.url() }]);
   await signIn(back, email);
   await expect(back).toHaveURL(/\/companies/);
+  // An active page tells the server it is still in use.
+  expect((await back.request.get("/api/seen")).status()).toBe(204);
   await back.context().addCookies([{ name: "ir_seen", value: String(Date.now() - 31 * 60_000), url: back.url() }]);
   await back.goto("/companies");
   await expect(back).toHaveURL(/\/login\?.*reason=idle/);

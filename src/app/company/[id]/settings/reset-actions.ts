@@ -6,8 +6,8 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { confirmCount, parseResetPreview, type ResetPreview } from "@/lib/company/reset";
+import { removeFiles } from "@/lib/company/remove-files";
 
-type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 const Id = z.string().uuid();
 const Scope = z.enum(["financials", "sales", "expenses", "stock", "payments", "end_users", "all"]);
 
@@ -20,18 +20,6 @@ export async function previewReset(companyId: string): Promise<{ ok: true; previ
   if (error) return { ok: false, error: dbError(error, "previewReset") };
   const preview = parseResetPreview(data);
   return preview ? { ok: true, preview } : { ok: false, error: "The database sent an unexpected answer. Please try again." };
-}
-
-/** Removes the company's stored source files (best effort: a file that can't be removed is counted, never hidden). */
-async function removeFiles(supabase: Supa, paths: string[]): Promise<number> {
-  let failed = 0;
-  for (let i = 0; i < paths.length; i += 100) {
-    const part = paths.slice(i, i + 100);
-    // A file already gone is not a failure: only an error from Storage counts.
-    const { error } = await supabase.storage.from("imports").remove(part);
-    if (error) { console.error("reset: stored files", error.message); failed += part.length; }
-  }
-  return failed;
 }
 
 /**
