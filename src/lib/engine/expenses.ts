@@ -185,6 +185,8 @@ export interface ExpensesAnalysis {
   trend: { period: string; total: number | null; groups: Record<string, number>; revenue: number | null; ofSales: number | null; lines: number | null }[];
   /** Window months where the lines and the P&L costs differ by more than 0.5%. */
   unreconciled: { period: string; lines: number; costs: number; diff: number }[];
+  /** False when no P&L is loaded: the lines cannot be checked against one ("Not checked", never "agree"). */
+  reconcilable: boolean;
   large: ExpenseFlag[];
   doubles: ExpenseFlag[];
   findings: ExpenseFinding[];
@@ -217,7 +219,7 @@ function rank<R extends { p: string; a: number }>(rows: R[], cur: Set<string>, c
 
 export function expensesAnalysis(
   accounts: ExpenseAccount[], d: ExpensesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string>; lang?: "en" | "ar" } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string>; lang?: "en" | "ar"; fromLines?: boolean } = {},
 ): ExpensesAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
@@ -327,7 +329,8 @@ export function expensesAnalysis(
     let t = 0;
     if (has) for (const r of acctRows) if (r.p === p) { const g = GROUP_OF.get(r.acct.cls)!.key; groups[g] = (groups[g] ?? 0) + r.a; t += r.a; }
     const rv = opts.revenue?.[p] ?? null;
-    return { period: p, total: has ? t : null, groups, revenue: rv, ofSales: has && rv ? (t / rv) * 100 : null, lines: costHeld.has(p) ? sum(costSup.filter((r) => r.p === p), (r) => r.a) : null };
+    // With no P&L the "P&L" is the lines themselves (accountsFromLines): there is nothing to check them against.
+    return { period: p, total: has ? t : null, groups, revenue: rv, ofSales: has && rv ? (t / rv) * 100 : null, lines: !opts.fromLines && costHeld.has(p) ? sum(costSup.filter((r) => r.p === p), (r) => r.a) : null };
   });
   const unreconciled = trend.filter((t) => cur.has(t.period) && t.lines !== null && t.total !== null && Math.abs(t.lines - t.total) > Math.max(1, Math.abs(t.total) * 0.005))
     .map((t) => ({ period: t.period, lines: t.lines!, costs: t.total!, diff: t.lines! - t.total! }));
@@ -369,7 +372,7 @@ export function expensesAnalysis(
     lines: { has: lineCur.length > 0, total: linesTotal, coverage: lineCur.length && total ? (linesTotal / total) * 100 : null, months: lineCur },
     bySupplier, byLender, finance, alsoCustomers, stockBought: sum(bySupplier, (r) => r.stock ?? 0), bySource, byCategory,
     concentration: { suppliers: named.length, topName: top?.name ?? null, topShare: top && namedTotal ? (top.amount / namedTotal) * 100 : null, top5Share: namedTotal ? (top5 / namedTotal) * 100 : null, newCount: history ? bySupplier.filter((r) => r.isNew).length : null },
-    trend, unreconciled, large, doubles, findings, notes,
+    trend, unreconciled, reconcilable: !opts.fromLines, large, doubles, findings, notes,
   };
 }
 

@@ -72,6 +72,7 @@ export function ExpensesOverview() {
 function Reconciliation({ s, cur }: { s: ExpensesView; cur: string }) {
   const T = useT();
   const t = T.d.exp;
+  if (!s.reconcilable) return <p className="mb-8 text-[13px] text-mute" data-testid="expenses-not-checked">{t.notReconciled}</p>;
   const checked = s.trend.filter((t) => s.window.periods.includes(t.period) && t.lines !== null && t.total !== null).length;
   if (!checked) return null;
   if (!s.unreconciled.length) {

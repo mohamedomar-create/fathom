@@ -195,7 +195,13 @@ function readList(ctx: Ctx, fields: (ExpenseField | null)[], ov: ExpenseOverride
   const clsCache = new Map<string, ClassKey | null>();
   const clsOf = (t: string) => {
     if (!t) return null;
-    if (!clsCache.has(t)) { const c = classify(t, "", "PL").cls; clsCache.set(t, c && EXPENSE_CLASSES.has(c) ? c : null); }
+    if (!clsCache.has(t)) {
+      // A bill on a stock account (inventory, stock interim) buys goods for stock: kept with its balance-sheet class, never a
+      // cost (the P&L reading would call every name a running cost).
+      const b = classify(t, "", "BS").cls;
+      const c = b && isStockAccount(b, t) ? b : classify(t, "", "PL").cls;
+      clsCache.set(t, c && (EXPENSE_CLASSES.has(c) || isStockAccount(c, t)) ? c : null);
+    }
     return clsCache.get(t)!;
   };
   for (let i = r + 1; i < rows.length; i++) {

@@ -38,7 +38,7 @@ export function useExpensesAnalysis() {
     const end = fromPL ? sel.end : sel.end && lineMonths.includes(sel.end) ? sel.end : lineMonths[lineMonths.length - 1];
     if (!end) return null;
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang });
+    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang, fromLines: !fromPL });
   }, [data, names, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang]);
 }
 
