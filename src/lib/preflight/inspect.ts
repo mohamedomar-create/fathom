@@ -1,7 +1,7 @@
 // Inspects a workbook for one import before anything is imported: sheets, heading row, layout, values and columns.
 // Pure and synchronous (runs in the upload worker for large files, and on the server). Never changes the grids.
 import type { Grid } from "@/lib/ingest/extract";
-import { arRx, cleanNum, detectDateOrder, normAr, parsePeriod, type Cell, type DateOrder } from "@/lib/ingest/parse";
+import { arRx, cleanNum, detectDateOrder, normAr, parsePeriod, type Cell, type DateOrder, TOTAL_LABEL } from "@/lib/ingest/parse";
 import { guessRole, ROLE_LABEL, type SheetRole } from "@/lib/ingest/roles";
 import { readAged } from "@/lib/ingest/aged";
 import { paymentsHeadingGap, readPayments } from "@/lib/ingest/payments";
@@ -16,7 +16,7 @@ const WIZARD_ROLES = new Set<SheetRole>(["statement", "sales", "bills", "cashboo
 const STOCK_ROLES = new Set<SheetRole>(["stock_valuation", "stock_moves", "stock_onhand", "products"]);
 const STOCK_KEY_OF: Partial<Record<SheetRole, (typeof STOCK_KEYS)[number]>> = { stock_valuation: "stock.valuation.layer", stock_moves: "stock.move.line", stock_onhand: "product.product", products: "product.template" };
 
-export const TOTAL_ROW = arRx(/^(total|grand total|sum|subtotal|sub total|الإجمالي|الاجمالي|المجموع|إجمالي|اجمالي)\b/i);
+export const TOTAL_ROW = TOTAL_LABEL;
 export const ERROR_TEXT = /^#(REF!|DIV\/0!|VALUE!|N\/A|NAME\?|NUM!|NULL!|ERROR!|SPILL!|CALC!)/i;
 export const CURRENCY_HEAD = arRx(/^(currency|curr\.?|العمله|عمله)$/i);
 const COPY_NAME = /copy|نسخه|نسخة|\(\d+\)\s*$/i;

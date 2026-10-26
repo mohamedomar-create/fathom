@@ -1,5 +1,5 @@
 import type { ClassKey } from "@/lib/engine";
-import { arRx, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder } from "./parse";
+import { arRx, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
 import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, colLetter, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
 import { sumTerms, termText, type Term } from "./formula";
@@ -101,7 +101,7 @@ const IN_BANNER = arRx(/^(cash ?in|money ?in|in|income|incomings?|receipts?|rece
 const IN_HDR = arRx(/^(store|shop|customer|client|buyer|sales|revenue|receipts?|received from|from|العميل|المحل|المشتري|المبيعات|من)$/i);
 const OUT_HDR = arRx(/(cost|expense|supplier|vendor|paid to|payment|salar|wage|rent|personnel|personel|staff|utilit|transport|marketing|packag|production|مصروف|مورد|تكلفة|رواتب|مرتبات|إيجار|ايجار)/i);
 const LEDGER_HDR = arRx(/^(debit|credit|balance|dr|cr|مدين|دائن|الرصيد)$/i);
-const TOTAL_ROW = arRx(/^(total|grand total|sub ?total|sum|totals|الإجمالي|الاجمالي|المجموع|إجمالي|اجمالي)\b/i);
+const TOTAL_ROW = TOTAL_LABEL;
 
 const isNum = (v: Cell) => typeof v === "number" && Number.isFinite(v);
 /** Text that is only a number ("1,200", "(350)", "EGP 2,500"): words with a digit in them ("Q1 expenses") are not. */

@@ -1,4 +1,4 @@
-import { arRx, arToLatin, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
+import { arRx, arToLatin, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
 import { headerPeriod, str, type Grid, type LedgerEntry } from "./extract";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { checkSalesTemplate, templateMarkOf } from "./template";
@@ -92,7 +92,7 @@ export const salesFieldOf = (h: string): SalesField | null => {
   const t = normAr(h.replace(/\s*\*\s*$/, "").replace(/\s*\((excl\.?|excluding|before|without) (vat|tax)\)\s*$/i, "").replace(/\s+/g, " ").trim());
   return FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
 };
-const TOTAL_ROW = arRx(/^(total|grand total|sum|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i);
+const TOTAL_ROW = TOTAL_LABEL;
 const MEASURE = arRx(/^(untaxed total|untaxed amount|total untaxed|price subtotal|subtotal|quantity|qty|margin|المبلغ قبل الضريبة|الصافي|الكمية)$/i);
 const ACCOUNT_HDR = arRx(/^(code|account|account code|account name|الحساب|اسم الحساب|كود الحساب|رقم الحساب)$/i);
 /** Headings that make a list a purchases / vendor bills file (the expenses reader), never sales. */

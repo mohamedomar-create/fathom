@@ -1,4 +1,4 @@
-import { arToLatin, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder } from "@/lib/ingest/parse";
+import { arToLatin, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, TOTAL_LABEL as TOTAL, type Cell, type DateOrder } from "@/lib/ingest/parse";
 import type { Grid } from "@/lib/ingest/extract";
 import { PAID_ON_RX, PAID_RX, parsePaid } from "@/lib/ingest/simple-cols";
 
@@ -113,7 +113,6 @@ const IN_WORD = list("in", "money in", "cash in", "sale", "sales", "income", "re
 const OUT_WORD = list("out", "money out", "cash out", "expense", "expenses", "cost", "payment", "purchase", "spent", "withdrawal", "مصروف", "مصروفات", "صرف", "منصرف", "خارج", "صادر", "شراء", "مشتريات", "دفع");
 const SALES_SHEET = list("sales", "sale", "income", "revenue", "revenues", "takings", "money in", "receipts", "مبيعات", "ايرادات", "ايراد", "وارد", "دخل");
 const EXPENSE_SHEET = list("expense", "expenses", "costs", "spending", "money out", "purchases", "مصروفات", "مصاريف", "منصرف", "صادر", "مشتريات");
-const TOTAL = /^(total|grand total|totals|sum|subtotal|sub total|sub-total|الإجمالي|الاجمالي|المجموع|إجمالي|اجمالي|المجموع الفرعي)\b/i;
 
 /** The key a heading is remembered by (case, spaces, a trailing "*" and Arabic spellings ignored). */
 export const cashHeadingKey = (h: string) => normAr(h.replace(/\s*\*\s*$/, "").replace(/\s+/g, " ").trim()).toLowerCase();

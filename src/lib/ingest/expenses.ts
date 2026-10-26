@@ -1,5 +1,5 @@
 import type { ClassKey } from "@/lib/engine";
-import { arRx, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder } from "./parse";
+import { arRx, cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
 import { str, type Grid, type LedgerEntry } from "./extract";
 import { applyFixes, badAmount, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { checkExpenseTemplate, templateMarkOf } from "./template";
@@ -135,7 +135,7 @@ export const expenseFieldOf = (h: string): ExpenseField | null => {
   const f = FIELD_RX.find(([, rx]) => rx.test(t))?.[0] ?? null;
   return f === "total" && excl ? "untaxed" : f;
 };
-const TOTAL_ROW = arRx(/^(total|grand total|sum|الإجمالي|الاجمالي|المجموع|إجمالي)\b/i);
+const TOTAL_ROW = TOTAL_LABEL;
 /** A General Ledger or Trial Balance has debit / credit columns: the accounting reader's, not a purchases list. */
 const LEDGER_HDR = arRx(/^(debit|credit|balance|مدين|دائن|الرصيد)$/i);
 

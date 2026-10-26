@@ -21,6 +21,11 @@ export const normAr = (s: string) =>
     .replace(/ؤ/g, "و").replace(/ئ/g, "ي").replace(/ک/g, "ك").replace(/ی/g, "ي");
 /** A regular expression whose Arabic is spelled the way normAr spells text, so both sides compare alike. */
 export const arRx = (rx: RegExp) => new RegExp(normAr(rx.source), rx.flags);
+/**
+ * A total or subtotal row's label, in English or Arabic, tested on normAr text. It ends at a space, a colon, a dash or
+ * the end, never with \b: \b does not match after an Arabic letter, so "الإجمالي" was never seen as a total.
+ */
+export const TOTAL_LABEL = arRx(/^(grand total|totals?|sum|sub[ -]?totals?|الإجمالي العام|الإجمالي الكلي|الإجمالي|الاجمالي|إجمالي|اجمالي|المجموع الفرعي|المجموع|مجموع)(?=\s|$|[:\-–.])/i);
 
 export type Cell = string | number | boolean | Date | null | undefined;
 
