@@ -41,7 +41,7 @@
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "5.4.624",
     "puppeteer-core": "25.13.0",
-    "react": "^19.3.0",
+    "react": "^19.3.1",
     "react-dom": "^19.3.0",
     "server-only": "^0.0.1",
     "tus-js-client": "4.3.1",
