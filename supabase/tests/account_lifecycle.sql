@@ -39,24 +39,24 @@ begin;
 select pg_temp.check('member can leave', pg_temp.as_user(format('select public.leave_organisation(%L)', oa), pg_temp.uid('b@x.test')), 'OK') from ids;
 select pg_temp.check('member keeps own organisation', (select count(*)::text from public.memberships where user_id = pg_temp.uid('b@x.test')), '1');
 rollback;
-select pg_temp.check('last admin cannot leave', pg_temp.as_user(format('select public.leave_organisation(%L)', oa), pg_temp.uid('a@x.test')), 'an organisation needs at least one admin') from ids;
+select pg_temp.check('last admin cannot leave', pg_temp.as_user(format('select public.leave_organisation(%L)', oa), pg_temp.uid('a@x.test')), 'Hand the organisation to another admin first.') from ids;
 select pg_temp.check('only member cannot leave', pg_temp.as_user(format('select public.leave_organisation(%L)', oc), pg_temp.uid('c@x.test')), 'You are the only member. Delete the organisation instead.') from ids;
 select pg_temp.check('outsider cannot leave', pg_temp.as_user(format('select public.leave_organisation(%L)', oc), pg_temp.uid('a@x.test')), 'You are not a member of this organisation.') from ids;
 
 -- delete_organisation
-select pg_temp.check('editor cannot delete organisation', pg_temp.as_user(format('select public.delete_organisation(%L, %L)', oa, oa_name), pg_temp.uid('b@x.test')), 'Only admins can delete this organisation.') from ids;
+select pg_temp.check('editor cannot delete organisation', pg_temp.as_user(format('select public.delete_organisation(%L, %L)', oa, oa_name), pg_temp.uid('b@x.test')), 'Only the owner can delete this organisation.') from ids;
 select pg_temp.check('wrong name refused', pg_temp.as_user(format('select public.delete_organisation(%L, %L)', oa, 'nope'), pg_temp.uid('a@x.test')), 'The name you typed does not match the organisation name.') from ids;
 begin;
-select pg_temp.check('admin deletes organisation', pg_temp.as_user(format('select public.delete_organisation(%L, %L)', oa, oa_name), pg_temp.uid('a@x.test')), 'OK') from ids;
-select pg_temp.check('organisation gone', (select count(*)::text from public.organizations where id = (select oa from ids)), '0');
-select pg_temp.check('its companies gone', (select count(*)::text from public.companies where name = 'Alpha Co'), '0');
-select pg_temp.check('admin gets a new home organisation', (select count(*)::text from public.memberships where user_id = pg_temp.uid('a@x.test') and role = 'admin'), '1');
-select pg_temp.check('other member keeps own organisation', (select count(*)::text from public.memberships where user_id = pg_temp.uid('b@x.test')), '1');
+select pg_temp.check('the owner deletes organisation', pg_temp.as_user(format('select public.delete_organisation(%L, %L)', oa, oa_name), pg_temp.uid('a@x.test')), 'OK') from ids;
+select pg_temp.check('organisation gone (kept 14 days to bring back)', (select count(*)::text from public.organizations where id = (select oa from ids) and deleted_at is null), '0');
+select pg_temp.check('its companies go with it', (select count(*)::text from public.companies c join public.organizations g on g.id = c.org_id where c.name = 'Alpha Co' and g.deleted_at is null), '0');
+select pg_temp.check('admin gets a new home organisation', (select count(*)::text from public.memberships m join public.organizations g on g.id = m.org_id where m.user_id = pg_temp.uid('a@x.test') and m.role = 'admin' and g.deleted_at is null), '1');
+select pg_temp.check('other member keeps own organisation', (select count(*)::text from public.memberships m join public.organizations g on g.id = m.org_id where m.user_id = pg_temp.uid('b@x.test') and g.deleted_at is null), '1');
 rollback;
 
 -- delete_my_account
 select pg_temp.check('wrong email refused', pg_temp.as_user('select public.delete_my_account(''z@x.test'')', pg_temp.uid('a@x.test')), 'The email you typed does not match your account.');
-select pg_temp.check('last admin of shared organisation refused', pg_temp.as_user('select public.delete_my_account(''A@X.test'')', pg_temp.uid('a@x.test')), 'Make someone else an admin of Alice''s organisation first, or delete it.');
+select pg_temp.check('last admin of shared organisation refused', pg_temp.as_user('select public.delete_my_account(''A@X.test'')', pg_temp.uid('a@x.test')), 'Hand Alice''s organisation to another admin first, or delete it.');
 begin;
 select pg_temp.check('sole member deletes account', pg_temp.as_user('select public.delete_my_account('' C@x.test '')', pg_temp.uid('c@x.test')), 'OK');
 select pg_temp.check('user gone', (select count(*)::text from auth.users where email = 'c@x.test'), '0');
@@ -65,7 +65,9 @@ select pg_temp.check('its companies gone', (select count(*)::text from public.co
 rollback;
 begin;
 update public.memberships set role = 'admin' where org_id = (select oa from ids) and user_id = pg_temp.uid('b@x.test');
-select pg_temp.check('deletes account after handing over admin', pg_temp.as_user('select public.delete_my_account(''a@x.test'')', pg_temp.uid('a@x.test')), 'OK');
+select pg_temp.check('the owner of a shared organisation hands it over first, even with another admin', pg_temp.as_user('select public.delete_my_account(''a@x.test'')', pg_temp.uid('a@x.test')), 'Hand Alice''s organisation to another admin first, or delete it.');
+update public.organizations set owner_id = pg_temp.uid('b@x.test') where id = (select oa from ids);
+select pg_temp.check('deletes account after handing the organisation over', pg_temp.as_user('select public.delete_my_account(''a@x.test'')', pg_temp.uid('a@x.test')), 'OK');
 select pg_temp.check('shared organisation stays', (select count(*)::text from public.organizations where id = (select oa from ids)), '1');
 select pg_temp.check('its companies stay', (select count(*)::text from public.companies where name = 'Alpha Co'), '1');
 rollback;
