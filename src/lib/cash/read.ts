@@ -109,6 +109,9 @@ function classify(heading: string): { field: CashField | null; dc?: "debit" | "c
   return { field: null };
 }
 
+/** What a heading means for money: "in" (money in, sales, Debit), "out" (money out, costs, Credit), "amount", or another field. Shared with the full upload's cash-book reader. */
+export const headingField = (heading: string): CashField | null => classify(heading).field;
+
 const IN_WORD = list("in", "money in", "cash in", "sale", "sales", "income", "receipt", "received", "revenue", "deposit", "collection", "دخل", "وارد", "داخل", "بيع", "مبيعات", "ايراد", "ايرادات", "مقبوض", "تحصيل");
 const OUT_WORD = list("out", "money out", "cash out", "expense", "expenses", "cost", "payment", "purchase", "spent", "withdrawal", "مصروف", "مصروفات", "صرف", "منصرف", "خارج", "صادر", "شراء", "مشتريات", "دفع");
 const SALES_SHEET = list("sales", "sale", "income", "revenue", "revenues", "takings", "money in", "receipts", "مبيعات", "ايرادات", "ايراد", "وارد", "دخل");

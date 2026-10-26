@@ -1,4 +1,5 @@
 import type { ClassKey } from "@/lib/engine";
+import { headingField } from "@/lib/cash/read";
 import { arRx, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
 import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, colLetter, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
@@ -167,7 +168,7 @@ export function cashBookShape(rows: Cell[][], formulas: Record<string, string> =
       let c1 = (cuts[i + 1] ?? width) - 1;
       while (c1 > c0 && empty(c1)) c1--;
       const b = shapeBlock(rows, h, c0, c1, rowTotals, formulas, banners.filter((x) => x.col >= c0 && x.col <= c1).map((x) => x.dir)[0]);
-      if (b) blocks.push(b);
+      if (b) blocks.push(...splitInOut(b, rows[h] ?? []));
     });
     if (!blocks.length) continue;
     // A sheet with only money-in lists is a sales list, read by the sales reader; a cash book has money going out.
@@ -209,6 +210,19 @@ function shapeBlock(rows: Cell[][], h: number, c0: number, c1: number, rowTotals
   const product = cols.find((c) => c !== label && PRODUCT_HDR.test(head(hr[c]))) ?? null;
   const channel = cols.find((c) => c !== label && CHANNEL_HDR.test(head(hr[c]))) ?? null;
   return { dir, c0, c1, label, date, amounts: inAmount ? [inAmount] : amounts, vat, product, channel };
+}
+
+/**
+ * A block with a money-in column and money-out columns ("Date | Details | Money in | Money out", "وارد | منصرف"): the same
+ * rows read twice, the money-in column as sales and the rest as costs, as the cash book reads them.
+ */
+function splitInOut(b: CashBlock, hr: Cell[]): CashBlock[] {
+  const kind = (c: number) => headingField(str(hr[c]));
+  const ins = b.amounts.filter((a) => kind(a.col) === "in");
+  const outs = b.amounts.filter((a) => kind(a.col) !== "in");
+  if (!ins.length) return [b];
+  if (!outs.length) return [{ ...b, dir: "in", amounts: [ins[0]] }];
+  return [{ ...b, dir: "in", amounts: [ins[0]], vat: null }, { ...b, dir: "out", amounts: outs }];
 }
 
 interface Section { month: number | null; year: number | null; sales: boolean; heading: string; sub: string; firstDate: string | null }
@@ -408,6 +422,12 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   });
   for (const s of ov.skipRows ?? []) if (s >= 0 && s < g.rows.length) trace[s] = { role: "skipped", note: "left out by you" };
   for (const c of controls) if (!c.ok && !c.derived) trace[c.row] = { role: "error", note: "your total does not match the entries" };
+  // A column headed like money in ("Money in", "وارد") with nothing read as money in: the layout was misread, never all good.
+  if (!sales.length && !ov.salesOff) {
+    const hr = rows[headerRow] ?? [];
+    const inCol = hr.findIndex((v, c) => typeof v === "string" && headingField(v) === "in" && !blocks.some((b) => b.dir === "in" && b.amounts.some((a) => a.col === c)) && blocks.some((b) => c >= b.c0 && c <= b.c1));
+    if (inCol >= 0) errors.push({ row: headerRow, col: inCol, text: shown(hr[inCol]), message: `"${shown(hr[inCol])}" reads like money in, but nothing in it was read as money in. Check the column holds the amounts received, or choose what each column holds.` });
+  }
   const cellErrors: CellError[] = errors.map((e) => ({ sheet, row: e.row, col: e.col, text: e.text, message: `${cellRef(e.row, e.col, origin)}: ${e.message}` }));
   const salesOn = !ov.salesOff;
   const sum = (ls: { amount: number }[]) => round2(ls.reduce((a, l) => a + l.amount, 0));
