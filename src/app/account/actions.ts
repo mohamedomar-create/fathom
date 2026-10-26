@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { requireRecentSignIn } from "@/lib/auth/require-recent";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { dbError } from "@/lib/action-error";
@@ -39,6 +40,7 @@ export async function deleteAccount(typedEmail: string): Promise<Result> {
   if (!v.success) return { ok: false, error: "Type your email address to confirm." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: SIGN_IN_AGAIN };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   const { error } = await supabase.rpc("delete_my_account", { p_email: v.data });
   if (error) return { ok: false, error: dbError(error, "deleteAccount") };
   console.info(JSON.stringify({ level: "info", event: "account_deleted", user: user.id }));

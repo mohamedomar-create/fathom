@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
-import { createCompany, fixture, importFiles, newEmail, requireLocalStack, signUp, startUpload } from "./helpers";
+import { createCompany, fixture, importFiles, newEmail, PASSWORD, requireLocalStack, signUp, startUpload } from "./helpers";
 import { bookOf, cashBookCells, priceListCells, quarterCells, summaryCells, yearSummaryCells } from "../fixtures/messy";
 
 requireLocalStack();
@@ -58,7 +58,8 @@ test("company settings, mapping, organisation and report download all work", asy
   await page.goto(`/company/${id}/settings/profile`);
   await page.getByRole("button", { name: "Delete this company" }).click();
   const dialog = page.getByTestId("delete-company-dialog");
-  await dialog.getByRole("textbox").fill("Path Co Renamed");
+  await dialog.getByTestId("confirm-input").fill("Path Co Renamed");
+  await dialog.getByTestId("reauth-password").fill(PASSWORD);
   await dialog.getByRole("button", { name: "Delete company" }).click();
   await expect(page).toHaveURL(/\/companies/);
   await expect(page.getByText("Path Co Renamed")).toHaveCount(0);

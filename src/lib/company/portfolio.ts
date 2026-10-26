@@ -4,6 +4,7 @@ import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts } from "./build";
 import { loadAccounts, settingsFromRow } from "./load";
+import type { PendingInvite } from "@/app/companies/pending-invites";
 
 export interface PortfolioItem {
   company: CompanyRow;
@@ -12,13 +13,13 @@ export interface PortfolioItem {
   analysis: Analysis | null;
 }
 
-export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: { id: string; name: string; role: string }[]; email: string }> {
+export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: { id: string; name: string; role: string }[]; email: string; invites: PendingInvite[] }> {
   const { supabase, user } = await getUser();
-  if (!user) return { items: [], orgs: [], email: "" };
-  await supabase.rpc("accept_pending_invites"); // invites sent after this user signed up
-  const [{ data: mems }, { data: companies }] = await Promise.all([
+  if (!user) return { items: [], orgs: [], email: "", invites: [] };
+  const [{ data: mems }, { data: companies }, { data: invites }] = await Promise.all([
     supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id),
     supabase.from("companies").select("*").order("name"),
+    supabase.rpc("my_invites"),
   ]);
   const orgs = (mems ?? []).map((m) => ({ id: m.org_id, role: m.role, name: (m.organizations as unknown as { name: string } | null)?.name ?? "Organisation" }));
   const orgName = new Map(orgs.map((o) => [o.id, o.name]));
@@ -30,5 +31,5 @@ export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: {
     try { analysis = last ? analyze(months, { type: "month", end: last }, settings, { alerts }) : null; } catch { analysis = null; }
     return { company: c, orgName: orgName.get(c.org_id) ?? "", months, analysis };
   }));
-  return { items, orgs, email: user.email ?? "" };
+  return { items, orgs, email: user.email ?? "", invites: Array.isArray(invites) ? (invites as unknown as PendingInvite[]) : [] };
 }

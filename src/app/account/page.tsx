@@ -4,6 +4,7 @@ import { AppBar } from "@/components/shell/app-bar";
 import { getUser } from "@/lib/supabase/server";
 import { getDict } from "@/lib/i18n/server";
 import { DeleteAccount, LeaveOrg, NameForm, PasswordForm, type OrgInfo } from "./account-forms";
+import { MfaSetup } from "./mfa-setup";
 
 export async function generateMetadata() { return { title: (await getDict()).account.title }; }
 
@@ -26,7 +27,8 @@ export default async function AccountPage() {
       otherAdmins: rows.filter((r) => r.role === "admin" && r.user_id !== user.id).length,
     };
   });
-  const d = (await getDict()).account;
+  const dict = await getDict();
+  const d = dict.account;
   const email = user.email ?? "";
   const section = "rounded-lg border border-line bg-white p-5";
 
@@ -48,6 +50,11 @@ export default async function AccountPage() {
         <section className={section}>
           <h2 className="mb-4 text-lg font-light">{d.password}</h2>
           <PasswordForm />
+        </section>
+
+        <section className={section} id="security">
+          <h2 className="mb-4 text-lg font-light">{dict.access.mfaTitle}</h2>
+          <MfaSetup />
         </section>
 
         <section className={section}>

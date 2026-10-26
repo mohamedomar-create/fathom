@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { requireRecentSignIn } from "@/lib/auth/require-recent";
 import { z } from "zod";
 import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
@@ -46,7 +47,9 @@ export async function invite(orgId: string, email: string, role: "admin" | "edit
   const { data: me } = await supabase.from("memberships").select("role").eq("org_id", v.data.orgId).eq("user_id", user.id).maybeSingle();
   if (me?.role !== "admin") return { ok: false, error: "Only admins can invite people." };
   if (await limited(supabase, "invite", v.data.orgId)) return { ok: false, error: TOO_MANY };
-  const { error } = await supabase.from("invites").upsert({ org_id: v.data.orgId, email: v.data.email, role: v.data.role, invited_by: user.id, accepted_at: null }, { onConflict: "org_id,email" });
+  // A new invitation, or the same one sent again: open for another 14 days, waiting for an answer.
+  const expires = new Date(Date.now() + 14 * 86_400_000).toISOString();
+  const { error } = await supabase.from("invites").upsert({ org_id: v.data.orgId, email: v.data.email, role: v.data.role, invited_by: user.id, accepted_at: null, declined_at: null, expires_at: expires }, { onConflict: "org_id,email" });
   if (error) return { ok: false, error: dbError(error, "invite") };
   revalidatePath("/admin/people");
   return { ok: true };
@@ -77,6 +80,7 @@ export async function removeMember(orgId: string, userId: string): Promise<Resul
   if (!v.success) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   if (await wouldLeaveNoAdmin(supabase, v.data.orgId, v.data.userId)) return { ok: false, error: "An organisation needs at least one admin. Make someone else an admin first." };
   const { error, count } = await supabase.from("memberships").delete({ count: "exact" }).eq("org_id", v.data.orgId).eq("user_id", v.data.userId);
   if (error) return { ok: false, error: dbError(error, "removeMember") };
@@ -102,8 +106,57 @@ export async function deleteOrganisation(orgId: string, typedName: string): Prom
   if (!v.success) return { ok: false, error: "Type the organisation name to confirm." };
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   const { error } = await supabase.rpc("delete_organisation", { p_org: v.data.orgId, p_name: v.data.typedName });
   if (error) return { ok: false, error: dbError(error, "deleteOrganisation") };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** The owner hands the organisation to another admin (the owner alone deletes it and picks the next owner). */
+export async function transferOwnership(orgId: string, userId: string): Promise<Result> {
+  const v = z.object({ orgId: Uuid, userId: Uuid }).safeParse({ orgId, userId });
+  if (!v.success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
+  const { error } = await supabase.rpc("transfer_ownership", { p_org: v.data.orgId, p_user: v.data.userId });
+  // Its own refusals ("Make them an admin first.") are already plain words.
+  if (error) return { ok: false, error: !error.hint && (error.code === "22023" || error.code === "42501") ? error.message : dbError(error, "transferOwnership") };
+  revalidatePath("/admin", "layout");
+  return { ok: true };
+}
+
+/** The owner removes a member's two-step sign-in (a lost phone); they set it up again at their next sign-in. */
+export async function resetMemberMfa(orgId: string, userId: string): Promise<Result> {
+  const v = z.object({ orgId: Uuid, userId: Uuid }).safeParse({ orgId, userId });
+  if (!v.success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
+  const { error } = await supabase.rpc("reset_member_mfa", { p_org: v.data.orgId, p_user: v.data.userId });
+  if (error) return { ok: false, error: dbError(error, "resetMemberMfa") };
+  return { ok: true };
+}
+
+/** Brings back a company deleted in the last 14 days (admins of its organisation). */
+export async function restoreCompany(companyId: string): Promise<Result> {
+  if (!Uuid.safeParse(companyId).success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { error } = await supabase.rpc("restore_company", { p_company: companyId });
+  if (error) return { ok: false, error: dbError(error, "restoreCompany") };
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
+/** Brings back an organisation deleted in the last 14 days (its owner). */
+export async function restoreOrganisation(orgId: string): Promise<Result> {
+  if (!Uuid.safeParse(orgId).success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { error } = await supabase.rpc("restore_organisation", { p_org: orgId });
+  if (error) return { ok: false, error: dbError(error, "restoreOrganisation") };
   revalidatePath("/", "layout");
   return { ok: true };
 }

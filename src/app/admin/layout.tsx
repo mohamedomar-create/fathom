@@ -3,12 +3,14 @@ import { redirect } from "next/navigation";
 import { AppBar } from "@/components/shell/app-bar";
 import { getUser } from "@/lib/supabase/server";
 import { getDict } from "@/lib/i18n/server";
+import { MfaBanner } from "@/components/auth/mfa-banner";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
   const { data: m } = await supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
-  const d = (await getDict()).account;
+  const dict = await getDict();
+  const d = dict.account;
   // Someone who runs no organisation (an invited editor or viewer) is told why, not bounced or shown an error.
   if (!m) return (
     <>
@@ -27,8 +29,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <Link href="/companies" className="text-sm text-mute hover:text-ink">{d.myCompanies}</Link>
           <Link href="/admin/organisation" className="rounded px-3 py-2 text-sm hover:bg-band">{d.orgProfile}</Link>
           <Link href="/admin/people" className="rounded px-3 py-2 text-sm hover:bg-band">{d.people}</Link>
+          <Link href="/admin/audit" className="rounded px-3 py-2 text-sm hover:bg-band">{dict.access.auditTitle}</Link>
         </nav>
-        <div className="min-w-0 flex-1">{children}</div>
+        <div className="min-w-0 flex-1"><MfaBanner />{children}</div>
       </div>
     </>
   );

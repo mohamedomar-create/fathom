@@ -17,7 +17,9 @@ export async function GET(request: NextRequest) {
   if (code) ok = !(await supabase.auth.exchangeCodeForSession(code)).error;
   else if (tokenHash && type && OTP_TYPES.has(type)) ok = !(await supabase.auth.verifyOtp({ type, token_hash: tokenHash })).error;
   if (ok) {
-    await supabase.rpc("accept_pending_invites");
+    // An email link signs in with one step: people with two-step sign-in still type their code.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal?.nextLevel === "aal2" && aal.currentLevel !== "aal2") return NextResponse.redirect(new URL(`/login?mfa=1&next=${encodeURIComponent(next)}`, url.origin));
     return NextResponse.redirect(new URL(next, url.origin));
   }
   // The email may already be confirmed (e.g. link opened in another browser): let the user sign in.

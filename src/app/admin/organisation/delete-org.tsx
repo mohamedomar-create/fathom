@@ -11,7 +11,7 @@ export function DeleteOrg({ orgId, name, companies, members }: { orgId: string; 
     <section className="mt-10 rounded-md border border-red/30 p-4">
       <h3 className="font-medium text-red">{d.danger}</h3>
       <p className="mb-3 text-sm text-mute">{d.dangerHelp}</p>
-      <ConfirmDialog title={d.deleteOrgTitle} confirmLabel={d.deleteOrg} typeToConfirm={name} typeLabel={d.typeOrg} testId="delete-org-dialog"
+      <ConfirmDialog reauth title={d.deleteOrgTitle} confirmLabel={d.deleteOrg} typeToConfirm={name} typeLabel={d.typeOrg} testId="delete-org-dialog"
         onConfirm={async () => {
           const r = await deleteOrganisation(orgId, name);
           if (!r.ok) return r.error ?? d.couldNotDeleteOrg;

@@ -86,7 +86,7 @@ export const cash = area(
     settingsTitle: "Settings", name: "Business name", currency: "Currency", opening: "Opening cash", openingText: "Cash in hand and in the bank on the day below; cash today starts from it.", onDay: "On this day",
     saveSettings: "Save", savedOk: "Saved.", fullTitle: "Need more?", fullText: "Switch to the full system, for companies with an accounting system. Sales, expenses and stock purchases are copied across; the owner's money, loans, transfers and equipment are not sales or costs, so they are left out. Months that already have lines from another file keep them, so nothing is counted twice. Everything stays here too.",
     toFull: "Switch to the full system", toFullConfirm: "Switch this company to the full system?", clearTitle: "Remove every entry", clearText: "Every entry and upload of this cash book is removed. This cannot be undone.", clear: "Remove everything",
-    deleteTitle: "Delete this business", deleteText: "The business and all its entries are deleted for good.", del: "Delete",
+    deleteTitle: "Delete this business", deleteText: "The business and all its entries are deleted. An admin can bring it back for 14 days (Organisation, Recently deleted); after that it is gone for good.", del: "Delete",
     toCashTitle: "Only money in and money out?", toCashText: "Move this company to the small-business cash book: one sheet of money in and out, no ledger or trial balance. Uploaded sales and expense lines are copied in only while the cash book is empty; a cash book that already has entries is kept as it is. Nothing is deleted.", toCash: "Move to the cash book",
   },
   {
@@ -170,7 +170,7 @@ export const cash = area(
     settingsTitle: "الإعدادات", name: "اسم النشاط", currency: "العملة", opening: "النقدية الافتتاحية", openingText: "النقدية في اليد وفي البنك في اليوم أدناه؛ ومنها تبدأ النقدية اليوم.", onDay: "في هذا اليوم",
     saveSettings: "حفظ", savedOk: "تم الحفظ.", fullTitle: "تحتاج المزيد؟", fullText: "انتقل إلى النظام الكامل، للشركات التي لديها نظام محاسبي. تُنسخ المبيعات والمصروفات ومشتريات البضاعة؛ أما أموال المالك والقروض والتحويلات والمعدات فليست مبيعات أو تكاليف فتُستبعد. والأشهر التي لها سطور من ملف آخر تحتفظ بها، فلا يُحسب شيء مرتين. ويبقى كل شيء هنا أيضًا.",
     toFull: "الانتقال إلى النظام الكامل", toFullConfirm: "نقل هذه الشركة إلى النظام الكامل؟", clearTitle: "حذف كل الحركات", clearText: "تُحذف كل حركات وملفات دفتر النقدية. لا يمكن التراجع.", clear: "حذف الكل",
-    deleteTitle: "حذف هذا النشاط", deleteText: "يُحذف النشاط وكل حركاته نهائيًا.", del: "حذف",
+    deleteTitle: "حذف هذا النشاط", deleteText: "يُحذف النشاط وكل حركاته. يستطيع المسؤول استعادته خلال 14 يومًا (المؤسسة، المحذوفات الأخيرة)؛ بعد ذلك يُحذف نهائيًا.", del: "حذف",
     toCashTitle: "داخل وخارج فقط؟", toCashText: "انقل هذه الشركة إلى دفتر النقدية للمشروعات الصغيرة: ورقة واحدة للداخل والخارج، دون دفتر أستاذ أو ميزان مراجعة. تُنسخ سطور المبيعات والمصروفات المرفوعة فقط إذا كان دفتر النقدية فارغًا؛ والدفتر الذي فيه حركات يبقى كما هو. لا يُحذف شيء.", toCash: "الانتقال إلى دفتر النقدية",
   },
 );

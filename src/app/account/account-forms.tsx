@@ -83,7 +83,7 @@ export function DeleteAccount({ email, orgs }: { email: string; orgs: OrgInfo[] 
           {d.deleteBlocked(blocking.map((o) => o.name).join(", "))}
         </p>
       )}
-      <ConfirmDialog title={d.deleteTitle} confirmLabel={d.deleteMine} typeToConfirm={email} typeLabel={d.typeEmail} testId="delete-account-dialog"
+      <ConfirmDialog reauth title={d.deleteTitle} confirmLabel={d.deleteMine} typeToConfirm={email} typeLabel={d.typeEmail} testId="delete-account-dialog"
         onConfirm={async (typed) => { const r = await deleteAccount(typed); if (!r.ok) return r.error ?? d.couldNotDelete; }}
         trigger={<button disabled={blocking.length > 0} className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg disabled:opacity-50" data-testid="delete-account">{d.deleteMine}</button>}>
         <p>{d.deleteBody} <strong className="break-all">{email}</strong>.</p>

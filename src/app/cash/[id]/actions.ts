@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { requireRecentSignIn } from "@/lib/auth/require-recent";
 import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
@@ -163,6 +164,7 @@ export async function clearCashBook(companyId: string): Promise<Result> {
   if (!Id.safeParse(companyId).success) return { ok: false, error: "That business isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   const { error } = await supabase.rpc("cash_entries_clear", { p_company: companyId });
   if (error) return { ok: false, error: said(error, "clearCashBook") };
   refresh(companyId);

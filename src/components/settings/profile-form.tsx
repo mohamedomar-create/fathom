@@ -86,10 +86,10 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
         <section className="rounded-md border border-red/30 p-4">
           <h3 className="font-medium text-red">Danger zone</h3>
           <p className="mb-3 text-sm text-mute">Deleting a company removes its data, reports and Odoo connection permanently.</p>
-          <ConfirmDialog title="Delete this company?" confirmLabel="Delete company" typeToConfirm={initial.name} typeLabel="Type the company name" onConfirm={del} testId="delete-company-dialog"
+          <ConfirmDialog reauth title="Delete this company?" confirmLabel="Delete company" typeToConfirm={initial.name} typeLabel="Type the company name" onConfirm={del} testId="delete-company-dialog"
             trigger={<button className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg">Delete this company</button>}>
-            <p>This permanently removes <strong>{initial.name}</strong>: all its financial data and history, commentary, reports and shared report links, and its Odoo connection.</p>
-            <p className="text-mute">Download the data first if you may need it. This cannot be undone.</p>
+            <p>This deletes <strong>{initial.name}</strong>: all its financial data and history, commentary, reports and shared report links, and its Odoo connection.</p>
+            <p className="text-mute">It is hidden at once and can be brought back for 14 days from Organisation, Recently deleted. After that it is removed for good. The original uploaded files are removed now.</p>
           </ConfirmDialog>
         </section>
       )}

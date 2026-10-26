@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
-import { createCompany, fixture, newEmail, requireLocalStack, signUp, startUpload } from "./helpers";
+import { createCompany, fixture, newEmail, PASSWORD, requireLocalStack, signUp, startUpload } from "./helpers";
 
 requireLocalStack();
 const sql = (q: string) => execFileSync("psql", [process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres", "-tAq", "-c", q]).toString().trim();
@@ -96,8 +96,10 @@ test("clearing one module shows what goes, then leaves the company ready; deleti
   const del = page.getByTestId("delete-company-dialog");
   await expect(del.getByTestId("confirm-button")).toBeDisabled();
   await del.getByTestId("confirm-input").fill("Reset Co");
+  await del.getByTestId("reauth-password").fill(PASSWORD);
   await del.getByTestId("confirm-button").click();
   await page.waitForURL(/\/companies/);
-  expect(sql(`select count(*) from public.companies where id = '${id}'`)).toBe("0");
+  // Hidden at once, kept 14 days to bring back.
+  expect(sql(`select count(*) from public.companies where id = '${id}' and deleted_at is null`)).toBe("0");
   expect(sql(`select string_agg(action, ',' order by id) from public.company_data_audit where company_id = '${id}'`)).toBe("clear_module,delete_company");
 });

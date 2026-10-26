@@ -9,13 +9,13 @@ type Table<Row, Required extends keyof Row> = {
   Relationships: [];
 };
 
-export type OrganizationRow = { id: string; name: string; logo_url: string | null; brand_colour: string | null; disclaimer: string; report_footer: string | null; created_by: string | null; created_at: string }
+export type OrganizationRow = { id: string; name: string; logo_url: string | null; brand_colour: string | null; disclaimer: string; report_footer: string | null; created_by: string | null; created_at: string; owner_id: string | null; deleted_at: string | null }
 export type MembershipRow = { org_id: string; user_id: string; role: MemberRole; created_at: string }
-export type ProfileRow = { id: string; email: string; full_name: string | null; created_at: string }
-export type InviteRow = { id: string; org_id: string; email: string; role: MemberRole; invited_by: string | null; created_at: string; accepted_at: string | null }
+export type ProfileRow = { id: string; email: string; full_name: string | null; created_at: string; mfa_required_from: string }
+export type InviteRow = { id: string; org_id: string; email: string; role: MemberRole; invited_by: string | null; created_at: string; accepted_at: string | null; expires_at: string; declined_at: string | null }
 export type CompanyRow = {
   id: string; org_id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; source: string; industry: string | null;
-  ai_context: Json; kpi_config: Json; notes: Json; data_version: number; last_synced_at: string | null; created_by: string | null; created_at: string; updated_at: string;
+  ai_context: Json; kpi_config: Json; notes: Json; data_version: number; last_synced_at: string | null; created_by: string | null; created_at: string; updated_at: string; deleted_at: string | null;
 }
 export type SourceAccountRow = {
   id: string; company_id: string; version: number; code: string; name: string; statement: "PL" | "BS"; class: string; odoo_id: number | null; odoo_type: string | null;
@@ -55,6 +55,7 @@ export type EndUserMapRow = { company_id: string; kind: "alias" | "order" | "age
 export type InputProfileRow = { company_id: string; kind: string; headings: string[]; read: string[]; ignored: string[]; sheet: string; history: Json; updated_by: string | null; updated_at: string }
 export type ImportTemplateRow = { company_id: string; export_key: string; mapping: Json; updated_by: string | null; updated_at: string }
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
+export type OrgAuditRow = { id: number; org_id: string; actor: string | null; action: string; target: string; target_user: string | null; detail: Json; at: string }
 export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
 
 export type Database = {
@@ -64,6 +65,7 @@ export type Database = {
       memberships: Table<MembershipRow, "org_id" | "user_id">;
       profiles: Table<ProfileRow, "id" | "email">;
       invites: Table<InviteRow, "org_id" | "email">;
+      org_audit: Table<OrgAuditRow, "org_id" | "action">;
       companies: Table<CompanyRow, "org_id" | "name">;
       source_accounts: Table<SourceAccountRow, "company_id" | "name" | "statement" | "class">;
       account_balances: Table<AccountBalanceRow, "account_id" | "company_id" | "period" | "amount">;
@@ -97,6 +99,14 @@ export type Database = {
     Views: { [_ in never]: never };
     Functions: {
       accept_pending_invites: { Args: Record<string, never>; Returns: number };
+      my_invites: { Args: Record<string, never>; Returns: Json };
+      accept_invite: { Args: { p_id: string }; Returns: string };
+      decline_invite: { Args: { p_id: string }; Returns: undefined };
+      transfer_ownership: { Args: { p_org: string; p_user: string }; Returns: undefined };
+      reset_member_mfa: { Args: { p_org: string; p_user: string }; Returns: undefined };
+      deleted_items: { Args: Record<string, never>; Returns: Json };
+      restore_company: { Args: { p_company: string }; Returns: undefined };
+      restore_organisation: { Args: { p_org: string }; Returns: undefined };
       get_published_report: { Args: { p_token: string }; Returns: Json };
       reclassify_accounts: { Args: { p_company: string; p_changes: Json }; Returns: number };
       restamp_expense_classes: { Args: { p_company: string }; Returns: number };

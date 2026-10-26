@@ -29,8 +29,10 @@ test("F2: an invited editor who runs no organisation gets an explanation on the 
 
   const page = await (await browser.newContext()).newPage();
   await signUp(page, { name: "Eddie Two", org: "Eddie Org", email: editor });
-  // Joining by invitation leaves this person an editor only, admin of nothing.
-  sql(`delete from public.memberships where user_id=(select id from auth.users where email='${editor}') and role='admin'`);
+  await page.getByTestId("invite-accept").click();
+  await expect(page.getByTestId("pending-invite")).toHaveCount(0);
+  // An editor of F2 Advisory only: their own organisation is deleted, so they run none.
+  sql(`update public.organizations set deleted_at = now() where owner_id=(select id from auth.users where email='${editor}')`);
   for (const u of ["/admin/people", "/admin/organisation"]) {
     const res = await page.goto(u);
     expect(res?.status(), u).toBe(200);

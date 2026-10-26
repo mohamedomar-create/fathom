@@ -13,6 +13,7 @@ import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
 import { state } from "./areas/state";
+import { access } from "./areas/access";
 
 /** The app's words in Arabic (Egyptian business usage, Modern Standard wording). */
 export const ar: Dict = {
@@ -121,6 +122,7 @@ export const ar: Dict = {
   cash: cash.ar,
   bank: bank.ar,
   state: state.ar,
+  access: access.ar,
   rp: rp.ar,
   plan: plan.ar,
 };

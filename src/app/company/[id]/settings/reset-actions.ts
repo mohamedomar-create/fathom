@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { requireRecentSignIn } from "@/lib/auth/require-recent";
 import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
@@ -42,6 +43,7 @@ export async function clearData(companyId: string, scope: string, shown: number)
   if (!Id.safeParse(companyId).success || !s.success || !Number.isInteger(shown) || shown < 0) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  if (s.data === "all") { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   // The role first, so a viewer's attempt neither runs nor uses up the editors' reset allowance (the database checks it too).
   const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
   const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
@@ -65,6 +67,7 @@ export async function deleteCompanyFully(companyId: string, name: string): Promi
   if (!Id.safeParse(companyId).success || typeof name !== "string" || name.length > 160) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   const before = await previewReset(companyId);
   if (!before.ok) return before;
   if (before.preview.company !== name) return { ok: false, error: "The name typed does not match the company." };

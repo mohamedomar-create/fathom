@@ -80,14 +80,14 @@ export function CashSettings() {
         <div>
           <h2 className="text-lg font-normal">{t.clearTitle}</h2>
           <p className="mb-2 text-sm text-mute">{t.clearText}</p>
-          <ConfirmDialog title={t.clearTitle} confirmLabel={t.clear} typeToConfirm={company.name} testId="cash-clear-dialog"
+          <ConfirmDialog reauth title={t.clearTitle} confirmLabel={t.clear} typeToConfirm={company.name} testId="cash-clear-dialog"
             trigger={<button type="button" className="rounded border border-red px-4 py-2 text-sm text-red" data-testid="cash-clear">{t.clear}</button>}
             onConfirm={async () => { const r = await clearCashBook(company.id); if (!r.ok) return r.error; router.refresh(); }}><p>{t.clearText}</p></ConfirmDialog>
         </div>
         <div>
           <h2 className="text-lg font-normal">{t.deleteTitle}</h2>
           <p className="mb-2 text-sm text-mute">{t.deleteText}</p>
-          <ConfirmDialog title={t.deleteTitle} confirmLabel={t.del} typeToConfirm={company.name} testId="cash-delete-dialog"
+          <ConfirmDialog reauth title={t.deleteTitle} confirmLabel={t.del} typeToConfirm={company.name} testId="cash-delete-dialog"
             trigger={<button type="button" className="rounded bg-red px-4 py-2 text-sm text-white" data-testid="cash-delete">{t.del}</button>}
             onConfirm={async () => { const r = await deleteCompany(company.id); if (!r.ok) return r.error ?? "Could not delete"; router.push("/companies"); }}><p>{t.deleteText}</p></ConfirmDialog>
         </div>

@@ -6,6 +6,8 @@ import { loadPortfolio } from "@/lib/company/portfolio";
 import { AppBar } from "@/components/shell/app-bar";
 import { Sparkline } from "@/components/charts/spark";
 import { AddCompany } from "./add-company";
+import { PendingInvites } from "./pending-invites";
+import { MfaBanner } from "@/components/auth/mfa-banner";
 import { getDict, getLang } from "@/lib/i18n/server";
 import { periodLabel, type Dict } from "@/lib/i18n";
 
@@ -20,7 +22,7 @@ function ago(iso: string | null, t: Dict["home"]) {
 }
 
 export default async function CompaniesPage() {
-  const { items, orgs, email } = await loadPortfolio();
+  const { items, orgs, email, invites } = await loadPortfolio();
   const org = orgs[0];
   const dict = await getDict();
   const t = dict.home;
@@ -30,6 +32,8 @@ export default async function CompaniesPage() {
     <>
       <AppBar email={email} orgName={org?.name} isAdmin={orgs.some((o) => o.role === "admin")} active="companies" />
       <main className="mx-auto max-w-6xl px-4 pb-20 pt-8 sm:px-8">
+        <MfaBanner />
+        <PendingInvites invites={invites} />
         <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
           <div>
             <div className="label">{org?.name ?? t.yourOrg}</div>

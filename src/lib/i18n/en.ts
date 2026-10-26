@@ -13,6 +13,7 @@ import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
 import { state } from "./areas/state";
+import { access } from "./areas/access";
 /**
  * The app's words in English. The Arabic dictionary must have every key (TypeScript checks it), so nothing is ever
  * left untranslated. Counts are worded so one phrase fits any number ("Checks failing: 3"), which Arabic needs.
@@ -124,6 +125,7 @@ export const en = {
   cash: cash.en,
   bank: bank.en,
   state: state.en,
+  access: access.en,
   rp: rp.en,
   plan: plan.en,
 };

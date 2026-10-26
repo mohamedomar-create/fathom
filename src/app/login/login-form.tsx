@@ -7,6 +7,7 @@ import { APP_TAGLINE } from "@/lib/brand";
 import { Logo } from "@/components/shell/logo";
 import { LangSwitch } from "@/components/shell/lang-switch";
 import { createClient } from "@/lib/supabase/client";
+import { needsCode, verifyCode } from "@/lib/auth/mfa";
 import { cn } from "@/lib/cn";
 import { MIN_PASSWORD, passwordHint, passwordProblem } from "@/lib/password";
 import { useDict, useLang } from "@/lib/i18n/context";
@@ -36,7 +37,11 @@ export function LoginForm() {
   const [name, setName] = useState("");
   const [org, setOrg] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(sp.get("error") ? { tone: "bad", text: d.badLink } : null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(
+    sp.get("error") ? { tone: "bad", text: d.badLink } : sp.get("reason") === "idle" ? { tone: "ok", text: d.idleOut } : null);
+  // After the password (or an email link), people with two-step sign-in type their code.
+  const [step, setStep] = useState<"form" | "code">(sp.get("mfa") === "1" ? "code" : "form");
+  const [code, setCode] = useState("");
 
   const supabase = createClient();
   const redirectTo = typeof window !== "undefined" ? `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}` : undefined;
@@ -48,6 +53,7 @@ export function LoginForm() {
       if (mode === "signin") {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+        if (await needsCode(supabase)) { setStep("code"); return; }
         router.replace(next);
         router.refresh();
       } else {
@@ -63,6 +69,16 @@ export function LoginForm() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitCode(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setMsg(null);
+    const problem = await verifyCode(supabase, code);
+    setBusy(false);
+    if (problem) { setMsg({ tone: "bad", text: d.codeWrong }); return; }
+    router.replace(next);
+    router.refresh();
   }
 
   async function magic() {
@@ -93,6 +109,15 @@ export function LoginForm() {
       </div>
       <div className="relative flex items-center justify-center p-6">
         <LangSwitch className="absolute end-4 top-4 text-sm text-mute hover:bg-band" />
+        {step === "code" ? (
+          <form onSubmit={submitCode} className="w-full max-w-sm" data-testid="mfa-form">
+            <h1 className="mb-2 text-2xl font-light">{d.codeTitle}</h1>
+            <p className="mb-5 text-sm text-mute">{d.codeText}</p>
+            <Field label={d.code} value={code} onChange={setCode} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" required autoFocus data-testid="mfa-code" />
+            {msg && <p className="mb-3 rounded bg-red-bg px-3 py-2 text-sm text-red" role="status">{msg.text}</p>}
+            <button disabled={busy} className="w-full rounded bg-brand-d px-4 py-2.5 font-medium text-white hover:brightness-110 disabled:opacity-60">{busy ? d.wait : d.verify}</button>
+          </form>
+        ) : (
         <form onSubmit={submit} className="w-full max-w-sm" data-testid="login-form">
           <Link href="/" className="mb-8 block text-lg lg:hidden"><Logo /></Link>
           <h1 className="mb-5 text-2xl font-light">{mode === "signin" ? d.titleSignin : d.titleSignup}</h1>
@@ -132,6 +157,7 @@ export function LoginForm() {
             {d.justLooking} <Link href="/demo/summary" className="text-brand-d underline">{d.openDemo}</Link>
           </p>
         </form>
+        )}
       </div>
     </div>
   );

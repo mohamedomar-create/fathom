@@ -28,6 +28,7 @@ describe("safe errors", () => {
   it("passes through our own messages and readable SQL exceptions", async () => {
     expect(safeError(new Error("Enter the API key."), "t")).toBe("Enter the API key.");
     expect(dbError({ code: "P0001", message: "an organisation needs at least one admin" }, "t")).toBe("An organisation needs at least one admin.");
+    expect(dbError({ code: "42501", message: "x", hint: "mfa_required" }, "t")).toBe("Turn on two-step sign-in (Account, Security) to do this.");
     // A time-out or a lock wait says "busy" (the chunk engine splits and retries on it), never a generic error.
     const { isBusy } = await import("@/lib/chunks");
     for (const code of ["57014", "55P03"]) expect(isBusy(new Error(dbError({ code, message: "canceling statement due to statement timeout" }, "t")))).toBe(true);

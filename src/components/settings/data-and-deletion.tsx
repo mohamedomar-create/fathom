@@ -74,7 +74,7 @@ export function DataAndDeletion({ companyId, name, role, preview }: { companyId:
       </ul>
       {isAdmin && preview.total > 0 && (
         <div className="mt-4 border-t border-line pt-3">
-          <ConfirmDialog title="Clear all imported data?" confirmLabel="Clear all data" typeToConfirm="CLEAR" onConfirm={clear("all", "All imported data")} testId="clear-all-dialog"
+          <ConfirmDialog reauth title="Clear all imported data?" confirmLabel="Clear all data" typeToConfirm="CLEAR" onConfirm={clear("all", "All imported data")} testId="clear-all-dialog"
             trigger={<button className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg">Clear all imported data</button>}>
             <p>This permanently removes <strong>{n(preview.total)}</strong> records from <strong>{name}</strong>{files ? ` and ${files} stored source file${files === 1 ? "" : "s"}` : ""}:</p>
             <ul className="list-disc ps-5">{preview.modules.filter((m) => m.records).map((m) => <li key={m.key}>{m.label}: {n(m.records)}</li>)}</ul>
@@ -84,10 +84,10 @@ export function DataAndDeletion({ companyId, name, role, preview }: { companyId:
       )}
       {isAdmin && (
         <div className="mt-4 border-t border-line pt-3">
-          <ConfirmDialog title="Delete this company?" confirmLabel="Delete company" typeToConfirm={name} typeLabel="Type the company name" onConfirm={del} testId="delete-company-dialog"
+          <ConfirmDialog reauth title="Delete this company?" confirmLabel="Delete company" typeToConfirm={name} typeLabel="Type the company name" onConfirm={del} testId="delete-company-dialog"
             trigger={<button className="rounded border border-red px-4 py-2 text-sm text-red hover:bg-red-bg">Delete this company</button>}>
-            <p>This permanently removes <strong>{name}</strong>: {n(preview.total)} imported records{files ? `, ${files} stored source file${files === 1 ? "" : "s"}` : ""}, its history, commentary, reports and shared report links, and its Odoo connection.</p>
-            <p className="text-mute">Download the data first if you may need it. A record that the company was deleted (who, when, the counts) is kept for your organisation. This cannot be undone.</p>
+            <p>This deletes <strong>{name}</strong>: {n(preview.total)} imported records{files ? `, ${files} stored source file${files === 1 ? "" : "s"}` : ""}, its history, commentary, reports and shared report links, and its Odoo connection.</p>
+            <p className="text-mute">It is hidden at once and can be brought back for 14 days from Organisation, Recently deleted. After that it is removed for good. The original uploaded files are removed now. A record of the deletion (who, when, the counts) is kept.</p>
           </ConfirmDialog>
         </div>
       )}

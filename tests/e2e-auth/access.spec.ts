@@ -34,6 +34,10 @@ test("an invited viewer sees the company read-only, the last admin cannot delete
 
   const viewer = await (await browser.newContext()).newPage();
   await signUp(viewer, { name: "Vera Viewer", org: "Vera's Firm", email: viewerEmail });
+  // Signing up never joins by itself: the invitation waits on the Companies page (0039).
+  await expect(viewer.getByText("Shared Trading")).toHaveCount(0);
+  await expect(viewer.getByTestId("pending-invite")).toContainText("Owner Advisory");
+  await viewer.getByTestId("invite-accept").click();
   await expect(viewer.getByText("Shared Trading")).toBeVisible();
   await viewer.goto(`/company/${id}/banking`);
   await expect(viewer.getByTestId("tile-dscr")).toBeVisible();
@@ -78,6 +82,8 @@ test("a user deletes their account and can no longer sign in", async ({ page }) 
   const dialog = page.getByTestId("delete-account-dialog");
   await expect(dialog.getByTestId("confirm-button")).toBeDisabled();
   await dialog.getByTestId("confirm-input").fill(email.toUpperCase());
+  await expect(dialog.getByTestId("confirm-button")).toBeDisabled();
+  await dialog.getByTestId("reauth-password").fill(PASSWORD);
   await dialog.getByTestId("confirm-button").click();
   await expect(page).toHaveURL(/\?account=deleted/);
   await expect(page.getByTestId("account-deleted")).toBeVisible();
