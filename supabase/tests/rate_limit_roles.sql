@@ -2,8 +2,9 @@
 -- organisation's, so a viewer cannot use them up. Run by scripts/test-db.sh.
 \set ON_ERROR_STOP on
 \set QUIET on
--- odoo_security.sql re-applies 0025 (an older rate_limit_hit), so this file applies 0034 again first.
+-- odoo_security.sql re-applies 0025 (an older rate_limit_hit), so this file applies 0034 again first, then 0038's grants.
 \i supabase/migrations/0034_rate_limit_roles.sql
+\i supabase/migrations/0038_tenant_guards.sql
 
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
   ('rla@x.test', '{"full_name":"Ann"}', now()), ('rle@x.test', '{"full_name":"Ed"}', now()), ('rlv@x.test', '{"full_name":"Vi"}', now());

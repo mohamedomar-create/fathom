@@ -76,3 +76,11 @@ export function normaliseSections(raw: unknown): ReportSection[] {
   });
   return out;
 }
+
+/**
+ * The months a report is drawn from. A shared report that shows only its cover is sent no figures (migration 0038), so
+ * it gets one empty month for its period: enough to label the cover, nothing to show.
+ */
+export function reportMonths(months: MonthData[], end: string): MonthData[] {
+  return months.length ? months : [{ period: end, pl: {}, bs: {}, has: { pl: false, bs: false } }];
+}

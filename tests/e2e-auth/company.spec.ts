@@ -80,6 +80,24 @@ test("a new user signs up, imports Odoo data and works with their own numbers", 
   await expect(page.getByRole("button", { name: "Publish report" })).toBeVisible();
   const gone = await visitor.goto(url);
   expect(gone?.status()).toBe(404);
+  // The same report cut down to its cover and shared again carries no ledger: no accounts, no customers, a small page (H01).
+  const hide = page.getByRole("button", { name: /^Hide (?!Cover page$)/ });
+  while (await hide.count()) await hide.first().click();
+  await expect(page.getByRole("button", { name: "Hide Cover page" })).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(page.getByText("Report saved.")).toBeVisible();
+  await page.getByRole("button", { name: "Publish report" }).click();
+  await expect(link).toBeVisible();
+  const coverUrl = await link.inputValue();
+  const cover = await visitor.request.get(coverUrl);
+  expect(cover.status()).toBe(200);
+  const coverHtml = await cover.text();
+  expect(coverHtml.length).toBeLessThan(200_000);
+  expect(coverHtml).not.toContain('"amounts"');
+  expect(coverHtml).not.toContain("Customer");
+  await visitor.goto(coverUrl);
+  await expect(visitor.locator('[data-section="cover"]')).toContainText("Nile Medical");
+  await expect(visitor.locator("[data-section]")).toHaveCount(1);
   await anon.close();
 
   // Sign out, then back in.
