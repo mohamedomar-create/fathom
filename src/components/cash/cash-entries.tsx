@@ -10,13 +10,17 @@ import { PageHeader } from "@/components/shell/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/cn";
+import { useLang } from "@/lib/i18n/context";
+import { detectKind, KIND_LABEL, kindsFor, type Kind } from "@/lib/cash/kinds";
 
-type Draft = { day: string; direction: "in" | "out"; amount: string; category: string; party: string; note: string; paid: "" | "yes" | "no"; paidOn: string };
-const blank = (): Draft => ({ day: "", direction: "in", amount: "", category: "", party: "", note: "", paid: "", paidOn: "" });
-const draftOf = (e: StoredEntry): Draft => ({ day: e.day, direction: e.direction, amount: String(e.amount), category: e.category, party: e.party, note: e.note, paid: e.paid === true ? "yes" : e.paid === false ? "no" : "", paidOn: e.paidOn ?? "" });
+type Draft = { day: string; direction: "in" | "out"; amount: string; category: string; party: string; note: string; paid: "" | "yes" | "no"; paidOn: string; kind: "" | Kind };
+const blank = (): Draft => ({ day: "", direction: "in", amount: "", category: "", party: "", note: "", paid: "", paidOn: "", kind: "" });
+const draftOf = (e: StoredEntry): Draft => ({ day: e.day, direction: e.direction, amount: String(e.amount), category: e.category, party: e.party, note: e.note, paid: e.paid === true ? "yes" : e.paid === false ? "no" : "", paidOn: e.paidOn ?? "", kind: e.kind });
 const inputOf = (d: Draft): EntryInput => ({
   day: d.day, direction: d.direction, amount: typedAmount(d.amount) ?? 0, category: d.category, party: d.party, note: d.note,
   paid: d.paid === "yes" ? true : d.paid === "no" ? false : null, paidOn: d.paid === "yes" ? d.paidOn || null : null,
+  // A kind that does not fit the direction (changed after picking it) is worked out again from the words.
+  kind: d.kind && kindsFor(d.direction).includes(d.kind) ? d.kind : detectKind(d.direction, [d.category, d.note, d.party].join(" ")),
 });
 const SHOW = 300;
 
@@ -26,6 +30,7 @@ export function CashEntries() {
   const T = useT();
   const t = T.d.cash;
   const router = useRouter();
+  const lang = useLang();
   const months = useMemo(() => [...new Set(entries.map((e) => e.day.slice(0, 7)))].sort().reverse(), [entries]);
   const [month, setMonth] = useState("");
   const [page, setPage] = useState(0);
@@ -49,6 +54,8 @@ export function CashEntries() {
     <>
       <td className="px-1.5 py-1.5"><input type="date" className={fieldCls} value={d.day} onChange={(e) => set({ ...d, day: e.target.value })} data-testid={`${p}-day`} /></td>
       <td className="px-1.5 py-1.5"><select className={fieldCls} value={d.direction} onChange={(e) => set({ ...d, direction: e.target.value as "in" | "out" })} data-testid={`${p}-direction`}><option value="in">{t.inWord}</option><option value="out">{t.outWord}</option></select></td>
+      <td className="px-1.5 py-1.5"><select className={fieldCls} value={d.kind && kindsFor(d.direction).includes(d.kind) ? d.kind : ""} onChange={(e) => set({ ...d, kind: e.target.value as Draft["kind"] })} data-testid={`${p}-kind`}>
+        <option value="">{t.kindAuto}</option>{kindsFor(d.direction).map((k) => <option key={k} value={k}>{KIND_LABEL[k][lang]}</option>)}</select></td>
       <td className="px-1.5 py-1.5"><input inputMode="decimal" className={fieldCls} value={d.amount} onChange={(e) => set({ ...d, amount: e.target.value })} data-testid={`${p}-amount`} /></td>
       <td className="px-1.5 py-1.5"><input className={fieldCls} value={d.category} onChange={(e) => set({ ...d, category: e.target.value })} data-testid={`${p}-category`} /></td>
       <td className="px-1.5 py-1.5"><input className={fieldCls} value={d.party} onChange={(e) => set({ ...d, party: e.target.value })} data-testid={`${p}-party`} /></td>
@@ -80,7 +87,7 @@ export function CashEntries() {
       {error && <p role="alert" className="mb-3 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="entries-error">{error}</p>}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>
+          <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.kind, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>
           <tbody>
             {!company.readOnly && <tr className="border-b border-line bg-band/50" data-testid="entries-add-row">
               {fields(adding, setAdding, "add")}
@@ -98,6 +105,7 @@ export function CashEntries() {
               <tr key={e.id} className="border-b border-line/60" data-testid="entries-row">
                 <td className="px-1.5 py-1.5">{e.day}</td>
                 <td className={cn("px-1.5 py-1.5", e.direction === "in" ? "text-green-d" : "text-red")}>{e.direction === "in" ? t.inWord : t.outWord}</td>
+                <td className="px-1.5 py-1.5" data-testid="entries-kind">{KIND_LABEL[e.kind][lang]}{e.edited && <span className="ms-1.5 rounded bg-band px-1 text-[11px] text-mute" data-testid="entries-edited">{t.edited}</span>}</td>
                 <td className="num px-1.5 py-1.5 text-end">{money(e.amount, cur)}</td>
                 <td className="px-1.5 py-1.5">{e.category || "–"}</td>
                 <td className="px-1.5 py-1.5">{e.party || "–"}</td>

@@ -8,6 +8,7 @@ import { cashAdvice, unreadRows, type Advice } from "@/lib/cash/advice";
 import type { Grid } from "@/lib/ingest/extract";
 import { useCash } from "@/lib/cash/context";
 import type { CashUpload as Upload } from "@/lib/cash/load";
+import { detectKind } from "@/lib/cash/kinds";
 import { rememberColumns, uploadBegin, uploadFinish, uploadPart, uploadRemove } from "@/app/cash/[id]/actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -69,7 +70,7 @@ export function CashUpload({ uploads }: { uploads: Upload[] }) {
     saving.current = true;
     setError(null); setBusy(t.saving(0, keptEntries.length));
     try {
-      const list = keptEntries.map((e) => ({ day: e.day, direction: e.direction, amount: e.amount, category: e.category, party: e.party, note: e.note, paid: e.paid, paidOn: e.paidOn }));
+      const list = keptEntries.map((e) => ({ day: e.day, direction: e.direction, amount: e.amount, category: e.category, party: e.party, note: e.note, paid: e.paid, paidOn: e.paidOn, kind: detectKind(e.direction, [e.category, e.note, e.party].join(" ")) }));
       const skipped = kept.reduce((n, s) => n + s.skipped.length, 0);
       const begin = await uploadBegin(company.id, names.join(" + ").slice(0, 300), months, overlap.length ? chosenMode : "add", skipped, directions);
       if (!begin.ok) return setError(begin.error);

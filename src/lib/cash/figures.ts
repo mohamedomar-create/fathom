@@ -1,11 +1,14 @@
 import { money, pct } from "@/lib/engine/format";
 import { monthLabel } from "@/lib/i18n";
+import { detectKind, isTradingKind, type Kind } from "./kinds";
 
 /**
  * The cash book's figures: money in, money out and what is left, month by month. Plain sums and averages only; nothing
  * from the big-company engine (no P&L classes, balance sheet, margins or break-even).
  */
-export interface Entry { day: string; direction: "in" | "out"; amount: number; category: string; party: string; paid: boolean | null; paidOn: string | null }
+export interface Entry { day: string; direction: "in" | "out"; amount: number; category: string; party: string; paid: boolean | null; paidOn: string | null; kind?: Kind | null; note?: string }
+/** The entry's kind: as saved, or what its words suggest. */
+export const kindOf = (e: Entry): Kind => e.kind ?? detectKind(e.direction, [e.category, e.note ?? "", e.party].join(" "));
 export type Need = "opening_cash" | "paid_column" | "names" | "three_months" | "earlier_months" | "two_months" | "money_in";
 export type Fig<T> = { ok: true; value: T } | { ok: false; needs: Need };
 export type Range = "month" | "3m" | "12m" | "all";
@@ -38,7 +41,12 @@ export interface CashFigures {
   months: Month[];
   /** The months the chosen range covers (ending with the latest month that has entries). */
   periods: string[];
+  /** Trading only: sales, collections and other income in; expenses and purchases out. A credit sale counts when paid. */
   total: { in: number; out: number; net: number; netPct: number | null };
+  /** Everything sold in the range, paid or not (a credit sale counts when made). */
+  sold: number;
+  /** Cash that moved but was not earned or spent on running the business: the owner's money, loans, transfers, equipment. */
+  other: { in: number; out: number };
   /** Money in against the same number of months just before (%). */
   change: Fig<number>;
   /** Money in against the same months a year earlier (%). */
@@ -58,7 +66,10 @@ export interface CashFigures {
 }
 
 export function cashFigures(entries: Entry[], o: { opening: { amount: number; asOf: string } | null; today: string; range: Range }): CashFigures {
-  const sorted = [...entries].sort((a, b) => a.day.localeCompare(b.day));
+  const all = [...entries].sort((a, b) => a.day.localeCompare(b.day));
+  // Money in and out, months, averages, best month and the forecast are trading that came in or went out: not the owner's
+  // money, loans, transfers or equipment, and not a credit sale until it is paid.
+  const sorted = all.filter((e) => isTradingKind(kindOf(e)) && e.paid !== false);
   const sum = (l: Entry[], d: "in" | "out") => r2(l.filter((e) => e.direction === d).reduce((s, e) => s + e.amount, 0));
   const first = sorted[0]?.day.slice(0, 7), last = sorted[sorted.length - 1]?.day.slice(0, 7);
   const months: Month[] = first && last ? span(first, last).map((period) => {
@@ -87,10 +98,10 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
   // Best and weakest among complete months that have entries (not the month still running, not empty gaps).
   const ranked = months.filter((m) => m.period < thisMonth && (m.in || m.out)).sort((a, b) => b.net - a.net);
   const named = inRange.filter((e) => e.direction === "in" && e.party.trim());
-  const withPaid = sorted.some((e) => e.paid === true || e.paid === false);
+  const withPaid = all.some((e) => e.paid === true || e.paid === false);
   // Cash moves when an entry is paid: on its payment day, or its own day; an unpaid entry has not moved cash yet.
-  const moves = sorted.filter((e) => e.paid !== false).map((e) => ({ day: e.paid ? e.paidOn ?? e.day : e.day, v: e.direction === "in" ? e.amount : -e.amount }));
-  const counted = (to: string) => (o.opening ? r2(o.opening.amount + moves.filter((m) => m.day > o.opening!.asOf && m.day <= to).reduce((s, m) => s + m.v, 0)) : 0);
+  const moves = all.filter((e) => e.paid !== false).map((e) => ({ day: e.paid ? e.paidOn ?? e.day : e.day, v: e.direction === "in" ? e.amount : -e.amount }));
+  const counted = (to: string) => (o.opening ? r2(o.opening.amount + moves.filter((m) => m.day >= o.opening!.asOf && m.day <= to).reduce((s, m) => s + m.v, 0)) : 0);
   const moveMonths = moves.filter((m) => m.day <= o.today).map((m) => m.day.slice(0, 7)).sort();
   const balances = o.opening && moveMonths.length
     ? span(moveMonths[0] < o.opening.asOf.slice(0, 7) ? o.opening.asOf.slice(0, 7) : moveMonths[0], moveMonths[moveMonths.length - 1]).filter((p) => lastDay(p) >= o.opening!.asOf).map((p) => ({ period: p, balance: counted(lastDay(p) < o.today ? lastDay(p) : o.today) }))
@@ -98,6 +109,11 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
   return {
     today: o.today, months, periods,
     total: { in: tIn, out: tOut, net: r2(tIn - tOut), netPct: tIn ? ((tIn - tOut) / tIn) * 100 : null },
+    sold: r2(all.filter((e) => kindOf(e) === "sale" && periods.includes(e.day.slice(0, 7))).reduce((a, e) => a + e.amount, 0)),
+    other: (() => {
+      const o2 = all.filter((e) => !isTradingKind(kindOf(e)) && e.paid !== false && periods.includes(e.day.slice(0, 7)));
+      return { in: r2(o2.filter((e) => e.direction === "in").reduce((a, e) => a + e.amount, 0)), out: r2(o2.filter((e) => e.direction === "out").reduce((a, e) => a + e.amount, 0)) };
+    })(),
     change: n ? pct2(tIn, inOf(before), "earlier_months") : { ok: false, needs: "two_months" },
     yearChange: n ? pct2(tIn, inOf(lastYear), "earlier_months") : { ok: false, needs: "two_months" },
     avgDay: sellDays ? { ok: true, value: tIn / sellDays } : { ok: false, needs: "money_in" },
@@ -108,9 +124,9 @@ export function cashFigures(entries: Entry[], o: { opening: { amount: number; as
     parties: named.length ? { ok: true, value: byName(named, (e) => e.party, "") } : { ok: false, needs: "names" },
     cash: o.opening ? { ok: true, value: counted(o.today) } : { ok: false, needs: "opening_cash" },
     balances,
-    assumedPaid: sorted.filter((e) => e.paid === null).length,
-    unpaidIn: withPaid ? { ok: true, value: age(sorted.filter((e) => e.direction === "in" && e.paid === false), o.today) } : { ok: false, needs: "paid_column" },
-    unpaidOut: withPaid ? { ok: true, value: age(sorted.filter((e) => e.direction === "out" && e.paid === false), o.today) } : { ok: false, needs: "paid_column" },
+    assumedPaid: all.filter((e) => e.paid === null).length,
+    unpaidIn: withPaid ? { ok: true, value: age(all.filter((e) => e.direction === "in" && e.paid === false), o.today) } : { ok: false, needs: "paid_column" },
+    unpaidOut: withPaid ? { ok: true, value: age(all.filter((e) => e.direction === "out" && e.paid === false), o.today) } : { ok: false, needs: "paid_column" },
   };
 }
 

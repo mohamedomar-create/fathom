@@ -33,10 +33,48 @@ create table if not exists public.cash_entries (
   paid_on date,
   source text not null default 'app' check (source in ('file', 'app', 'copied')),
   created_by uuid default auth.uid(),
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- What the entry is: only trading kinds (sales, collections, other income; expenses, purchases) are the business's money
+  -- in and out. The owner's money, loans, transfers and equipment move cash but are not earned or spent on running it.
+  kind text not null default 'sale',
+  edited_at timestamptz,
+  deleted_at timestamptz
 );
+alter table public.cash_entries add column if not exists kind text not null default 'sale';
+alter table public.cash_entries add column if not exists edited_at timestamptz;
+alter table public.cash_entries add column if not exists deleted_at timestamptz;
+alter table public.cash_entries drop constraint if exists cash_entries_kind;
+alter table public.cash_entries add constraint cash_entries_kind check (
+  (direction = 'in' and kind in ('sale', 'collection', 'other_income', 'capital', 'loan', 'transfer')) or (direction = 'out' and kind in ('expense', 'purchase', 'asset', 'drawings', 'loan_repayment', 'transfer')));
 create index if not exists cash_entries_company_day on public.cash_entries (company_id, day);
 create index if not exists cash_entries_upload on public.cash_entries (upload_id);
+
+-- Every change to an entry, and every clear: what it was, who changed it and when. Nobody writes it directly.
+create table if not exists public.cash_entry_history (
+  id bigserial primary key,
+  company_id uuid not null references public.companies (id) on delete cascade,
+  entry_id bigint,
+  action text not null check (action in ('update', 'delete', 'clear')),
+  old jsonb not null default '{}'::jsonb,
+  actor uuid default auth.uid(),
+  at timestamptz not null default now()
+);
+create index if not exists cash_entry_history_company on public.cash_entry_history (company_id, at desc);
+alter table public.cash_entry_history enable row level security;
+drop policy if exists cash_entry_history_read on public.cash_entry_history;
+create policy cash_entry_history_read on public.cash_entry_history for select to authenticated using (private.is_member(private.company_org(company_id)));
+revoke all on public.cash_entry_history from anon;
+revoke insert, update, delete, truncate on public.cash_entry_history from authenticated;
+grant select on public.cash_entry_history to authenticated;
+
+create or replace function private.cash_entry_changed() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.cash_entry_history (company_id, entry_id, action, old, actor)
+  values (old.company_id, old.id, case when new.deleted_at is not null and old.deleted_at is null then 'delete' else 'update' end, to_jsonb(old), (select auth.uid()));
+  return new;
+end $$;
+drop trigger if exists cash_entry_changed on public.cash_entries;
+create trigger cash_entry_changed after update on public.cash_entries for each row when (old is distinct from new) execute function private.cash_entry_changed();
 
 alter table public.cash_uploads enable row level security;
 alter table public.cash_entries enable row level security;
@@ -54,7 +92,7 @@ begin
   if p_company is null or not private.is_member(private.company_org(p_company), 'editor') then raise exception 'not allowed' using errcode = '42501'; end if;
 end $$;
 
--- An entry from the app or a file, as jsonb: {day, direction, amount, category, party, note, paid, paidOn}.
+-- An entry from the app or a file, as jsonb: {day, direction, amount, category, party, note, paid, paidOn, kind}.
 create or replace function private.cash_row(p_company uuid, p_upload uuid, p_source text, e jsonb) returns public.cash_entries language plpgsql immutable set search_path = '' as $$
 declare r public.cash_entries;
 begin
@@ -65,6 +103,10 @@ begin
   r.day := (e ->> 'day')::date; r.direction := e ->> 'direction'; r.amount := (e ->> 'amount')::numeric;
   r.category := left(coalesce(e ->> 'category', ''), 200); r.party := left(coalesce(e ->> 'party', ''), 200); r.note := left(coalesce(e ->> 'note', ''), 300);
   r.paid := (e ->> 'paid')::boolean; r.paid_on := nullif(e ->> 'paidOn', '')::date;
+  r.kind := coalesce(nullif(e ->> 'kind', ''), case when r.direction = 'in' then 'sale' else 'expense' end);
+  if not ((r.direction = 'in' and r.kind in ('sale', 'collection', 'other_income', 'capital', 'loan', 'transfer')) or (r.direction = 'out' and r.kind in ('expense', 'purchase', 'asset', 'drawings', 'loan_repayment', 'transfer'))) then
+    raise exception 'that kind of entry does not fit money %', r.direction using errcode = '22023';
+  end if;
   return r;
 end $$;
 
@@ -73,9 +115,10 @@ create or replace function public.cash_entries_list(p_company uuid) returns json
 begin
   if not private.is_member(private.company_org(p_company)) then raise exception 'not allowed' using errcode = '42501'; end if;
   return coalesce((select jsonb_agg(jsonb_build_object('id', e.id, 'day', e.day, 'direction', e.direction, 'amount', e.amount, 'category', e.category,
-      'party', e.party, 'note', e.note, 'paid', e.paid, 'paidOn', e.paid_on, 'source', e.source, 'upload', e.upload_id) order by e.day, e.id)
+      'party', e.party, 'note', e.note, 'paid', e.paid, 'paidOn', e.paid_on, 'source', e.source, 'upload', e.upload_id,
+      'kind', e.kind, 'edited', e.edited_at is not null) order by e.day, e.id)
     from public.cash_entries e left join public.cash_uploads u on u.id = e.upload_id
-    where e.company_id = p_company and (e.upload_id is null or u.status = 'done')), '[]'::jsonb);
+    where e.company_id = p_company and e.deleted_at is null and (e.upload_id is null or u.status = 'done')), '[]'::jsonb);
 end $$;
 
 -- An upload in three steps, so a large file is sent in parts and shows only once all of it has arrived.
@@ -106,8 +149,8 @@ begin
   perform private.cash_editor(u.company_id);
   if jsonb_typeof(p_entries) <> 'array' or jsonb_array_length(p_entries) > 5000 then raise exception 'send 1 to 5000 entries' using errcode = '22023'; end if;
   if (select count(*) from public.cash_entries where upload_id = p_upload) + jsonb_array_length(p_entries) > 200000 then raise exception 'an upload holds at most 200,000 entries' using errcode = '22023'; end if;
-  insert into public.cash_entries (company_id, upload_id, day, direction, amount, category, party, note, paid, paid_on, source)
-  select r.company_id, r.upload_id, r.day, r.direction, r.amount, r.category, r.party, r.note, r.paid, r.paid_on, 'file'
+  insert into public.cash_entries (company_id, upload_id, day, direction, amount, category, party, note, paid, paid_on, source, kind)
+  select r.company_id, r.upload_id, r.day, r.direction, r.amount, r.category, r.party, r.note, r.paid, r.paid_on, 'file', r.kind
   from jsonb_array_elements(p_entries) e, lateral private.cash_row(u.company_id, p_upload, 'file', e) r;
   get diagnostics v_count = row_count;
   return v_count;
@@ -152,27 +195,29 @@ declare r public.cash_entries; v_id bigint;
 begin
   perform private.cash_editor(p_company);
   r := private.cash_row(p_company, null, 'app', p_entry);
-  insert into public.cash_entries (company_id, upload_id, day, direction, amount, category, party, note, paid, paid_on, source)
-  values (r.company_id, null, r.day, r.direction, r.amount, r.category, r.party, r.note, r.paid, r.paid_on, 'app') returning id into v_id;
+  insert into public.cash_entries (company_id, upload_id, day, direction, amount, category, party, note, paid, paid_on, source, kind)
+  values (r.company_id, null, r.day, r.direction, r.amount, r.category, r.party, r.note, r.paid, r.paid_on, 'app', r.kind) returning id into v_id;
   return v_id;
 end $$;
 
 create or replace function public.cash_entry_update(p_id bigint, p_entry jsonb) returns void language plpgsql security definer set search_path = '' as $$
 declare v_company uuid; r public.cash_entries;
 begin
-  select company_id into v_company from public.cash_entries where id = p_id;
+  select company_id into v_company from public.cash_entries where id = p_id and deleted_at is null;
   perform private.cash_editor(v_company);
   r := private.cash_row(v_company, null, 'app', p_entry);
+  -- The old row goes to the history (trigger); the entry is marked as edited.
   update public.cash_entries set day = r.day, direction = r.direction, amount = r.amount, category = r.category, party = r.party, note = r.note,
-    paid = r.paid, paid_on = r.paid_on where id = p_id;
+    paid = r.paid, paid_on = r.paid_on, kind = r.kind, edited_at = now() where id = p_id;
 end $$;
 
 create or replace function public.cash_entry_delete(p_id bigint) returns void language plpgsql security definer set search_path = '' as $$
 declare v_company uuid;
 begin
-  select company_id into v_company from public.cash_entries where id = p_id;
+  select company_id into v_company from public.cash_entries where id = p_id and deleted_at is null;
   perform private.cash_editor(v_company);
-  delete from public.cash_entries where id = p_id;
+  -- Kept, marked deleted, and recorded in the history: a deleted receipt can always be traced.
+  update public.cash_entries set deleted_at = now() where id = p_id;
 end $$;
 
 -- Every entry and upload of the company (admins only).
@@ -183,34 +228,70 @@ begin
   delete from public.cash_entries where company_id = p_company;
   get diagnostics v_count = row_count;
   delete from public.cash_uploads where company_id = p_company;
+  insert into public.cash_entry_history (company_id, action, old, actor) values (p_company, 'clear', jsonb_build_object('entries', v_count), (select auth.uid()));
   return v_count;
 end $$;
 
--- Switching to the full system: the entries become sales and expense lines once, for months that have none from a
--- file. The cash book is kept as it is.
-create or replace function public.cash_to_full(p_company uuid) returns jsonb language plpgsql security definer set search_path = '' as $$
-declare v_months text[]; v_sb uuid; v_eb uuid; v_s integer := 0; v_e integer := 0;
+-- Switching to the full system. Only trading entries are copied: sales become sales lines; expenses and stock purchases
+-- become expense lines (purchases as cost of sales). The owner's money, loans, transfers, equipment and drawings are not
+-- revenue or costs: they are left out and listed. A month that already holds lines from another file is skipped and
+-- named; the cash book's own copied months are replaced each time, so later corrections carry over.
+create or replace function private.cash_full_plan(p_company uuid) returns jsonb language sql stable security definer set search_path = '' as $$
+  with live as (select * from public.cash_entries where company_id = p_company and deleted_at is null),
+  own_s as (select id from public.sales_batches where company_id = p_company and (report ->> 'from' = 'cash_book' or filename = 'From the cash book')),
+  own_e as (select id from public.expense_batches where company_id = p_company and (report ->> 'from' = 'cash_book' or filename = 'From the cash book')),
+  sm as (select distinct to_char(day, 'YYYY-MM') p from live where kind = 'sale'),
+  em as (select distinct to_char(day, 'YYYY-MM') p from live where kind in ('expense', 'purchase')),
+  s_skip as (select p from sm where exists (select 1 from public.sales_lines l where l.company_id = p_company and l.source = 'file' and l.period = sm.p and l.batch_id not in (select id from own_s))),
+  e_skip as (select p from em where exists (select 1 from public.expense_lines l where l.company_id = p_company and l.source = 'file' and l.period = em.p and l.batch_id not in (select id from own_e)))
+  select jsonb_build_object(
+    'sales', jsonb_build_object('copy', coalesce((select jsonb_agg(p order by p) from sm where p not in (select p from s_skip)), '[]'::jsonb),
+                                'skip', coalesce((select jsonb_agg(p order by p) from s_skip), '[]'::jsonb)),
+    'expenses', jsonb_build_object('copy', coalesce((select jsonb_agg(p order by p) from em where p not in (select p from e_skip)), '[]'::jsonb),
+                                   'skip', coalesce((select jsonb_agg(p order by p) from e_skip), '[]'::jsonb)),
+    'held', coalesce((select jsonb_agg(jsonb_build_object('kind', kind, 'entries', n, 'amount', a) order by kind) from (
+        select kind, count(*) n, sum(amount) a from live where kind not in ('sale', 'expense', 'purchase') group by kind) h), '[]'::jsonb))
+$$;
+
+create or replace function public.cash_to_full_preview(p_company uuid) returns jsonb language plpgsql stable security definer set search_path = '' as $$
 begin
   perform private.cash_editor(p_company);
-  select array_agg(distinct to_char(day, 'YYYY-MM')) into v_months from public.cash_entries e where e.company_id = p_company and e.direction = 'in'
-    and not exists (select 1 from public.sales_lines s where s.company_id = p_company and s.source = 'file' and s.period = to_char(e.day, 'YYYY-MM'));
-  if v_months is not null then
-    insert into public.sales_batches (company_id, source, filename, periods, created_by) values (p_company, 'file', 'From the cash book', v_months, auth.uid()) returning id into v_sb;
+  return private.cash_full_plan(p_company);
+end $$;
+
+create or replace function public.cash_to_full(p_company uuid) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_plan jsonb; v_months text[]; v_b uuid; v_s integer := 0; v_e integer := 0;
+begin
+  perform private.cash_editor(p_company);
+  v_plan := private.cash_full_plan(p_company);
+  select coalesce(array_agg(x), '{}') into v_months from jsonb_array_elements_text(v_plan -> 'sales' -> 'copy') x;
+  if cardinality(v_months) > 0 then
+    delete from public.sales_lines l using public.sales_batches b where b.id = l.batch_id and l.company_id = p_company and l.period = any (v_months)
+      and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book');
+    delete from public.sales_batches b where b.company_id = p_company and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book')
+      and not exists (select 1 from public.sales_lines l where l.batch_id = b.id);
+    insert into public.sales_batches (company_id, source, filename, periods, report, created_by)
+    values (p_company, 'file', 'From the cash book', v_months, '{"from": "cash_book"}', auth.uid()) returning id into v_b;
     insert into public.sales_lines (company_id, batch_id, source, day, period, doc, series, customer, product, category, salesperson, amount, paid, paid_on)
-    select p_company, v_sb, 'file', e.day, to_char(e.day, 'YYYY-MM'), '', '', e.party, '', e.category, '', e.amount, e.paid, e.paid_on
-    from public.cash_entries e where e.company_id = p_company and e.direction = 'in' and to_char(e.day, 'YYYY-MM') = any (v_months);
+    select p_company, v_b, 'file', e.day, to_char(e.day, 'YYYY-MM'), '', '', e.party, '', e.category, '', e.amount, e.paid, e.paid_on
+    from public.cash_entries e where e.company_id = p_company and e.deleted_at is null and e.kind = 'sale' and to_char(e.day, 'YYYY-MM') = any (v_months);
     get diagnostics v_s = row_count;
   end if;
-  select array_agg(distinct to_char(day, 'YYYY-MM')) into v_months from public.cash_entries e where e.company_id = p_company and e.direction = 'out'
-    and not exists (select 1 from public.expense_lines x where x.company_id = p_company and x.source = 'file' and x.period = to_char(e.day, 'YYYY-MM'));
-  if v_months is not null then
-    insert into public.expense_batches (company_id, source, filename, periods, created_by) values (p_company, 'file', 'From the cash book', v_months, auth.uid()) returning id into v_eb;
-    insert into public.expense_lines (company_id, batch_id, source, day, period, doc, series, supplier, account, category, label, amount, paid, paid_on)
-    select p_company, v_eb, 'file', e.day, to_char(e.day, 'YYYY-MM'), '', '', e.party, e.category, e.category, e.note, e.amount, e.paid, e.paid_on
-    from public.cash_entries e where e.company_id = p_company and e.direction = 'out' and to_char(e.day, 'YYYY-MM') = any (v_months);
+  select coalesce(array_agg(x), '{}') into v_months from jsonb_array_elements_text(v_plan -> 'expenses' -> 'copy') x;
+  if cardinality(v_months) > 0 then
+    delete from public.expense_lines l using public.expense_batches b where b.id = l.batch_id and l.company_id = p_company and l.period = any (v_months)
+      and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book');
+    delete from public.expense_batches b where b.company_id = p_company and (b.report ->> 'from' = 'cash_book' or b.filename = 'From the cash book')
+      and not exists (select 1 from public.expense_lines l where l.batch_id = b.id);
+    insert into public.expense_batches (company_id, source, filename, periods, report, created_by)
+    values (p_company, 'file', 'From the cash book', v_months, '{"from": "cash_book"}', auth.uid()) returning id into v_b;
+    insert into public.expense_lines (company_id, batch_id, source, day, period, doc, series, supplier, account, category, label, amount, paid, paid_on, cls)
+    select p_company, v_b, 'file', e.day, to_char(e.day, 'YYYY-MM'), '', '', e.party, e.category, e.category, e.note, e.amount, e.paid, e.paid_on,
+           case when e.kind = 'purchase' then 'cos_variable' end
+    from public.cash_entries e where e.company_id = p_company and e.deleted_at is null and e.kind in ('expense', 'purchase') and to_char(e.day, 'YYYY-MM') = any (v_months);
     get diagnostics v_e = row_count;
   end if;
-  return jsonb_build_object('sales', v_s, 'expenses', v_e);
+  return jsonb_build_object('sales', v_s, 'expenses', v_e, 'skipped', jsonb_build_object('sales', v_plan -> 'sales' -> 'skip', 'expenses', v_plan -> 'expenses' -> 'skip'), 'held', v_plan -> 'held');
 end $$;
 
 -- Switching a company to the cash book: its uploaded sales and expense lines are copied in once, when the cash book
@@ -218,15 +299,15 @@ end $$;
 create or replace function private.cash_from_lines(p_company uuid) returns integer language plpgsql security definer set search_path = '' as $$
 declare v_count integer := 0; v_n integer;
 begin
-  if exists (select 1 from public.cash_entries where company_id = p_company) then return 0; end if;
+  if exists (select 1 from public.cash_entries where company_id = p_company and deleted_at is null) then return 0; end if;
   insert into public.cash_entries (company_id, day, direction, amount, category, party, paid, paid_on, source)
   select company_id, coalesce(day, (period || '-01')::date + interval '1 month' - interval '1 day'), 'in', amount,
          left(coalesce(nullif(category, ''), nullif(product, ''), ''), 200), case when customer in ('No customer', '') then '' else left(customer, 200) end, paid, paid_on, 'copied'
   from public.sales_lines where company_id = p_company and source = 'file' and amount <> 0;
   get diagnostics v_n = row_count; v_count := v_count + v_n;
-  insert into public.cash_entries (company_id, day, direction, amount, category, party, note, paid, paid_on, source)
+  insert into public.cash_entries (company_id, day, direction, amount, category, party, note, paid, paid_on, source, kind)
   select company_id, coalesce(day, (period || '-01')::date + interval '1 month' - interval '1 day'), 'out', amount,
-         left(coalesce(nullif(category, ''), nullif(account, ''), ''), 200), case when supplier in ('No supplier', '') then '' else left(supplier, 200) end, left(label, 300), paid, paid_on, 'copied'
+         left(coalesce(nullif(category, ''), nullif(account, ''), ''), 200), case when supplier in ('No supplier', '') then '' else left(supplier, 200) end, left(label, 300), paid, paid_on, 'copied', 'expense'
   from public.expense_lines where company_id = p_company and source = 'file' and amount <> 0;
   get diagnostics v_n = row_count;
   return v_count + v_n;
@@ -247,11 +328,11 @@ end $$;
 insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('cash_entry', 'user', 3600, 600)
   on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;
 
-revoke execute on function private.cash_editor(uuid), private.cash_row(uuid, uuid, text, jsonb), private.cash_from_lines(uuid) from public, anon, authenticated;
+revoke execute on function private.cash_editor(uuid), private.cash_row(uuid, uuid, text, jsonb), private.cash_from_lines(uuid), private.cash_full_plan(uuid), private.cash_entry_changed() from public, anon, authenticated;
 do $$ declare f text; begin
   foreach f in array array['public.cash_entries_list(uuid)', 'public.cash_upload_begin(uuid, text, text[], text, integer, text[])', 'public.cash_upload_add(uuid, jsonb)',
     'public.cash_upload_finish(uuid)', 'public.cash_upload_remove(uuid)', 'public.cash_entry_add(uuid, jsonb)', 'public.cash_entry_update(bigint, jsonb)',
-    'public.cash_entry_delete(bigint)', 'public.cash_entries_clear(uuid)', 'public.cash_to_full(uuid)', 'public.cash_from_full(uuid)'] loop
+    'public.cash_entry_delete(bigint)', 'public.cash_entries_clear(uuid)', 'public.cash_to_full(uuid)', 'public.cash_to_full_preview(uuid)', 'public.cash_from_full(uuid)'] loop
     execute format('revoke execute on function %s from public, anon', f);
     execute format('grant execute on function %s to authenticated', f);
   end loop;

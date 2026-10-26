@@ -6,6 +6,7 @@ import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { withCashColumns, withMode, withOpeningCash } from "@/lib/company/mode";
 import type { Json } from "@/lib/supabase/database.types";
+import { ALL_KINDS } from "@/lib/cash/kinds";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const Id = z.string().uuid();
@@ -14,6 +15,7 @@ const Entry = z.object({
   day: Day, direction: z.enum(["in", "out"]), amount: z.number().finite().refine((v) => v !== 0, "An amount is needed."),
   category: z.string().max(200).default(""), party: z.string().max(200).default(""), note: z.string().max(300).default(""),
   paid: z.boolean().nullable().default(null), paidOn: Day.nullable().default(null),
+  kind: z.enum(ALL_KINDS as [string, ...string[]]).nullable().default(null),
 });
 export type EntryInput = z.input<typeof Entry>;
 const FIELDS = ["date", "in", "out", "amount", "qty", "price", "balance", "type", "category", "party", "note", "paid", "paidOn", ""] as const;
@@ -133,7 +135,19 @@ export async function rememberColumns(companyId: string, map: Record<string, str
   return patchProfile(v.data.companyId, (cfg) => withCashColumns(cfg, v.data.map));
 }
 
-/** To the full system: the entries are copied into sales and expense lines once; the cash book is kept. */
+export interface FullPreview { sales: { copy: string[]; skip: string[] }; expenses: { copy: string[]; skip: string[] }; held: { kind: string; entries: number; amount: number }[] }
+
+/** What switching to the full system would copy, skip (months that hold another file's lines) and leave out by kind. */
+export async function previewToFull(companyId: string): Promise<Result<{ preview: FullPreview }>> {
+  if (!Id.safeParse(companyId).success) return { ok: false, error: "That business isn't valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data, error } = await supabase.rpc("cash_to_full_preview", { p_company: companyId });
+  if (error) return { ok: false, error: said(error, "previewToFull") };
+  return { ok: true, preview: data as unknown as FullPreview };
+}
+
+/** To the full system: trading entries become sales and expense lines (refreshed each time); the cash book is kept. */
 export async function switchToFull(companyId: string): Promise<Result> {
   if (!Id.safeParse(companyId).success) return { ok: false, error: "That business isn't valid." };
   const { supabase, user } = await getUser();

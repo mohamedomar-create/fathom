@@ -1,13 +1,37 @@
 "use client";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCash } from "@/lib/cash/context";
-import { clearCashBook, saveCashSettings, switchToFull } from "@/app/cash/[id]/actions";
+import { clearCashBook, previewToFull, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
+import { KIND_LABEL, type Kind } from "@/lib/cash/kinds";
+import { money } from "@/lib/engine/format";
+import { useLang } from "@/lib/i18n/context";
 import { deleteCompany } from "@/app/company/[id]/settings/actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { typedAmount } from "@/lib/cash/input";
 import { useT } from "@/lib/i18n/use-t";
+
+/** What switching would copy, skip and leave out, read when the dialog opens (panel H09, M28). */
+function SwitchPreview({ companyId, currency }: { companyId: string; currency: string }) {
+  const T = useT();
+  const t = T.d.cash;
+  const lang = useLang();
+  const [p, setP] = useState<FullPreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { previewToFull(companyId).then((r) => (r.ok ? setP(r.preview) : setError(r.error))); }, [companyId]);
+  if (error) return <p className="text-sm text-red">{error}</p>;
+  if (!p) return <p className="text-sm text-mute">{t.previewLoading}</p>;
+  const months = (ms: string[]) => (ms.length ? ms.map((m) => T.ml(m)).join(", ") : t.previewNone);
+  const skip = [...new Set([...p.sales.skip, ...p.expenses.skip])].sort();
+  return (
+    <div className="mt-3 space-y-1.5 text-sm" data-testid="cash-to-full-preview">
+      <p>{t.previewCopy(months(p.sales.copy), months(p.expenses.copy))}</p>
+      {skip.length > 0 && <p className="text-[#9a6b00]" data-testid="cash-to-full-skip">{t.previewSkip(months(skip))}</p>}
+      {p.held.length > 0 && <p data-testid="cash-to-full-held">{t.previewHeld(p.held.map((h) => `${KIND_LABEL[h.kind as Kind]?.[lang] ?? h.kind} ${money(Number(h.amount), currency)}`).join(", "))}</p>}
+    </div>
+  );
+}
 
 /** The business's name, currency and opening cash; the way to the full system; clear or delete. */
 export function CashSettings() {
@@ -50,7 +74,7 @@ export function CashSettings() {
         <p className="mb-3 text-sm text-mute">{t.fullText}</p>
         <ConfirmDialog title={t.toFullConfirm} confirmLabel={t.toFull} testId="cash-to-full-dialog"
           trigger={<button type="button" className="rounded border border-brand-d px-4 py-2 text-sm text-brand-d" data-testid="cash-to-full">{t.toFull}</button>}
-          onConfirm={async () => { const r = await switchToFull(company.id); if (!r.ok) return r.error; router.push(`/company/${company.id}`); }}><p>{t.fullText}</p></ConfirmDialog>
+          onConfirm={async () => { const r = await switchToFull(company.id); if (!r.ok) return r.error; router.push(`/company/${company.id}`); }}><p>{t.fullText}</p><SwitchPreview companyId={company.id} currency={company.currency} /></ConfirmDialog>
       </section>}
       {company.role === "admin" && <section className="space-y-4 rounded-md border border-red/40 p-4">
         <div>

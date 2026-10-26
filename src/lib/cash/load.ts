@@ -1,4 +1,5 @@
 import "server-only";
+import { ALL_KINDS, type Kind } from "./kinds";
 import { cache } from "react";
 import { getUser } from "@/lib/supabase/server";
 import { loadCompanyMeta } from "@/lib/company/meta";
@@ -17,7 +18,7 @@ export interface CashCompany {
   /** Remembered column choices, by heading. */
   columns: Record<string, CashField | "">;
 }
-export type StoredEntry = Entry & { id: number; note: string; source: "file" | "app" | "copied"; upload: string | null };
+export type StoredEntry = Entry & { id: number; note: string; source: "file" | "app" | "copied"; upload: string | null; kind: Kind; edited: boolean };
 export type CashUpload = Pick<CashUploadRow, "id" | "filename" | "months" | "mode" | "rows" | "skipped" | "created_at">;
 
 function today(tz: string | null) {
@@ -57,6 +58,7 @@ export const loadCashEntries = cache(async (id: string): Promise<{ ok: true; ent
       category: String(r.category ?? ""), party: String(r.party ?? ""), note: String(r.note ?? ""),
       paid: r.paid === true || r.paid === false ? r.paid : null, paidOn: typeof r.paidOn === "string" ? r.paidOn.slice(0, 10) : null,
       source: (r.source as StoredEntry["source"]) ?? "app", upload: (r.upload as string | null) ?? null,
+      kind: (ALL_KINDS as string[]).includes(String(r.kind)) ? (r.kind as Kind) : r.direction === "out" ? "expense" : "sale", edited: r.edited === true,
     })),
   };
 });

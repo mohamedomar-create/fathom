@@ -126,6 +126,8 @@ export function CashOverview() {
       <div className="mb-8 max-w-4xl" data-testid="cash-summary">
         <h3 className="mb-2 text-lg font-normal">{t.summary}</h3>
         <ul className="ms-5 list-disc space-y-1.5 text-[15.5px] leading-relaxed">{cashSummary(f, cur, T.lang).map((s) => <li key={s}>{s}</li>)}</ul>
+        {f.sold !== f.total.in && <p className="mt-2 text-sm text-mute" data-testid="cash-sold">{t.soldLine(money(f.sold, cur), money(f.total.in, cur))}</p>}
+        {(f.other.in > 0 || f.other.out > 0) && <p className="mt-1 text-sm text-mute" data-testid="cash-other">{t.otherLine(money(f.other.in, cur), money(f.other.out, cur))}</p>}
       </div>
       <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
         <Tile label={t.moneyIn} fig={ok(f.total.in)} show={(v) => money(v, cur)} k="in" testId="cash-in"

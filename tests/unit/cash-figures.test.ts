@@ -4,7 +4,8 @@ import { cashFigures, cashForecast, cashSummary, CASH_DEFS, type Entry } from "@
 const e = (day: string, direction: "in" | "out", amount: number, more: Partial<Entry> = {}): Entry =>
   ({ day, direction, amount, category: "", party: "", paid: null, paidOn: null, ...more });
 
-// Jan: in 1,000 + 500, out 1,200 + 300 → net 0. Feb: in 3,500, out 1,200 → 2,300. Mar: in 1,000, out 1,300 → −300.
+// Money in and out are cash that moved (panel H08): the unpaid 500 in and 300 out of January wait until they are paid.
+// Jan: in 1,000, out 1,200 → −200. Feb: in 3,500, out 1,200 → 2,300. Mar: in 1,000, out 1,300 → −300.
 const BOOK: Entry[] = [
   e("2026-01-05", "in", 1000, { category: "Drinks", party: "Nile", paid: true, paidOn: "2026-01-10" }),
   e("2026-01-20", "in", 500, { category: "Snacks", party: "Delta", paid: false }),
@@ -22,11 +23,12 @@ const TODAY = "2026-04-15";
 describe("money in and out", () => {
   const f = cashFigures(BOOK, { opening: null, today: TODAY, range: "all" });
   it("each month, gaps as zero", () => {
-    expect(f.months.map((m) => [m.period, m.in, m.out, m.net])).toEqual([["2026-01", 1500, 1500, 0], ["2026-02", 3500, 1200, 2300], ["2026-03", 1000, 1300, -300]]);
+    expect(f.months.map((m) => [m.period, m.in, m.out, m.net])).toEqual([["2026-01", 1000, 1200, -200], ["2026-02", 3500, 1200, 2300], ["2026-03", 1000, 1300, -300]]);
   });
   it("totals for the range, and net as a share of money in", () => {
-    expect([f.total.in, f.total.out, f.total.net]).toEqual([6000, 4000, 2000]);
-    expect(f.total.netPct).toBeCloseTo(33.3333, 3);
+    expect([f.total.in, f.total.out, f.total.net]).toEqual([5500, 3700, 1800]);
+    expect(f.total.netPct).toBeCloseTo((1800 / 5500) * 100, 3);
+    expect(f.sold).toBe(6000);
   });
   it("the last 3 months against the 3 before: needs those months", () => {
     const g = cashFigures(BOOK, { opening: null, today: TODAY, range: "3m" });
@@ -36,18 +38,18 @@ describe("money in and out", () => {
     expect(m.change).toEqual({ ok: true, value: ((1000 - 3500) / 3500) * 100 });
   });
   it("average money in per selling day", () => {
-    expect(f.avgDay).toEqual({ ok: true, value: 6000 / 5 });
+    expect(f.avgDay).toEqual({ ok: true, value: 5500 / 4 });
   });
   it("best and worst months by net", () => {
     expect(f.best).toEqual({ ok: true, value: { period: "2026-02", net: 2300 } });
     expect(f.worst).toEqual({ ok: true, value: { period: "2026-03", net: -300 } });
   });
   it("by category, blank as Other, largest first", () => {
-    expect(f.inBy).toEqual([{ name: "Drinks", amount: 4500 }, { name: "Snacks", amount: 1500 }]);
-    expect(f.outBy).toEqual([{ name: "Rent", amount: 3600 }, { name: "Ice", amount: 300 }, { name: "Other", amount: 100 }]);
+    expect(f.inBy).toEqual([{ name: "Drinks", amount: 4500 }, { name: "Snacks", amount: 1000 }]);
+    expect(f.outBy).toEqual([{ name: "Rent", amount: 3600 }, { name: "Other", amount: 100 }]);
   });
-  it("top customers only when the sheet names them", () => {
-    expect(f.parties).toEqual({ ok: true, value: [{ name: "Nile", amount: 3000 }, { name: "Giza", amount: 2500 }, { name: "Delta", amount: 500 }] });
+  it("top customers by what they paid, only when the sheet names them", () => {
+    expect(f.parties).toEqual({ ok: true, value: [{ name: "Nile", amount: 3000 }, { name: "Giza", amount: 2500 }] });
     expect(cashFigures([e("2026-01-01", "in", 5)], { opening: null, today: TODAY, range: "all" }).parties).toEqual({ ok: false, needs: "names" });
   });
 });
@@ -79,7 +81,7 @@ describe("next three months", () => {
   it("the average of the last 3 complete months", () => {
     const f = cashForecast(cashFigures(BOOK, { opening: null, today: TODAY, range: "all" }).months, TODAY);
     expect(f).toEqual({ ok: true, value: { method: "average", points: [
-      { period: "2026-04", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 }, { period: "2026-05", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 }, { period: "2026-06", in: 2000, out: 4000 / 3, net: 2000 - 4000 / 3 },
+      { period: "2026-04", in: 5500 / 3, out: 3700 / 3, net: 5500 / 3 - 3700 / 3 }, { period: "2026-05", in: 5500 / 3, out: 3700 / 3, net: 5500 / 3 - 3700 / 3 }, { period: "2026-06", in: 5500 / 3, out: 3700 / 3, net: 5500 / 3 - 3700 / 3 },
     ] } });
   });
   it("with a year of months: last year's same month, grown by the recent change", () => {
@@ -147,6 +149,6 @@ describe("review fixes: part months, future entries, forecast", () => {
   it("percentages in the summary carry one % sign", () => {
     const s = cashSummary(cashFigures(BOOK, { opening: null, today: TODAY, range: "all" }), "EGP").join(" ");
     expect(s).not.toContain("%%");
-    expect(s).toContain("33.3%");
+    expect(s).toContain("32.7%");
   });
 });

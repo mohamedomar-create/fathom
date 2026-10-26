@@ -67,8 +67,9 @@ select pg_temp.check('an outsider sees no rows', (select count(*) from public.ca
 
 -- Switching to the full system copies the entries into sales and expense lines; the cash book stays.
 select pg_temp.login('cba@x.test');
-select pg_temp.check('switching to Full copies both kinds', (public.cash_to_full((select co from ids)))::text, '{"sales": 2, "expenses": 1}');
-select pg_temp.check('a second switch adds nothing', (public.cash_to_full((select co from ids)))::text, '{"sales": 0, "expenses": 0}');
+select pg_temp.check('switching to Full copies sales and costs', (select (r ->> 'sales') || ' ' || (r ->> 'expenses') from (select public.cash_to_full((select co from ids)) r) x), '2 1');
+select pg_temp.check('a second switch refreshes the copied months, never doubles them', (select (r ->> 'sales') || ' ' || (r ->> 'expenses') from (select public.cash_to_full((select co from ids)) r) x)
+  || ' ' || (select count(*) from public.sales_lines where company_id = (select co from ids)), '2 1 2');
 select pg_temp.check('the copied lines', (select string_agg(period || ':' || amount, ',' order by period, amount) from public.sales_lines where company_id = (select co from ids)), '2026-01:1000.00,2026-02:900.00');
 select pg_temp.check('the cash book is kept', (select count(*) from public.cash_entries where company_id = (select co from ids))::text, '3');
 select pg_temp.check('copying back is skipped while the cash book has entries', public.cash_from_full((select co from ids))::text, '0');
@@ -93,6 +94,56 @@ select public.cash_upload_add((select id from st where k = 'u5'), '[{"day":"2026
 select pg_temp.check('finishing one upload leaves the other open upload alone', (public.cash_upload_finish((select id from st where k = 'u5')) ->> 'removed'), '1');
 select pg_temp.check('the other upload still finishes with its rows', (public.cash_upload_finish((select id from st where k = 'u4')) ->> 'rows'), '1');
 select pg_temp.check('January money in is both uploads', (select string_agg(amount::text, ',' order by amount) from public.cash_entries where company_id = (select co from ids) and day < '2026-02-01' and direction = 'in'), '5,7');
+
+-- ---------------------------------------------------------------- kinds, history and the switch by kind (panel H08, H09, H10, M28)
+reset role;
+insert into public.companies (org_id, name, kpi_config) values (pg_temp.home('cba@x.test'), 'Kinds Co', '{"profile":{"mode":"simple"}}');
+create temp table k as select (select id from public.companies where name = 'Kinds Co') co;
+grant select on k to authenticated;
+create temp table ke (n text primary key, id bigint);
+grant all on ke to authenticated;
+select pg_temp.login('cba@x.test');
+insert into ke select 'sale', public.cash_entry_add((select co from k), '{"day":"2026-03-02","direction":"in","amount":1000,"category":"Sales","kind":"sale"}'::jsonb);
+insert into ke select 'capital', public.cash_entry_add((select co from k), '{"day":"2026-03-01","direction":"in","amount":20000,"category":"Owner capital","kind":"capital"}'::jsonb);
+insert into ke select 'rent', public.cash_entry_add((select co from k), '{"day":"2026-03-03","direction":"out","amount":300,"category":"Rent"}'::jsonb);
+insert into ke select 'stock', public.cash_entry_add((select co from k), '{"day":"2026-03-04","direction":"out","amount":700,"category":"Goods","kind":"purchase"}'::jsonb);
+insert into ke select 'fridge', public.cash_entry_add((select co from k), '{"day":"2026-03-05","direction":"out","amount":5000,"category":"Fridge","kind":"asset"}'::jsonb);
+select pg_temp.check('an entry without a kind is a sale or an expense', (select string_agg(e ->> 'kind', ',' order by (e ->> 'day')) from jsonb_array_elements(public.cash_entries_list((select co from k))) e), 'capital,sale,expense,purchase,asset');
+select pg_temp.check('a kind must fit the direction', pg_temp.err($$select public.cash_entry_add((select co from k), '{"day":"2026-03-06","direction":"in","amount":5,"kind":"drawings"}'::jsonb)$$), '22023');
+
+-- An edit is kept in the history and the entry marked; a delete is soft and recorded.
+select public.cash_entry_update((select id from ke where n = 'rent'), '{"day":"2026-03-03","direction":"out","amount":30,"category":"Rent"}'::jsonb);
+select pg_temp.check('the old amount is in the history', (select (old ->> 'amount') || ' ' || action || ' ' || (actor is not null)::text from public.cash_entry_history where entry_id = (select id from ke where n = 'rent')), '300 update true');
+select pg_temp.check('the entry shows as edited', (select (e ->> 'edited') from jsonb_array_elements(public.cash_entries_list((select co from k))) e where (e ->> 'id')::bigint = (select id from ke where n = 'rent')), 'true');
+select public.cash_entry_delete((select id from ke where n = 'rent'));
+select pg_temp.check('a deleted entry leaves the list', (select count(*) from jsonb_array_elements(public.cash_entries_list((select co from k))) e where (e ->> 'id')::bigint = (select id from ke where n = 'rent'))::text, '0');
+select pg_temp.check('but is kept and recorded', (select (deleted_at is not null)::text from public.cash_entries where id = (select id from ke where n = 'rent'))
+  || ' ' || (select string_agg(action, ',' order by id) from public.cash_entry_history where entry_id = (select id from ke where n = 'rent')), 'true update,delete');
+select pg_temp.check('the history cannot be written directly', pg_temp.err($$delete from public.cash_entry_history$$), '42501');
+select pg_temp.check('a deleted entry cannot be edited', pg_temp.err(format($$select public.cash_entry_update(%s, '{"day":"2026-03-03","direction":"out","amount":1}'::jsonb)$$, (select id from ke where n = 'rent'))), '42501');
+
+-- Switching copies trading only: the sale, and the stock purchase as cost of sales. Capital and the fridge are listed.
+select pg_temp.check('the preview names what goes and what is held back',
+  (select (p -> 'sales' ->> 'copy') || ' ' || (p -> 'expenses' ->> 'copy') || ' ' || (select string_agg((h ->> 'kind') || ':' || (h ->> 'amount'), ',') from jsonb_array_elements(p -> 'held') h)
+     from (select public.cash_to_full_preview((select co from k)) p) x), '["2026-03"] ["2026-03"] asset:5000,capital:20000');
+select pg_temp.check('only trading is copied', (select (r ->> 'sales') || ' ' || (r ->> 'expenses') from (select public.cash_to_full((select co from k)) r) x), '1 1');
+select pg_temp.check('owner capital is never revenue', (select string_agg(amount::text, ',') from public.sales_lines where company_id = (select co from k)), '1000.00');
+select pg_temp.check('a stock purchase is cost of sales, the fridge is not a cost', (select string_agg(amount || ':' || coalesce(cls, '-'), ',') from public.expense_lines where company_id = (select co from k)), '700.00:cos_variable');
+-- A correction reaches the copied month on the next switch.
+select public.cash_entry_update((select id from ke where n = 'sale'), '{"day":"2026-03-02","direction":"in","amount":1200,"category":"Sales"}'::jsonb);
+select public.cash_to_full((select co from k));
+select pg_temp.check('the correction carried over', (select string_agg(amount::text, ',') from public.sales_lines where company_id = (select co from k)), '1200.00');
+-- A month that holds another file's lines is skipped and named.
+reset role;
+insert into public.sales_batches (company_id, source, filename, periods) values ((select co from k), 'file', 'april.xlsx', '{2026-04}');
+insert into public.sales_lines (company_id, batch_id, source, period, amount) select (select co from k), id, 'file', '2026-04', 50 from public.sales_batches where filename = 'april.xlsx';
+select pg_temp.login('cba@x.test');
+select public.cash_entry_add((select co from k), '{"day":"2026-04-02","direction":"in","amount":80,"category":"Sales"}'::jsonb);
+select pg_temp.check('a month with another file is skipped and named', (select (r -> 'skipped' ->> 'sales') from (select public.cash_to_full((select co from k)) r) x), '["2026-04"]');
+select pg_temp.check('its lines are left as they were', (select string_agg(period || ':' || amount, ',' order by period) from public.sales_lines where company_id = (select co from k)), '2026-03:1200.00,2026-04:50.00');
+-- Clearing is recorded.
+select public.cash_entries_clear((select co from k));
+select pg_temp.check('a clear is recorded with its count', (select action || ':' || (old ->> 'entries') from public.cash_entry_history where company_id = (select co from k) and action = 'clear'), 'clear:6');
 reset role;
 delete from public.companies where id = (select co from ids);
 select pg_temp.check('a deleted company leaves no entries', (select count(*) from public.cash_entries)::text || (select count(*) from public.cash_uploads)::text, '00');
