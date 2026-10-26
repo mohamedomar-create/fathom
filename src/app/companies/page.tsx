@@ -1,3 +1,4 @@
+import { SchemaGate } from "@/components/shell/schema-gate";
 import Link from "next/link";
 import { BarChart3, Database, FileText, Settings, Upload, Wallet } from "lucide-react";
 import { modeOf } from "@/lib/company/mode";
@@ -22,6 +23,10 @@ function ago(iso: string | null, t: Dict["home"]) {
 }
 
 export default async function CompaniesPage() {
+  return <SchemaGate><CompaniesPageInner /></SchemaGate>;
+}
+
+async function CompaniesPageInner() {
   const { items, orgs, email, invites } = await loadPortfolio();
   const org = orgs[0];
   const dict = await getDict();

@@ -166,3 +166,17 @@ export async function restoreOrganisation(orgId: string): Promise<Result> {
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+/** The owner sets the organisation's monthly AI allowance (commentary and PDF reading), 0 to 200 dollars. */
+export async function setAiAllowance(orgId: string, usd: number): Promise<Result> {
+  const v = z.object({ orgId: Uuid, usd: z.number().int().min(0).max(200) }).safeParse({ orgId, usd });
+  if (!v.success) return { ok: false, error: "Enter a whole number of dollars from 0 to 200." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { error, count } = await supabase.from("organizations").update({ ai_monthly_usd: v.data.usd }, { count: "exact" }).eq("id", v.data.orgId);
+  if (error) return { ok: false, error: error.code === "42501" ? "Only the owner can change the AI allowance." : dbError(error, "setAiAllowance") };
+  if (!count) return { ok: false, error: NO_PERMISSION };
+  revalidatePath("/admin/organisation");
+  return { ok: true };
+}
+

@@ -1,3 +1,4 @@
+import { SchemaGate } from "@/components/shell/schema-gate";
 import type { Metadata } from "next";
 import { CompanyShell } from "@/components/shell/company-shell";
 import { UserMenu } from "@/components/shell/user-menu";
@@ -14,7 +15,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   return { title: bundle?.name ?? "Company" };
 }
 
-export default async function CompanyLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
+export default async function CompanyLayout(props: { children: React.ReactNode; params: Promise<{ id: string }> }) {
+  return <SchemaGate><CompanyLayoutInner {...props} /></SchemaGate>;
+}
+
+async function CompanyLayoutInner({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
   // A small business on the cash book has its own pages, and never loads the full system's figures.
   if (modeOf((await loadCompanyMeta(id)).kpiConfig) === "simple") redirect(`/cash/${id}`);

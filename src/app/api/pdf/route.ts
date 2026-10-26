@@ -3,7 +3,7 @@ import { z } from "zod";
 import { htmlToPdf } from "@/lib/pdf/render";
 import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
-import { clientIp, limited, missingFn, TOO_MANY } from "@/lib/rate-limit";
+import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
 import { localLimiter } from "@/lib/local-limit";
 
 export const runtime = "nodejs";
@@ -38,14 +38,14 @@ export async function POST(req: Request) {
     over = ipOver(ip);
     if (!over) {
       const link = await supabase.rpc("rate_limit_link", { p_token: b.token });
-      over = link.error ? (missingFn(link.error) ? await limited(supabase, "pdf_render_token", b.token.slice(0, 16)) : true) : link.data === false;
+      over = link.error ? true : link.data === false;
     }
   } else if (b.demo) {
     // The demo also has one allowance shared by every signed-out visitor, across server instances (0038).
     over = ipOver(ip);
     if (!over) {
       const demo = await supabase.rpc("rate_limit_demo");
-      over = demo.error ? (missingFn(demo.error) ? await limited(supabase, "pdf_render_ip", ip) : true) : demo.data === false;
+      over = demo.error ? true : demo.data === false;
     }
   }
   else return NextResponse.json({ error: "Please sign in" }, { status: 401 });

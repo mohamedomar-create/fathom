@@ -9,6 +9,7 @@ import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
 import { limited } from "@/lib/rate-limit";
+import { aiBudgetOk, OVER_BUDGET, recordAiUsage, type Usage } from "@/lib/ai/budget";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -31,7 +32,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // AI calls cost money: 20 a day per company and 60 a day per person.
   if ((await limited(supabase, "ai_company", id)) || (await limited(supabase, "ai_user", user.id)))
     return NextResponse.json({ error: "The daily limit for AI commentary has been reached. Try again tomorrow, or write the commentary by hand." }, { status: 429 });
-  const { data: row } = await supabase.from("companies").select("industry, ai_context").eq("id", id).single();
+  const { data: row } = await supabase.from("companies").select("industry, ai_context, org_id").eq("id", id).single();
+  // And a monthly allowance per organisation, counted from what each call really used.
+  if (!row || !(await aiBudgetOk(supabase, row.org_id))) return NextResponse.json({ error: OVER_BUDGET }, { status: 429 });
+  let used: Usage | null = null;
   try {
     const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts });
     const sel = { type: parsed.data.type, end: parsed.data.end };
@@ -45,7 +49,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // Customers, products and suppliers from the same data, so the commentary can name them.
       ...linesContext(bundle.months, bundle.accounts, sales, expenses, sel, bundle.settings.fyStartMonth, bundle.settings.currency),
     };
-    const out = await writeCommentary(context, parsed.data.sections);
+    const out = await writeCommentary(context, parsed.data.sections, (u) => { used = u; });
     const periodKey = `${parsed.data.type}:${parsed.data.end}`;
     const rows = Object.entries(out).map(([section, body]) => ({ company_id: id, period_key: periodKey, section, body: section === "bank" || section === "realprofit" ? stampMemo(body!, section, bundle.assumptions ?? {}) : body!, source: "ai", updated_by: user.id, updated_at: new Date().toISOString() }));
     if (rows.length) {
@@ -57,5 +61,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     if (e instanceof CommentaryError) return NextResponse.json({ error: e.message }, { status: commentaryStatus(e) });
     console.error(e);
     return NextResponse.json({ error: "Could not write commentary" }, { status: 500 });
+  } finally {
+    await recordAiUsage(supabase, row.org_id, "commentary", used);
   }
 }

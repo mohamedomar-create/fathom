@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { decrypt, encrypt } from "@/lib/crypto";
+import { decrypt, encrypt, reencrypt, usesOldKey } from "@/lib/crypto";
 import { loadAccountMap } from "@/lib/company/account-map";
 import { saveCompanyData } from "@/lib/company/persist";
 import { runChecks } from "@/lib/company/checks";
@@ -188,6 +188,35 @@ export async function saveOdoo(input: z.input<typeof SaveSchema>): Promise<Resul
     if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
     if (verdict.warnings.length) await audit(supabase, v.companyId, "test", true, `saved with warnings: ${verdict.warnings.join(" ")} ${verdict.note}`);
     revalidatePath(`/company/${v.companyId}/data/odoo`);
+    return { ok: true, data: true };
+  } catch (e) { return fail(e); }
+}
+
+/** True when the saved API key is still under an older server key (after ENCRYPTION_KEYS gained a new first key). Admins only. */
+export async function odooKeyIsOld(companyId: string): Promise<boolean> {
+  try {
+    z.string().uuid().parse(companyId);
+    const { supabase } = await guard(companyId, "admin");
+    const enc = await storedKey(supabase, companyId);
+    return !!enc && usesOldKey(enc);
+  } catch { return false; }
+}
+
+/** Key rotation: the same API key re-encrypted under the server's current key, so the old key can be taken off the server. */
+export async function rekeyOdoo(companyId: string): Promise<Result<true>> {
+  try {
+    z.string().uuid().parse(companyId);
+    const { supabase } = await guard(companyId, "admin");
+    const { data: conn } = await supabase.from("odoo_connections").select("url, db, login").eq("company_id", companyId).maybeSingle();
+    const enc = conn ? await storedKey(supabase, companyId) : null;
+    if (!conn || !enc) throw new Error("There is no saved API key to re-encrypt.");
+    let next: string;
+    try { next = reencrypt(enc, bindingOf(companyId, conn.url, conn.db, conn.login)); }
+    catch (e) { throw new Error(/again|no longer on the server/.test((e as Error).message) ? (e as Error).message : "Enter the API key again: the saved key doesn't belong to this connection."); }
+    const { error } = await supabase.rpc("odoo_rekey", { p_company: companyId, p_key_enc: next });
+    if (error) { if (missingFn(error)) throw new Error(DB_UPDATE); throw new DbError(error); }
+    await audit(supabase, companyId, "test", true, "the saved API key was re-encrypted under the server's current key");
+    revalidatePath(`/company/${companyId}/data/odoo`);
     return { ok: true, data: true };
   } catch (e) { return fail(e); }
 }

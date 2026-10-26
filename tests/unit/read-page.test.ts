@@ -14,7 +14,7 @@ vi.mock("@anthropic-ai/sdk", async (orig) => {
   }
   return { ...actual, default: Fake };
 });
-const db = { company: { org_id: "o1" } as { org_id: string } | null, role: "editor" as string | null, user: { id: "u1" } as { id: string } | null, over: false };
+const db = { company: { org_id: "o1" } as { org_id: string } | null, role: "editor" as string | null, user: { id: "u1" } as { id: string } | null, over: false, budget: true, rpcs: [] as string[] };
 vi.mock("@/lib/supabase/server", () => ({
   getUser: async () => ({
     user: db.user,
@@ -23,6 +23,7 @@ vi.mock("@/lib/supabase/server", () => ({
         const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: t === "companies" ? db.company : db.role ? { role: db.role } : null }) };
         return q;
       },
+      rpc: async (name: string) => { db.rpcs.push(name); return { data: name === "ai_budget_ok" ? db.budget : null, error: null }; },
     },
   }),
 }));
@@ -51,7 +52,7 @@ async function post(body: Uint8Array | null, check?: unknown) {
 beforeEach(() => {
   parse.mockReset();
   process.env.ANTHROPIC_API_KEY = "test";
-  Object.assign(db, { company: { org_id: "o1" }, role: "editor", user: { id: "u1" }, over: false });
+  Object.assign(db, { company: { org_id: "o1" }, role: "editor", user: { id: "u1" }, over: false, budget: true, rpcs: [] });
 });
 
 describe("the page reader", () => {
@@ -88,11 +89,20 @@ describe("the page reader", () => {
 });
 
 describe("the read-page route", () => {
-  it("reads one page for an editor", async () => {
-    parse.mockResolvedValue(ok());
+  it("reads one page for an editor and records what the reading used", async () => {
+    parse.mockResolvedValue({ ...ok(), usage: { input_tokens: 1000, output_tokens: 100 } });
     const res = await post(await onePagePdf());
     expect(res.status).toBe(200);
     expect((await res.json()).read).toEqual(PAGE);
+    expect(db.rpcs).toEqual(["ai_budget_ok", "record_ai_usage"]);
+  });
+
+  it("an organisation over its AI allowance is told so, and nothing is read", async () => {
+    db.budget = false;
+    const res = await post(await onePagePdf());
+    expect(res.status).toBe(429);
+    expect((await res.json()).error).toContain("allowance");
+    expect(parse).not.toHaveBeenCalled();
   });
 
   it("refuses visitors, viewers and other organisations' companies before anything is read", async () => {

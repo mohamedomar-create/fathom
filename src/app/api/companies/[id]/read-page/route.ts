@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { aiBudgetOk, OVER_BUDGET, recordAiUsage, type Usage } from "@/lib/ai/budget";
 import { z } from "zod";
 import { PDFDocument } from "pdf-lib";
 import { getUser } from "@/lib/supabase/server";
@@ -42,13 +43,17 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   // Reading costs money: 200 pages a day per company and 400 a day per person.
   if ((await limited(supabase, "pdf_read_company", id)) || (await limited(supabase, "pdf_read_user", user.id)))
     return NextResponse.json({ error: "The daily limit for reading PDF pages has been reached. Try again tomorrow, or export the report from Odoo as Excel." }, { status: 429 });
+  if (!(await aiBudgetOk(supabase, company.org_id))) return NextResponse.json({ error: OVER_BUDGET }, { status: 429 });
 
+  let used: Usage | null = null;
   try {
-    const read = await readPage({ data: Buffer.from(bytes).toString("base64"), type: isPdf ? "pdf" : "jpeg" }, check.data);
+    const read = await readPage({ data: Buffer.from(bytes).toString("base64"), type: isPdf ? "pdf" : "jpeg" }, check.data, (u) => { used = u; });
     return NextResponse.json({ read });
   } catch (e) {
     if (e instanceof ReadError) return NextResponse.json({ error: e.message }, { status: 502 });
     console.error("page read failed", e);
     return NextResponse.json({ error: "The page could not be read" }, { status: 500 });
+  } finally {
+    await recordAiUsage(supabase, company.org_id, "read_page", used);
   }
 }

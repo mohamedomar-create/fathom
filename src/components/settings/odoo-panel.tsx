@@ -2,7 +2,7 @@
 import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, ShieldAlert, Unplug, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { disconnectOdoo, saveOdoo, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
+import { disconnectOdoo, rekeyOdoo, saveOdoo, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
 import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
@@ -23,7 +23,7 @@ const ACTION: Record<string, string> = { test: "Test", save: "Saved", key_change
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 const daysTo = (day: string) => Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.now()) / 86_400_000);
 
-export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0 }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number }) {
+export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0, keyOld = false }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number; keyOld?: boolean }) {
   const router = useRouter();
   const [url, setUrl] = useState(connection?.url ?? "");
   const [db, setDb] = useState(connection?.db ?? "");
@@ -43,6 +43,11 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const saved = Boolean(connection?.odoo_company_id);
 
   const run = (s: typeof step, f: () => Promise<void>) => { setStep(s); setMsg(null); start(async () => { await f(); setStep("idle"); }); };
+  const rekey = () => run("save", async () => {
+    const r = await rekeyOdoo(companyId);
+    setMsg(r.ok ? { tone: "ok", text: "The API key is now encrypted with the server's current key." } : { tone: "bad", text: r.error });
+    if (r.ok) router.refresh();
+  });
   const test = () => run("test", async () => {
     const r = await testOdoo({ companyId, url, db, login, apiKey });
     if (!r.ok) { setMsg({ tone: "bad", text: r.error }); return; }
@@ -123,6 +128,12 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
       <div>
         {left !== null && left <= 14 && (
           <div className="mb-4 rounded bg-amber/15 px-4 py-2.5 text-sm" data-testid="odoo-key-expiry">{left < 0 ? "The Odoo API key has expired." : `The Odoo API key expires in ${left} day${left === 1 ? "" : "s"}.`} Make a new one in Odoo and {admin ? "save it here" : "ask an admin to save it"}.</div>
+        )}
+        {keyOld && admin && (
+          <div className="mb-4 flex flex-wrap items-center gap-3 rounded bg-amber/15 px-4 py-2.5 text-sm" data-testid="odoo-key-old">
+            <span className="min-w-0 flex-1">The saved API key is still encrypted with an older server key. Re-encrypt it so the old key can be removed from the server.</span>
+            <button onClick={rekey} disabled={pending} className="rounded border border-brand-d px-3 py-1.5 text-brand-d disabled:opacity-60" data-testid="odoo-rekey">Re-encrypt the key</button>
+          </div>
         )}
         {saved && (
           <div className="mb-5 flex flex-wrap items-center gap-3 rounded-md bg-band px-4 py-3 text-sm">

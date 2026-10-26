@@ -1,5 +1,6 @@
 "use server";
 import { revalidatePath } from "next/cache";
+import { DB_BEHIND } from "@/lib/schema-message";
 import { z } from "zod";
 import { zodProblem } from "@/lib/preflight/server";
 import { getUser } from "@/lib/supabase/server";
@@ -7,9 +8,6 @@ import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
-import { clearLedger } from "@/lib/company/ledger-lines";
-
-const OVER_240 = "Saving more than 240 months at once needs the latest database update (migration 0035). Ask the site owner to run it.";
 
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Line = z.object({
@@ -51,19 +49,7 @@ export async function startSalesBatch(input: z.input<typeof Start>): Promise<{ o
     const st = await stageBegin(supabase, "sales", { ...v.data, periods });
     if (st.ok) return { ok: true, batch: st.stage, staged: true };
     if (!st.missing) return st;
-    // A database without 0035: replace all with nothing new clears the source's ledger lines directly.
-    if (!periods.length) {
-      if (v.data.source === "ledger") await clearLedger(supabase, v.data.companyId, "all", ["sales"]);
-      return { ok: true, batch: "", staged: false };
-    }
-    if (periods.length > 240) return { ok: false, error: OVER_240 };
-    const { data, error } = await supabase.rpc("begin_sales_batch", {
-      p_company: v.data.companyId, p_source: v.data.source, p_periods: periods, p_filename: v.data.filename, p_report: (v.data.report ?? {}) as Json,
-      ...(v.data.all ? { p_all: true } : {}),
-    });
-    if (error) return { ok: false, error: dbError(error, "begin_sales_batch") };
-    await dropEmpty(supabase, v.data.companyId, v.data.source, data as string, sameFile(v.data), periods);
-    return { ok: true, batch: data as string, staged: false };
+    return { ok: false, error: DB_BEHIND };
   } catch (e) {
     return { ok: false, error: safeError(e, "startSalesBatch") };
   }
@@ -137,6 +123,6 @@ export async function salesLineMonths(companyId: string, source: "ledger" | "fil
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   const { data, error } = await supabase.rpc("line_months", { p_company: companyId, p_kind: "sales", p_source: source });
-  if (error) return error.code === "PGRST202" ? { ok: true, months: null } : { ok: false, error: dbError(error, "line_months") };
+  if (error) return { ok: false, error: dbError(error, "line_months") };
   return { ok: true, months: (data ?? {}) as Record<string, { n: number; print: string }> };
 }

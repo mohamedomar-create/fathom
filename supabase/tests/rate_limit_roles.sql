@@ -11,6 +11,7 @@ delete from public.company_data_audit where action = 'restore_company';
 alter table public.company_data_audit enable trigger user;
 \i supabase/migrations/0038_tenant_guards.sql
 \i supabase/migrations/0039_access.sql
+reset client_min_messages;
 
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
   ('rla@x.test', '{"full_name":"Ann"}', now()), ('rle@x.test', '{"full_name":"Ed"}', now()), ('rlv@x.test', '{"full_name":"Vi"}', now());

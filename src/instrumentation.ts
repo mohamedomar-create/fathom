@@ -9,4 +9,9 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
     level: "error", digest: e.digest, message: e.message, stack: e.stack?.split("\n").slice(0, 6).join("\n"),
     method: request.method, path: request.path.split("?")[0], route: context.routePath, kind: context.routerKind, type: context.routeType,
   }));
+  // To Sentry when SENTRY_DSN is set, scrubbed of company data, tagged with the same reference.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { reportError } = await import("@/lib/report-error");
+    await reportError(err, { route: context.routePath, ref: e.digest, path: request.path.split("?")[0] });
+  }
 };

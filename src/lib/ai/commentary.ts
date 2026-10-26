@@ -1,4 +1,5 @@
 import "server-only";
+import type { Usage } from "./budget";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
@@ -25,7 +26,8 @@ export function asData(v: unknown): unknown {
   return v;
 }
 
-export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS]): Promise<Partial<Record<CommentarySection, string>>> {
+/** `onUsage` hears what the call used (it is paid for even when the reply is refused or cut off). */
+export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS], onUsage?: (u: Usage) => void): Promise<Partial<Record<CommentarySection, string>>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.", "not_configured");
   // Stay inside the route's 60s function limit (Vercel Hobby cap).
   const client = new Anthropic({ timeout: 55_000, maxRetries: 0 });
@@ -42,6 +44,7 @@ export async function writeCommentary(context: unknown, sections: CommentarySect
         content: `Write commentary for these sections: ${sections.join(", ")}. Return an empty string for any section not in that list.\n\n<company_data>\n${JSON.stringify(asData(context))}\n</company_data>`,
       }],
     });
+    onUsage?.(response.usage);
     if (response.stop_reason === "refusal") throw new CommentaryError("The AI declined to write commentary for this data.");
     if (response.stop_reason === "max_tokens") throw new CommentaryError("The AI response was cut off. Try fewer sections at once.");
     const out = response.parsed_output;

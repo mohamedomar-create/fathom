@@ -31,11 +31,11 @@ export async function clearLedger(supabase: Supa, companyId: string, periods: st
     if (periods === "all") {
       // Deleting the batches removes their lines (on delete cascade).
       const { error } = await supabase.from(t.batches).delete().eq("company_id", companyId).eq("source", "ledger");
-      if (error && !missing(error)) throw new DbError(error);
+      if (error) throw new DbError(error);
       continue;
     }
     const del = await supabase.from(t.lines).delete().eq("company_id", companyId).eq("source", "ledger").in("period", periods);
-    if (del.error) { if (missing(del.error)) continue; throw new DbError(del.error); }
+    if (del.error) throw new DbError(del.error);
     const { data: batches, error } = await supabase.from(t.batches).select("id, periods").eq("company_id", companyId).eq("source", "ledger");
     if (error) throw new DbError(error);
     const gone = new Set(periods);
@@ -48,8 +48,6 @@ export async function clearLedger(supabase: Supa, companyId: string, periods: st
   }
 }
 
-/** A table or function the database does not have yet (its update not applied): treated as "nothing there". */
-const missing = (e: { code?: string }) => e.code === "42P01" || e.code === "PGRST205" || e.code === "PGRST202";
 
 /** What the ledger lines add up to per month, for sales and for expenses. */
 export async function ledgerTotals(supabase: Supa, companyId: string): Promise<Record<LineKind, Record<string, number>>> {
@@ -64,7 +62,7 @@ export async function ledgerTotals(supabase: Supa, companyId: string): Promise<R
   for (const kind of ["sales", "expenses"] as const) {
     for (let from = 0; from < 2_000_000; from += 1000) {
       const { data: rows, error: e } = await supabase.from(TABLES[kind].lines).select(kind === "expenses" ? "period, amount, cls" : "period, amount").eq("company_id", companyId).eq("source", "ledger").range(from, from + 999);
-      if (e) { if (missing(e)) break; throw new DbError(e); }
+      if (e) throw new DbError(e);
       // Goods bought for stock are expense lines too, but not costs: they never count against the P&L.
       for (const r of (rows ?? []) as unknown as { period: string; amount: number; cls?: string | null }[]) if (kind === "sales" || isCostLine(r.cls ?? null)) out[kind][r.period] = (out[kind][r.period] ?? 0) + Number(r.amount);
       if (!rows || rows.length < 1000) break;
@@ -86,28 +84,18 @@ const CHUNK = 4000;
 export async function saveLedgerLines(supabase: Supa, companyId: string, userId: string, kind: LedgerKind, lines: (SalesLine | ExpenseLine | StockLedgerLine)[], filename: string): Promise<number> {
   if (!lines.length) return 0;
   if (kind === "stock") return saveStockLines(supabase, companyId, lines as StockLedgerLine[], filename);
-  const t = TABLES[kind] as { lines: "sales_lines" | "expense_lines"; batches: "sales_batches" | "expense_batches" };
   const periods = [...new Set(lines.map((l) => l.period))].sort();
   const begin = kind === "sales" ? "begin_sales_batch" : "begin_expense_batch";
   const add = kind === "sales" ? "add_sales_lines" : "add_expense_lines";
-  let batch: string;
   const b = await supabase.rpc(begin, { p_company: companyId, p_source: "ledger", p_periods: periods, p_filename: filename, p_report: {} as Json });
-  if (!b.error) batch = b.data as string;
-  else if (missing(b.error)) {
-    await clearLedger(supabase, companyId, periods, [kind]);
-    const ins = await supabase.from(t.batches).insert({ company_id: companyId, source: "ledger", periods, filename, report: {} as Json, created_by: userId }).select("id").single();
-    if (ins.error) throw new DbError(ins.error);
-    batch = ins.data.id;
-  } else throw new DbError(b.error);
+  if (b.error) throw new DbError(b.error);
+  const batch = b.data as string;
   let saved = 0;
   for (let i = 0; i < lines.length; i += CHUNK) {
     const part = (lines as (SalesLine | ExpenseLine)[]).slice(i, i + CHUNK).map((x) => { const { src, ...l } = x; void src; return l; });
     const r = await supabase.rpc(add, { p_batch: batch, p_lines: part as unknown as Json });
-    if (!r.error) { saved += r.data as number; continue; }
-    if (!missing(r.error)) throw new DbError(r.error);
-    const ins = await supabase.from(t.lines).insert(part.map((l) => ({ ...l, company_id: companyId, batch_id: batch, source: "ledger" as const })) as never);
-    if (ins.error) throw new DbError(ins.error);
-    saved += part.length;
+    if (r.error) throw new DbError(r.error);
+    saved += r.data as number;
   }
   return saved;
 }
@@ -116,7 +104,7 @@ export async function saveLedgerLines(supabase: Supa, companyId: string, userId:
 async function saveStockLines(supabase: Supa, companyId: string, lines: StockLedgerLine[], filename: string): Promise<number> {
   const periods = [...new Set(lines.map((l) => l.period))].sort();
   const b = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: periods, p_filename: filename });
-  if (b.error) { if (missing(b.error)) return 0; throw new DbError(b.error); }
+  if (b.error) throw new DbError(b.error);
   let saved = 0;
   for (let i = 0; i < lines.length; i += CHUNK) {
     const r = await supabase.rpc("add_stock_ledger_lines", { p_batch: b.data as string, p_lines: lines.slice(i, i + CHUNK) as unknown as Json });

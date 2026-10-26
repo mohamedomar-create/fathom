@@ -348,21 +348,11 @@ export async function deleteCompany(companyId: string): Promise<{ ok: boolean; e
   if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  // The full deletion first (admin check, stored files removed, the deletion recorded: migration 0031). The plain
-  // row delete is kept only for a database without that update, so a company is never left with orphaned files when
-  // the full path exists.
-  const { error: missing } = await supabase.rpc("data_reset_preview", { p_company: companyId });
-  if (!missing || (missing.code !== "PGRST202" && missing.code !== "42883")) {
-    const { data: c } = await supabase.from("companies").select("name").eq("id", companyId).maybeSingle();
-    if (!c) return { ok: false, error: "Only organisation admins can delete a company." };
-    const r = await deleteCompanyFully(companyId, c.name);
-    return r.ok ? { ok: true } : { ok: false, error: r.error };
-  }
-  const { error, count } = await supabase.from("companies").delete({ count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "deleteCompany") };
-  if (!count) return { ok: false, error: "Only organisation admins can delete a company." };
-  revalidatePath("/companies");
-  return { ok: true };
+  // Soft-deleted through delete_company (0039): admin check, files removed, recorded, restorable for 14 days.
+  const { data: c } = await supabase.from("companies").select("name").eq("id", companyId).maybeSingle();
+  if (!c) return { ok: false, error: "Only organisation admins can delete a company." };
+  const r = await deleteCompanyFully(companyId, c.name);
+  return r.ok ? { ok: true } : { ok: false, error: r.error };
 }
 
 /**

@@ -1,3 +1,4 @@
+import { SchemaGate } from "@/components/shell/schema-gate";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/supabase/server";
@@ -14,7 +15,11 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
 }
 
 /** The cash book's own layout: the business and its entries, nothing else (no balances, checks or summaries). */
-export default async function CashLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
+export default async function CashLayout(props: { children: React.ReactNode; params: Promise<{ id: string }> }) {
+  return <SchemaGate><CashLayoutInner {...props} /></SchemaGate>;
+}
+
+async function CashLayoutInner({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
   const company = await loadCashCompany(id);
   // A company on the full system has its own pages.

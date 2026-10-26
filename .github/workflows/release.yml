@@ -1,0 +1,27 @@
+name: Release tag
+# Each push to the production branch gets a tag (vYYYY.MM.DD-<sha7>) and release notes from the commit subjects since the
+# last tag, so every deployed version can be named and rolled back to.
+on:
+  push:
+    branches: [claude/sharp-pasteur-ms9hn6]
+permissions:
+  contents: write
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag and write the notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha=$(git rev-parse --short=7 HEAD)
+          tag="v$(date -u +%Y.%m.%d)-$sha"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then echo "already tagged"; exit 0; fi
+          prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          range=${prev:+$prev..}HEAD
+          { echo "Production at $sha."; echo; git log --no-merges --format='- %s' "$range" | head -100; } > notes.md
+          gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes-file notes.md

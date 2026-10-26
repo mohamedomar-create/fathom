@@ -1,7 +1,7 @@
 import "server-only";
 import { getUser } from "@/lib/supabase/server";
-import { loadCompanyMeta, summaryStamps } from "./meta";
-import { remember, keepGood, goodOf } from "./summary-cache";
+import { loadCompanyMeta } from "./meta";
+import { keepGood, goodOf } from "./summary-cache";
 import { loaded, type Loaded } from "./loaded";
 import { fromStateRow, afterError, type StateRow } from "./summary-state";
 import { logOp, newRef, withRetry } from "@/lib/observe";
@@ -32,30 +32,8 @@ export async function loadKept<T>(kind: Kind, companyId: string, parse: (raw: un
     const live = await liveSummary(kind, companyId, parse, ref);
     return live ? loaded(isEmpty(live) ? "empty" : "ready", live) : state;
   }
-  if (result.error.code !== "PGRST202") {
-    logOp({ op: `summary_state:${kind}`, company: companyId, ms: Date.now() - t0, attempts, outcome: held ? "stale" : "failed", code: result.error.code, ref });
-    return afterError(held, empty, ref, result.error.code);
-  }
-  // Before migration 0032: the summary function, kept between visits while nothing it is built from changed.
-  const stamp = (await summaryStamps(companyId))[kind];
-  const t1 = Date.now();
-  let tries = 0;
-  try {
-    const raw = await remember(kind, companyId, stamp, async () => {
-      const { result: r, attempts: a } = await withRetry(() => supabase.rpc(LEGACY[kind], { p_company: companyId }));
-      tries = a;
-      if (r.error) throw r.error;
-      return r.data;
-    });
-    const data = parse(raw);
-    keepGood(kind, companyId, null, new Date().toISOString(), data);
-    logOp({ op: `${LEGACY[kind]}`, company: companyId, ms: Date.now() - t1, attempts: tries, outcome: "fallback" });
-    return loaded(isEmpty(data) ? "empty" : "ready", data);
-  } catch (e) {
-    const code = (e as { code?: string }).code;
-    logOp({ op: `${LEGACY[kind]}`, company: companyId, ms: Date.now() - t1, attempts: tries, outcome: held ? "stale" : "failed", code, ref });
-    return afterError(held, empty, ref, code);
-  }
+  logOp({ op: `summary_state:${kind}`, company: companyId, ms: Date.now() - t0, attempts, outcome: held ? "stale" : "failed", code: result.error.code, ref });
+  return afterError(held, empty, ref, result.error.code);
 }
 
 /** The summary function itself, once, with no retry (a pending rebuild is seconds away); null when it fails. */

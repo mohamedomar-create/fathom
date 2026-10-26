@@ -4,6 +4,7 @@ import { getUser } from "@/lib/supabase/server";
 import { booksStartOf } from "@/lib/company/time-zone";
 import { loadCompanyMeta } from "@/lib/company/meta";
 import { OdooPanel, type OdooConn } from "@/components/settings/odoo-panel";
+import { odooKeyIsOld } from "@/app/company/[id]/settings/odoo-actions";
 
 export default async function DataOdooPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,11 +25,13 @@ export default async function DataOdooPage({ params }: { params: Promise<{ id: s
   const odooLog = (audit ?? []).map((a) => ({ ...a, who: a.user_id ? name.get(a.user_id) ?? "a former member" : "—" }));
   // The Odoo security update (migration 0025) adds the columns read above; until it runs, the connection stays closed.
   const odooReady = !odooErr || odooErr.code !== "42703";
+  // After a key rotation (a new first key in ENCRYPTION_KEYS), an admin re-encrypts the saved Odoo key once.
+  const keyOld = role === "admin" && !!odoo?.has_key ? await odooKeyIsOld(id) : false;
   return (
     <div>
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot change the Odoo connection. Ask an admin of the organisation for editor access.</p>
-      ) : c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} role={role === "admin" ? "admin" : "editor"} log={odooLog} ready={odooReady} others={others ?? []} mapCount={mapCount ?? 0} />}
+      ) : c && <OdooPanel companyId={id} connection={odoo as OdooConn | null} hasData={c.data_version > 0} booksStart={booksStartOf(c.kpi_config)} role={role === "admin" ? "admin" : "editor"} log={odooLog} ready={odooReady} others={others ?? []} mapCount={mapCount ?? 0} keyOld={keyOld} />}
     </div>
   );
 }
