@@ -135,13 +135,13 @@ describe("KPIs and findings", () => {
     expect(f.find((x) => x.title.startsWith("High operating leverage"))?.title).toBe("High operating leverage (4.0x)");
   });
 
-  it("cash burn compares calendar-consecutive months only", () => {
+  it("cash burn is the fall over the real gap in months", () => {
     const P = plCalc({ revenue: 100, cos_variable: 50, exp_fixed: 40 });
     const Bs = [100, 90, 50, 45].map((cash) => bsCalc({ cash, other_equity: cash }));
     const W = { ocf: 1, fcf: 1, ncf: -5 } as never;
     const f = insights({ P, B: Bs[3], Pprev: null, K: {}, W, tg: {}, Ps: [P], Bs, periods: ["2025-01", "2025-02", "2025-04", "2025-05"], days: 31, status: {}, cur: "EGP" });
-    // −10 (Jan→Feb) and −5 (Apr→May); the Feb→Apr gap is two months and is left out: 7.5 a month, 6 months of cash.
-    expect(f.find((x) => x.title.startsWith("Net cash outflow"))?.title).toContain("6.0 months");
+    // 100 → 45 between Jan and May is 4 months, gap included: 13.75 a month, 3.3 months of cash.
+    expect(f.find((x) => x.title.startsWith("Net cash outflow"))?.title).toContain("3.3 months");
   });
 });
 

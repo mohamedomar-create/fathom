@@ -118,17 +118,17 @@ Section lengths: "summary" is one headline sentence followed by up to three acti
 "realprofit" is 2 to 4 sentences on the "real_profit" block: what the reported profit is really worth after inflation, payment delays and the exchange rate, the biggest cause of the gap, and one action. If inflation is not entered, say what entering it would show. If rates_are_examples is true, say the rates are examples.`;
 
 /** Sales and expenses for the same period, in a few lines each, so commentary can name customers, products and suppliers. */
-export function linesContext(months: MonthData[], accounts: ExpenseAccount[], sales: SalesData, expenses: ExpensesData, sel: PeriodSel, fyStart: number, currency: string) {
+export function linesContext(months: MonthData[], accounts: ExpenseAccount[], sales: SalesData, expenses: ExpensesData, sel: PeriodSel, fyStart: number, currency: string, asOf?: string | null) {
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, currency));
   const revenue = Object.fromEntries(months.filter((x) => Object.keys(x.pl).length).map((x) => [x.period, x.pl.revenue ?? 0]));
   const top = (rows: { name: string; amount: number; share: number; growth: number | null }[], n = 5) => rows.filter((r) => r.amount > 0).slice(0, n).map((r) => `${r.name}: ${m(r.amount)} (${r.share.toFixed(0)}%${r.growth === null ? "" : `, ${r.growth >= 0 ? "+" : ""}${r.growth.toFixed(0)}%`})`);
   const out: Record<string, unknown> = {};
   if (salesMonths(sales).length) {
-    const s = salesAnalysis(sales, sel, fyStart, { revenue });
+    const s = salesAnalysis(sales, sel, fyStart, { revenue, asOf });
     out.sales_detail = { net_sales: m(s.total), invoices: s.invoices, active_customers: s.customers.active, top_customers: top(s.byCustomer), top_categories: top(s.byCategory), top_customer_share_pct: s.customers.topShare === null ? null : +s.customers.topShare.toFixed(1), findings: s.findings.map((f) => `${f.title}. ${f.text}`) };
   }
   if (accounts.some((a) => isExpenseClass(a.cls))) {
-    const e = expensesAnalysis(accounts, expenses, sel, fyStart, { revenue, customers: customersOf(sales) });
+    const e = expensesAnalysis(accounts, expenses, sel, fyStart, { revenue, customers: customersOf(sales), asOf });
     out.expenses_detail = {
       total_costs: m(e.total), costs_pct_of_sales: e.ofSales === null ? null : +e.ofSales.toFixed(1), largest_accounts: top(e.byAccount), largest_change: e.bridge.slice(0, 3).map((b) => `${b.name}: ${m(b.delta)}`),
       ...(e.lines.has ? { top_suppliers: top(e.bySupplier.filter((r) => !notSupplier(r.key))), top5_supplier_share_pct: e.concentration.top5Share === null ? null : +e.concentration.top5Share.toFixed(1) } : {}),

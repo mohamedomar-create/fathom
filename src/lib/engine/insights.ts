@@ -1,5 +1,5 @@
 import { balanced } from "@/lib/tolerance";
-import { div, fixed, money, pct } from "./format";
+import { daysIn, div, fixed, monthIndex, money, pct } from "./format";
 import { KPI_DEFS } from "./kpis";
 import type { Waterfall } from "./cashflow";
 import type { BSCalc, PLCalc } from "./types";
@@ -20,6 +20,10 @@ export interface InsightCtx {
   Bs: BSCalc[];
   /** The month of each entry in Ps and Bs; when given, only calendar-consecutive months are compared. */
   periods?: string[];
+  /** Whether each entry's balance sheet is its own (not carried forward from an earlier month). */
+  ownBS?: boolean[];
+  /** The last day the books cover: a part month is left out of the burn rate. */
+  asOf?: string | null;
   days: number;
   status: Record<string, boolean | null>;
   cur: string;
@@ -38,6 +42,20 @@ const PRIOR_AR: Record<string, string> = { "last month": "الشهر الساب�
 const PER_AR: Record<string, string> = { month: "شهر", quarter: "ربع", year: "سنة" };
 
 /** Rule-based findings in plain language, ranked by severity (port of the reference engine). */
+/**
+ * Average monthly fall in cash less borrowing, from the months with their own balance sheet (up to the last four), each
+ * change divided by the real number of months between them; a part month at the end is left out. null with under two.
+ */
+export function burnRate(points: { period: string; cash: number; debt: number; own: boolean }[], asOf?: string | null): { burn: number; months: number } | null {
+  const part = (p: string) => !!asOf && asOf.startsWith(p) && Number(asOf.slice(8)) < daysIn(p);
+  const use = points.filter((x) => x.own && !part(x.period)).slice(-4);
+  if (use.length < 2) return null;
+  const first = use[0], last = use[use.length - 1];
+  const months = monthIndex(last.period) - monthIndex(first.period);
+  if (months <= 0) return null;
+  return { burn: -((last.cash - last.debt) - (first.cash - first.debt)) / months, months };
+}
+
 export function insights(ctx: InsightCtx): Finding[] {
   const { P, B, Pprev: Pp, K, W, tg, Ps, Bs, cur } = ctx;
   const m = (v: number) => money(v, cur);
@@ -104,17 +122,21 @@ export function insights(ctx: InsightCtx): Finding[] {
     const { ocf, ncf } = W;
     if (P.ebit > 0 && ocf < 0) add(3, "risk", "cashflow", L("Profit is not turning into cash", "الربح لا يتحول إلى نقدية"), L(`EBIT is ${m(P.ebit)} but operating cash flow is ${m(ocf)}. Look at receivables, stock and payables first.`, `الربح قبل الفوائد والضرائب ${m(P.ebit)} لكن التدفق النقدي التشغيلي ${m(ocf)}. ابدأ بمراجعة العملاء والمخزون والموردين.`));
     else if (ocf > 0 && P.ebit > 0 && ocf < 0.5 * P.ebit) add(1, "watch", "cashflow", L("Less than half of profit became cash", "أقل من نصف الربح تحول إلى نقدية"), L(`Operating cash flow ${m(ocf)} vs EBIT ${m(P.ebit)}.`, `التدفق النقدي التشغيلي ${m(ocf)} مقابل ربح قبل الفوائد والضرائب ${m(P.ebit)}.`));
-    const ncfs: number[] = [];
-    const next = (a: string, b: string) => { const [y, m] = a.split("-").map(Number); return b === `${m === 12 ? y + 1 : y}-${String(m === 12 ? 1 : m + 1).padStart(2, "0")}`; };
-    for (let i = Math.max(1, Bs.length - 3); i < Bs.length; i++)
-      if (!ctx.periods || next(ctx.periods[i - 1], ctx.periods[i])) ncfs.push(Bs[i].cash - Bs[i - 1].cash - (Bs[i].std + Bs[i].ltd - (Bs[i - 1].std + Bs[i - 1].ltd)));
-    const sum = ncfs.reduce((a, b) => a + b, 0);
-    if (ncfs.length && sum < 0 && B.cash > 0) {
-      const burn = -sum / ncfs.length;
+    // Months with their own balance sheet only (a carried-forward one adds a false "no change"), over the real gap,
+    // leaving out a part month.
+    const ps = ctx.periods ?? Bs.map((_, i) => String(i));
+    const points = Bs.map((b, i) => ({ period: ps[i], cash: b.cash, debt: b.std + b.ltd, own: ctx.ownBS ? ctx.ownBS[i] : true }));
+    const br = ctx.periods ? burnRate(points, ctx.asOf) : null;
+    const gains: number[] = [];
+    const part = (p: string) => !!ctx.asOf && ctx.asOf.startsWith(p) && Number(ctx.asOf.slice(8)) < daysIn(p);
+    const usable = points.filter((x) => x.own && !part(x.period)).slice(-4);
+    for (let i = 1; i < usable.length; i++) gains.push((usable[i].cash - usable[i].debt) - (usable[i - 1].cash - usable[i - 1].debt));
+    if (br && br.burn > 0 && B.cash > 0) {
+      const burn = br.burn;
       add(B.cash / burn < 3 ? 3 : 2, "risk", "cashflow", L(`Net cash outflow: about ${fixed(B.cash / burn, 1)} months of cash left at this rate`, `صافي تدفق نقدي خارج: تكفي النقدية نحو ${fixed(B.cash / burn, 1)} شهر بهذا المعدل`),
-        L(`Before any new borrowing, the business used about ${m(burn)} a month over the last ${ncfs.length} months (change in cash less change in borrowing); cash on hand is ${m(B.cash)}.`,
-          `قبل أي اقتراض جديد، استخدم النشاط نحو ${m(burn)} شهريًا خلال آخر ${ncfs.length} أشهر (التغير في النقدية ناقص التغير في الاقتراض)؛ والنقدية المتاحة ${m(B.cash)}.`));
-    } else if (ncf > 0 && ncfs.length >= 2 && ncfs.every((x) => x > 0)) add(1, "win", "cashflow", L(`Cash has grown ${ncfs.length} months in a row`, `النقدية نمت ${ncfs.length} أشهر متتالية`), L(`Cash on hand is ${m(B.cash)}.`, `النقدية المتاحة ${m(B.cash)}.`));
+        L(`Before any new borrowing, the business used about ${m(burn)} a month over the last ${br.months} months (change in cash less change in borrowing); cash on hand is ${m(B.cash)}.`,
+          `قبل أي اقتراض جديد، استخدم النشاط نحو ${m(burn)} شهريًا خلال آخر ${br.months} أشهر (التغير في النقدية ناقص التغير في الاقتراض)؛ والنقدية المتاحة ${m(B.cash)}.`));
+    } else if (ncf > 0 && gains.length >= 2 && gains.every((x) => x > 0)) add(1, "win", "cashflow", L(`Cash has grown at each of the last ${gains.length} month-end balance sheets`, `النقدية نمت في آخر ${gains.length} ميزانيات شهرية متتالية`), L(`Cash on hand is ${m(B.cash)}.`, `النقدية المتاحة ${m(B.cash)}.`));
   }
   if (B.cash < 0) add(3, "risk", "cashflow", L("Negative cash balance", "رصيد نقدية سالب"), L("Check for an overdraft that should sit in short-term debt.", "تحقق من وجود سحب على المكشوف يجب أن يظهر ضمن القروض قصيرة الأجل."));
   for (const [key, nm, hint, nmA, hintA] of [

@@ -2,9 +2,8 @@ import { breakeven } from "./breakeven";
 import { cashFlowStatement, cashWaterfall } from "./cashflow";
 import { insights, type Finding } from "./insights";
 import { computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
-import { addMonths, daysIn, MONTH_ABBR } from "./format";
+import { daysIn } from "./format";
 import { periodView, type PeriodSel, type PeriodView } from "./period";
-import { plCalc, sumPL } from "./statements";
 import { hasPL, type CompanySettings, type Comparison, type Importance, type MonthData } from "./types";
 
 export interface KpiRow {
@@ -50,38 +49,14 @@ export function activeKpiDefs(settings: CompanySettings): KpiDef[] {
 
 const PRIOR_LABEL = { month: "last month", quarter: "the prior quarter", year: "the prior year" } as const;
 const PART_PRIOR_LABEL = { month: "the same days last month", quarter: "the same days of the prior quarter", year: "the same days of the prior year" } as const;
-const SHIFT_MONTHS = { month: 1, quarter: 3, year: 12 } as const;
 
 export function analyze(
   months: MonthData[], sel: PeriodSel, settings: CompanySettings,
   opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null; lang?: "en" | "ar"; kpiName?: (d: KpiDef) => string } = {},
 ): Analysis {
-  const view = periodView(months, sel, settings.fyStartMonth);
-  // The books stop inside the last month: days-based measures (debtor, stock and supplier days) count the days covered.
-  const end = view.window.end;
-  let partPrior = false;
-  if (opts.asOf && opts.asOf.startsWith(end)) {
-    const day = Number(opts.asOf.slice(8)), full = daysIn(end);
-    if (day > 0 && day < full) {
-      view.days -= full - day;
-      view.partDay = day;
-      const to = `${day} ${MONTH_ABBR[Number(end.slice(5))]}`;
-      // "Year 2026 (to Oct)" becomes "Year 2026 (to 10 Oct)"; a month gets "(to 10 Oct)".
-      const label = /\(to [A-Z][a-z]{2}\)$/.test(view.window.label) ? view.window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${to})`) : `${view.window.label} (to ${to})`;
-      view.window = { ...view.window, label };
-      // Compared like for like: the prior period with its last month cut to the same share of its days. The prior the
-      // pages show (statements, account rows, cash flow) stays whole, consistent with its balances.
-      const byP = new Map(months.map((x) => [x.period, x]));
-      const prior = view.window.periods.map((p) => addMonths(p, -SHIFT_MONTHS[sel.type]));
-      const last = prior[prior.length - 1];
-      if (prior.every((p) => byP.get(p) && hasPL(byP.get(p)!))) {
-        const f = day / daysIn(last);
-        const pls = prior.map((p) => { const pl = byP.get(p)!.pl; return p === last ? Object.fromEntries(Object.entries(pl).map(([k, v]) => [k, (v ?? 0) * f])) as typeof pl : pl; });
-        view.likePrior = { P: plCalc(sumPL(pls)), label: `${view.prior?.label ?? last} (same ${day} days, pro-rated)` };
-        partPrior = true;
-      }
-    }
-  }
+  // A part month (books to asOf) is measured on its days covered and compared on the same days (periodView does both).
+  const view = periodView(months, sel, settings.fyStartMonth, opts.asOf);
+  const partPrior = Boolean(view.partDay && view.prior);
   const { P, B } = view;
   // Cash flow needs the balance sheets at both ends of the window: never one stood in from another month.
   const B0 = view.missing.endBS ? null : view.B0;
@@ -89,15 +64,18 @@ export function analyze(
   const CF = B0 ? cashFlowStatement(P, B, B0) : null;
   const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: (view.likePrior ?? view.prior)?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
   // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
-  const targets = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length);
+  // A part month counts as the share of its days covered (revenue to the 10th is judged against 10 days' target).
+  const partShare = view.partDay ? 1 - view.partDay / daysIn(view.window.end) : 0;
+  const targets = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length - partShare);
   const comparison = opts.comparison ?? "target";
   let compareK: Record<string, number | null> | null = null;
   if (comparison !== "target") {
     const c = comparison === "prior" ? view.prior : view.ly;
     if (c) {
-      const sel2 = { type: sel.type, end: c.label ? shiftEnd(sel.end, comparison === "prior" ? sel.type : "year") : sel.end };
+      const sel2 = { type: view.sel.type, end: shiftEnd(view.window.end, comparison === "prior" ? view.sel.type : "year") };
       try {
-        const v2 = periodView(months, sel2, settings.fyStartMonth);
+        // The comparison's KPIs on the same days as a part month (its whole end month cut to the days covered).
+        const v2 = periodView(months, sel2, settings.fyStartMonth, null, { cutDay: view.partDay });
         const W2 = v2.B0 && !v2.missing.endBS ? cashWaterfall(v2.P, v2.B, v2.B0) : null;
         compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Bavg: v2.Bavg, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null });
       } catch { compareK = null; }
@@ -123,7 +101,7 @@ export function analyze(
     kpiRows.push({ def, value, compare, ok: st.ok, trend: cmp.trend, importance: settings.importance?.[def.key] ?? def.importance, alert });
   }
   const findings = insights({
-    P, B, Pprev: (view.likePrior ?? view.prior)?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, days: view.days, status,
+    P, B, Pprev: (view.likePrior ?? view.prior)?.P ?? null, K, W, tg: targets, Ps: view.series.P, Bs: view.series.B, periods: view.series.periods, ownBS: view.series.own, asOf: opts.asOf, days: view.days, status,
     cur: settings.currency, priorLabel: partPrior ? PART_PRIOR_LABEL[sel.type] : PRIOR_LABEL[sel.type], periodWord: sel.type,
     critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => (opts.kpiName ? opts.kpiName(r.def) : r.def.name)), lang: opts.lang,
   });
@@ -142,9 +120,7 @@ function shiftEnd(end: string, type: "month" | "quarter" | "year") {
 export function kpiHistory(months: MonthData[], settings: CompanySettings, end: string, n = 12, asOf?: string | null): { period: string; K: Record<string, number | null> }[] {
   const ps = months.filter(hasPL).map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
   return ps.map((p) => {
-    const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth);
-    const day = asOf && asOf.slice(0, 7) === p ? Number(asOf.slice(8)) : 0;
-    if (day > 0 && day < daysIn(p)) v.days -= daysIn(p) - day;
+    const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth, asOf);
     const W = v.B0 && !v.missing.endBS ? cashWaterfall(v.P, v.B, v.B0) : null;
     return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
   });

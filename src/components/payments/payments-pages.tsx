@@ -29,8 +29,8 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
     const revenue = Object.fromEntries(pl.map((m) => [m.period, m.pl.revenue ?? 0]));
     const cost = Object.fromEntries(pl.map((m) => [m.period, (m.pl.cos_variable ?? 0) + (m.pl.cos_fixed ?? 0)]));
     const accounts = c.accounts.filter((x) => x.cls === "ar" || x.cls === "ap").map((x) => ({ code: x.code, name: x.name, cls: x.cls, amounts: x.amounts }));
-    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency }), months, hasPayments: data.payments.length > 0 };
-  }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings.fyStartMonth, c.settings.currency, lang]);
+    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency, booksAsOf: c.asOf }), months, hasPayments: data.payments.length > 0 };
+  }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings.fyStartMonth, c.settings.currency, lang, c.asOf]);
 }
 
 const KIND_LABEL: Record<PaymentKind, string> = { customers: "Customers", suppliers: "Suppliers", transfer: "Between own accounts", other: "Other" };

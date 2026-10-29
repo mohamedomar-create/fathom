@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import sample from "../../reference/sample.json";
 import {
-  analyze, applyChanges, breakeven, kpiStatus, leverNeeded, money, num, pct, periodView, plCalc, selectableEnds, windowFor, type MonthData,
+  analyze, applyChanges, breakeven, formatTrend, kpiStatus, leverNeeded, money, num, pct, periodView, plCalc, selectableEnds, windowFor, type MonthData,
 } from "@/lib/engine";
 
 // Blueprint §9 worked example (one month, 30 days, t = 22.5%).
@@ -45,6 +45,11 @@ describe("blueprint §9 acceptance numbers", () => {
     const s = kpiStatus(45, 35, "up", "%");
     expect(s.ok).toBe(true);
     expect(s.trend!.value).toBe(10);
+    // A margin's distance from target is in points, never "+10.0%" (a 10% change would be 35 → 38.5).
+    expect(formatTrend(s.trend, "EGP")).toBe("+10.0 pp");
+  });
+  it("a money KPI's distance from target stays a percentage", () => {
+    expect(formatTrend(kpiStatus(110, 100, "up", "cur").trend, "EGP")).toBe("10%");
   });
 });
 

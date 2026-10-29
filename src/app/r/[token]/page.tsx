@@ -19,6 +19,8 @@ interface Payload {
   accounts: { id: string; code: string; name: string; class: string; amounts: Record<string, number> }[];
   commentary: Record<string, string>;
   accepted?: { title: string; period?: string | null; reason: string }[] | null;
+  /** How far the books go (0041): a part month reads as one, as in the app. */
+  as_of?: string | null;
 }
 
 export default async function PublicReportPage({ params }: { params: Promise<{ token: string }> }) {
@@ -42,6 +44,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
         accepted: (p.accepted ?? []).map((a) => ({ title: a.title, period: a.period ?? undefined, reason: a.reason })),
         org: { name: p.org.name, logoUrl: p.org.logo_url, brandColour: p.org.brand_colour, disclaimer: p.org.disclaimer, footer: p.org.report_footer },
         preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
+        asOf: p.as_of ?? null,
       }} />
   );
 }

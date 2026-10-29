@@ -11,7 +11,7 @@ const Tile = ({ label, value, sub }: { label: string; value: string; sub?: strin
 /** The forecast from the latest month loaded: headline, revenue and cash lines, the year by quarter and how well it tested. */
 export function ReportForecast({ input, head }: { input: ReportInput; head: (title: string, label: string) => React.ReactNode }) {
   const cur = input.settings.currency;
-  const f = useMemo(() => forecast(input.months, input.settings, input.forecast ?? {}, input.assumptions ?? {}), [input.months, input.settings, input.forecast, input.assumptions]);
+  const f = useMemo(() => forecast(input.months, input.settings, input.forecast ?? {}, input.assumptions ?? {}, input.asOf ?? undefined), [input.months, input.settings, input.forecast, input.assumptions, input.asOf]);
   if (!f.ok) return <>{head("Forecast", "latest figures")}<p className="text-mute">{f.reason}</p></>;
   const s = f.summary;
   // Actual months up to the month the forecast starts from (months holding a P&L; a part month the forecast skips is left out).

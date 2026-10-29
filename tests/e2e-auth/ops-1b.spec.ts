@@ -7,7 +7,8 @@ test("the health check answers for the uptime monitor, with no data and no sign-
   const res = await request.get("/api/health");
   expect(res.status()).toBe(200);
   const body = await res.json();
-  expect(body).toMatchObject({ ok: true, db: true, schema: 40, required: 40 });
+  expect(body).toMatchObject({ ok: true, db: true });
+  expect(body.schema).toBe(body.required);
   // Nothing but the state: no company, user or configuration data.
   for (const k of Object.keys(body)) expect(["ok", "db", "schema", "required", "commit", "time"]).toContain(k);
 });

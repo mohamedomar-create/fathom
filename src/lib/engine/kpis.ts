@@ -127,18 +127,20 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg }: KpiInputs): Re
   return k;
 }
 
-export type KpiTrend = { value: number; unit: Unit };
+/** "pp": a %-KPI's distance from target, in percentage points. */
+export type KpiTrend = { value: number; unit: Unit | "pp" };
 
 /** On/off track and the trend vs the comparison value (blueprint §8.4). */
 export function kpiStatus(val: number | null | undefined, tgt: number | null | undefined, direction: "up" | "down", unit: Unit): { ok: boolean | null; trend: KpiTrend | null } {
   if (val === null || val === undefined || tgt === null || tgt === undefined) return { ok: null, trend: null };
   const ok = direction === "up" ? val >= tgt : val <= tgt;
   if (unit === "cur") return { ok, trend: tgt ? { value: ((val - tgt) / Math.abs(tgt)) * 100, unit: "%" } : null };
-  return { ok, trend: { value: val - tgt, unit } };
+  return { ok, trend: { value: val - tgt, unit: unit === "%" ? "pp" : unit } };
 }
 
 export function formatTrend(t: KpiTrend | null, cur: string): string {
   if (!t) return "–";
+  if (t.unit === "pp") return `${t.value >= 0 ? "+" : "-"}${Math.abs(t.value).toFixed(1)} pp`;
   if (t.unit === "%" || t.unit === "cur") return pct(t.value);
   if (t.unit === "ratio") return (t.value >= 0 ? "+" : "") + t.value.toFixed(2);
   return num(t.value, t.unit, cur);

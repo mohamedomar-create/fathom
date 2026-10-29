@@ -23,7 +23,7 @@ export default async function DashboardPage() {
             <span><b className={`text-lg font-semibold ${risks ? "text-red" : ""}`}>{risks}</b> <span className="text-mute">{t.risks}</span></span>
           </div>
         </div>
-        <InsightsTable companies={items.filter((i) => i.months.length).map((i) => ({ id: i.company.id, name: i.company.name, currency: i.company.currency, taxRate: Number(i.company.tax_rate), months: i.months, source: i.company.source }))} />
+        <InsightsTable companies={items.filter((i) => i.months.length).map((i) => ({ id: i.company.id, name: i.company.name, currency: i.company.currency, taxRate: Number(i.company.tax_rate), months: i.months, source: i.company.source, asOf: i.asOf }))} />
       </main>
     </>
   );

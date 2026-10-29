@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Receipt, Upload } from "lucide-react";
-import { accountsFromLines, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
+import { accountsFromLines, bridgeAxis, expenseMonths, expensesAnalysis, hasPL, isExpenseClass, money, pct, type ExpenseRow } from "@/lib/engine";
 import { useCustomerNames } from "@/lib/company/sales-context";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
@@ -38,8 +38,8 @@ export function useExpensesAnalysis() {
     const end = fromPL ? sel.end : sel.end && lineMonths.includes(sel.end) ? sel.end : lineMonths[lineMonths.length - 1];
     if (!end) return null;
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang, fromLines: !fromPL });
-  }, [data, names, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang]);
+    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang, fromLines: !fromPL, asOf: c.asOf });
+  }, [data, names, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang, c.asOf]);
 }
 
 /** The period picker, which reads the financial months; with an expenses file only, the latest month is shown instead. */
@@ -182,11 +182,9 @@ export function CostBridge({ s, cur }: { s: ExpensesView; cur: string }) {
   let run = s.compare;
   for (const b of s.bridge) { steps.push({ label: b.name, from: run, to: run + b.delta, kind: b.delta > 0 ? "up" : "down" }); run += b.delta; }
   steps.push({ label: t.costsNow, from: 0, to: s.total, kind: "total" });
-  // The steps are small against the totals: the axis starts below the smallest running total so they can be seen.
-  const ends = steps.flatMap((x) => (x.kind === "total" ? [x.to] : [x.from, x.to]));
-  const hi = Math.max(...ends), min = Math.min(...ends);
-  const lo = Math.max(0, min - (hi - min) * 0.25);
-  const X = (v: number) => ((Math.max(v, lo) - lo) / (hi - lo || 1)) * 100;
+  // The axis starts at 0, so each bar's length is true to its amount.
+  const { lo, hi } = bridgeAxis(steps.flatMap((x) => [x.from, x.to]));
+  const X = (v: number) => ((v - lo) / (hi - lo || 1)) * 100;
   return (
     <div dir="ltr" className="text-[12.5px]" data-testid="cost-bridge">
       {steps.map((x, i) => {

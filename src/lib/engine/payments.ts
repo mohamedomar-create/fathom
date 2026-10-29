@@ -96,7 +96,7 @@ function sideView(side: Side, d: AgedData, perDay: number | null): SideView {
   };
 }
 
-export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string } = {}): PaymentsAnalysis {
+export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string; booksAsOf?: string | null } = {}): PaymentsAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
   const cur = opts.cur ?? "EGP";
@@ -107,7 +107,9 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     if (!flows) return null;
     const ps = [0, 1, 2].map((i) => addMonths(asOf.slice(0, 7), -i));
     if (!ps.every((p) => p in flows)) return null;
-    const days = ps.reduce((s, p) => s + new Date(Date.UTC(+p.slice(0, 4), +p.slice(5), 0)).getUTCDate(), 0);
+    // A month the books stop part-way through counts only its days covered.
+    const daysOf = (p: string) => { const full = new Date(Date.UTC(+p.slice(0, 4), +p.slice(5), 0)).getUTCDate(); const cut = opts.booksAsOf?.startsWith(p) ? Number(opts.booksAsOf.slice(8)) : 0; return cut > 0 && cut < full ? cut : full; };
+    const days = ps.reduce((s, p) => s + daysOf(p), 0);
     return ps.reduce((s, p) => s + flows[p], 0) / days;
   };
   const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue)) : null;

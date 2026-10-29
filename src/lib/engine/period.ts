@@ -77,7 +77,7 @@ export interface PeriodView {
   ly: { P: PLCalc; B: BSCalc; label: string } | null;
   ytd: PLCalc;
   /** Monthly series from the first loaded month up to the end of the window. */
-  series: { periods: string[]; P: PLCalc[]; B: BSCalc[] };
+  series: { periods: string[]; P: PLCalc[]; B: BSCalc[]; /** Whether each month's balance sheet is its own (not carried forward). */ own: boolean[] };
 }
 
 export function indexMonths(months: MonthData[]) {
@@ -111,7 +111,16 @@ export function isAnnualColumn(months: MonthData[], p: string, fyStart: number) 
   return plSize(at) > 4 * median;
 }
 
-export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: number): PeriodView {
+/** A month's P&L cut to a share of its days (a whole month compared with a part month). */
+const cutPL = (pl: MonthData["pl"], f: number) => (f >= 1 ? pl : Object.fromEntries(Object.entries(pl).map(([k, v]) => [k, (v ?? 0) * f])) as MonthData["pl"]);
+
+/**
+ * The figures for a period. asOf (the last day the books cover) inside the end month makes it a part month: days count only
+ * the days covered, the label says "(to 10 Oct)", and the prior period and last year are compared on the same days (their
+ * last month cut to the same share). opts.cutDay treats a whole end month as covering only that many days (a part month's
+ * comparison measured like for like).
+ */
+export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: number, asOf?: string | null, opts: { cutDay?: number } = {}): PeriodView {
   const { sorted, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(selIn.end);
   if (!endMonth) throw new Error(`No data for ${selIn.end}`);
@@ -119,10 +128,14 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
   const annual = isAnnualColumn(sorted, selIn.end, fyStart);
   const sel: PeriodSel = annual ? { type: "year", end: selIn.end } : selIn;
   const window = windowFor(sel, fyStart);
+  const fullEnd = daysIn(window.end);
+  const asOfDay = !annual && asOf && asOf.startsWith(window.end) ? Number(asOf.slice(8)) : 0;
+  const day = asOfDay > 0 && asOfDay < fullEnd ? asOfDay : !annual && opts.cutDay && opts.cutDay < fullEnd ? opts.cutDay : 0;
   const plAt = (p: string) => { const m = byPeriod.get(p); return m && hasPL(m) ? m : undefined; };
   const bsAtOrBefore = (p: string) => { for (let i = sorted.length - 1; i >= 0; i--) if (sorted[i].period <= p && hasBS(sorted[i])) return sorted[i]; return undefined; };
   const got = annual ? [endMonth] : (window.periods.map(plAt).filter(Boolean) as MonthData[]);
-  const P = plCalc(sumPL(got.map((m) => m.pl)));
+  const cutEnd = Boolean(opts.cutDay) && day > 0;
+  const P = plCalc(sumPL(got.map((m) => (cutEnd && m.period === window.end ? cutPL(m.pl, day / fullEnd) : m.pl))));
   const bsMonth = bsAtOrBefore(window.end);
   const B = bsCalc(bsMonth?.bs ?? {});
   const opening = addMonths(window.start, -1);
@@ -130,7 +143,7 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
   const B0 = open && hasBS(open) ? bsCalc(open.bs) : null;
   // Days the figures cover: the whole year for an annual column, otherwise only the months holding a P&L (a year with
   // three months loaded is measured on those three months).
-  const days = annual ? window.periods.reduce((s, p) => s + daysIn(p), 0) : got.reduce((s, m) => s + daysIn(m.period), 0);
+  const days = (annual ? window.periods.reduce((s, p) => s + daysIn(p), 0) : got.reduce((s, m) => s + daysIn(m.period), 0)) - (day && got.some((m) => m.period === window.end) ? fullEnd - day : 0);
   const points = annual ? [] : window.periods.map((p) => byPeriod.get(p)).filter((m): m is MonthData => !!m && hasBS(m)).map((m) => bsCalc(m.bs));
   const Bavg = averageBS([...(B0 ? [B0] : []), ...(points.length ? points : [B])]);
   const cmp = (shift: number) => {
@@ -139,18 +152,25 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     const ms = annual && isAnnualColumn(sorted, w2.end, fyStart) ? [plAt(w2.end)] : w2.periods.map(plAt);
     if (ms.some((x) => !x)) return null;
     const b2 = bsAtOrBefore(w2.end);
-    return { P: plCalc(sumPL(ms.map((m) => m!.pl))), B: bsCalc(b2?.bs ?? {}), label: windowLabel(w2, sel.type, fyStart) };
+    // A part month: the comparison's last month is cut to the same days (never more than it has).
+    const f = day ? Math.min(day, daysIn(w2.end)) / daysIn(w2.end) : 1;
+    const label = windowLabel(w2, sel.type, fyStart);
+    return { P: plCalc(sumPL(ms.map((m) => (m!.period === w2.end ? cutPL(m!.pl, f) : m!.pl)))), B: bsCalc(b2?.bs ?? {}), label: day ? `${label} (same ${day} days)` : label };
   };
   const fy0 = fyStartOf(window.end, fyStart);
   const ytdMonths = sorted.filter((m) => hasPL(m) && m.period >= fy0 && m.period <= window.end);
   // The monthly series: months holding a P&L, each with the balance sheet held at or before it.
   const upto = sorted.filter((m) => hasPL(m) && m.period <= window.end);
+  const shownWindow = !day ? window : { ...window, label: /\(to [A-Z][a-z]{2}\)$/.test(window.label)
+    ? window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})`)
+    : `${window.label} (to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})` };
+  const prior = cmp(SHIFT[sel.type]);
   return {
-    sel, window, complete: got.length === (annual ? 1 : window.periods.length), P, B, bsAt: bsMonth?.period ?? null, B0, Bavg, days, annual,
+    sel, window: shownWindow, ...(day ? { partDay: day, likePrior: prior && { P: prior.P, label: prior.label } } : {}), complete: got.length === (annual ? 1 : window.periods.length), P, B, bsAt: bsMonth?.period ?? null, B0, Bavg, days, annual,
     missing: { pl: annual ? [] : window.periods.filter((p) => !plAt(p)), endBS: bsMonth?.period !== window.end, openingBS: !B0, opening },
-    prior: cmp(SHIFT[sel.type]), ly: cmp(12),
+    prior, ly: cmp(12),
     ytd: plCalc(sumPL(ytdMonths.map((m) => m.pl))),
-    series: { periods: upto.map((m) => m.period), P: upto.map((m) => plCalc(m.pl)), B: upto.map((m) => bsCalc((hasBS(m) ? m : bsAtOrBefore(m.period))?.bs ?? {})) },
+    series: { periods: upto.map((m) => m.period), P: upto.map((m) => plCalc(m.pl)), B: upto.map((m) => bsCalc((hasBS(m) ? m : bsAtOrBefore(m.period))?.bs ?? {})), own: upto.map(hasBS) },
   };
 }
 
@@ -173,3 +193,35 @@ export function selectableEndsOf(ps: string[], type: PeriodType, fyStart: number
   }
   return [...seen.entries()].map(([, end]) => ({ end, label: windowFor({ type, end }, fyStart).label })).filter((x) => x.end <= last);
 }
+
+/**
+ * The month a page opens on: the latest month with figures, unless the books stop part-way through it (asOf), then the
+ * month before. The part month stays selectable.
+ */
+export function defaultEnd(periods: string[], asOf?: string | null): string | undefined {
+  const last = periods[periods.length - 1];
+  if (!last || periods.length < 2 || !asOf || !asOf.startsWith(last)) return last;
+  return Number(asOf.slice(8)) < daysIn(last) ? periods[periods.length - 2] : last;
+}
+
+/**
+ * For a module comparing a window with another (Sales, Expenses): when the books stop part-way through the window's last
+ * month (asOf), the comparison window's last month counts only the same share of its days. Returns the weight of a month.
+ */
+export function partWeight(w: Window, cmp: Window, asOf?: string | null): (p: string) => number {
+  if (!asOf || !asOf.startsWith(w.end)) return () => 1;
+  const day = Number(asOf.slice(8));
+  if (!(day > 0 && day < daysIn(w.end))) return () => 1;
+  const f = Math.min(day, daysIn(cmp.end)) / daysIn(cmp.end);
+  return (p) => (p === cmp.end ? f : 1);
+}
+
+/** The comparison window's months, carrying each month's weight (see partWeight). */
+export type CmpSet = Set<string> & { w: (p: string) => number };
+export function cmpSet(periods: string[], w: (p: string) => number = () => 1): CmpSet {
+  const s = new Set(periods) as CmpSet;
+  s.w = w;
+  return s;
+}
+/** A month's weight in a comparison set (1 for a plain set). */
+export const weightIn = (s: Set<string> | null | undefined, p: string) => (s && "w" in s ? (s as CmpSet).w(p) : 1);

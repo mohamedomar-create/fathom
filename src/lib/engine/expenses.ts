@@ -1,6 +1,6 @@
 import { differs } from "@/lib/tolerance";
 import { addMonths, mlabel } from "./format";
-import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
+import { cmpSet, partWeight, shiftWindow, weightIn, windowFor, type PeriodSel, type Window } from "./period";
 import type { ClassKey, Comparison } from "./types";
 import { isBillDoc } from "./series";
 import { monthLabel } from "@/lib/i18n";
@@ -207,7 +207,7 @@ function rank<R extends { p: string; a: number }>(rows: R[], cur: Set<string>, c
     const k = key(r);
     const x = m.get(k) ?? { key: k, name: name(r), ...extra?.(r), amount: 0, share: 0, compare: null, growth: null, ofSales: null, cmpAmt: 0, seen: false };
     if (inCur) { x.amount += r.a; x.seen = true; }
-    if (inCmp) x.cmpAmt += r.a;
+    if (inCmp) x.cmpAmt += r.a * weightIn(cmp, r.p);
     m.set(k, x);
   }
   const total = sum([...m.values()], (x) => x.amount);
@@ -220,7 +220,7 @@ function rank<R extends { p: string; a: number }>(rows: R[], cur: Set<string>, c
 
 export function expensesAnalysis(
   accounts: ExpenseAccount[], d: ExpensesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string>; lang?: "en" | "ar"; fromLines?: boolean } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; customers?: Set<string>; lang?: "en" | "ar"; fromLines?: boolean; asOf?: string | null } = {},
 ): ExpensesAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
@@ -234,15 +234,17 @@ export function expensesAnalysis(
   for (const a of accounts) if (isExpenseClass(a.cls) || a.cls === "revenue") for (const [p, v] of Object.entries(a.amounts)) if (v) held.add(p);
   const cur = new Set(window.periods);
   const cmpOk = cmpW.periods.every((p) => held.has(p));
-  const cmp = cmpOk ? new Set(cmpW.periods) : null;
+  // A part month is compared with the same days of the comparison's last month.
+  const wt = partWeight(window, cmpW, opts.asOf);
+  const cmp = cmpOk ? cmpSet(cmpW.periods, wt) : null;
   const months = window.periods.filter((p) => held.has(p));
-  const rev = (ps: Iterable<string>) => { let s = 0, any = false; for (const p of ps) { const v = opts.revenue?.[p]; if (v !== undefined) { s += v; any = true; } } return any ? s : null; };
+  const rev = (ps: Iterable<string>) => { let s = 0, any = false; for (const p of ps) { const v = opts.revenue?.[p]; if (v !== undefined) { s += v * wt(p); any = true; } } return any ? s : null; };
   const revenue = rev(window.periods), revenueCmp = cmp ? rev(cmp) : null;
 
   // ---- accounts (tie to the P&L)
   const acctRows = costs.flatMap((a) => Object.entries(a.amounts).map(([p, v]) => ({ p, a: v, acct: a })));
   const total = sum(acctRows.filter((r) => cur.has(r.p)), (r) => r.a);
-  const compare = cmp ? sum(acctRows.filter((r) => cmp.has(r.p)), (r) => r.a) : null;
+  const compare = cmp ? sum(acctRows.filter((r) => cmp.has(r.p)), (r) => r.a * cmp.w(r.p)) : null;
   const byAccount = rank(acctRows, cur, cmp, (r) => r.acct.id, (r) => [r.acct.code, r.acct.name].filter(Boolean).join(" "), revenue, (r) => ({ group: GROUP_OF.get(r.acct.cls)!.name, cls: r.acct.cls }))
     .filter((r) => r.amount || r.compare);
   const last12 = Array.from({ length: 12 }, (_, i) => addMonths(window.end, i - 11));
@@ -276,7 +278,7 @@ export function expensesAnalysis(
   const lineHeld = new Set(lineMonths);
   const lineCur = window.periods.filter((p) => lineHeld.has(p));
   const lineCmpOk = cmpW.periods.every((p) => lineHeld.has(p));
-  const lcmp = lineCmpOk ? new Set(cmpW.periods) : null;
+  const lcmp = lineCmpOk ? cmpSet(cmpW.periods, wt) : null;
   // Costs come from cost lines only; goods bought for stock count under their supplier, never in costs.
   const costSup = d.suppliers.filter((r) => isCostLine(r.c));
   const linesTotal = sum(costSup.filter((r) => cur.has(r.p)), (r) => r.a);
@@ -296,7 +298,7 @@ export function expensesAnalysis(
     if (!inCur && !inCmp) continue;
     const x = lm.get(r.s) ?? { key: r.s, name: lenderName(r.s), interest: 0, fees: 0, amount: 0, share: 0, compare: lcmp ? 0 : null, growth: null, ofSales: null, seen: false };
     if (inCur) { x.amount += r.a; x.seen = true; if (r.c === "interest_expenses") x.interest += r.a; else x.fees += r.a; }
-    if (inCmp && x.compare !== null) x.compare += r.a;
+    if (inCmp && x.compare !== null) x.compare += r.a * wt(r.p);
     lm.set(r.s, x);
   }
   const lenderTotal = sum([...lm.values()], (x) => x.amount);
@@ -390,4 +392,9 @@ export function accountsFromLines(d: ExpensesData): ExpenseAccount[] {
     m.set(r.t, a);
   }
   return [...m.values()];
+}
+
+/** The cost bridge's axis: from 0 (or the lowest running total, if below 0) to the highest, so bar lengths stay true. */
+export function bridgeAxis(ends: number[]): { lo: number; hi: number } {
+  return { lo: Math.min(0, ...ends), hi: Math.max(0, ...ends) };
 }

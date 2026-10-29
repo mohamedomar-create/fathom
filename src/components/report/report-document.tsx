@@ -25,7 +25,7 @@ const AUTO_SECTIONS: Partial<Record<SectionKey, Finding["section"][]>> = { kpis:
 
 /** A4-styled, print-ready management report. Used for the editor preview, the public link and PDF export. */
 export function ReportDocument({ input }: { input: ReportInput }) {
-  const a = useMemo(() => analyze(input.months, input.sel, input.settings, { alerts: input.alerts }), [input.months, input.sel, input.settings, input.alerts]);
+  const a = useMemo(() => analyze(input.months, input.sel, input.settings, { alerts: input.alerts, asOf: input.asOf }), [input.months, input.sel, input.settings, input.alerts, input.asOf]);
   const cur = input.settings.currency;
   const brand = input.org.brandColour ?? "#0B6E70";
   // The Sales and Expenses pages are left out when there is nothing to show, rather than printed empty.

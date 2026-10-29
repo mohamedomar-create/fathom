@@ -72,8 +72,10 @@ describe("a part month against the month before (register D21)", () => {
     const a = analyze(ms, { type: "month", end: "2026-10" }, SET, { asOf: "2026-10-15" });
     expect(a.view.likePrior!.P.revenue).toBe(50_000);
     expect(a.view.likePrior!.label).toMatch(/same 15 days/);
-    // The prior period the pages show (statements, account rows, cash flow) stays whole and consistent with its balances.
-    expect(a.view.prior!.P.revenue).toBe(100_000);
+    // Every comparison the pages show (tiles, statements, report) is on the same days (Phase 2: the same figure everywhere);
+    // the prior balance sheet is still the one at the end of that month.
+    expect(a.view.prior!.P.revenue).toBe(50_000);
+    expect(a.view.prior!.label).toMatch(/same 15 days/);
     expect(a.findings.some((f) => /Revenue (up|down)/.test(f.title))).toBe(false);
   });
 });

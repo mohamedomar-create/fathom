@@ -29,7 +29,7 @@ export function TrendPage() {
   const [keys, setKeys] = useState<string[]>(["p:revenue"]);
   const [year, setYear] = useState<string>("All");
   const [note, setNote] = useState<string | null>(null);
-  const calcs = useMemo(() => monthCalcs(c.months), [c.months]);
+  const calcs = useMemo(() => monthCalcs(c.months, c.asOf), [c.months, c.asOf]);
   const cat = useMemo(() => metricCatalogue(c.accounts), [c.accounts]);
   const T = useT();
   const t = T.d.ana;

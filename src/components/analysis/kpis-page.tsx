@@ -96,7 +96,7 @@ function KpiTr({ r, cur, onOpen }: { r: KpiRow; cur: string; onOpen: () => void 
       <td>{T.num(r.value, r.def.unit, cur)}</td>
       <td className="hidden text-mute sm:table-cell">{r.compare === null ? "–" : T.num(r.compare, r.def.unit, cur)}</td>
       <td className="text-center"><StatusIcon ok={r.ok} /></td>
-      <td>{r.trend ? <><span className={fav === null ? "text-mute" : r.trend.value === 0 ? "text-mute" : ((r.trend.value > 0) === (r.def.direction === "up")) ? "text-green-d" : "text-red"}>{r.trend.value > 0 ? "▲" : "▼"}</span> {T.lang === "ar" ? formatTrend(r.trend, cur).replace(/ days$/, " يوم").replace(/ times$/, " مرة") : formatTrend(r.trend, cur)}</> : "–"}</td>
+      <td>{r.trend ? <><span className={fav === null ? "text-mute" : r.trend.value === 0 ? "text-mute" : ((r.trend.value > 0) === (r.def.direction === "up")) ? "text-green-d" : "text-red"}>{r.trend.value > 0 ? "▲" : "▼"}</span> {T.lang === "ar" ? formatTrend(r.trend, cur).replace(/ days$/, " يوم").replace(/ times$/, " مرة").replace(/ pp$/, " نقطة") : formatTrend(r.trend, cur)}</> : "–"}</td>
       <td className={`hidden md:table-cell ${IMP_COL[r.importance]}`}>{T.tl(r.importance)}</td>
     </tr>
   );
@@ -117,9 +117,10 @@ function KpiModal({ row }: { row: KpiRow }) {
   const marks = vals.map((v) => (v === null || monthTgt === null ? null : row.def.direction === "up" ? v >= monthTgt : v <= monthTgt));
   // Same-length comparisons: the prior month, quarter or year, and the same period a year earlier.
   const cmp = useMemo(() => {
-    const at = (comparison: "prior" | "ly") => analyze(c.months, a.view.sel, c.settings, { comparison }).kpiRows.find((r) => r.def.key === row.def.key)?.compare ?? null;
+    // A part month is compared on the same days, as the table is.
+    const at = (comparison: "prior" | "ly") => analyze(c.months, a.view.sel, c.settings, { comparison, asOf: c.asOf }).kpiRows.find((r) => r.def.key === row.def.key)?.compare ?? null;
     return { prev: at("prior"), ly: at("ly") };
-  }, [c.months, c.settings, a.view.sel, row.def.key]);
+  }, [c.months, c.settings, a.view.sel, row.def.key, c.asOf]);
   const prev = cmp.prev, ly = cmp.ly;
   const nums = vals.filter((v): v is number => v !== null);
   const avg = nums.length ? nums.reduce((s, v) => s + v, 0) / nums.length : null;

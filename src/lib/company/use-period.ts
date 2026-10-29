@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useMemo } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { analyze, hasPL, indexMonths, isAnnualColumn, type Comparison, type PeriodSel, type PeriodType } from "@/lib/engine";
+import { analyze, defaultEnd, hasPL, indexMonths, isAnnualColumn, type Comparison, type PeriodSel, type PeriodType } from "@/lib/engine";
 import { useCompany } from "./context";
 import { useLang } from "@/lib/i18n/context";
 import { kpiName } from "@/lib/i18n/kpis";
@@ -17,8 +17,9 @@ export function usePeriod(own?: string[]) {
   const periods = useMemo(() => own ?? indexMonths(company.months).sorted.filter(hasPL).map((m) => m.period), [company.months, own]);
   const latest = periods[periods.length - 1];
   const endRaw = sp.get("end");
-  const end = endRaw && periods.includes(endRaw) ? endRaw : latest;
-  // Audited annual columns are read as years; everything else opens on the latest month.
+  // Opens on the last full month (a part month at the end is one click away); a module's own months open on its latest.
+  const end = endRaw && periods.includes(endRaw) ? endRaw : own ? latest : defaultEnd(periods, company.asOf) ?? latest;
+  // Audited annual columns are read as years; everything else opens on a month.
   const annual = end && !own ? isAnnualColumn(company.months, end, company.settings.fyStartMonth) : false;
   const type = (annual ? "year" : ["month", "quarter", "year"].includes(sp.get("type") ?? "") ? sp.get("type") : "month") as PeriodType;
   const cmp = (["target", "prior", "ly"].includes(sp.get("cmp") ?? "") ? sp.get("cmp") : "target") as Comparison;

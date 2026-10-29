@@ -35,8 +35,8 @@ export function ReportSales({ input, head }: { input: ReportInput; head: (title:
     const data = fromAccounts ? salesFromAccounts(input.accounts) : input.sales!;
     if (!salesMonths(data).length) return null;
     const revenue = Object.fromEntries(input.months.filter((m) => Object.keys(m.pl).length).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return { ...salesAnalysis(data, input.sel, input.settings.fyStartMonth, { revenue }), fromAccounts };
-  }, [input.sales, input.accounts, input.months, input.sel, input.settings.fyStartMonth]);
+    return { ...salesAnalysis(data, input.sel, input.settings.fyStartMonth, { revenue, asOf: input.asOf }), fromAccounts };
+  }, [input.sales, input.accounts, input.months, input.sel, input.settings.fyStartMonth, input.asOf]);
   if (!s) return null;
   const last12 = s.trend.slice(-12), prev12 = s.trend.slice(0, 12);
   const checked = s.trend.filter((t) => s.window.periods.includes(t.period) && t.sales !== null && t.revenue !== null).length;

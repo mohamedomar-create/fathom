@@ -38,7 +38,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!row || !(await aiBudgetOk(supabase, row.org_id))) return NextResponse.json({ error: OVER_BUDGET }, { status: 429 });
   let used: Usage | null = null;
   try {
-    const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts });
+    // The same part-month figures the pages show (the context below uses asOf too).
+    const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts, asOf: bundle.asOf });
     const sel = { type: parsed.data.type, end: parsed.data.end };
     const [salesState, expensesState] = await Promise.all([loadSales(id), loadExpenses(id)]);
     // Commentary written from figures that could not be read would describe zeros: refuse, so the person can retry.
@@ -48,7 +49,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const context = {
       ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, asOf: bundle.asOf ?? null, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, parsed.data.sections),
       // Customers, products and suppliers from the same data, so the commentary can name them.
-      ...linesContext(bundle.months, bundle.accounts, sales, expenses, sel, bundle.settings.fyStartMonth, bundle.settings.currency),
+      ...linesContext(bundle.months, bundle.accounts, sales, expenses, sel, bundle.settings.fyStartMonth, bundle.settings.currency, bundle.asOf),
     };
     const out = await writeCommentary(context, parsed.data.sections, (u) => { used = u; });
     const periodKey = `${parsed.data.type}:${parsed.data.end}`;

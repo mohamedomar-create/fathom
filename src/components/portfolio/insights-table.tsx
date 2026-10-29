@@ -2,7 +2,7 @@
 import { ArrowDownUp, Check, Columns3, Search } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { money, num, type MonthData, type Unit } from "@/lib/engine";
+import { defaultEnd, money, num, type MonthData, type Unit } from "@/lib/engine";
 import { monthCalcs, type MonthCalc } from "@/components/analysis/metrics";
 import { Sparkline } from "@/components/charts/spark";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,7 +11,7 @@ import { useDict, useLang } from "@/lib/i18n/context";
 import { monthLabel } from "@/lib/i18n";
 import { term } from "@/lib/i18n/areas/fin";
 
-export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string }
+export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string; asOf?: string | null }
 /** Margins whose group figure is a total ÷ total revenue (the numerator's P&L key). */
 const MARGIN_OF: Record<string, string> = { gpm: "gross_profit", nim: "net_income", opm: "operating_profit", ebitda_margin: "ebitda" };
 interface Metric { key: string; label: string; group: string; unit: Unit; get: (m: MonthCalc) => number | null; good?: "up" | "down" }
@@ -71,8 +71,11 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const rows = useMemo(() => companies.map((c) => {
-    const calcs = monthCalcs(c.months);
-    return { c, calcs, last: calcs[calcs.length - 1], prev: calcs[calcs.length - 2] };
+    // The same month the company's pages open on (the last full one), a part month measured on its days.
+    const calcs = monthCalcs(c.months, c.asOf);
+    const end = defaultEnd(calcs.map((x) => x.period), c.asOf);
+    const i = calcs.findIndex((x) => x.period === end);
+    return { c, calcs, last: calcs[i], prev: i > 0 ? calcs[i - 1] : undefined };
   }), [companies]);
   const metrics = sel.map((k) => METRICS.find((m) => m.key === k)!);
   const val = (r: (typeof rows)[number], m: Metric) => (r.last ? m.get(r.last) : null);

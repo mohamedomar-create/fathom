@@ -110,7 +110,7 @@ exports[`Full mode is unchanged by Simple mode > the analysis of the latest samp
       "section": "cashflow",
       "sev": 1,
       "text": "Cash on hand is EGP 1,711,153.",
-      "title": "Cash has grown 3 months in a row",
+      "title": "Cash has grown at each of the last 3 month-end balance sheets",
     },
   ],
 }

@@ -1,6 +1,6 @@
 import { differs } from "@/lib/tolerance";
 import { addMonths, mlabel } from "./format";
-import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
+import { cmpSet, partWeight, shiftWindow, weightIn, windowFor, type PeriodSel, type Window } from "./period";
 import type { Comparison } from "./types";
 import { monthLabel } from "@/lib/i18n";
 
@@ -129,7 +129,7 @@ function rank<R extends { p: string; a: number; k: number | null; ka: number | n
       if (r.k !== null) { x.cost = (x.cost ?? 0) + r.k; x.costed += r.ka ?? 0; }
       if (docs) x.invoices! += docs(r);
     }
-    if (inCmp) x.cmpAmt += r.a;
+    if (inCmp) x.cmpAmt += r.a * weightIn(cmp, r.p);
     m.set(k, x);
   }
   const total = sum([...m.values()], (x) => x.amount);
@@ -143,7 +143,7 @@ function rank<R extends { p: string; a: number; k: number | null; ka: number | n
 
 export function salesAnalysis(
   d: SalesData, sel: PeriodSel, fyStart: number,
-  opts: { comparison?: Comparison; revenue?: Record<string, number>; categoryOf?: (c: string) => string; lang?: "en" | "ar" } = {},
+  opts: { comparison?: Comparison; revenue?: Record<string, number>; categoryOf?: (c: string) => string; lang?: "en" | "ar"; asOf?: string | null } = {},
 ): SalesAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
@@ -154,13 +154,14 @@ export function salesAnalysis(
   const held = new Set(salesMonths(d));
   const cur = new Set(window.periods);
   const cmpOk = cmpW.periods.every((p) => held.has(p));
-  const cmp = cmpOk ? new Set(cmpW.periods) : null;
+  // A part month is compared with the same days of the comparison's last month.
+  const cmp = cmpOk ? cmpSet(cmpW.periods, partWeight(window, cmpW, opts.asOf)) : null;
   const cat = opts.categoryOf ?? ((g: string) => g);
   const months = window.periods.filter((p) => held.has(p));
 
   const cRows = d.customers, pRows = d.products;
   const total = sum(cRows.filter((r) => cur.has(r.p)), (r) => r.a);
-  const compare = cmp ? sum(cRows.filter((r) => cmp.has(r.p)), (r) => r.a) : null;
+  const compare = cmp ? sum(cRows.filter((r) => cmp.has(r.p)), (r) => r.a * cmp.w(r.p)) : null;
   // Credit notes ("RINV/…", or a series whose lines net negative) are counted apart from invoices.
   const inWin = cRows.filter((r) => cur.has(r.p));
   const invoices = sum(inWin.filter((r) => !isCreditNote(r)), (r) => r.d);
@@ -210,7 +211,7 @@ export function salesAnalysis(
   if (cmp && compare !== null) {
     const qp = (ps: Set<string>) => {
       const m = new Map<string, { a: number; q: number | null }>();
-      for (const r of pRows) if (ps.has(r.p)) { const k = `${r.g}\u0001${r.r}`; const x = m.get(k) ?? { a: 0, q: 0 }; x.a += r.a; x.q = r.q === null || x.q === null ? null : x.q + r.q; m.set(k, x); }
+      for (const r of pRows) if (ps.has(r.p)) { const f = weightIn(ps, r.p); const k = `${r.g}\u0001${r.r}`; const x = m.get(k) ?? { a: 0, q: 0 }; x.a += r.a * f; x.q = r.q === null || x.q === null ? null : x.q + r.q * f; m.set(k, x); }
       return m;
     };
     const P1 = qp(cur), P0 = qp(cmp);

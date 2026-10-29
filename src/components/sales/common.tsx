@@ -29,8 +29,8 @@ export function useSalesAnalysis() {
     if (!months.length) return null;
     const end = sel.end && months.includes(sel.end) ? sel.end : sel.end && sel.end <= months[months.length - 1] && sel.end >= months[0] ? sel.end : months[months.length - 1];
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return { ...salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, lang }), fromAccounts };
-  }, [lines, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang]);
+    return { ...salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, lang, asOf: c.asOf }), fromAccounts };
+  }, [lines, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang, c.asOf]);
 }
 
 /** The period picker, which reads the financial months; with sales only, the latest sales month is shown instead. */

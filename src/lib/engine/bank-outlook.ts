@@ -44,13 +44,14 @@ export interface TrendYear { label: string; end: string; basis: Basis; assessmen
 export interface YearTrend { years: TrendYear[]; rows: TrendRow[] }
 
 /** Up to three twelve-month periods ending at `end`, a year apart. Earlier years count only when complete (or an annual column). */
-export function yearTrend(months: MonthData[], end: string, fyStart: number, inp: BankInputs = {}, cur = "EGP"): YearTrend {
+/** asOf: the books stop part-way through `end`; the latest year is then the same twelve months the assessment uses. */
+export function yearTrend(months: MonthData[], end: string, fyStart: number, inp: BankInputs = {}, cur = "EGP", asOf?: string | null): YearTrend {
   const held = new Set(months.map((m) => m.period));
   const years: TrendYear[] = [];
   for (let k = 0; k < 3; k++) {
     const e = addMonths(end, -12 * k);
     if (!held.has(e)) break;
-    const b = twelveMonths(months, e, fyStart);
+    const b = twelveMonths(months, e, fyStart, k === 0 ? asOf : null);
     if (k > 0 && b.covered < 12 && !b.annualColumn) break;
     // Repayments for past years always use the estimate: the schedule entered applies to the next 12 months only.
     const a = bankAssessment(b, k === 0 ? inp : { ...inp, principal12m: null }, cur);
@@ -362,7 +363,7 @@ export function bankPack(months: MonthData[], end: string, settings: { currency:
   const basis = twelveMonths(months, end, settings.fyStartMonth, asOf);
   const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang, taxRate: settings.taxRate };
   const assessment = bankAssessment(basis, inputs, cur);
-  const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur);
+  const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur, asOf);
   const stress = stressTest(basis, assessment, { taxRate: settings.taxRate, importShare: a.importShare, rate: a.rate, lang });
   const pf = a.requestAmount && a.requestAmount > 0 ? proForma(basis, assessment, { amount: a.requestAmount, type: a.requestType ?? "term_loan" }, a.rate, a.tenor) : null;
   const memo = memoText(ruleMemo(name, assessment, { stress, pf, trend, cur, purpose: a.requestPurpose, lang }), lang);
