@@ -7,6 +7,7 @@ import { normaliseSections, reportMonths } from "@/lib/report/types";
 import { parseSalesSummary } from "@/lib/company/sales-parse";
 import { parseExpenseSummary } from "@/lib/company/expenses-parse";
 import type { ClassKey, PeriodType } from "@/lib/engine";
+import { currentAsOf } from "@/lib/engine";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { PublicReport } from "./public-report";
 
@@ -35,16 +36,18 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   const p = data as unknown as Payload;
   const accounts = naturalAccounts(p.accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: Object.fromEntries(Object.entries(a.amounts).map(([k, v]) => [k, Number(v)])) })));
   const { settings, alerts } = settingsFromRow(p.company);
+  const all = buildMonths(accounts);
   return (
     <PublicReport token={token}
       input={{
-        title: p.report.title, companyName: p.company.name, months: reportMonths(buildMonths(accounts), p.report.period_end), accounts, settings, alerts,
+        title: p.report.title, companyName: p.company.name, months: reportMonths(all, p.report.period_end), accounts, settings, alerts,
         sel: { type: p.report.period_type as PeriodType, end: p.report.period_end }, sections: normaliseSections(p.report.sections),
         assumptions: assumptionsFromRow(p.company), forecast: forecastFromRow(p.company), sales: parseSalesSummary(salesRaw), expenses: parseExpenseSummary(expensesRaw), commentary: p.commentary ?? {}, notes: (p.company.notes as string[]) ?? [],
         accepted: (p.accepted ?? []).map((a) => ({ title: a.title, period: a.period ?? undefined, reason: a.reason })),
         org: { name: p.org.name, logoUrl: p.org.logo_url, brandColour: p.org.brand_colour, disclaimer: p.org.disclaimer, footer: p.org.report_footer },
         preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
-        asOf: p.as_of ?? null,
+        // As on the company's pages: the stop day counts only while it falls in the latest month the link carries.
+        asOf: currentAsOf(p.as_of, all.map((m) => m.period)),
       }} />
   );
 }

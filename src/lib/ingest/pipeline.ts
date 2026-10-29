@@ -77,6 +77,8 @@ export interface IngestResult {
   layouts: SheetLayout[];
   /** Last day the latest month covers, when it is a part month ("2026-10-10"). */
   asOf: string | null;
+  /** The unit the file states its amounts in (1,000 for "in thousands"): one unit of it is the books' rounding. */
+  unit: number;
   /** The last day any entry in the file is dated (up to the cut-off): the cut-off date offered by default. */
   lastDay: string | null;
   /** Lines read from the file but not imported, by key: why (a total iReport works out itself, a parent account, a check sheet). */
@@ -117,6 +119,11 @@ const windowOf = (p: string, k: number) => Array.from({ length: k }, (_, i) => a
  * A sheet whose every column is a multi-month total (a Trial Balance or P&L "From 01/01 to 10/10") only checks the figures
  * when another sheet in the same upload gives those months one by one (a General Ledger). It is then never imported.
  */
+/** The unit a file states its amounts in: the largest scale any of its sheets declared ("in thousands"). */
+export function fileUnit(layouts: Pick<SheetLayout, "scale">[]): number {
+  return Math.max(1, ...layouts.map((l) => l.scale || 1));
+}
+
 function sheetRoles(raw: RawLine[], layouts: SheetLayout[]) {
   const roles = new Map<string, "data" | "check">();
   const monthly = (sheet: string) => new Set(raw.filter((r) => r.sheet === sheet).flatMap((r) => Object.keys(r.values).filter((p) => !(r.spans?.[p] && r.spans[p] > 1))));
@@ -649,7 +656,7 @@ export function runIngest(rawAll: RawLine[], extractIssues: ExtractResult, opts:
       PL: [...new Set([...plP, ...(movPL ? movP : [])])].filter((p) => periods.includes(p)).sort(),
       BS: [...new Set([...bsP, ...(movBS ? movP : []), ...(openingMonth ? [openingMonth] : [])])].filter((p) => kept.includes(p)).sort(),
     },
-    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], asOf: asOf ?? null, lastDay, removed, booksStart,
+    ranges, controls, checks: fileChecks, layouts: extractIssues.layouts ?? [], unit: fileUnit(extractIssues.layouts ?? []), asOf: asOf ?? null, lastDay, removed, booksStart,
     openingFrom: mov.length && !mov.some((l) => l.r.opening) && periods.length ? periods[0] : null,
     openingMonth,
   };

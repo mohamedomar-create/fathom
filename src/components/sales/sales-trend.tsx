@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import { cn } from "@/lib/cn";
+import { balanced } from "@/lib/tolerance";
 import { DataNotes, NoSales, useSalesAnalysis, SalesPicker } from "./common";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -33,7 +34,7 @@ export function SalesTrend() {
           <thead><tr><th className="text-start">{t.month}</th><th>{t.salesLines}</th><th>{t.plRevenue}</th><th>{t.difference}</th></tr></thead>
           <tbody>
             {[...held].reverse().map((x) => {
-              const off = x.diff !== null && x.revenue !== null && Math.abs(x.diff) > Math.max(1, Math.abs(x.revenue) * 0.005);
+              const off = x.diff !== null && x.revenue !== null && !balanced(x.diff);
               return (
                 <tr key={x.period} className="row">
                   <td className="text-start">{T.ml(x.period)}</td>

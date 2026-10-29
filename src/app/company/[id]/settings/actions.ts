@@ -57,7 +57,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
   const zeroMonths = d.opening ? await zeroBasedMonths(supabase, d.companyId, current) : [];
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths });
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths, unit: d.unit });
   // The stored accounts plus the file's: the database keeps at most 8,000 per version.
   if (plan.accounts.length > 8000) throw new Error(`After this upload the company would hold ${plan.accounts.length.toLocaleString("en")} accounts; at most 8,000 can be kept. Exclude parent, total or unused accounts, or choose "Replace all".`);
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
@@ -114,7 +114,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     if (d.mode === "add" && !touched.PL.length && !touched.BS.length) return { ok: false, error: "Nothing new to add: every month in this file is already loaded." };
     const { version } = await saveCompanyData(supabase, d.companyId, plan.accounts, {
       kind: "upload", filename: d.filename,
-      report: { ...d.report, mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300), openingBasis: openingBasisOf(d.opening, plan.checks),
+      report: { ...d.report, ...(d.unit !== 1 ? { unit: d.unit } : {}), mode: d.mode, slices: touched, accepted, diffs: plan.diffs.slice(0, 200), checks: plan.checks.filter((c) => c.severity !== "info").slice(0, 300), openingBasis: openingBasisOf(d.opening, plan.checks),
         // The file checks were worked out in the browser (the server re-runs the balance checks on the merged books itself).
         browserChecks: [...new Set(d.extra.map((c) => c.id))] } as unknown as Json,
     }, allNotes);

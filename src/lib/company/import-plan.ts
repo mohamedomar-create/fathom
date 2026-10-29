@@ -73,7 +73,7 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null; opening?: { asAt: string } | null; zeroMonths?: string[] }): ImportPlan {
+export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null; opening?: { asAt: string } | null; zeroMonths?: string[]; unit?: number }): ImportPlan {
   // "add" reads the file exactly as a merge does, then leaves out the months already loaded.
   const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
   // Before the books start there is no trading: stored P&L months before it and balance sheets before the opening month go.
@@ -205,7 +205,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   const touched = new Set<string>();
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
   for (const p of shifted) touched.add(p);
-  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks] })
+  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, unit: opts.unit, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks, overlap };
 }

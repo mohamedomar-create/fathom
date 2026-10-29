@@ -116,3 +116,45 @@ describe("targets for a part month", () => {
     expect(a.targets.total_revenue).toBeCloseTo(1000, 6); // 3,100 × 10/31
   });
 });
+
+describe("review fixes", () => {
+  it("the 3-month trend leaves out a part month (flat sales are not 'behind')", () => {
+    const flat = ["2026-04", "2026-05", "2026-06", "2026-07", "2026-08", "2026-09"].map((p) => m(p, 3000, 900));
+    const a = analyze([...flat, m("2026-10", 1000, 900)], { type: "month", end: "2026-10" }, settings, { comparison: "prior", asOf: "2026-10-10" });
+    expect(a.findings.some((f) => /Last 3 months/.test(f.title))).toBe(false);
+  });
+});
+
+describe("account rows add up to their total row", () => {
+  it("the comparison month's weight is the part month's share of its days", async () => {
+    const { compareWeight } = await import("@/lib/engine/period");
+    expect(compareWeight(10, "2026-09")).toBeCloseTo(10 / 30, 9);
+    expect(compareWeight(30, "2026-02")).toBe(1); // never more than the month has
+    expect(compareWeight(undefined, "2026-09")).toBe(1);
+  });
+});
+
+describe("targets for a part month", () => {
+  it("a month's chart target counts the days covered", async () => {
+    const { monthTargets } = await import("@/lib/engine/analyze");
+    const s = { ...settings, targets: { total_revenue: 3100 } } as unknown as CompanySettings;
+    expect(monthTargets(s, "2026-10", "2026-10-10").total_revenue).toBeCloseTo(1000, 6);
+    expect(monthTargets(s, "2026-09", "2026-10-10").total_revenue).toBe(3100);
+  });
+  it("a part month with no P&L is not taken off twice", () => {
+    const bsOnly = { period: "2026-10", pl: {}, bs: { cash: 1000, ar: 900, retained_earnings: 1900 } } as MonthData;
+    const s = { ...settings, targets: { total_revenue: 3100 } } as unknown as CompanySettings;
+    const a = analyze([...months.slice(0, 4), bsOnly], { type: "month", end: "2026-10" }, s, { asOf: "2026-10-10" });
+    expect(a.targets.total_revenue).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("an old stop day no longer applies", () => {
+  it("only the latest month can be a part month", async () => {
+    const { currentAsOf } = await import("@/lib/engine/period");
+    expect(currentAsOf("2026-10-10", ["2026-09", "2026-10"])).toBe("2026-10-10");
+    expect(currentAsOf("2026-08-10", ["2026-09", "2026-10"])).toBeNull();
+    expect(currentAsOf(null, ["2026-10"])).toBeNull();
+    expect(currentAsOf("2026-10-10", [])).toBeNull();
+  });
+});

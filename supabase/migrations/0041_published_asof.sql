@@ -42,8 +42,8 @@ begin
                             where cm.company_id = c.id and cm.period_key = r.period_type || ':' || r.period_end
                               and private.report_shows(r.sections, cm.section)), '{}'::jsonb),
     -- How far the books go (the import of the current version), so a part month reads as one on the link too.
-    'as_of', (select i.report ->> 'asOf' from public.imports i where i.company_id = c.id and i.data_version = c.data_version and i.action = 'import'
-               order by i.created_at desc limit 1),
+    'as_of', case when v_fig then (select i.report ->> 'asOf' from public.imports i where i.company_id = c.id and i.data_version = c.data_version and i.action = 'import'
+               order by i.created_at desc limit 1) end,
     'accepted', case when not v_basis then '[]'::jsonb else coalesce((
                   select (select jsonb_agg(jsonb_build_object('title', x ->> 'title', 'period', x ->> 'period', 'reason', x ->> 'reason'))
                             from jsonb_array_elements(coalesce(i.report -> 'accepted', '[]'::jsonb)) x)

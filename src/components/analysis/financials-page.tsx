@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { bankChargesAsInterest, splitRetained, bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
+import { bankChargesAsInterest, compareWeight, splitRetained, bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/cn";
 import { MissingData, Notes } from "./common";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
 import { useT } from "@/lib/i18n/use-t";
+import { balanced } from "@/lib/tolerance";
 
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly";
@@ -74,7 +75,8 @@ export function FinancialsPage() {
   const accts = (classes: ClassKey[] | undefined, isBS: boolean) => !classes || layout !== "detailed" ? [] : c.accounts.filter((x) => classes.includes(x.cls)).map((x) => ({
     id: x.id, name: `${x.code} ${x.name}`,
     cur: isBS ? x.amounts[a.view.window.end] ?? 0 : periods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
-    cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
+    // A part month: the comparison's last month counts the same days, as in the total row above.
+    cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p, i) => s + (x.amounts[p] ?? 0) * (comp && i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0),
   })).filter((x) => x.cur || x.cmp);
   // Balance-sheet movements are neither good nor bad in themselves, so they are not coloured.
   const varCell = (x: number, y: number | undefined, cost: boolean | "neutral" = false) => {
@@ -121,7 +123,7 @@ export function FinancialsPage() {
         <div className="-mx-4 overflow-x-auto px-4">
           <div className="mb-2 flex items-center justify-between">
             <span />
-            {Math.abs(B.imbalance) > 0.5 && <span className="text-sm text-red" data-testid="oob">{t.outOfBalance(m(B.imbalance))}</span>}
+            {!balanced(B.imbalance) && <span className="text-sm text-red" data-testid="oob">{t.outOfBalance(m(B.imbalance))}</span>}
           </div>
           <table className="tbl min-w-[720px]" data-testid="bs-table">
             <thead><tr><th>{t.bs}</th><th>{T.ml(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? T.ml(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>{t.varianceCur(cur)}</th><th>{t.variancePct}</th><th>{t.commonSize}</th></tr></thead>

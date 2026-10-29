@@ -18,8 +18,12 @@ set role anon;
 select pg_temp.check('the link says the books run to 15 October (the current version''s import)', public.get_published_report('tok-asof-00000000000000000000') ->> 'as_of', '2026-10-15');
 reset role;
 -- A report without figures still carries no more than before.
-update public.reports set sections = '["cover"]'::jsonb where share_token = 'tok-asof-00000000000000000000';
+update public.reports set sections = (select jsonb_agg(jsonb_build_object('key', k, 'enabled', k = 'cover'))
+  from unnest(array['cover', 'summary', 'kpis', 'explorer', 'profitability', 'cashflow', 'pl', 'bs', 'cf', 'trend', 'growth', 'goalseek',
+                    'forecast', 'sales', 'expenses', 'bank', 'bank_outlook', 'realprofit', 'basis']) k)
+ where share_token = 'tok-asof-00000000000000000000';
 set role anon;
 select pg_temp.check('a cover-only link still has no accounts', (public.get_published_report('tok-asof-00000000000000000000') -> 'accounts')::text, '[]');
+select pg_temp.check('a cover-only link carries no books date either', coalesce(public.get_published_report('tok-asof-00000000000000000000') ->> 'as_of', 'none'), 'none');
 reset role;
 delete from public.organizations where name = 'Asof Org';

@@ -81,9 +81,12 @@ export function insights(ctx: InsightCtx): Finding[] {
     const gap = ((R - tRev) / tRev) * 100;
     add(gap < -5 ? 2 : 1, gap >= 0 ? "win" : gap < -5 ? "risk" : "watch", "kpis", L(`Revenue is ${fixed(Math.abs(gap), 1)}% ${gap >= 0 ? "above" : "below"} target`, `الإيرادات ${gap >= 0 ? "أعلى" : "أقل"} من المستهدف بنسبة ${fixed(Math.abs(gap), 1)}%`), L(`${m(R)} against a target of ${m(tRev)}.`, `${m(R)} مقابل مستهدف ${m(tRev)}.`));
   }
-  if (Ps.length >= 6) {
+  // A part month at the end is left out: three whole months against the three before.
+  const lastP = ctx.periods?.[ctx.periods.length - 1];
+  const Pw = lastP && !!ctx.asOf && ctx.asOf.startsWith(lastP) && Number(ctx.asOf.slice(8)) < daysIn(lastP) ? Ps.slice(0, -1) : Ps;
+  if (Pw.length >= 6) {
     const s = (a: PLCalc[]) => a.reduce((x, p) => x + p.revenue, 0);
-    const last3 = s(Ps.slice(-3)), prev3 = s(Ps.slice(-6, -3));
+    const last3 = s(Pw.slice(-3)), prev3 = s(Pw.slice(-6, -3));
     if (prev3) {
       const g3 = ((last3 - prev3) / prev3) * 100;
       if (Math.abs(g3) >= 3)

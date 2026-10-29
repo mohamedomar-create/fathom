@@ -22,7 +22,7 @@ export default async function DataReadinessPage({ params }: { params: Promise<{ 
     ...(unknownState(payments, (d) => noPayments((d as typeof payments.data).data)) ? ["payments" as const] : []),
   ];
   const all = readiness({
-    months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
+    months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales: sales.data, expenses: expenses.data, inventory: inventory?.wire ? fromWire(inventory.wire) : null, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes,
     assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero, payments: payments.data, unread,
   });

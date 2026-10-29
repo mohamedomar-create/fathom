@@ -42,7 +42,7 @@ export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers | 
   const steps = useMemo(() => {
     const pl = c.months.filter(hasPL).map((m) => m.period).sort();
     const accepted = new Set(facts.accepted);
-    const open = runChecks({ accounts: c.accounts, months: c.months }).filter((k) => k.severity !== "info" && !accepted.has(checkKey(k))).length;
+    const open = runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }).filter((k) => k.severity !== "info" && !accepted.has(checkKey(k))).length;
     const s: DataStatus = {
       basePath: c.basePath, booksStart: facts.booksStart, opening: facts.openingAsAt ? { asAt: facts.openingAsAt } : null, booksFromZero: !!c.booksFromZero,
       openingInLedger: facts.openingInLedger,

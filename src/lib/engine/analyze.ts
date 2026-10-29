@@ -42,6 +42,12 @@ export function scaleTargets(t: Record<string, number | null>, months: number): 
   return months === 1 || t.total_revenue === null || t.total_revenue === undefined ? t : { ...t, total_revenue: t.total_revenue * months };
 }
 
+/** One month's targets: a part month (books to asOf) counts only the share of its days covered. */
+export function monthTargets(settings: CompanySettings, period: string, asOf?: string | null): Record<string, number | null> {
+  const day = asOf && asOf.startsWith(period) ? Number(asOf.slice(8)) : 0;
+  return scaleTargets(resolveTargets(settings), day > 0 && day < daysIn(period) ? day / daysIn(period) : 1);
+}
+
 export function activeKpiDefs(settings: CompanySettings): KpiDef[] {
   const act = settings.activeKpis;
   return KPI_DEFS.filter((d) => (act ? act.includes(d.key) : d.defaultActive));

@@ -300,7 +300,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const fileChecks = useMemo(() => {
     if (!res) return [];
     const accts = toAccountInputs(res).map((a, i) => ({ ...a, id: String(i) }));
-    return runChecks({ accounts: accts, controls: res.controls, extra: res.checks }).filter((c) => FILE_CHECKS.has(c.id));
+    return runChecks({ accounts: accts, controls: res.controls, extra: res.checks, unit: res.unit }).filter((c) => FILE_CHECKS.has(c.id));
   }, [res]);
   const controlCount = res?.controls.length ?? 0;
 
@@ -443,7 +443,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       const ls = unm.filter((l) => (l.stmt ?? "PL") === st);
       if (ls.length) extra.push({ id: "unmapped", severity: "block", statement: st, title: `${ls.length} account${ls.length > 1 ? "s are" : " is"} not mapped`, detail: `${ls.slice(0, 4).map((l) => `'${l.name}'`).join(", ")}${ls.length > 4 ? "…" : ""}. Choose a class for each, or exclude it if it is a total or not an account.` });
     }
-    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom, booksStart, opening: kind === "opening" && asAtDay ? { asAt: asAtDay } : null };
+    return { companyId, mode: m, slices: res.slices, accounts, extra, controls: res.controls, ranges: res.ranges, openingFrom: res.openingFrom, booksStart, opening: kind === "opening" && asAtDay ? { asAt: asAtDay } : null, unit: (res.unit === 1000 || res.unit === 1_000_000 ? res.unit : 1) as 1 | 1000 | 1_000_000 };
   }
 
   async function runPreview(m: ImportMode = mode) {

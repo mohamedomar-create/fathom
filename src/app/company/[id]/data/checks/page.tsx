@@ -100,7 +100,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
   const currentImport = rows.find((r) => r.data_version === bundle.dataVersion && r.action === "import");
   const accepted = (((currentImport?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
   const acceptedKeys = new Set(accepted.map((a) => a.key));
-  const checks = runChecks({ accounts: bundle.accounts, months: bundle.months }).map((c) => (acceptedKeys.has(checkKey(c)) ? { ...c, accepted: true } : c));
+  const checks = runChecks({ accounts: bundle.accounts, months: bundle.months, unit: bundle.unit }).map((c) => (acceptedKeys.has(checkKey(c)) ? { ...c, accepted: true } : c));
 
   const cov = coverageOf(bundle.accounts);
   const maxVersion = Math.max(bundle.dataVersion, ...rows.map((r) => r.data_version ?? 0));

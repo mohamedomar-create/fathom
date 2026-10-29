@@ -1,5 +1,5 @@
 import "server-only";
-import { analyze, defaultEnd, hasPL, type Analysis, type MonthData } from "@/lib/engine";
+import { analyze, currentAsOf, defaultEnd, hasPL, type Analysis, type MonthData } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts } from "./build";
@@ -18,15 +18,15 @@ export interface PortfolioItem {
 export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: { id: string; name: string; role: string }[]; email: string; invites: PendingInvite[] }> {
   const { supabase, user } = await getUser();
   if (!user) return { items: [], orgs: [], email: "", invites: [] };
-  const [{ data: mems }, { data: companies }, { data: invites }, { data: imports }] = await Promise.all([
+  const [{ data: mems }, { data: companies }, { data: invites }] = await Promise.all([
     supabase.from("memberships").select("org_id, role, organizations(name)").eq("user_id", user.id),
     supabase.from("companies").select("*").order("name"),
     supabase.rpc("my_invites"),
-    // How far each company's books go (its latest import), so a part month is treated as on the company's own pages.
-    supabase.from("imports").select("company_id, data_version, report").eq("action", "import").order("created_at", { ascending: false }).limit(500),
   ]);
-  const asOfOf = (id: string, version: number) => {
-    const r = (imports ?? []).find((i) => i.company_id === id && i.data_version === version)?.report as { asOf?: string } | null | undefined;
+  // How far each company's books go (its current version's latest import), so a part month is treated as on its own pages.
+  const asOfOf = async (id: string, version: number) => {
+    const { data } = await supabase.from("imports").select("report").eq("company_id", id).eq("data_version", version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const r = data?.report as { asOf?: string } | null | undefined;
     return typeof r?.asOf === "string" ? r.asOf : null;
   };
   const orgs = (mems ?? []).map((m) => ({ id: m.org_id, role: m.role, name: (m.organizations as unknown as { name: string } | null)?.name ?? "Organisation" }));
@@ -35,7 +35,7 @@ export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: {
     const months = buildMonths(naturalAccounts(await loadAccounts(supabase, c.id, c.data_version)));
     const { settings, alerts } = settingsFromRow(c);
     // The month the company's pages open on: the last full month that has a P&L.
-    const asOf = asOfOf(c.id, c.data_version);
+    const asOf = currentAsOf(await asOfOf(c.id, c.data_version), months.map((m) => m.period));
     const end = defaultEnd(months.filter(hasPL).map((m) => m.period), asOf);
     let analysis: Analysis | null = null;
     try { analysis = end ? analyze(months, { type: "month", end }, settings, { alerts, asOf }) : null; } catch { analysis = null; }

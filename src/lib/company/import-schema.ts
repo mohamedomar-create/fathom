@@ -37,6 +37,8 @@ export const PlanSchema = z.object({
   booksStart: z.string().regex(/^\d{4}-\d{2}-01$/).nullable().default(null),
   // Opening balances uploaded on their own: the balance sheet at this month end.
   opening: z.object({ asAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).nullable().default(null),
+  // The unit the file states its amounts in ("in thousands"): one unit of it is the books' rounding in the checks.
+  unit: z.union([z.literal(1), z.literal(1000), z.literal(1_000_000)]).default(1),
 });
 export const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),

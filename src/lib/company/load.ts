@@ -57,7 +57,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
   };
 }
 
-import { KPI_DEFS } from "@/lib/engine";
+import { currentAsOf, KPI_DEFS } from "@/lib/engine";
 import { loadBalances } from "./balances";
 import { checkKey, runChecks } from "./checks";
 import { accessFrom, AccessError } from "./access";
@@ -105,13 +105,14 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const accounts = naturalAccounts(stored);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);
-  const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string };
+  const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string; unit?: number };
   const accepted = report.accepted ?? [];
   // Only the latest month can be a part month: an older import's stop day no longer applies once later months exist.
-  const asOf = report.asOf && months.length && report.asOf.startsWith(months[months.length - 1].period) ? report.asOf : undefined;
+  const asOf = currentAsOf(report.asOf, months.map((m) => m.period)) ?? undefined;
   const ok = new Set(accepted.map((a) => a.key));
   const tChecks = Date.now();
-  const failing = runChecks({ accounts, months }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
+  const unit = report.unit === 1000 || report.unit === 1_000_000 ? report.unit : 1;
+  const failing = runChecks({ accounts, months, unit }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
   const commentary: Record<string, string> = {};
   for (const r of comm ?? []) commentary[`${r.period_key}|${r.section}`] = r.body;
   logOp({ op: "company_bundle", company: id, ms: Date.now() - t0, attempts: 1, outcome: "ok", detail: `checks ${Date.now() - tChecks} ms, ${accounts.length} accounts, ${months.length} months` });
@@ -121,6 +122,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config),
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config),
   };
 });

@@ -153,7 +153,7 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     if (ms.some((x) => !x)) return null;
     const b2 = bsAtOrBefore(w2.end);
     // A part month: the comparison's last month is cut to the same days (never more than it has).
-    const f = day ? Math.min(day, daysIn(w2.end)) / daysIn(w2.end) : 1;
+    const f = compareWeight(day, w2.end);
     const label = windowLabel(w2, sel.type, fyStart);
     return { P: plCalc(sumPL(ms.map((m) => (m!.period === w2.end ? cutPL(m!.pl, f) : m!.pl)))), B: bsCalc(b2?.bs ?? {}), label: day ? `${label} (same ${day} days)` : label };
   };
@@ -202,6 +202,18 @@ export function defaultEnd(periods: string[], asOf?: string | null): string | un
   const last = periods[periods.length - 1];
   if (!last || periods.length < 2 || !asOf || !asOf.startsWith(last)) return last;
   return Number(asOf.slice(8)) < daysIn(last) ? periods[periods.length - 2] : last;
+}
+
+/** The books' stop day, only while it falls in the latest month loaded: an older import's stop day no longer applies. */
+export function currentAsOf(asOf: string | null | undefined, periods: string[]): string | null {
+  if (!asOf || !periods.length) return null;
+  const last = periods.reduce((a, b) => (b > a ? b : a));
+  return asOf.startsWith(last) ? asOf : null;
+}
+
+/** A part month to day `partDay`: the share of the comparison window's last month that counts (never more than it has). */
+export function compareWeight(partDay: number | undefined, cmpEnd: string): number {
+  return partDay ? Math.min(partDay, daysIn(cmpEnd)) / daysIn(cmpEnd) : 1;
 }
 
 /**

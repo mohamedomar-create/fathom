@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
-  analyze, CAT_COL, CAT_ORDER, explainKpi, formatTrend, kpiHistory, money, resolveTargets, type Comparison, type KpiRow,
+  analyze, CAT_COL, CAT_ORDER, daysIn, explainKpi, formatTrend, kpiHistory, money, monthTargets, resolveTargets, type Comparison, type KpiRow,
 } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis, usePeriod } from "@/lib/company/use-period";
@@ -112,9 +112,11 @@ function KpiModal({ row }: { row: KpiRow }) {
   const last12 = hist.slice(-12);
   const tgt = a.targets[row.def.key] ?? null;
   // The chart shows monthly values, so it is drawn against the monthly target.
+  // A part month is marked against the target for its days covered.
   const monthTgt = resolveTargets(c.settings)[row.def.key] ?? null;
   const vals = last12.map((h) => h.K[row.def.key]);
-  const marks = vals.map((v) => (v === null || monthTgt === null ? null : row.def.direction === "up" ? v >= monthTgt : v <= monthTgt));
+  const marks = last12.map((h, i) => { const v = vals[i], tg = monthTargets(c.settings, h.period, c.asOf)[row.def.key] ?? null; return v === null || tg === null ? null : row.def.direction === "up" ? v >= tg : v <= tg; });
+  const isPart = (p: string) => !!c.asOf && c.asOf.startsWith(p) && Number(c.asOf.slice(8)) < daysIn(p);
   // Same-length comparisons: the prior month, quarter or year, and the same period a year earlier.
   const cmp = useMemo(() => {
     // A part month is compared on the same days, as the table is.
@@ -122,7 +124,8 @@ function KpiModal({ row }: { row: KpiRow }) {
     return { prev: at("prior"), ly: at("ly") };
   }, [c.months, c.settings, a.view.sel, row.def.key, c.asOf]);
   const prev = cmp.prev, ly = cmp.ly;
-  const nums = vals.filter((v): v is number => v !== null);
+  // The average is of whole months: a part month would pull it down.
+  const nums = vals.filter((v, i): v is number => v !== null && !isPart(last12[i].period));
   const avg = nums.length ? nums.reduce((s, v) => s + v, 0) / nums.length : null;
   const fmt = (v: number | null) => T.num(v, row.def.unit, cur);
   const name = T.kn(row.def);

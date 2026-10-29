@@ -42,6 +42,8 @@ export interface SectorReadiness { key: ReadinessSector; label: string; completi
 
 export interface ReadinessInput {
   months: MonthData[];
+  /** The unit the books were stated in (1,000 for a file "in thousands"). */
+  unit?: number;
   checks: Check[];
   fyStart: number;
   sales?: SalesData | null;
@@ -98,7 +100,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     }));
   }
   const withBS = last12.filter(hasBS);
-  const balanced = withBS.filter((m) => { const b = bsCalc(m.bs); return bsBalanced(b.imbalance); });
+  const balanced = withBS.filter((m) => { const b = bsCalc(m.bs); return bsBalanced(b.imbalance, x.unit); });
   items.push(item({
     id: "bs", axis: "Balance sheets", title: "A balance sheet at every month end",
     completion: pl.length ? pct(withBS.length / last12.length) : 0, accuracy: withBS.length ? pct(balanced.length / withBS.length) : null,
@@ -109,7 +111,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
   const first = pl[0]?.period;
   const open = first ? by.get(addMonths(first, -1)) : undefined;
   const openOk = !!open && hasBS(open);
-  const openBal = openOk ? bsBalanced(bsCalc(open!.bs).imbalance) : false;
+  const openBal = openOk ? bsBalanced(bsCalc(open!.bs).imbalance, x.unit) : false;
   if (!openOk && first && x.booksFromZero) items.push(item({
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: 100, accuracy: null, detail: `Your books start from zero: nothing before ${mlabel(first)}.`,

@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { C } from "@/components/charts/util";
 import { cn } from "@/lib/cn";
+import { balanced } from "@/lib/tolerance";
 import { DataNotes, ExpensesPicker, NoExpenses, useExpensesAnalysis } from "./common";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -36,7 +37,7 @@ export function ExpensesTrend() {
           <tbody>
             {[...rows].reverse().filter((x) => x.total !== null).map((x) => {
               const diff = x.lines === null ? null : x.lines - x.total!;
-              const off = diff !== null && Math.abs(diff) > Math.max(1, Math.abs(x.total!) * 0.005);
+              const off = diff !== null && !balanced(diff);
               return (
                 <tr key={x.period} className="row">
                   <td className="text-start">{T.ml(x.period)}</td>

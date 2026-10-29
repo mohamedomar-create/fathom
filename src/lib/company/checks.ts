@@ -87,9 +87,11 @@ export interface CheckInput {
   controls?: ControlTotal[];
   /** Extra checks computed elsewhere (ingest: unmapped lines, trial-balance sums, duplicate sheets…). */
   extra?: Check[];
+  /** The unit the books were stated in (1,000 for a file "in thousands"): one unit of it is their rounding. */
+  unit?: number;
 }
 
-export function runChecks({ accounts, months = buildMonths(accounts as AccountLine[]), controls = [], extra = [] }: CheckInput): Check[] {
+export function runChecks({ accounts, months = buildMonths(accounts as AccountLine[]), controls = [], extra = [], unit = 1 }: CheckInput): Check[] {
   const out: Check[] = [...extra];
   const cov = coverageOf(accounts);
   const byP = new Map(months.map((m) => [m.period, m]));
@@ -115,7 +117,8 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
     const m = byP.get(p);
     if (!m) continue;
     const B = bsCalc(m.bs), P = plCalc(m.pl);
-    const tol = tolerance(B.ta);
+    // One unit of the books' own rounding: 1 EGP, or 1,000 for books stated in thousands.
+    const tol = tolerance(B.ta) * unit;
     if (cov.bs.has(p) && Math.abs(B.imbalance) > tol) {
       out.push({ id: "bs_balance", severity: "block", period: p, statement: "BS", title: "Balance sheet does not balance", detail: `Assets ${fmt(B.ta)} vs liabilities + equity ${fmt(B.tle)}: out by ${fmt(B.imbalance)}. Usually an unmapped or excluded account, current-year profit not closed into equity, or a sign error.`, expected: B.ta, actual: B.tle, diff: B.imbalance });
     }
@@ -123,7 +126,7 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
     const prev = addMonths(p, -1), m0 = byP.get(prev);
     if (m0 && cov.bs.has(p) && cov.bs.has(prev) && cov.pl.has(p)) {
       const B0 = bsCalc(m0.bs);
-      const tol2 = Math.max(tol, tolerance(B0.ta));
+      const tol2 = Math.max(tol, tolerance(B0.ta) * unit);
       // Retained earnings move only by the month's profit less dividends. Owners' capital and current accounts (other
       // equity) move with money paid in or drawn, which is normal and shown in the cash flow, so they are not tested here.
       const dRe = B.retained_earnings - B0.retained_earnings;
@@ -183,7 +186,7 @@ export function runChecks({ accounts, months = buildMonths(accounts as AccountLi
     // Balance-sheet totals are compared by size: some exports print liabilities and equity as negatives.
     if (!isPLm && Math.sign(actual) !== Math.sign(c.value)) actual = -actual;
     const diff = actual - c.value;
-    if (Math.abs(diff) > tolerance(Math.max(Math.abs(c.value), Math.abs(B.ta)))) {
+    if (Math.abs(diff) > tolerance(Math.max(Math.abs(c.value), Math.abs(B.ta))) * unit) {
       // Gross profit depends on where cost lines are mapped (cost of sales vs expenses), so it only warns.
       out.push({ id: "control_total", severity: c.metric === "gross_profit" ? "warn" : "block", period: c.period, statement: c.metric === "revenue" || c.metric === "gross_profit" || c.metric === "net_income" ? "PL" : "BS", title: `${CONTROL_LABEL[c.metric]} does not match the file`, detail: `The file says ${fmt(c.value)}${win.length > 1 ? ` for ${win.length} months` : ""} (${c.source}); the imported accounts add up to ${fmt(actual)}, a difference of ${fmt(diff)}. Some lines are probably excluded, double counted or mapped to the wrong class.`, expected: c.value, actual, diff });
     }

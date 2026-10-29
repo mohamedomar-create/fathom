@@ -38,10 +38,10 @@ export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; 
 export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null, inventory?: InventoryData | null, payments?: PaymentsBundle | null): SectorReadiness[] {
   const c = useCompany();
   return useMemo(() => readiness({
-    months: c.months, checks: runChecks({ accounts: c.accounts, months: c.months }), fyStart: c.settings.fyStartMonth,
+    months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
     payments: payments ?? undefined,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, sales, expenses, inventory, payments]);
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, c.unit, sales, expenses, inventory, payments]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
