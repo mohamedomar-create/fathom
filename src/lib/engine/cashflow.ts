@@ -1,3 +1,4 @@
+import { balanced } from "@/lib/tolerance";
 import { addMonths } from "./format";
 import { bsCalc, plCalc } from "./statements";
 import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types";
@@ -59,7 +60,7 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc): Waterfall {
   const ncfPre = fcf + fin.reduce((s, r) => s + r.value, 0);
   const target = d("cash") - d("std") - d("ltd");
   const unbal = target - ncfPre;
-  if (Math.abs(unbal) > 0.5) add("Unreconciled Difference", "ADD", unbal, "The balance sheet does not balance in one of the two months, so this amount cannot be explained.");
+  if (!balanced(unbal)) add("Unreconciled Difference", "ADD", unbal, "The balance sheet does not balance in one of the two months, so this amount cannot be explained.");
   const ncf = ncfPre + (Math.abs(unbal) > 0.5 ? unbal : 0);
   // Each line reads as its cash effect: cash in is ADD, cash out is LESS, whatever the line usually does.
   for (const r of rows) if (r.sign !== "TOTAL") r.sign = r.value < 0 ? "LESS" : "ADD";
@@ -106,7 +107,7 @@ export function cashFlowStatement(P: PLCalc, B: BSCalc, B0: BSCalc, opts: { show
   const cff = fn.reduce((s, [, v]) => s + v, 0);
   // Whatever the movements cannot explain is shown on its own line, never folded into financing.
   const gap = d("cash") - (cfo + cfi + cff);
-  const unreconciled = Math.abs(gap) > 0.5 ? gap : 0;
+  const unreconciled = balanced(gap) ? 0 : gap;
   const lines: StatementLine[] = [
     { label: "OPERATING ACTIVITIES", value: 0, heading: true },
     ...op.map(([label, value]) => ({ label, value })),

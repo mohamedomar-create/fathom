@@ -1,3 +1,4 @@
+import { balanced as bsBalanced, tied as agrees } from "@/lib/tolerance";
 import { addMonths, bsCalc, cashFlowByMonth, COSTS_DEFINITION, EXPENSE_GROUPS, expenseMonths, hasBS, hasPL, isAnnualColumn, isCostLine, mlabel, monthIndex, NOT_SUPPLIERS, plCalc, type Assumptions, type ExpensesData, type ForecastDrivers, type MonthData, type SalesData } from "@/lib/engine";
 import { inventoryLedger, inventoryTieOuts, type InventoryData } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
@@ -97,7 +98,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     }));
   }
   const withBS = last12.filter(hasBS);
-  const balanced = withBS.filter((m) => { const b = bsCalc(m.bs); return Math.abs(b.imbalance) <= Math.max(1, Math.abs(b.ta) * 1e-4); });
+  const balanced = withBS.filter((m) => { const b = bsCalc(m.bs); return bsBalanced(b.imbalance); });
   items.push(item({
     id: "bs", axis: "Balance sheets", title: "A balance sheet at every month end",
     completion: pl.length ? pct(withBS.length / last12.length) : 0, accuracy: withBS.length ? pct(balanced.length / withBS.length) : null,
@@ -108,7 +109,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
   const first = pl[0]?.period;
   const open = first ? by.get(addMonths(first, -1)) : undefined;
   const openOk = !!open && hasBS(open);
-  const openBal = openOk ? Math.abs(bsCalc(open!.bs).imbalance) <= Math.max(1, Math.abs(bsCalc(open!.bs).ta) * 1e-4) : false;
+  const openBal = openOk ? bsBalanced(bsCalc(open!.bs).imbalance) : false;
   if (!openOk && first && x.booksFromZero) items.push(item({
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: 100, accuracy: null, detail: `Your books start from zero: nothing before ${mlabel(first)}.`,
@@ -166,7 +167,7 @@ export function salesReadiness(x: ReadinessInput): SectorReadiness {
   const byMonth = new Map<string, number>();
   for (const r of s.customers) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
   const both = pl.filter((m) => byMonth.has(m.period) && plSet.has(m.period));
-  const tied = both.filter((m) => { const rev = plCalc(m.pl).revenue; return Math.abs((byMonth.get(m.period) ?? 0) - rev) <= Math.max(1, Math.abs(rev) * 0.01); });
+  const tied = both.filter((m) => { const rev = plCalc(m.pl).revenue; return agrees(byMonth.get(m.period) ?? 0, rev); });
   items.push(item({ id: "reconciled", axis: "Ties to P&L", title: "Monthly sales equal P&L revenue (within 1%)", completion: both.length ? 100 : 0, accuracy: both.length ? pct(tied.length / both.length) : null,
     detail: both.length ? `${tied.length} of ${both.length} months tie to revenue.` : "Load the P&L for the same months to check.",
     fix: both.length && tied.length < both.length ? { what: "Make sales match the P&L", how: "Export all invoices and credit notes for the month, before VAT.", template: "sales", href: "sales" } : undefined }));
@@ -210,7 +211,7 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   const byMonth = new Map<string, number>();
   for (const r of e.suppliers) if (isCostLine(r.c)) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
   const both = pl.filter((m) => byMonth.has(m.period));
-  const tied = both.filter((m) => { const c = costsOf(m); return Math.abs((byMonth.get(m.period) ?? 0) - c) <= Math.max(1, Math.abs(c) * 0.01); });
+  const tied = both.filter((m) => { const c = costsOf(m); return agrees(byMonth.get(m.period) ?? 0, c); });
   // Cost of sales is part of P&L costs: lines that leave it out (a bills list, or an expense file without the stock
   // journal) can never tie, and the reason is said with the amount.
   const cosOf = (m: MonthData) => COS_CLASSES.reduce((t, k) => t + ((m.pl as Record<string, number>)[k] ?? 0), 0);

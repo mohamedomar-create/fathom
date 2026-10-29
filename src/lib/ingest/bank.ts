@@ -1,3 +1,4 @@
+import { tied } from "@/lib/tolerance";
 import { arRx, cleanNum, detectDateOrder, normAr, parseDay, type Cell, type DateOrder } from "./parse";
 import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
@@ -122,7 +123,7 @@ export function readBankStatement(g: Grid, ov: BankOverride = {}): { sales: Sale
     if (t.bal === null) { if (prev !== null) prev = round2(prev + sign * (t.in - t.out)); continue; }
     if (prev === null) { prev = t.bal; balanced++; continue; }
     const want = round2(prev + sign * (t.in - t.out));
-    if (Math.abs(want - t.bal) <= 0.5) balanced++;
+    if (tied(want, t.bal)) balanced++;
     else {
       errors.push({ row: t.r, col: cols.balance, text: shown(rows[t.r]?.[cols.balance]), message: `the balance ${fmt(t.bal)} does not follow from the line before: ${fmt(prev)}${t.in ? ` + ${fmt(t.in)} in` : ""}${t.out ? ` − ${fmt(t.out)} out` : ""} = ${fmt(want)}. A line may be missing above, or an amount is misread.` });
       marks[t.r] = { role: "error", note: "the balance does not follow" };

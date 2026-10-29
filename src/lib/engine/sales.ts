@@ -1,3 +1,4 @@
+import { differs } from "@/lib/tolerance";
 import { addMonths, mlabel } from "./format";
 import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
 import type { Comparison } from "./types";
@@ -241,7 +242,7 @@ export function salesAnalysis(
     if (has) for (const r of pRows) if (r.p === p) { const g = cat(r.g); const k = topCategories.includes(g) ? g : "Other"; categories[k] = (categories[k] ?? 0) + r.a; }
     return { period: p, sales: s, revenue: rev, diff: s !== null && rev !== null ? s - rev : null, categories };
   });
-  const unreconciled = trend.filter((t) => cur.has(t.period) && t.sales !== null && t.revenue !== null && Math.abs(t.diff!) > Math.max(1, Math.abs(t.revenue) * 0.005))
+  const unreconciled = trend.filter((t) => cur.has(t.period) && t.sales !== null && t.revenue !== null && differs(t.diff!, 0))
     .map((t) => ({ period: t.period, sales: t.sales!, revenue: t.revenue!, diff: t.diff! }));
 
   // ---- findings

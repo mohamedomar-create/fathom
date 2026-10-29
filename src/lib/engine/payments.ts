@@ -1,3 +1,4 @@
+import { tied } from "@/lib/tolerance";
 // The Payments module: what customers owe and how late (Odoo's Aged Receivable), what the company owes (Aged Payable),
 // the money received and paid (Odoo's payments list), and the ageing tied to its control account in the books.
 import { addMonths, mlabel } from "./format";
@@ -160,7 +161,7 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     const books = has ? r2(used.reduce((s, a) => s + (a.amounts[p] ?? 0), 0)) : null;
     const diff = books === null ? null : r2(v.total - books);
     tieouts.push({
-      side: v.side, asOf: v.asOf, ageing: v.total, books, diff, status: books === null ? "no_books" : Math.abs(diff!) <= 1 ? "ok" : "off", account: used.map(label).join(" + "),
+      side: v.side, asOf: v.asOf, ageing: v.total, books, diff, status: books === null ? "no_books" : tied(diff!, 0) ? "ok" : "off", account: used.map(label).join(" + "),
       notInAgeing: accounts.filter((a) => a.cls === CLASS[v.side] && !codes.includes(a.code) && Math.abs(a.amounts[p] ?? 0) > 0.005).map((a) => ({ account: label(a), amount: r2(a.amounts[p]) })),
     });
   }

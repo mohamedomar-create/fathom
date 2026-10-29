@@ -1,4 +1,5 @@
 "use client";
+import { balanced } from "@/lib/tolerance";
 import { Fragment, useMemo } from "react";
 import {
   analyze, bsCalc, CAT_COL, CAT_ORDER, formatTrend, goalFor, goalseekTable, GOAL_KPIS, LEVERS, mlabel, money, mshort, num, pct, plCalc, quadrantOf, QUADRANT_TEXT,
@@ -237,7 +238,7 @@ function BSTable({ a, cur }: { a: Analysis; cur: string }) {
   const rows: [string, keyof BSCalc | null, 0 | 1 | 2][] = [["ASSETS", null, 2], ["Cash & Equivalents", "cash", 0], ["Accounts Receivable", "ar", 0], ["Inventory", "inventory", 0], ["Work In Progress", "wip", 0], ["Other Current Assets", "other_ca", 0], ["Total Current Assets", "tca", 1], ["Fixed Assets", "fixed_assets", 0], ["Intangible Assets", "intangibles", 0], ["Investments / Other NCA", "investments", 0], ["Total Assets", "ta", 1], ["LIABILITIES", null, 2], ["Short Term Debt", "std", 0], ["Accounts Payable", "ap", 0], ["Tax Liability", "tax_liab", 0], ["Other Current Liabilities", "other_cl", 0], ["Total Current Liabilities", "tcl", 1], ["Long Term Debt", "ltd", 0], ["Other Non-Current Liabilities", "other_ncl", 0], ["Total Liabilities", "tl", 1], ["EQUITY", null, 2], ["Retained Earnings", "retained_earnings", 0], ["Other Equity", "other_equity", 0], ["Total Equity", "te", 1], ["Total Liabilities & Equity", "tle", 1]];
   return (
     <>
-      {Math.abs(B.imbalance) > 0.5 && <p className="mb-2 text-end text-[12px] text-red">Out of balance by {money(B.imbalance, cur)}</p>}
+      {!balanced(B.imbalance) && <p className="mb-2 text-end text-[12px] text-red">Out of balance by {money(B.imbalance, cur)}</p>}
       <table className="tbl text-[11.5px]">
         <thead><tr><th>Balance Sheet</th><th>{mlabel(a.view.window.end)}</th><th>{C ? prior!.label : "Prior"}</th><th>Variance</th><th>Common size</th></tr></thead>
         <tbody>{rows.map(([l, k, t]) => {

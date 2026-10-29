@@ -1,3 +1,4 @@
+import { differs } from "@/lib/tolerance";
 import { addMonths, mlabel } from "./format";
 import { shiftWindow, windowFor, type PeriodSel, type Window } from "./period";
 import type { ClassKey, Comparison } from "./types";
@@ -332,7 +333,7 @@ export function expensesAnalysis(
     // With no P&L the "P&L" is the lines themselves (accountsFromLines): there is nothing to check them against.
     return { period: p, total: has ? t : null, groups, revenue: rv, ofSales: has && rv ? (t / rv) * 100 : null, lines: !opts.fromLines && costHeld.has(p) ? sum(costSup.filter((r) => r.p === p), (r) => r.a) : null };
   });
-  const unreconciled = trend.filter((t) => cur.has(t.period) && t.lines !== null && t.total !== null && Math.abs(t.lines - t.total) > Math.max(1, Math.abs(t.total) * 0.005))
+  const unreconciled = trend.filter((t) => cur.has(t.period) && t.lines !== null && t.total !== null && differs(t.lines, t.total))
     .map((t) => ({ period: t.period, lines: t.lines!, costs: t.total!, diff: t.lines! - t.total! }));
   const large = d.flags.filter((f) => f.k === "large" && cur.has(f.p));
   const doubles = d.flags.filter((f) => f.k === "double" && cur.has(f.p));

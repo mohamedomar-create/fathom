@@ -1,3 +1,4 @@
+import { balanced } from "@/lib/tolerance";
 import type { Basis } from "./basis";
 import { money, pct } from "./format";
 
@@ -357,7 +358,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
 
   const flags: RedFlag[] = [];
   const flag = (key: string, severity: RedFlag["severity"], title: string, detail: string, advice: string) => flags.push({ key, severity, title, detail, advice });
-  if (Math.abs(B.imbalance) > 1) flag("imbalance", "high", L("The balance sheet does not balance", "الميزانية غير متوازنة"), L(`Assets differ from liabilities and equity by ${m(B.imbalance)}.`, `الأصول تختلف عن الالتزامات وحقوق الملكية بمبلغ ${m(B.imbalance)}.`), L("Fix the mapping in Data health before sharing anything with a bank.", "صحح التصنيف في سلامة البيانات قبل مشاركة أي شيء مع البنك."));
+  if (!balanced(B.imbalance)) flag("imbalance", "high", L("The balance sheet does not balance", "الميزانية غير متوازنة"), L(`Assets differ from liabilities and equity by ${m(B.imbalance)}.`, `الأصول تختلف عن الالتزامات وحقوق الملكية بمبلغ ${m(B.imbalance)}.`), L("Fix the mapping in Data health before sharing anything with a bank.", "صحح التصنيف في سلامة البيانات قبل مشاركة أي شيء مع البنك."));
   if (B.te <= 0) flag("neg_equity", "high", L("Negative equity", "حقوق ملكية سالبة"), L(`Equity is ${m(B.te)}.`, `حقوق الملكية ${m(B.te)}.`), L("Restore equity (capital increase, converting shareholder loans) before applying. Under Egyptian company law, losses reaching half the capital also require an extraordinary general assembly to decide whether the company continues.", "أعد حقوق الملكية (زيادة رأس المال، تحويل قروض المساهمين) قبل التقدم. وفق قانون الشركات المصري، بلوغ الخسائر نصف رأس المال يستلزم أيضًا جمعية عامة غير عادية لتقرر استمرار الشركة."));
   if (P.net_income < 0) flag("loss", "high", L("A loss over the period", "خسارة خلال الفترة"), L(`Net result ${m(P.net_income)}.`, `صافي النتيجة ${m(P.net_income)}.`), L("Separate one-off items from the trading result and show the months since that prove recovery.", "افصل البنود غير المتكررة عن نتيجة النشاط، واعرض الأشهر اللاحقة التي تثبت التعافي."));
   const cashAfterInterest = b.ocf === null ? null : b.ocf - P.net_interest;

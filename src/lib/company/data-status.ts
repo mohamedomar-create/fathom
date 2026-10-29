@@ -1,3 +1,4 @@
+import { differs } from "@/lib/tolerance";
 // The sub-ledger steps of the Data section, from the books and the same tie-outs the sector pages show: sales detail
 // (months from a file) against the ledger's revenue, stock against the stock accounts, each ageing report against its
 // control account.
@@ -15,7 +16,7 @@ export function subLedgerStatus(x: ReadinessInput): SubLedgers {
   for (const r of s?.customers ?? []) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
   const revenue = new Map(x.months.filter(hasPL).map((m) => [m.period, plCalc(m.pl).revenue]));
   // Within 1% of the month's revenue, as the Sales readiness check; a month with no P&L can't be checked yet.
-  const untied = fileMonths.filter((p) => revenue.has(p) && Math.abs((byMonth.get(p) ?? 0) - revenue.get(p)!) > Math.max(1, Math.abs(revenue.get(p)!) * 0.01));
+  const untied = fileMonths.filter((p) => revenue.has(p) && differs(byMonth.get(p) ?? 0, revenue.get(p)!));
   const checked = inventoryTies(x).filter((t) => t.status !== "no_ledger");
   return {
     sales: fileMonths.length ? { months: fileMonths, untied } : null,

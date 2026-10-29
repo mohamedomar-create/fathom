@@ -1,3 +1,4 @@
+import { differs } from "@/lib/tolerance";
 import { isPL } from "./build";
 import { addMonths } from "@/lib/engine";
 import type { ClassKey } from "@/lib/engine";
@@ -25,7 +26,7 @@ export function compareBooks(here: { cls: string; amounts: Record<string, number
     const x = a.get(p)!, y = b.get(p)!;
     for (const cls of new Set([...x.keys(), ...y.keys()])) {
       const h = Math.round((x.get(cls) ?? 0) * 100) / 100, t = Math.round((y.get(cls) ?? 0) * 100) / 100;
-      if (Math.abs(h - t) > 1) diffs.push({ period: p, cls, here: h, there: t, diff: Math.round((h - t) * 100) / 100 });
+      if (differs(h, t)) diffs.push({ period: p, cls, here: h, there: t, diff: Math.round((h - t) * 100) / 100 });
     }
   }
   return { months, diffs: diffs.sort((u, v) => Math.abs(v.diff) - Math.abs(u.diff)) };

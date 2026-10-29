@@ -1,3 +1,4 @@
+import { tied } from "@/lib/tolerance";
 import type { ClassKey } from "@/lib/engine";
 import { headingField } from "@/lib/cash/read";
 import { arRx, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
@@ -456,7 +457,7 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
         if (v !== undefined) { all += v; if (!seenTotal) since += v; }
       }
       const file = amt(row[c])!;
-      const ok = Math.abs(since - file) <= 0.5 || Math.abs(all - file) <= 0.5;
+      const ok = tied(since, file) || tied(all, file);
       typed.push({ row: r, col: c, formula: "typed total", file, read: round2(Math.abs(since - file) <= 0.5 ? since : all), ok, derived: false });
     }
   }
@@ -504,7 +505,7 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
       const terms = sumTerms(f, origin) as Term[];
       // Which entries this total counts (to find entries outside every total, and entries counted twice).
       if (res.direct) for (const t of terms) for (let rr = t.r0; rr <= t.r1; rr++) for (let cc = t.c0; cc <= t.c1; cc++) if (counted.has(key(rr, cc))) (covered.get(key(rr, cc)) ?? covered.set(key(rr, cc), []).get(key(rr, cc))!).push(cellRef(r, c, origin).replace("row ", "").replace(", column ", ""));
-      const ok = Math.abs(res.v - file) <= 0.5;
+      const ok = tied(res.v, file);
       out.push({ row: r, col: c, formula: `=${f}`, file, read: res.v, ok, derived: !res.direct });
       if (!ok && res.direct) {
         const why = res.unread.length ? ` ${[...new Set(res.unread)].slice(0, 4).map((x) => cellRef(x, undefined, origin)).join(", ")} ${res.unread.length > 1 ? "hold numbers" : "holds a number"} iReport did not count as ${res.unread.length > 1 ? "entries" : "an entry"} (see why on the left).` : "";

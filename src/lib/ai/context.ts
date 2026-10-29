@@ -1,3 +1,4 @@
+import { balanced } from "@/lib/tolerance";
 import {
   bankPack, breakeven, formatBankValue, goalseekTable, mlabel, money, num, pct, quadrantOf, bsCalc, plCalc, realProfit, REQUEST_LABEL, twelveMonths,
   customersOf, expensesAnalysis, isExpenseClass, notSupplier, salesAnalysis, salesMonths,
@@ -37,7 +38,7 @@ export function buildContext(a: Analysis, months: MonthData[], company: { name: 
     },
     balance_sheet: {
       cash: m(B.cash), receivables: m(B.ar), inventory: m(B.inventory), payables: m(B.ap), total_debt: m(B.debt), total_equity: m(B.te),
-      balances: Math.abs(B.imbalance) <= 0.5, out_of_balance_by: Math.abs(B.imbalance) > 0.5 ? m(B.imbalance) : null,
+      balances: balanced(B.imbalance), out_of_balance_by: balanced(B.imbalance) ? null : m(B.imbalance),
     },
     cash_flow: a.W ? { operating_cash_flow_before_interest: m(a.W.ocf), free_cash_flow: m(a.W.fcf), net_cash_flow: m(a.W.ncf),
       largest_movements: a.W.rows.filter((r) => r.sign !== "TOTAL" && Math.abs(r.value) >= 0.5).sort((x, y) => Math.abs(y.value) - Math.abs(x.value)).slice(0, 6).map((r) => `${r.sign} ${r.label}: ${m(r.value)}`) } : "not available (no opening balance)",

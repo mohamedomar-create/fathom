@@ -1,3 +1,4 @@
+import { TIE_EGP } from "@/lib/tolerance";
 /**
  * A module's figure checked against the General Ledger, month by month. The ledger is the master for money: a difference is
  * reported with the records behind it, never adjusted away.
@@ -22,8 +23,8 @@ export function stockBuckets(everModule: Set<string>, everLedger: Set<string>): 
     : "amount";
 }
 
-/** Differences up to one pound are rounding, not a mismatch. */
-export const TIE_TOLERANCE = 1;
+/** Differences up to one pound are rounding, not a mismatch (the app's one rule, src/lib/tolerance.ts). */
+export const TIE_TOLERANCE = TIE_EGP;
 const MAX_CAUSES = 20;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 

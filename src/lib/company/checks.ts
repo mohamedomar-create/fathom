@@ -1,3 +1,4 @@
+import { TIE_EGP } from "@/lib/tolerance";
 import { addMonths, bsCalc, mlabel, plCalc, type MonthData } from "@/lib/engine";
 import { buildMonths, isPL } from "./build";
 import type { AccountLine } from "./types";
@@ -77,8 +78,8 @@ export function coverageOf(accounts: Pick<AccountLine, "cls" | "amounts">[]): Co
   return { range, pl, bs };
 }
 
-/** Rounding tolerance: one currency unit, or 0.01% of total assets for large books. */
-export const tolerance = (scale: number) => Math.max(1, Math.abs(scale) * 0.0001);
+/** Rounding tolerance: the app's one rule, 1 EGP whatever the size of the books (kept as a function for its callers). */
+export const tolerance = (scale: number) => { void scale; return TIE_EGP; };
 
 export interface CheckInput {
   accounts: (Pick<AccountLine, "cls" | "amounts"> & { name?: string })[];

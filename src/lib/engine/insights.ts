@@ -1,3 +1,4 @@
+import { balanced } from "@/lib/tolerance";
 import { div, fixed, money, pct } from "./format";
 import { KPI_DEFS } from "./kpis";
 import type { Waterfall } from "./cashflow";
@@ -138,7 +139,7 @@ export function insights(ctx: InsightCtx): Finding[] {
   if (R && P.fixed_costs / R > 0.35) add(1, "watch", "profitability", L(`Fixed costs take ${fixed((P.fixed_costs / R) * 100, 0)}% of revenue`, `التكاليف الثابتة تستهلك ${fixed((P.fixed_costs / R) * 100, 0)}% من الإيرادات`), L("Costs that do not move with sales are what make slow months hurt.", "التكاليف التي لا تتحرك مع المبيعات هي ما يجعل الأشهر البطيئة مؤلمة."));
   const crit = ctx.critical ?? KPI_DEFS.filter((d) => d.importance === "Critical" && ctx.status[d.key] === false).map((d) => d.name);
   if (crit.length) add(2, "risk", "kpis", L(`${crit.length} critical KPI${crit.length > 1 ? "s" : ""} off target`, `مؤشرات حرجة خارج المستهدف: ${crit.length}`), crit.join(ar ? "، " : ", ") + ".");
-  if (Math.abs(B.imbalance) > 0.5) add(3, "risk", "bs", L("Balance sheet does not balance", "الميزانية غير متوازنة"), L(`Out by ${m(B.imbalance)}. Fix the source data before relying on cash flow, ROE or liquidity numbers.`, `الفرق ${m(B.imbalance)}. صحح بيانات المصدر قبل الاعتماد على أرقام التدفق النقدي أو العائد على حقوق الملكية أو السيولة.`));
+  if (!balanced(B.imbalance)) add(3, "risk", "bs", L("Balance sheet does not balance", "الميزانية غير متوازنة"), L(`Out by ${m(B.imbalance)}. Fix the source data before relying on cash flow, ROE or liquidity numbers.`, `الفرق ${m(B.imbalance)}. صحح بيانات المصدر قبل الاعتماد على أرقام التدفق النقدي أو العائد على حقوق الملكية أو السيولة.`));
   out.sort((a, b) => b.sev - a.sev || Number(a.kind !== "risk") - Number(b.kind !== "risk"));
   return out;
 }
