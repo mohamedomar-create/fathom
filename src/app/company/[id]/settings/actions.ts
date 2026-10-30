@@ -26,7 +26,7 @@ import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 
 export type { AcceptedItem } from "@/lib/company/accept";
-export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[] }
+export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[]; closedSkipped: string[] }
 type Plan = z.output<typeof PlanSchema>;
 
 /** How an import's balances began: its own opening balances, the loaded ones, zero, or an opening balances upload. */
@@ -50,7 +50,7 @@ async function zeroBasedMonths(supabase: Awaited<ReturnType<typeof getUser>>["su
 
 /** Current data version, its accepted issues and notes, then the merged plan for this upload. */
 async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], d: Plan) {
-  const { data: c, error } = await supabase.from("companies").select("data_version, notes").eq("id", d.companyId).single();
+  const { data: c, error } = await supabase.from("companies").select("data_version, notes, closed_through").eq("id", d.companyId).single();
   if (error || !c) throw new Error("Company not found, or you don't have access to it.");
   const [current, { data: imp }] = await Promise.all([
     loadVersion(supabase, d.companyId, c.data_version),
@@ -58,7 +58,7 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
   ]);
   const prevAccepted = (((imp?.report ?? {}) as { accepted?: AcceptedItem[] }).accepted ?? []);
   const zeroMonths = d.opening ? await zeroBasedMonths(supabase, d.companyId, current) : [];
-  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths, unit: d.unit });
+  const plan = planImport(current, d.accounts.map((a) => ({ ...a, cls: a.cls as ClassKey })), { mode: d.mode, slices: d.slices, controls: d.controls, extra: d.extra, ranges: d.ranges, openingFrom: d.openingFrom, booksStart: d.booksStart, opening: d.opening, zeroMonths, unit: d.unit, closedThrough: c.closed_through });
   // The stored accounts plus the file's: the database keeps at most 8,000 per version.
   if (plan.accounts.length > 8000) throw new Error(`After this upload the company would hold ${plan.accounts.length.toLocaleString("en")} accounts; at most 8,000 can be kept. Exclude parent, total or unused accounts, or choose "Replace all".`);
   return { plan, prevAccepted, hasData: current.length > 0, notes: ((c.notes ?? []) as string[]) };
@@ -87,7 +87,7 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   try {
     const { plan, prevAccepted, hasData } = await buildPlan(supabase, v.data);
     const ok = new Set(stillAccepted(plan.checks, prevAccepted).map((a) => a.key));
-    return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData, overlap: plan.overlap } };
+    return { ok: true, data: { timeline: plan.timeline, diffs: plan.diffs, checks: plan.checks.map((c) => (ok.has(checkKey(c)) ? { ...c, accepted: true } : c)), accounts: plan.accounts.length, hasData, overlap: plan.overlap, closedSkipped: plan.closedSkipped ?? [] } };
   } catch (e) {
     return { ok: false, error: safeError(e, "previewImport") };
   }

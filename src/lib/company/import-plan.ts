@@ -2,6 +2,7 @@ import { addMonths, mlabel, bsCalc, plCalc, type ClassKey } from "@/lib/engine";
 import { normLabel } from "@/lib/ingest/parse";
 import { buildMonths, isPL, toNatural, toRaw } from "./build";
 import { checkKey, coverageOf, runChecks, type Check, type ControlTotal } from "./checks";
+import { isClosed } from "./close";
 import type { AccountLine } from "./types";
 
 /** Where an account's figures sit in the uploaded file. */
@@ -56,6 +57,8 @@ export interface ImportPlan {
   checks: Check[];
   /** Months in the file that are already loaded (whatever the mode): the duplicates the person decides about. */
   overlap: Overlap[];
+  /** Months in the file that are closed (0043): left out, the stored figures kept. */
+  closedSkipped?: string[];
 }
 
 export const statementOf = (cls: ClassKey): Statement => (isPL(cls) ? "PL" : "BS");
@@ -73,7 +76,7 @@ export function accountIdentity(a: { code: string; name: string; cls: ClassKey }
 
 const recast = (from: ClassKey, to: ClassKey, v: number) => (from === to ? v : toNatural(to, toRaw(from, v)));
 
-export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null; opening?: { asAt: string } | null; zeroMonths?: string[]; unit?: number }): ImportPlan {
+export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAccount[], optsIn: { mode: ImportMode; slices: Slices; controls?: ControlTotal[]; extra?: Check[]; ranges?: Record<string, number>; openingFrom?: string | null; booksStart?: string | null; opening?: { asAt: string } | null; zeroMonths?: string[]; unit?: number; closedThrough?: string | null }): ImportPlan {
   // "add" reads the file exactly as a merge does, then leaves out the months already loaded.
   const opts = { ...optsIn, mode: optsIn.mode === "add" ? "merge" as const : optsIn.mode };
   // Before the books start there is no trading: stored P&L months before it and balance sheets before the opening month go.
@@ -86,11 +89,16 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   const inc: Record<Statement, Set<string>> = { PL: new Set(opts.slices.PL), BS: new Set(opts.slices.BS) };
   // Every month the file has a figure for is covered, whatever the caller declared.
   for (const n of derived.incoming) for (const p of Object.keys(n.amounts)) inc[statementOf(n.cls)].add(p);
+  // Closed months (0043) are never saved again: the file's figures for them are left out and the stored ones kept.
+  const closed = optsIn.closedThrough ?? null;
+  const closedSkipped = [...new Set([...inc.PL, ...inc.BS])].filter((p) => isClosed(p, closed)).sort();
+  for (const st of ["PL", "BS"] as const) for (const p of closedSkipped) inc[st].delete(p);
+  const fileIn = closedSkipped.length ? derived.incoming.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => !isClosed(p, closed))) })) : derived.incoming;
   const loaded = coverageOf(current);
   const isLoaded = (st: Statement, p: string) => (st === "PL" ? loaded.pl : loaded.bs).has(p);
-  const overlap = overlaps(current, derived.incoming, inc, isLoaded);
-  const continuity = opts.mode === "merge" ? continuityCheck(current, derived.incoming, isLoaded) : [];
-  let incoming = derived.incoming;
+  const overlap = overlaps(current, fileIn, inc, isLoaded);
+  const continuity = opts.mode === "merge" ? continuityCheck(current, fileIn, isLoaded) : [];
+  let incoming = fileIn;
   if (optsIn.mode === "add") {
     for (const st of ["PL", "BS"] as const) for (const p of [...inc[st]]) if (isLoaded(st, p)) inc[st].delete(p);
     incoming = incoming.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => inc[statementOf(a.cls)].has(p))) }));
@@ -98,10 +106,12 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   const covered = (cls: ClassKey, p: string) => inc[statementOf(cls)].has(p);
   const out = new Map<string, VersionAccount>();
 
-  if (opts.mode === "merge") {
+  // A merge keeps every stored month the file doesn't cover; a replacement keeps only the closed months.
+  if (opts.mode === "merge" || closed) {
+    const keeps = (cls: ClassKey, p: string) => (opts.mode === "merge" ? !covered(cls, p) : isClosed(p, closed));
     for (const a of current) {
       const amounts: Record<string, number> = {}, sources: Record<string, string | null> = {};
-      for (const [p, v] of Object.entries(a.amounts)) if (v && !covered(a.cls, p)) { amounts[p] = v; sources[p] = a.sources?.[p] ?? null; }
+      for (const [p, v] of Object.entries(a.amounts)) if (v && keeps(a.cls, p)) { amounts[p] = v; sources[p] = a.sources?.[p] ?? null; }
       const k = accountIdentity(a);
       const prev = out.get(k);
       if (prev) { // two stored accounts with the same identity: fold them together
@@ -139,7 +149,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   const openingChecks: Check[] = [];
   if (optsIn.opening) {
     const m0 = optsIn.opening.asAt.slice(0, 7);
-    const zeroMonths = new Set((optsIn.zeroMonths ?? []).filter((p) => p > m0));
+    const zeroMonths = new Set((optsIn.zeroMonths ?? []).filter((p) => p > m0 && !isClosed(p, closed)));
     // Accounts are matched as an accountant reads them: by code and name together ("xy" + "opining balance" is
     // "xy opining balance"), every retained-earnings line, computed or not, as one retained earnings figure, and by
     // debit or credit balance, so an account classed differently on each side is not a difference in money.
@@ -188,7 +198,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
     for (const st of ["PL", "BS"] as const) {
       const had = (st === "PL" ? curCov.pl : curCov.bs).has(p);
       if (inc[st].has(p) || (st === "BS" && shifted.has(p))) cell[st] = had ? "overwrite" : "new";
-      else if (had) cell[st] = opts.mode === "merge" && !beforeStart(st, p) ? "keep" : "remove";
+      else if (had) cell[st] = (opts.mode === "merge" || isClosed(p, closed)) && !beforeStart(st, p) ? "keep" : "remove";
     }
     timeline.push(cell);
   }
@@ -207,7 +217,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   for (const p of shifted) touched.add(p);
   const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, unit: opts.unit, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
-  return { accounts, timeline, diffs, checks, overlap };
+  return { accounts, timeline, diffs, checks, overlap, closedSkipped };
 }
 
 /**
@@ -346,4 +356,25 @@ const asLine = (a: VersionAccount): AccountLine => ({ id: accountIdentity(a), co
 export function unresolved(checks: Check[], accepted: Iterable<string>): Check[] {
   const ok = new Set(accepted);
   return checks.filter((c) => c.severity === "block" && !c.existing && !ok.has(checkKey(c)));
+}
+
+/**
+ * A live sync replaces the whole books; in a company with closed months (0043) every closed month keeps exactly the
+ * stored figures (accounts Odoo no longer has included), and the sync's own figures count only for open months.
+ */
+export function withClosedMonths<A extends { code: string; name: string; cls: ClassKey; amounts: Record<string, number> }>(synced: A[], stored: VersionAccount[], closedThrough: string | null | undefined): A[] {
+  if (!closedThrough) return synced;
+  const out = new Map<string, A>();
+  for (const a of synced) out.set(accountIdentity(a), { ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => !isClosed(p, closedThrough))) });
+  for (const s of stored) {
+    const closed = Object.entries(s.amounts).filter(([p, v]) => v && isClosed(p, closedThrough));
+    if (!closed.length) continue;
+    const k = accountIdentity(s);
+    const a = out.get(k) ?? ({ code: s.code, name: s.name, cls: s.cls, amounts: {}, odoo_id: s.odoo_id ?? null, odoo_type: s.odoo_type ?? null, mapped_by: s.mapped_by ?? "auto" } as unknown as A);
+    // An account with closed months keeps the class it was closed under (a class change needs the month reopened).
+    if (a.cls !== s.cls) { for (const p of Object.keys(a.amounts)) a.amounts[p] = recast(a.cls, s.cls, a.amounts[p]); a.cls = s.cls; }
+    for (const [p, v] of closed) a.amounts[p] = v;
+    out.set(k, a);
+  }
+  return [...out.values()].filter((a) => Object.keys(a.amounts).length);
 }

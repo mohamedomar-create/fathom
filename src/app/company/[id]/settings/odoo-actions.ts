@@ -3,7 +3,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { decrypt, encrypt, reencrypt, usesOldKey } from "@/lib/crypto";
 import { loadAccountMap } from "@/lib/company/account-map";
-import { saveCompanyData } from "@/lib/company/persist";
+import { loadVersion, saveCompanyData } from "@/lib/company/persist";
+import { withClosedMonths } from "@/lib/company/import-plan";
+import { closedThroughOf } from "@/lib/company/close-server";
+import { openLines } from "@/lib/company/close";
+import { closedRange } from "@/lib/company/line-stage";
 import { runChecks } from "@/lib/company/checks";
 import { majorVersion, OdooClient, odooDisabled } from "@/lib/odoo/client";
 import { countLedger, countPart, firstStockDay, layersPage, ledgerPage, movesPage, onHand, PAGE, readLocations, salesPage } from "@/lib/odoo/detail";
@@ -269,7 +273,14 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     if (Math.abs(res.diagnostics.trialBalanceCheck) > 1) throw new Error(`Odoo's entries don't balance (difference ${res.diagnostics.trialBalanceCheck.toLocaleString("en-GB")}). Nothing was saved; check the company selection and the user's access.`);
     const unbalanced = unbalancedSync(res.accounts);
     if (unbalanced) throw new Error(unbalanced);
-    await saveCompanyData(supabase, companyId, res.accounts, {
+    // Closed months (0043) keep their stored figures; the sync counts only for open months.
+    const closedThrough = await closedThroughOf(supabase, companyId);
+    let accounts = res.accounts;
+    if (closedThrough) {
+      const { data: cv } = await supabase.from("companies").select("data_version").eq("id", companyId).single();
+      accounts = withClosedMonths(res.accounts, await loadVersion(supabase, companyId, cv?.data_version ?? 0), closedThrough);
+    }
+    await saveCompanyData(supabase, companyId, accounts, {
       kind: "odoo", filename: `${conn.odoo_company_name ?? "Odoo"} (${res.diagnostics.version})`,
       // Live sync is authoritative and replaces everything; its checks are recorded and shown, never blocking.
       report: { kind: "odoo", mode: "replace", periods: res.periods, slices: { PL: res.periods, BS: res.periods }, warnings: res.diagnostics.unmapped.length ? [`${res.diagnostics.unmapped.length} unmapped account(s)`] : [], notes: res.notes, diagnostics: res.diagnostics, checks: [...late, ...runChecks({ accounts: res.accounts }).filter((c) => c.severity !== "info")].slice(0, 300) } as unknown as Json,
@@ -421,11 +432,13 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
       if (step.offset === 0) {
         total = await countPart(d, step.part, range);
         const first = (await firstStockDay(d)) ?? today;
-        const b = await supabase.rpc("begin_inventory_batch", { p_company: companyId, p_kind: step.part, p_periods: monthsBetween(first.slice(0, 7), end), p_filename: name, p_mode: "all", p_report: { kind: "odoo" } as Json });
+        const cr = await closedRange(supabase, companyId, monthsBetween(first.slice(0, 7), end), true);
+        const b = await supabase.rpc("begin_inventory_batch", { p_company: companyId, p_kind: step.part, p_periods: cr.periods, p_filename: name, p_mode: cr.all ? "all" : "replace", p_report: { kind: "odoo" } as Json });
         if (b.error) throw new DbError(b.error);
         batch = b.data as string;
       }
-      const rows = total ? (step.part === "moves" ? await movesPage(d, range.to, step.offset, loc, rental) : await layersPage(d, range.to, step.offset, loc, rental)) : [];
+      const read = total ? (step.part === "moves" ? await movesPage(d, range.to, step.offset, loc, rental) : await layersPage(d, range.to, step.offset, loc, rental)) : [];
+      const rows = openLines(read as { period: string }[], await closedThroughOf(supabase, companyId)).kept;
       if (rows.length) {
         const r = await supabase.rpc(step.part === "moves" ? "add_stock_moves" : "add_stock_layers", { p_batch: batch!, p_rows: rows as unknown as Json });
         if (r.error) throw new DbError(r.error);

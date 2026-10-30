@@ -89,6 +89,7 @@ export const en = {
       kpis: ["KPIs", "Choose & rank KPIs"],
       targets: ["Targets", "Monthly targets"],
       alerts: ["Alerts", "Thresholds"],
+      close: ["Month close", "Close and reopen months"],
     } as Record<string, readonly [string, string]>,
   },
   period: {

@@ -15,6 +15,8 @@ const ref = () => randomBytes(3).toString("hex").toUpperCase();
 export function dbError(error: { code?: string; message: string; details?: string | null; hint?: string | null }, context: string): string {
   // An admin action refused until two-step sign-in is on (0039): say exactly what to do.
   if (error.hint === "mfa_required") return "Turn on two-step sign-in (Account, Security) to do this.";
+  // A destructive or closing action needs a fresh sign-in (0039, 0043).
+  if (error.hint === "reauth_required") return "Please confirm your password and try again.";
   switch (error.code) {
     case "42501": return "You don't have permission to do that.";
     case "PGRST116": return "Not found.";

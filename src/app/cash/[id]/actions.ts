@@ -8,6 +8,8 @@ import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { withCashColumns, withMode, withOpeningCash } from "@/lib/company/mode";
 import type { Json } from "@/lib/supabase/database.types";
 import { ALL_KINDS } from "@/lib/cash/kinds";
+import { isClosed, openPeriods } from "@/lib/company/close";
+import { closedThroughOf } from "@/lib/company/close-server";
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const Id = z.string().uuid();
@@ -40,7 +42,9 @@ export async function uploadBegin(companyId: string, filename: string, months: s
   if (!v.success) return { ok: false, error: "The upload is not valid: " + v.error.issues[0]?.message };
   const s = await editor();
   if ("error" in s) return { ok: false, error: s.error! };
-  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: v.data.months, p_mode: v.data.mode, p_skipped: v.data.skipped, p_directions: v.data.directions });
+  // Closed months (0043) are never replaced; their entries are left out when the parts arrive.
+  const open = openPeriods(v.data.months, await closedThroughOf(s.supabase, v.data.companyId));
+  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: open, p_mode: v.data.mode, p_skipped: v.data.skipped, p_directions: v.data.directions });
   if (error) return { ok: false, error: said(error, "uploadBegin") };
   return { ok: true, upload: data as string };
 }
@@ -50,7 +54,11 @@ export async function uploadPart(upload: string, entries: EntryInput[]): Promise
   if (!v.success) return { ok: false, error: "An entry is not valid: " + v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { data, error } = await supabase.rpc("cash_upload_add", { p_upload: v.data.upload, p_entries: v.data.entries as unknown as Json });
+  const { data: up } = await supabase.from("cash_uploads").select("company_id").eq("id", v.data.upload).maybeSingle();
+  const closed = up ? await closedThroughOf(supabase, up.company_id) : null;
+  const kept = v.data.entries.filter((e) => !isClosed(e.day.slice(0, 7), closed));
+  if (!kept.length) return { ok: true, added: 0 };
+  const { data, error } = await supabase.rpc("cash_upload_add", { p_upload: v.data.upload, p_entries: kept as unknown as Json });
   if (error) return { ok: false, error: said(error, "uploadPart") };
   return { ok: true, added: Number(data) };
 }

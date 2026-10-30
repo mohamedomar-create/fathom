@@ -20,20 +20,26 @@ async function toDataUrl(src: string): Promise<string | null> {
   } catch { return null; }
 }
 
-export async function downloadReportPdf(opts: { title: string; footer?: string; token?: string; demo?: boolean }): Promise<void> {
-  const el = document.getElementById("report");
-  if (!el) throw new Error("Report not found on the page");
-  const clone = el.cloneNode(true) as HTMLElement;
-  for (const img of Array.from(clone.querySelectorAll("img"))) {
-    if (img.src.startsWith("data:")) continue;
-    const d = await toDataUrl(img.src);
-    if (d) img.src = d; else img.remove();
+/**
+ * Downloads a report's PDF. A shared link or a saved report is printed by the server from its own data (the browser
+ * sends only which report); the demo, whose figures exist only in the page, sends the page.
+ */
+export async function downloadReportPdf(opts: { title: string; footer?: string; token?: string; demo?: boolean; companyId?: string; reportId?: string }): Promise<void> {
+  let body: Record<string, unknown> = { title: opts.title, footer: opts.footer };
+  if (opts.token) body.token = opts.token;
+  else if (opts.companyId && opts.reportId) Object.assign(body, { companyId: opts.companyId, reportId: opts.reportId });
+  else {
+    const el = document.getElementById("report");
+    if (!el) throw new Error("Report not found on the page");
+    const clone = el.cloneNode(true) as HTMLElement;
+    for (const img of Array.from(clone.querySelectorAll("img"))) {
+      if (img.src.startsWith("data:")) continue;
+      const d = await toDataUrl(img.src);
+      if (d) img.src = d; else img.remove();
+    }
+    body = { ...body, html: clone.outerHTML, css: collectCss(), demo: true };
   }
-  const res = await fetch("/api/pdf", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ html: clone.outerHTML, css: collectCss(), title: opts.title, footer: opts.footer, token: opts.token, demo: opts.demo }),
-  });
+  const res = await fetch("/api/pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
   if (!res.ok) {
     const j = await res.json().catch(() => ({}));
     throw new Error(j.error ?? `PDF export failed (${res.status})`);

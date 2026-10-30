@@ -5,6 +5,9 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
+import { openLines } from "@/lib/company/close";
+import { closedThroughOf } from "@/lib/company/close-server";
+import { allClosed, closedRange } from "@/lib/company/line-stage";
 
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -47,8 +50,11 @@ export async function startInventoryBatch(input: z.input<typeof Start>): Promise
   if (!user) return { ok: false, error: "Please sign in again." };
   if (await limited(supabase, "inventory", user.id)) return { ok: false, error: TOO_MANY };
   try {
+    // Closed months (0043) are never replaced; "Replace all" replaces the open months only.
+    const r = await closedRange(supabase, v.data.companyId, v.data.periods, v.data.mode === "all");
+    if (!r.periods.length && !r.all && v.data.periods.length) return { ok: false, error: allClosed(r.closed) };
     const { data, error } = await supabase.rpc("begin_inventory_batch", {
-      p_company: v.data.companyId, p_kind: v.data.kind, p_periods: [...new Set(v.data.periods)].sort(), p_filename: v.data.filename, p_mode: v.data.mode, p_report: (v.data.report ?? {}) as Json,
+      p_company: v.data.companyId, p_kind: v.data.kind, p_periods: r.periods, p_filename: v.data.filename, p_mode: v.data.mode === "all" && !r.all ? "replace" : v.data.mode, p_report: (v.data.report ?? {}) as Json,
     });
     if (error) return { ok: false, error: missing(error) ? NOT_READY : dbError(error, "begin_inventory_batch") };
     return { ok: true, batch: data as string };
@@ -65,7 +71,10 @@ export async function addInventoryRows(companyId: string, batch: string, kind: "
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
-    const { data, error } = await supabase.rpc(kind === "valuation" ? "add_stock_layers" : "add_stock_moves", { p_batch: batch, p_rows: rs.data as unknown as Json });
+    // Records in closed months are left out (0043).
+    const open = openLines(rs.data as { period: string }[], await closedThroughOf(supabase, companyId)).kept;
+    if (!open.length) return { ok: true, repeated: 0 };
+    const { data, error } = await supabase.rpc(kind === "valuation" ? "add_stock_layers" : "add_stock_moves", { p_batch: batch, p_rows: open as unknown as Json });
     if (error) return { ok: false, error: missing(error) ? NOT_READY : dbError(error, kind === "valuation" ? "add_stock_layers" : "add_stock_moves") };
     return { ok: true, repeated: Number((data as { repeated: number }).repeated) };
   } catch (e) {
@@ -136,7 +145,9 @@ export async function startStockLedgerBatch(companyId: string, periods: string[]
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
-    const { data, error } = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: [...new Set(ps.data)].sort(), p_filename: filename.slice(0, 300) });
+    const r = await closedRange(supabase, companyId, ps.data, false);
+    if (!r.periods.length) return { ok: true, batch: "" };
+    const { data, error } = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: r.periods, p_filename: filename.slice(0, 300) });
     // Before the Inventory update the ledger's stock postings are simply not kept; the accounts still save.
     if (error) return missing(error) ? { ok: true, batch: "" } : { ok: false, error: dbError(error, "begin_stock_ledger_batch") };
     return { ok: true, batch: data as string };
@@ -152,7 +163,9 @@ export async function addStockLedgerLines(companyId: string, batch: string, line
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
-    const { data, error } = await supabase.rpc("add_stock_ledger_lines", { p_batch: batch, p_lines: ls.data as unknown as Json });
+    const open = openLines(ls.data, await closedThroughOf(supabase, companyId)).kept;
+    if (!open.length) return { ok: true, saved: 0 };
+    const { data, error } = await supabase.rpc("add_stock_ledger_lines", { p_batch: batch, p_lines: open as unknown as Json });
     if (error) return { ok: false, error: dbError(error, "add_stock_ledger_lines") };
     return { ok: true, saved: data as number };
   } catch (e) {

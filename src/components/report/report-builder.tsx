@@ -10,11 +10,11 @@ import { useExpenses } from "@/lib/company/expenses-context";
 import { downloadReportPdf } from "@/lib/report/export";
 import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportOrg, type ReportSection } from "@/lib/report/types";
-import { deleteReport, publishReport, saveCommentary, saveReport } from "@/app/company/[id]/reports/actions";
+import { deleteReport, publishReport, saveCommentary, saveReport, updatePublishedFigures } from "@/app/company/[id]/reports/actions";
 import { ReportDocument } from "./report-document";
 import { cn } from "@/lib/cn";
 
-export interface ReportRecord { id: string; title: string; period_type: PeriodType; period_end: string; sections: ReportSection[]; status: string; share_token: string | null; expires_at?: string | null }
+export interface ReportRecord { id: string; title: string; period_type: PeriodType; period_end: string; sections: ReportSection[]; status: string; share_token: string | null; expires_at?: string | null; frozen_at?: string | null }
 
 export function ReportBuilder({ report, org, demo = false }: { report: ReportRecord; org: ReportOrg; demo?: boolean }) {
   const c = useCompany();
@@ -28,6 +28,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   const [token, setToken] = useState<string | null>(report.share_token);
   const [expiresAt, setExpiresAt] = useState<string | null>(report.expires_at ?? null);
   const [expiry, setExpiry] = useState<0 | 30 | 90>(0);
+  const [frozenAt, setFrozenAt] = useState<string | null>(report.frozen_at ?? null);
   const ends = useMemo(() => selectableEnds(c.months, type, c.settings.fyStartMonth), [c.months, type, c.settings.fyStartMonth]);
   const validEnd = ends.some((e) => e.end === end) ? end : ends[ends.length - 1]?.end ?? end;
   const periodKey = `${type}:${validEnd}`;
@@ -85,9 +86,15 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
     if (!r.ok) throw new Error(r.error);
     setToken(r.token ?? null);
     setExpiresAt(r.expiresAt ?? null);
+    setFrozenAt(on ? r.frozenAt ?? null : null);
     setMsg({ ok: true, text: on ? `Published. Anyone with the link can view this report${expiry ? ` for ${expiry} days` : ""}.` : "Sharing stopped. The link no longer works." });
   });
-  const pdf = () => run("pdf", async () => { await downloadReportPdf({ title: `${c.name} - ${title}`, footer, demo }); });
+  // The server prints the saved report from its own figures: what is on screen is saved first.
+  const pdf = () => run("pdf", async () => {
+    if (demo) return downloadReportPdf({ title: `${c.name} - ${title}`, footer, demo });
+    if (!c.readOnly) { const r = await saveReport({ id: report.id, title, period_type: type, period_end: validEnd, sections }); if (!r.ok) throw new Error(r.error ?? "Could not save"); }
+    await downloadReportPdf({ title: `${c.name} - ${title}`, footer, companyId: c.id, reportId: report.id });
+  });
   const shareUrl = token && typeof window !== "undefined" ? `${window.location.origin}/r/${token}` : null;
 
   return (
@@ -133,6 +140,13 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
             {shareUrl ? <div className="flex items-center gap-2"><input readOnly value={shareUrl} className="min-w-0 flex-1 rounded border border-line bg-band px-2 py-1 text-xs" /><button onClick={() => navigator.clipboard.writeText(shareUrl)} aria-label="Copy link"><Copy className="h-4 w-4 text-mute" /></button></div>
               : <p className="text-xs text-mute">Publish to get a read-only link you can send to the client or board.</p>}
             {shareUrl && <p className="mt-1.5 text-xs text-mute">{expiresAt ? `Expires on ${new Date(expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.` : "Works until you stop sharing."} Shows the report&apos;s period and up to three years before it, nothing older.</p>}
+            {shareUrl && frozenAt && (
+              <div className="mt-2 rounded bg-band px-2 py-1.5 text-xs" data-testid="frozen-at">
+                The link shows the figures as published on {new Date(frozenAt).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}; later uploads don&apos;t change it.
+                {!demo && <button onClick={() => run("freeze", async () => { const r = await updatePublishedFigures(report.id); if (!r.ok) throw new Error(r.error); setFrozenAt(r.frozenAt); setMsg({ ok: true, text: "The link now shows the figures as they stand now." }); })}
+                  disabled={!!busy} className="ms-1 font-medium text-brand-d underline disabled:opacity-60" data-testid="refreeze">{busy === "freeze" ? "Updating…" : "Update the published figures"}</button>}
+              </div>
+            )}
           </div>
         )}
         <div>

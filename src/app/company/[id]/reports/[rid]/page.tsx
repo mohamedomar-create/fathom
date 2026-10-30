@@ -14,10 +14,11 @@ export default async function ReportEditor({ params }: { params: Promise<{ id: s
   if (!r) notFound();
   const { data: c } = await supabase.from("companies").select("org_id").eq("id", id).single();
   const { data: o } = await supabase.from("organizations").select("name, logo_url, brand_colour, disclaimer, report_footer").eq("id", c!.org_id).single();
+  const { data: snap } = await supabase.from("report_snapshots").select("frozen_at").eq("report_id", rid).maybeSingle();
   return (
     <ReportData id={id}>
     <ReportBuilder
-      report={{ id: r.id, title: r.title, period_type: r.period_type as PeriodType, period_end: r.period_end, sections: normaliseSections(r.sections), status: r.status, share_token: r.share_token, expires_at: r.expires_at }}
+      report={{ id: r.id, title: r.title, period_type: r.period_type as PeriodType, period_end: r.period_end, sections: normaliseSections(r.sections), status: r.status, share_token: r.share_token, expires_at: r.expires_at, frozen_at: snap?.frozen_at ?? null }}
       org={{ name: o!.name, logoUrl: o!.logo_url, brandColour: o!.brand_colour, disclaimer: o!.disclaimer, footer: o!.report_footer }}
     />
     </ReportData>

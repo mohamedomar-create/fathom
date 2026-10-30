@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** The database version this app needs (public.schema_version(), raised by each migration). */
-export const REQUIRED_SCHEMA = 42;
+export const REQUIRED_SCHEMA = 43;
 
 type Health = { status: 200 | 503; body: { ok: boolean; db: boolean; schema: number | null; required: number; problem?: string; commit?: string; time: string } };
 

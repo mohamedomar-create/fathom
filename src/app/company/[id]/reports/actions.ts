@@ -70,7 +70,24 @@ export async function publishReport(id: string, publish: boolean, expiresDays: 0
   const { data, error } = await supabase.from("reports").update(publish ? { status: "published", share_token: token, published_at: new Date().toISOString(), expires_at } : { status: "draft", share_token: null, expires_at: null }).eq("id", id).select("share_token, expires_at").maybeSingle();
   if (error) return { ok: false, error: dbError(error, "publishReport") };
   if (!data) return { ok: false, error: "You do not have permission to change this." };
-  return { ok: true, token: data.share_token, expiresAt: data.expires_at };
+  // Publishing freezes the figures the link shows (0043): later uploads don't change a published report.
+  let frozenAt: string | null = null;
+  if (publish) {
+    const f = await supabase.rpc("freeze_report", { p_report: id });
+    if (f.error) return { ok: false, error: dbError(f.error, "freeze_report") };
+    frozenAt = f.data as string;
+  }
+  return { ok: true, token: data.share_token, expiresAt: data.expires_at, frozenAt };
+}
+
+/** Replaces a published report's frozen figures with the books as they stand now. Editors; recorded. */
+export async function updatePublishedFigures(id: string): Promise<{ ok: true; frozenAt: string } | { ok: false; error: string }> {
+  if (!Uuid.safeParse(id).success) return INVALID;
+  const { supabase, user } = await getUser();
+  if (!user) return SIGN_IN;
+  const { data, error } = await supabase.rpc("freeze_report", { p_report: id });
+  if (error) return { ok: false, error: dbError(error, "freeze_report") };
+  return { ok: true, frozenAt: data as string };
 }
 
 export async function deleteReport(companyId: string, id: string): Promise<{ ok: boolean; error?: string }> {

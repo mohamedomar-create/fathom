@@ -16,6 +16,8 @@ export type InviteRow = { id: string; org_id: string; email: string; role: Membe
 export type CompanyRow = {
   id: string; org_id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; source: string; industry: string | null;
   ai_context: Json; kpi_config: Json; notes: Json; data_version: number; last_synced_at: string | null; created_by: string | null; created_at: string; updated_at: string; deleted_at: string | null;
+  /** The books are closed up to and including this month (0043); set only through close_month / reopen_month. */
+  closed_through: string | null;
 }
 export type SourceAccountRow = {
   id: string; company_id: string; version: number; code: string; name: string; statement: "PL" | "BS"; class: string; odoo_id: number | null; odoo_type: string | null;
@@ -57,6 +59,8 @@ export type ImportTemplateRow = { company_id: string; export_key: string; mappin
 export type StockLedgerBatchRow = { id: string; company_id: string; source: "ledger"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type OrgAuditRow = { id: number; org_id: string; actor: string | null; action: string; target: string; target_user: string | null; detail: Json; at: string }
 export type AiUsageRow = { id: number; org_id: string; kind: string; input_tokens: number; output_tokens: number; micros: number; actor: string | null; at: string }
+export type CompanyDataAuditRow = { id: number; org_id: string; company_id: string; company_name: string; actor: string | null; action: string; scope: string; counts: Json; at: string }
+export type ReportSnapshotRow = { report_id: string; company_id: string; report: Json; sales: Json | null; expenses: Json | null; data_version: number | null; frozen_at: string; frozen_by: string | null }
 export type StockLedgerLineRow = { id: number; company_id: string; batch_id: string; source: "ledger"; day: string | null; period: string; ref: string; account: string; amount: number }
 
 export type Database = {
@@ -76,6 +80,8 @@ export type Database = {
       odoo_audit: Table<OdooAuditRow, "company_id" | "action" | "ok">;
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
+      company_data_audit: Table<CompanyDataAuditRow, "org_id" | "company_id" | "action" | "scope">;
+      report_snapshots: Table<ReportSnapshotRow, "report_id" | "company_id" | "report">;
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
       cash_uploads: Table<CashUploadRow, "company_id">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
@@ -115,6 +121,9 @@ export type Database = {
       restore_company: { Args: { p_company: string }; Returns: undefined };
       restore_organisation: { Args: { p_org: string }; Returns: undefined };
       get_published_report: { Args: { p_token: string }; Returns: Json };
+      close_month: { Args: { p_company: string; p_month: string }; Returns: string };
+      reopen_month: { Args: { p_company: string; p_month: string }; Returns: string };
+      freeze_report: { Args: { p_report: string }; Returns: string };
       reclassify_accounts: { Args: { p_company: string; p_changes: Json }; Returns: number };
       restamp_expense_classes: { Args: { p_company: string }; Returns: number };
       replace_company_data: { Args: { p_company: string; p_accounts: Json; p_import?: Json; p_notes?: Json }; Returns: number };

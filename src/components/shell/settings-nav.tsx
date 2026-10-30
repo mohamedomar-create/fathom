@@ -11,6 +11,7 @@ const ITEMS = [
   { n: 3, href: "kpis", label: "KPIs", sub: "Choose & rank KPIs" },
   { n: 4, href: "targets", label: "Targets", sub: "Monthly targets" },
   { n: 5, href: "alerts", label: "Alerts", sub: "Thresholds" },
+  { n: 6, href: "close", label: "Month close", sub: "Close and reopen months" },
 ];
 
 export function SettingsNav() {

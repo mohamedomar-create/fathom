@@ -8,6 +8,7 @@ import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
+import { closedThroughOf } from "@/lib/company/close-server";
 
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Line = z.object({
@@ -108,7 +109,9 @@ async function dropEmpty(supabase: Awaited<ReturnType<typeof getUser>>["supabase
       // name (other months) is kept.
       const { data: same } = await supabase.from("sales_batches").select("id, periods").eq("company_id", companyId).eq("source", "file").eq("filename", file).neq("id", keep);
       const ids = (same ?? []).filter((b) => ((b.periods as string[] | null) ?? []).some((p) => periods.includes(p))).map((b) => b.id);
-      if (ids.length) await supabase.from("sales_lines").delete().eq("company_id", companyId).in("batch_id", ids);
+      // Closed months (0043) keep their lines: only the open months of the earlier upload go.
+      const closed = await closedThroughOf(supabase, companyId);
+      if (ids.length) { const q = supabase.from("sales_lines").delete().eq("company_id", companyId).in("batch_id", ids); await (closed ? q.gt("period", closed) : q); }
     }
     const { data } = await supabase.from("sales_batches").select("id, lines:sales_lines(count)").eq("company_id", companyId).eq("source", source).neq("id", keep);
     const empty = ((data ?? []) as unknown as { id: string; lines: { count: number }[] }[]).filter((b) => !(b.lines?.[0]?.count ?? 0)).map((b) => b.id);

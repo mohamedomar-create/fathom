@@ -1047,6 +1047,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
             {acceptOn && <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} maxLength={500} placeholder="Why is it right? (at least 10 letters)" className="mt-2 w-full rounded border border-line px-2 py-1.5" data-testid="accept-reason" />}
           </div>
         )}
+        {preview.closedSkipped?.length > 0 && <p className="mt-3 rounded bg-amber/10 px-3 py-2 text-sm" data-testid="closed-skipped">{preview.closedSkipped.length === 1 ? `${mlabel(preview.closedSkipped[0])} is a closed month` : `${preview.closedSkipped.length} months in this file are closed (${preview.closedSkipped.map(mlabel).join(", ")})`}: the file&apos;s figures for {preview.closedSkipped.length === 1 ? "it" : "them"} are left out and the saved ones kept. Reopen a month in Settings, Month close, to change it.</p>}
         <details className="group mt-5 rounded-lg border border-line" data-testid="month-by-month">
           <summary className="flex cursor-pointer items-center gap-2 px-4 py-2.5 text-[14px] text-mute"><ChevronDown className="h-4 w-4 transition group-open:rotate-180" />See month by month</summary>
           <div className="space-y-4 border-t border-line px-4 py-3">

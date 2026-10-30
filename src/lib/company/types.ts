@@ -39,6 +39,8 @@ export interface CompanyBundle {
   health?: { failing: number };
   /** The latest month is a part month whose figures stop on this day ("2026-10-10"). */
   asOf?: string;
+  /** The books are closed up to and including this month (0043): nothing in it changes until it is reopened. */
+  closedThrough?: string | null;
   /** The unit the books were stated in (1,000 for a file "in thousands"): the checks allow one unit of rounding. */
   unit?: number;
   /** Economic assumptions (inflation, exchange rates, borrowing) for the bank and real-profit views. */
