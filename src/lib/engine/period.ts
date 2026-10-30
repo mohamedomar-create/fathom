@@ -123,6 +123,14 @@ const cutPL = (pl: MonthData["pl"], f: number) => (f >= 1 ? pl : Object.fromEntr
  * last month cut to the same share). opts.cutDay treats a whole end month as covering only that many days (a part month's
  * comparison measured like for like).
  */
+/** A month whose sub-classed P&L amounts are cut to a share of the month, as cutPL cuts its P&L. */
+export function cutSubP(m: MonthData, f: number): MonthData {
+  if (!m.sub || f >= 1) return m;
+  const sub = { ...m.sub };
+  for (const k of ["disposal_gain", "fx_unrealised", "rou_depreciation"] as const) if (sub[k] !== undefined) sub[k] = sub[k]! * f;
+  return { ...m, sub };
+}
+
 export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: number, asOf?: string | null, opts: { cutDay?: number } = {}): PeriodView {
   const { sorted, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(selIn.end);
@@ -158,7 +166,7 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     // A part month: the comparison's last month is cut to the same days (never more than it has).
     const f = compareWeight(day, w2.end);
     const label = windowLabel(w2, sel.type, fyStart);
-    const sub = cfSubOf(ms as MonthData[], b2, byPeriod.get(addMonths(w2.start, -1)));
+    const sub = cfSubOf((ms as MonthData[]).map((m) => (m.period === w2.end ? cutSubP(m, f) : m)), b2, byPeriod.get(addMonths(w2.start, -1)));
     return { P: plCalc(sumPL(ms.map((m) => (m!.period === w2.end ? cutPL(m!.pl, f) : m!.pl)))), B: bsCalc(b2?.bs ?? {}), label: day ? `${label} (same ${day} days)` : label, ...(sub ? { sub } : {}) };
   };
   const fy0 = fyStartOf(window.end, fyStart);
@@ -169,7 +177,7 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     ? window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})`)
     : `${window.label} (to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})` };
   const prior = cmp(SHIFT[sel.type]);
-  const sub = cfSubOf(got, bsMonth, open);
+  const sub = cfSubOf(cutEnd ? got.map((m) => (m.period === window.end ? cutSubP(m, day / fullEnd) : m)) : got, bsMonth, open);
   return {
     ...(sub ? { sub } : {}),
     sel, window: shownWindow, ...(day ? { partDay: day, likePrior: prior && { P: prior.P, label: prior.label } } : {}), complete: got.length === (annual ? 1 : window.periods.length), P, B, bsAt: bsMonth?.period ?? null, B0, Bavg, days, annual,

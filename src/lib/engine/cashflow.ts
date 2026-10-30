@@ -52,7 +52,8 @@ function movements(P: PLCalc, B: BSCalc, B0: BSCalc, sub: CFSub = NONE) {
     dividends: { label: has("dividends_payable") ? "Dividends paid" : "Dividends", value: -P.dividends + ds("dividends_payable") },
     tax: has("income_tax_payable") ? { paid: -(P.tax_expenses - ds("income_tax_payable")), other: dx("tax_liab") } : null,
     nonCash: { provisions: has("provisions") || has("end_of_service") ? ds("provisions") + ds("end_of_service") : null, deferred: has("deferred_tax") ? ds("deferred_tax") : null },
-    capex: { label: hasGain ? "Purchase / Sale of Fixed Assets (net of disposal proceeds)" : "Purchase / Sale of Fixed Assets", value: -(dx("fixed_assets") + P.da - rouDep) + gain },
+    // Right-of-use depreciation leaves capex only when the lease line takes it (otherwise nothing would add it back).
+    capex: { label: hasGain ? "Purchase / Sale of Fixed Assets (net of disposal proceeds)" : "Purchase / Sale of Fixed Assets", value: -(dx("fixed_assets") + P.da - (lease ? rouDep : 0)) + gain },
     lease: lease ? ds("lease_liability") - (ds("rou_asset") + rouDep) : null,
     equity: d("other_equity") + d("retained_earnings") - P.retained_income,
   };
@@ -131,7 +132,8 @@ export function cashWaterfall(P: PLCalc, B: BSCalc, B0: BSCalc, sub?: CFSub): Wa
   add("CASH FLOW BEFORE BORROWING", "TOTAL", ncf, "Change in cash less change in borrowing: the cash the business made or used before new loans and repayments.");
   return {
     rows, ocf, fcf, ncf, unreconciled: Math.abs(unbal) > 0.5 ? unbal : 0,
-    dcash: d("cash"), ddebt: d("std") + d("ltd"),
+    // Borrowing without the leases and interest owed under debt, which have their own lines (so ncf = Δcash − Δdebt).
+    dcash: d("cash"), ddebt: dx("std") + dx("ltd"),
     cash0: B0.cash, cash1: B.cash, debt0: B0.std + B0.ltd, debt1: B.std + B.ltd,
   };
 }

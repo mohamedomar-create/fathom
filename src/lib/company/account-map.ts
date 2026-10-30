@@ -21,7 +21,8 @@ export function rememberedEntries(mapping: Record<string, string>, accounts: { c
 export async function loadAccountMap(supabase: Supa, companyId: string): Promise<AccountMap> {
   const { data, error } = await supabase.from("account_map").select("key, cls").eq("company_id", companyId);
   if (error) { console.error("account map: load failed", error.message); return {}; }
-  return Object.fromEntries((data ?? []).map((r) => [r.key, r.cls as ClassKey | ""]));
+  // A row holding only a sub-class (cls null) is not a class choice.
+  return Object.fromEntries((data ?? []).filter((r) => r.cls !== null).map((r) => [r.key, r.cls as ClassKey | ""]));
 }
 
 /** Remembers the person's choices. Never blocks the save it follows: a failure is logged. */

@@ -359,8 +359,12 @@ export async function setSubClasses(companyId: string, changes: Record<string, s
   if (e1) return { ok: false, error: dbError(e1, "setSubClasses") };
   const { entries, refused } = subClassEntries((accts ?? []).map((a) => ({ id: a.id, code: a.code ?? "", name: a.name, cls: a.class as ClassKey })), ok.data);
   if (entries.length) {
-    // Row-level security lets editors only; the class kept is the account's own, so no class changes here.
-    const { error } = await supabase.from("account_map").upsert(entries.map((e) => ({ company_id: companyId, ...e })), { onConflict: "company_id,key" });
+    // Only the sub-class changes: a class the person chose stays, and none is recorded where they chose none (null),
+    // so later uploads and syncs still classify the account. Row-level security lets editors only.
+    const { data: had, error: e2 } = await supabase.from("account_map").select("key, cls").eq("company_id", companyId).in("key", entries.map((e) => e.key));
+    if (e2) return { ok: false, error: dbError(e2, "setSubClasses") };
+    const clsOf = new Map((had ?? []).map((r) => [r.key, r.cls]));
+    const { error } = await supabase.from("account_map").upsert(entries.map((e) => ({ company_id: companyId, key: e.key, name: e.name, sub_class: e.sub_class, cls: clsOf.has(e.key) ? clsOf.get(e.key)! : null })), { onConflict: "company_id,key" });
     if (error) return { ok: false, error: dbError(error, "setSubClasses") };
   }
   revalidatePath(`/company/${companyId}`, "layout");

@@ -93,7 +93,7 @@ describe("real profit", () => {
     const y = realProfit(b, { rate: 25 }, "EGP", 45);
     expect(y.collection.creditCost).toBeCloseTo(675000, 6);
     expect(y.collection.perDay).toBeCloseTo((12000000 / 365) * 0.25, 6);
-    expect(y.collection.release).toBeCloseTo((82.125 / 1.14 - 45) * (12000000 / 365), 4);
+    expect(y.collection.release).toBeCloseTo((82.125 / 1.14 - 45) * (12000000 / 365) * 1.14, 4); // what customers owe includes VAT
   });
 
   it("bridges reported to real profit after inflation, stock replacement and depreciation", () => {

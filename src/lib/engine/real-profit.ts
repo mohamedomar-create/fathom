@@ -103,11 +103,13 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
   const R = P.revenue;
   const avgAR = b.avg("ar");
   // Receivables net of VAT, as on the KPI and bank pages.
-  const dso = R > 0 && avgAR >= 0 ? (avgAR / (1 + Math.max(0, b.vat ?? DEFAULT_VAT)) / R) * b.days : null;
+  const vatF = 1 + Math.max(0, b.vat ?? DEFAULT_VAT);
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / vatF / R) * b.days : null;
   const rate = pos(a.rate) === null ? null : a.rate! / 100;
   const stuck = B0 ? B.ar - B0.ar : null;
   const daily = R > 0 ? R / b.days : null;
-  const release = dso !== null && daily !== null && dso > targetDso ? (dso - targetDso) * daily : null;
+  // Days are measured net of VAT; the cash customers would pay includes it.
+  const release = dso !== null && daily !== null && dso > targetDso ? (dso - targetDso) * daily * vatF : null;
   const collection: RealProfit["collection"] = {
     revenue: R, collected: stuck === null ? null : R - stuck, rate: stuck === null || R <= 0 ? null : ((R - stuck) / R) * 100,
     stuck, dso, avgAR,

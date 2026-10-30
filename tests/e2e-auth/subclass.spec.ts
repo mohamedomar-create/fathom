@@ -22,5 +22,7 @@ test("a sub-class chosen in the chart of accounts is saved and the cash flow say
   await expect(page.getByText(/sub-class\(es\) saved/)).toBeVisible({ timeout: 15_000 });
   const key = sql(`select case when coalesce(code, '') <> '' then '#' || code else lower(name) end from public.source_accounts where id = '${accountId}'`);
   expect(sql(`select sub_class from public.account_map where company_id = '${id}' and sub_class is not null limit 1`)).toBe(option);
+  // Choosing a sub-class records no class choice: later uploads still classify the account.
+  expect(sql(`select coalesce(cls, 'none') from public.account_map where company_id = '${id}' and sub_class is not null limit 1`)).toBe("none");
   expect(key.length).toBeGreaterThan(0);
 });

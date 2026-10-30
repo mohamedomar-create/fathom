@@ -1,6 +1,6 @@
 import { balanced } from "@/lib/tolerance";
 import { daysIn, div, fixed, monthIndex, money, pct } from "./format";
-import { KPI_DEFS } from "./kpis";
+import { DEFAULT_VAT, KPI_DEFS } from "./kpis";
 import type { Waterfall } from "./cashflow";
 import type { BSCalc, PLCalc } from "./types";
 
@@ -24,6 +24,8 @@ export interface InsightCtx {
   ownBS?: boolean[];
   /** The last day the books cover: a part month is left out of the burn rate. */
   asOf?: string | null;
+  /** VAT rate (debtor days are net of it; the cash they tie up is not). */
+  vat?: number;
   days: number;
   status: Record<string, boolean | null>;
   cur: string;
@@ -149,7 +151,8 @@ export function insights(ctx: InsightCtx): Finding[] {
     const v = K[key];
     const tgt = tg[key] ?? (key === "ar_days" ? 45 : 60);
     if (v !== null && v !== undefined && tgt && v > tgt * 1.1) {
-      const tied = ((v - tgt) / ctx.days) * (key === "ar_days" ? R : P.cos - P.cos_depreciation);
+      // Days are net of VAT; the cash held in receivables includes it.
+      const tied = ((v - tgt) / ctx.days) * (key === "ar_days" ? R * (1 + Math.max(0, ctx.vat ?? DEFAULT_VAT)) : P.cos - P.cos_depreciation);
       add(2, "risk", "kpis", L(`${nm} ${fixed(v, 0)} days (target ${fixed(tgt, 0)})`, `${nmA} ${fixed(v, 0)} يومًا (المستهدف ${fixed(tgt, 0)})`), L(`About ${m(tied)} extra cash is tied up. ${hint}`, `نحو ${m(tied)} نقدية إضافية محتجزة. ${hintA}`));
     }
   }

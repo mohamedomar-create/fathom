@@ -41,7 +41,7 @@ const RULES: [SubKey, RegExp][] = [
   ["interest_payable", /(interest (payable|accrued|due))|accrued interest|فوائد مستحق/],
   ["dividends_payable", /dividends? (payable|declared|due)|توزيعات (ال)?ارباح مستحق|ارباح مستحق(ة|ه) للمساهمين/],
   ["provisions", /provision|مخصص/],
-  ["disposal_gain", /(gains?|loss(es)?|profits?) on (the )?(sale|disposal)|disposal of (fixed )?assets|(ارباح|خسائر|خساره|خسارة) (بيع|استبعاد) (ال)?اصول/],
+  ["disposal_gain", /(gains?|loss(es)?|profits?) on (the )?(sale|disposal) of (fixed |the )?(assets?|property|plant|equipment|vehicles?|cars?|machinery|buildings?|land)|(gains?|loss(es)?) on disposal|disposal of (fixed )?assets|(ارباح|خسائر|خساره|خسارة) (بيع|استبعاد) (ال)?اصول/],
   ["fx_unrealised", /unreali[sz]ed (exchange|fx|foreign|currency)|(exchange|fx|currency) (revaluation|translation)|فروق (تقييم|ترجم(ة|ه)|اعاده تقييم) (ال)?عمل(ة|ه)/],
 ].map(([k, rx]) => [k as SubKey, arRx(rx as RegExp)]);
 
@@ -65,7 +65,8 @@ export const validSub = (sub: string | null | undefined, cls: ClassKey): SubKey 
 export function withSubClasses<A extends { code: string; name: string; cls: ClassKey }>(accounts: A[], map: Record<string, string> = {}): (A & { sub: SubKey | null })[] {
   return accounts.map((a) => {
     const key = mapKey(a);
-    const chosen = key in map ? map[key] : a.name in map ? map[a.name] : undefined;
+    const byName = normLabel(a.name);
+    const chosen = key in map ? map[key] : byName in map ? map[byName] : undefined;
     if (chosen === "") return { ...a, sub: null };
     return { ...a, sub: validSub(chosen, a.cls) ?? inferSubClass(a.name, a.cls) };
   });

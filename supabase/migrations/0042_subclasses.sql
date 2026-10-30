@@ -5,6 +5,8 @@
 set client_min_messages = warning;
 
 alter table public.account_map add column if not exists sub_class text;
+-- A row may hold only a sub-class: cls null means the person chose no class (the chart's or Odoo's stays).
+alter table public.account_map alter column cls drop not null;
 alter table public.account_map drop constraint if exists account_map_sub_class;
 alter table public.account_map add constraint account_map_sub_class check (sub_class is null or sub_class in (
   '', 'interest_payable', 'dividends_payable', 'income_tax_payable', 'provisions', 'end_of_service', 'deferred_tax',
@@ -54,6 +56,8 @@ begin
     -- The company's sub-class choices, so the link's cash flow reads as the app's (only when it shows figures).
     'sub_classes', case when not v_fig then '{}'::jsonb else coalesce((select jsonb_object_agg(m.key, m.sub_class) from public.account_map m
                      where m.company_id = c.id and m.sub_class is not null), '{}'::jsonb) end,
+    -- The company's VAT rate for debtor and creditor days (kpi_config.profile is not sent).
+    'vat_rate', case when v_fig then c.kpi_config -> 'profile' -> 'vatRate' end,
     'accepted', case when not v_basis then '[]'::jsonb else coalesce((
                   select (select jsonb_agg(jsonb_build_object('title', x ->> 'title', 'period', x ->> 'period', 'reason', x ->> 'reason'))
                             from jsonb_array_elements(coalesce(i.report -> 'accepted', '[]'::jsonb)) x)

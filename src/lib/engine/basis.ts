@@ -1,6 +1,6 @@
 import { cashFlowStatement, cfSubOf } from "./cashflow";
 import { addMonths, daysIn, mlabel, monthIndex } from "./format";
-import { indexMonths, isAnnualColumn } from "./period";
+import { cutSubP, indexMonths, isAnnualColumn } from "./period";
 import { bsCalc, plCalc, sumPL } from "./statements";
 import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types";
 
@@ -99,6 +99,6 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
     ...(vat !== undefined ? { vat } : {}),
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
     label: `${Math.round(covered * 10) / 10} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
-    ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0, { sub: cfSubOf(used, bsAt(end), open) }).cfo : null,
+    ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0, { sub: cfSubOf([...used, ...(topUp ? [cutSubP(topUp, 1 - part)] : [])], bsAt(end), open) }).cfo : null,
   };
 }

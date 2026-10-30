@@ -33,15 +33,17 @@ export const KIND_LABEL: Record<Kind, { en: string; ar: string }> = {
 // business named "Capital Pharmacy" is a customer, not the owner's money. When unsure, a plain sale or expense.
 const RULES: { d: "in" | "out"; k: Kind; w: string[] }[] = [
   // Running costs of things the business owns are expenses, never equipment.
-  { d: "out", k: "expense", w: ["repair", "repairs", "maintenance", "service", "fuel", "petrol", "diesel", "gas", "insurance", "صيانه", "تصليح", "اصلاح", "بنزين", "وقود", "سولار", "تامين"] },
+  // Hiring equipment, cleaning furniture or paying an asset manager are costs, not buying equipment.
+  { d: "out", k: "expense", w: ["repair", "repairs", "maintenance", "service", "fuel", "petrol", "diesel", "gas", "insurance", "rent", "rental", "hire", "leasing", "cleaning", "fee", "fees", "صيانه", "تصليح", "اصلاح", "بنزين", "وقود", "سولار", "تامين", "ايجار", "تاجير", "نظافه", "رسوم"] },
   { d: "out", k: "loan_repayment", w: ["loan repayment", "repay loan", "repay the loan", "loan instalment", "loan installment", "قسط القرض", "قسط قرض", "سداد القرض", "سداد قرض", "اقساط القرض"] },
-  { d: "in", k: "loan", w: ["loan received", "loan from", "bank loan", "borrowed", "قرض", "سلفه من"] },
-  { d: "in", k: "capital", w: ["owner capital", "capital injection", "capital from", "owner investment", "owner's money", "owners money", "from owner", "from the owner", "owner deposit", "راس مال", "راس المال", "من المالك", "تمويل من المالك", "زياده راس المال"] },
+  { d: "in", k: "loan", w: ["loan received", "loan from", "loan drawdown", "borrowed", "قرض مستلم", "استلام قرض", "قرض من", "سلفه من"] },
+  // Narrow on purpose: in contracting "the owner" (المالك) is often the client paying an invoice.
+  { d: "in", k: "capital", w: ["owner capital", "capital injection", "capital from", "owner investment", "owner's money", "owners money", "راس مال", "راس المال", "تمويل من المالك", "زياده راس المال"] },
   { d: "out", k: "drawings", w: ["drawings", "owner drawings", "owner withdrawal", "owner's withdrawal", "personal use", "for the owner", "مسحوبات", "سحب شخصي", "سحب المالك", "مسحوبات شخصيه"] },
-  { d: "out", k: "asset", w: ["equipment", "furniture", "fridge", "new machine", "machine purchase", "new laptop", "laptop purchase", "new computer", "computer purchase", "car purchase", "vehicle purchase", "asset", "معدات", "اثاث", "ثلاجه", "شراء جهاز", "شراء سياره", "شراء ماكينه", "اصول"] },
+  { d: "out", k: "asset", w: ["equipment purchase", "new equipment", "furniture purchase", "new furniture", "fridge", "new machine", "machine purchase", "new laptop", "laptop purchase", "new computer", "computer purchase", "car purchase", "vehicle purchase", "asset purchase", "شراء معدات", "معدات جديده", "شراء اثاث", "ثلاجه", "شراء جهاز", "شراء سياره", "شراء ماكينه", "شراء اصول"] },
   { d: "in", k: "collection", w: ["collection", "collected from", "payment of invoice", "تحصيل", "تحصيلات", "سداد من عميل", "سداد فاتوره"] },
-  { d: "in", k: "transfer", w: ["from bank", "from the bank", "atm", "bank withdrawal", "cash withdrawal", "between accounts", "own account", "من البنك", "سحب من البنك", "سحب نقدي"] },
-  { d: "out", k: "transfer", w: ["deposit to bank", "bank deposit", "to bank", "to the bank", "between accounts", "own account", "ايداع", "ايداع بالبنك", "ايداع بنكي", "للبنك"] },
+  { d: "in", k: "transfer", w: ["transfer from bank", "transfer from the bank", "cash from bank", "cash from the bank", "withdrawn from bank", "withdrawal from bank", "atm withdrawal", "cash from atm", "bank withdrawal", "cash withdrawal", "between accounts", "own account", "سحب من البنك", "سحب نقدي"] },
+  { d: "out", k: "transfer", w: ["deposit to bank", "deposited to bank", "deposited in bank", "bank deposit", "between accounts", "own account", "ايداع بالبنك", "ايداع بنكي", "ايداع في البنك"] },
   { d: "out", k: "purchase", w: ["purchase", "purchases", "stock", "goods", "inventory", "merchandise", "مشتريات", "بضاعه", "شراء بضاعه", "مخزون"] },
   { d: "in", k: "other_income", w: ["interest", "other income", "rent received", "فوائد", "فايده", "ايراد اخر", "ايرادات اخري"] },
 ];

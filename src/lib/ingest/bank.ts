@@ -4,7 +4,7 @@ import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { NO_SUPPLIER, type ExpenseLine } from "./expenses";
 import { NO_CATEGORY, type SalesLine } from "./sales";
-import { detectKind, isTradingKind } from "@/lib/cash/kinds";
+import { detectKind, isTradingKind, KIND_LABEL } from "@/lib/cash/kinds";
 import type { HeldBack } from "./cashbook";
 
 /**
@@ -157,6 +157,7 @@ export function readBankStatement(g: Grid, ov: BankOverride = {}): { sales: Sale
   checks.push({ message: `${sheet}: a bank statement, ${txs.length} lines. Balances follow on ${balanced} of ${txs.filter((t) => t.bal !== null).length} lines. ${outAsExpenses || inAsSales ? `Counted: ${[outAsExpenses ? "money out as expenses" : "", inAsSales ? "money in as sales" : ""].filter(Boolean).join(", ")}.` : "Not added to sales or expenses: a statement also holds transfers, loans and owner money. Tick the boxes beside the sheet to count them."}` });
   const expenses: ExpenseLine[] = outAsExpenses ? txs.filter((t) => t.out && trading(t, "out")).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", supplier: NO_SUPPLIER, account: "Bank payments", cls: null, category: "Bank payments", label: t.desc.slice(0, 200) || "No description", amount: round2(t.out), src: { sheet, row: t.r } })) : [];
   const sales: SalesLine[] = inAsSales ? txs.filter((t) => t.in && trading(t, "in")).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", customer: t.desc.slice(0, 80) || "No description", product: "Bank receipts", category: NO_CATEGORY, salesperson: "", qty: null, amount: round2(t.in), cost: null, src: { sheet, row: t.r } })) : [];
+  if (heldBack.length) checks.push({ row: heldBack[0].row, message: `${sheet}: ${heldBack.length} line${heldBack.length === 1 ? "" : "s"} not counted as sales or costs (${[...new Set(heldBack.map((h) => KIND_LABEL[h.kind].en.toLowerCase()))].join(", ")}): ${heldBack.slice(0, 3).map((h) => `"${h.label}" ${fmt(h.amount)}`).join(", ")}${heldBack.length > 3 ? "…" : ""}.` });
   const trace: Marks = [];
   rows.forEach((row, r) => { if (row && !row.every(blank)) trace[r] = marks[r] ?? (r === headerRow ? { role: "header" } : r < headerRow ? { role: "title" } : { role: "unused", note: "nothing to read on this row" }); });
   for (const s of ov.skipRows ?? []) if (s >= 0 && s < g.rows.length) trace[s] = { role: "skipped", note: "left out by you" };

@@ -29,6 +29,9 @@ select pg_temp.check('the account map has a sub-class column', (select count(*):
 select pg_temp.login('sub-ed@x.test');
 insert into public.account_map (company_id, key, cls, name, sub_class) select co, '#2160', 'other_cl', 'Interest payable', 'interest_payable' from ids;
 select pg_temp.check('an editor saves a sub-class', (select sub_class from public.account_map where key = '#2160'), 'interest_payable');
+-- A sub-class chosen on its own does not record a class choice (the class stays the chart's or Odoo's).
+insert into public.account_map (company_id, key, cls, name, sub_class) select co, '#2170', null, 'Lease liability', 'lease_liability' from ids;
+select pg_temp.check('a sub-class can be kept without a class choice', (select coalesce(cls, 'none') from public.account_map where key = '#2170'), 'none');
 do $$ begin
   begin
     update public.account_map set sub_class = 'made_up' where key = '#2160';
@@ -48,10 +51,12 @@ select pg_temp.check('a viewer cannot change a sub-class', (select sub_class fro
 reset role;
 
 -- A shared report that shows figures carries the sub-classes; a cover-only one does not.
+update public.companies set kpi_config = '{"profile":{"vatRate":0}}' where name = 'Sub Co';
 insert into public.reports (company_id, period_end, status, share_token, sections)
   select co, '2026-10', 'published', 'tok-sub-0000000000000000000000', '["cover","kpis"]'::jsonb from ids;
 set role anon;
 select pg_temp.check('a figures link carries the sub-classes', public.get_published_report('tok-sub-0000000000000000000000') -> 'sub_classes' ->> '#2160', 'interest_payable');
+select pg_temp.check('a figures link carries the VAT rate', public.get_published_report('tok-sub-0000000000000000000000') ->> 'vat_rate', '0');
 reset role;
 update public.reports set sections = (select jsonb_agg(jsonb_build_object('key', k, 'enabled', k = 'cover'))
   from unnest(array['cover', 'summary', 'kpis', 'explorer', 'profitability', 'cashflow', 'pl', 'bs', 'cf', 'trend', 'growth', 'goalseek',
@@ -59,6 +64,7 @@ update public.reports set sections = (select jsonb_agg(jsonb_build_object('key',
  where share_token = 'tok-sub-0000000000000000000000';
 set role anon;
 select pg_temp.check('a cover-only link carries none', (public.get_published_report('tok-sub-0000000000000000000000') -> 'sub_classes')::text, '{}');
+select pg_temp.check('nor the VAT rate', coalesce(public.get_published_report('tok-sub-0000000000000000000000') ->> 'vat_rate', 'none'), 'none');
 reset role;
 select pg_temp.check('schema version 42', public.schema_version()::text, '42');
 delete from public.companies where name = 'Sub Co';

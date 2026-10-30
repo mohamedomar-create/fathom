@@ -48,7 +48,7 @@ export type ImportJobStatus = "preparing" | "queued" | "checking" | "needs_revie
 export type ImportJobRow = { id: string; company_id: string; kind: "inventory"; mode: "replace" | "add" | "all" | "update"; status: ImportJobStatus; accept_invalid: boolean; options: Json; counts: Json; message: string | null; created_by: string | null; created_at: string; updated_at: string; queued_at: string | null; started_at: string | null; finished_at: string | null }
 export type ImportFileRow = { id: string; job_id: string; company_id: string; filename: string; size: number; export_key: string; kind: "valuation" | "moves" | "onhand" | "products"; storage_path: string; stored: boolean; rows_declared: number | null; counts: Json; created_at: string }
 export type ImportRowRow = { file_id: string; n: number; job_id: string; line: number | null; data: Json; error: string | null }
-export type AccountMapRow = { company_id: string; key: string; cls: string; name: string; updated_by: string | null; updated_at: string; sub_class: string | null }
+export type AccountMapRow = { company_id: string; key: string; cls: string | null; name: string; updated_by: string | null; updated_at: string; sub_class: string | null }
 export type AgencyStatementBatchRow = { id: string; company_id: string; filename: string | null; sheets: string[]; report: Json; created_by: string | null; created_at: string }
 export type AgencyStatementLineRow = { id: number; company_id: string; batch_id: string; day: string; dn: string; ref: string; hospital: string; funding: string; region: string; value: number; sheet: string }
 export type EndUserMapRow = { company_id: string; kind: "alias" | "order" | "agency" | "not_agency"; key: string; hospital: string; updated_by: string | null; updated_at: string }
@@ -92,7 +92,7 @@ export type Database = {
       import_files: Table<ImportFileRow, "job_id" | "company_id" | "filename" | "export_key" | "kind" | "storage_path">;
       import_rows: Table<ImportRowRow, "file_id" | "n" | "job_id">;
       import_templates: Table<ImportTemplateRow, "company_id" | "export_key">;
-      account_map: Table<AccountMapRow, "company_id" | "key" | "cls">;
+      account_map: Table<AccountMapRow, "company_id" | "key">;
       end_user_map: Table<EndUserMapRow, "company_id" | "kind" | "key">;
       agency_statement_batches: Table<AgencyStatementBatchRow, "company_id">;
       agency_statement_lines: Table<AgencyStatementLineRow, "company_id" | "batch_id" | "day" | "hospital" | "value">;

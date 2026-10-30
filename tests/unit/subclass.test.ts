@@ -68,7 +68,7 @@ describe("an account's sub-class: the company's choice, else the name rules", ()
       { id: "2", code: "", name: "Bank interest due", cls: "other_cl", amounts: {} },
       { id: "3", code: "2160", name: "Interest payable", cls: "other_cl", amounts: {} },
       { id: "4", code: "2170", name: "Lease liability", cls: "other_ncl", amounts: {} },
-    ] as never, { "#2150": "interest_payable", "Bank interest due": "dividends_payable", "#2160": "", "#2170": "rou_asset" });
+    ] as never, { "#2150": "interest_payable", "bank interest due": "dividends_payable", "#2160": "", "#2170": "rou_asset" });
     expect(out.map((a) => a.sub)).toEqual(["interest_payable", "dividends_payable", null, "lease_liability"]);
   });
 });
