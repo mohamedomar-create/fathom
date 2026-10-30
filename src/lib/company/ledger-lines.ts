@@ -7,6 +7,8 @@ import type { createClient } from "@/lib/supabase/server";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
 import type { StockLedgerLine } from "@/lib/ingest/inventory";
+import { openPeriods } from "./close";
+import { closedThroughOf } from "./close-server";
 
 /**
  * Sales and expense lines taken from a General Ledger (source "ledger") mirror the accounts loaded: when months of the
@@ -24,10 +26,18 @@ const TABLES: Record<LedgerKind, { lines: "sales_lines" | "expense_lines" | "sto
 };
 
 /** Removes the ledger lines of these months (or all of them), and the ledger batches left with no months. */
-export async function clearLedger(supabase: Supa, companyId: string, periods: string[] | "all", kinds: LedgerKind[] = ["sales", "expenses", "stock"]): Promise<void> {
+export async function clearLedger(supabase: Supa, companyId: string, periodsIn: string[] | "all", kinds: LedgerKind[] = ["sales", "expenses", "stock"]): Promise<void> {
+  // Closed months (0043) keep their lines.
+  const closed = await closedThroughOf(supabase, companyId);
+  const periods = periodsIn === "all" || !closed ? periodsIn : openPeriods(periodsIn, closed);
   if (periods !== "all" && !periods.length) return;
   for (const kind of kinds) {
     const t = TABLES[kind];
+    if (periods === "all" && closed) {
+      const { error } = await supabase.from(t.lines).delete().eq("company_id", companyId).eq("source", "ledger").gt("period", closed);
+      if (error) throw new DbError(error);
+      continue;
+    }
     if (periods === "all") {
       // Deleting the batches removes their lines (on delete cascade).
       const { error } = await supabase.from(t.batches).delete().eq("company_id", companyId).eq("source", "ledger");

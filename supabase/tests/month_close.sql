@@ -74,6 +74,11 @@ select pg_temp.check('a sales line in an open month is allowed', pg_temp.refused
 select pg_temp.check('deleting a closed month''s line is refused', pg_temp.refused('delete from public.sales_lines where period = ''2026-08'''), 'refused');
 select pg_temp.check('moving an open line into a closed month is refused', pg_temp.refused('update public.sales_lines set period = ''2026-08'' where period = ''2026-09'''), 'refused');
 select pg_temp.check('the closed balances cannot be deleted', pg_temp.refused('delete from public.account_balances where period = ''2026-08'''), 'refused');
+select pg_temp.check('a balance cannot be added to a closed month directly', pg_temp.refused($q$insert into public.account_balances (account_id, company_id, period, amount) select s.id, s.company_id, '2026-06', 5 from public.source_accounts s where s.name = 'Sales'$q$), 'refused');
+select pg_temp.check('a balance cannot be moved into a closed month', pg_temp.refused($q$update public.account_balances set period = '2026-06' where period = '2026-09'$q$), 'refused');
+select pg_temp.check('an account with closed balances cannot be deleted', pg_temp.refused($q$delete from public.source_accounts where name = 'Sales'$q$), 'refused');
+select pg_temp.check('an account cannot be moved to another version', pg_temp.refused($q$update public.source_accounts set version = 99 where name = 'Sales'$q$), 'refused');
+select pg_temp.check('a company cannot be created already closed', pg_temp.refused(format('insert into public.companies (org_id, name, closed_through) values (%L, %L, %L)', (select org_id from public.companies where name = 'Close Co'), 'Pre-closed', '2026-01')), 'refused');
 reset role;
 -- Even the database's own functions (security definer, as the save functions are) cannot change a closed month.
 select pg_temp.check('the closed month holds for definer functions too', pg_temp.refused('delete from public.sales_lines where period = ''2026-08'''), 'refused');
@@ -85,6 +90,7 @@ select pg_temp.check('a cash entry dated in an open month is allowed', pg_temp.r
 select pg_temp.login('mc-ed@x.test');
 select pg_temp.check('a new version that changes a closed month is refused', pg_temp.refused($q$select public.save_company_version((select co from ids), '[{"code":"4000","name":"Sales","statement":"PL","class":"revenue","amounts":{"2026-07":-100,"2026-08":-999,"2026-09":-100}}]'::jsonb)$q$), 'refused');
 select pg_temp.check('a new version that keeps the closed months is saved', pg_temp.refused($q$select public.save_company_version((select co from ids), '[{"code":"4000","name":"Sales","statement":"PL","class":"revenue","amounts":{"2026-07":-100,"2026-08":-100,"2026-09":-150,"2026-10":-100}}]'::jsonb)$q$), 'allowed');
+select pg_temp.check('a new version that only re-spells an account is saved', pg_temp.refused($q$select public.save_company_version((select co from ids), '[{"code":" 4000 ","name":"SALES","statement":"PL","class":"revenue","amounts":{"2026-07":-100,"2026-08":-100,"2026-09":-150,"2026-10":-100}}]'::jsonb)$q$), 'allowed');
 select pg_temp.check('going back to the older version is allowed while the closed months agree', pg_temp.refused('select public.restore_company_version((select co from ids), 1)'), 'allowed');
 select pg_temp.check('reclassifying an account with closed balances is refused', pg_temp.refused('update public.source_accounts set class = ''other_income'' where name = ''Sales'' and version = 1'), 'refused');
 -- Re-applying expense classes leaves closed months as they are.
@@ -139,6 +145,11 @@ reset role;
 set role anon;
 select pg_temp.check('updated figures show on the link', (select a -> 'amounts' ->> '2026-10' from jsonb_array_elements(public.get_published_report('tok-mc-00000000000000000000000') -> 'accounts') a where a ->> 'name' = 'Sales'), '-250.00');
 reset role;
+update public.companies set deleted_at = now() where name = 'Close Co';
+set role anon;
+select pg_temp.check('a deleted company''s frozen link stops at once', coalesce(public.get_published_report('tok-mc-00000000000000000000000')::text, 'none'), 'none');
+reset role;
+update public.companies set deleted_at = null where name = 'Close Co';
 update public.reports set status = 'draft', share_token = null where share_token = 'tok-mc-00000000000000000000000';
 select pg_temp.check('stopping sharing drops the snapshot', (select count(*)::text from public.report_snapshots where company_id = (select co from ids)), '0');
 

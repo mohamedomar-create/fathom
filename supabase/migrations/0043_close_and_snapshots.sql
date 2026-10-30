@@ -21,13 +21,14 @@ alter table public.companies add column if not exists closed_through text check 
 
 create or replace function private.closed_through_guard() returns trigger language plpgsql set search_path = '' as $$
 begin
-  if new.closed_through is distinct from old.closed_through and current_user in ('authenticated', 'anon') then
+  if (tg_op = 'INSERT' and new.closed_through is not null or tg_op = 'UPDATE' and new.closed_through is distinct from old.closed_through)
+     and current_user in ('authenticated', 'anon') then
     raise exception 'Months are closed and reopened in Settings, Month close.' using errcode = '42501';
   end if;
   return new;
 end $$;
 drop trigger if exists closed_through_guard on public.companies;
-create trigger closed_through_guard before update of closed_through on public.companies for each row execute function private.closed_through_guard();
+create trigger closed_through_guard before insert or update of closed_through on public.companies for each row execute function private.closed_through_guard();
 
 create or replace function private.month_closed(p_company uuid, p_month text) returns boolean
 language sql stable security definer set search_path = '' as $$
@@ -78,6 +79,23 @@ begin
   return new;
 end $$;
 drop trigger if exists account_class_lock on public.source_accounts;
+
+-- Stored accounts and balances are written only by the save functions: nobody adds, changes or (balances) deletes them
+-- directly. Pruning old versions still deletes accounts; one of the current version with closed balances can't go.
+revoke insert, update on public.source_accounts from anon, authenticated;
+revoke insert, update, delete on public.account_balances from anon, authenticated;
+create or replace function private.account_delete_lock() returns trigger language plpgsql security definer set search_path = '' as $$
+declare v_m text;
+begin
+  if exists (select 1 from public.companies c where c.id = old.company_id and c.data_version = old.version) then
+    select max(b.period) into v_m from public.account_balances b
+     where b.account_id = old.id and b.amount <> 0 and private.month_closed(old.company_id, b.period);
+    if v_m is not null then perform private.refuse_closed(v_m); end if;
+  end if;
+  return old;
+end $$;
+drop trigger if exists account_delete_lock on public.source_accounts;
+create trigger account_delete_lock before delete on public.source_accounts for each row execute function private.account_delete_lock();
 create trigger account_class_lock before update of class, statement on public.source_accounts for each row execute function private.account_class_lock();
 
 -- A new or restored version of the books must agree with the current one in every closed month, account by account
@@ -88,11 +106,11 @@ begin
   select c.closed_through, c.data_version into v_closed, v_now from public.companies c where c.id = new.id;
   if v_closed is null or v_now is not distinct from old.data_version then return null; end if;
   with a as (
-    select coalesce(nullif(s.code, ''), s.name) k, s.class, b.period, sum(b.amount) amt from public.source_accounts s
+    select coalesce(nullif(lower(btrim(s.code)), ''), lower(btrim(s.name))) k, s.class, b.period, sum(b.amount) amt from public.source_accounts s
       join public.account_balances b on b.account_id = s.id
      where s.company_id = new.id and s.version = old.data_version and b.period <= v_closed group by 1, 2, 3
   ), z as (
-    select coalesce(nullif(s.code, ''), s.name) k, s.class, b.period, sum(b.amount) amt from public.source_accounts s
+    select coalesce(nullif(lower(btrim(s.code)), ''), lower(btrim(s.name))) k, s.class, b.period, sum(b.amount) amt from public.source_accounts s
       join public.account_balances b on b.account_id = s.id
      where s.company_id = new.id and s.version = v_now and b.period <= v_closed group by 1, 2, 3
   )
@@ -233,7 +251,9 @@ end $$;
 revoke execute on function private.published_report_live(text), private.published_sales_live(text), private.published_expenses_live(text) from public, anon, authenticated;
 
 create or replace function private.shared_report(p_token text) returns uuid language sql stable security definer set search_path = '' as $$
-  select r.id from public.reports r where r.share_token = p_token and r.status = 'published' and (r.expires_at is null or r.expires_at > now())
+  select r.id from public.reports r where length(p_token) between 20 and 100 and r.share_token = p_token and r.status = 'published' and (r.expires_at is null or r.expires_at > now())
+    -- A deleted company's or organisation's links stop at once (0039).
+    and exists (select 1 from public.companies c join public.organizations o on o.id = c.org_id where c.id = r.company_id and c.deleted_at is null and o.deleted_at is null)
 $$;
 revoke execute on function private.shared_report(text) from public, anon, authenticated;
 

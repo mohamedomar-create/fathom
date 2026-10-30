@@ -5,7 +5,7 @@ import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
 import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
 import { localLimiter } from "@/lib/local-limit";
-import { imageSources, pageBody, sameOriginStyles } from "@/lib/pdf/print-page";
+import { imageSources, pageBody, printOrigin, sameOriginStyles } from "@/lib/pdf/print-page";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -94,7 +94,8 @@ body { background: #fff !important; margin: 0; }
 
 /** The print page the server draws, fetched with the caller's own session; its stylesheets and storage images inlined. */
 async function drawnPage(req: Request, path: string): Promise<{ html: string; css: string } | null> {
-  const origin = new URL(req.url).origin;
+  const origin = printOrigin(req.url);
+  if (!origin) { console.error("PDF: set APP_ORIGIN to the site's address"); return null; }
   const res = await fetch(origin + path, { headers: { cookie: req.headers.get("cookie") ?? "" }, cache: "no-store", redirect: "manual" });
   if (res.status !== 200) return null;
   const page = await res.text();

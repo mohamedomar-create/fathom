@@ -101,3 +101,31 @@ describe("the close checklist", () => {
     expect(problemsToClose(checks, "2026-07", "2026-09").map((c) => c.title)).toEqual(["Aug does not balance"]);
   });
 });
+
+describe("an upload that changes an account with closed months (review fixes)", () => {
+  const stored = [acct("4000", "Sales", "revenue", { "2026-08": 100 })];
+  const plan = (n: IncomingAccount[]) => planImport(stored, n, { mode: "merge", slices: { PL: ["2026-08", "2026-09"], BS: [] }, closedThrough: "2026-08" });
+
+  it("keeps the class the months were closed under, and says so", () => {
+    const p = plan([inc("4000", "Sales", "other_income", { "2026-08": 1, "2026-09": 130 })]);
+    const a = p.accounts.find((x) => x.code === "4000")!;
+    expect(a.cls).toBe("revenue");
+    expect(a.amounts).toEqual({ "2026-08": 100, "2026-09": 130 });
+    expect(p.checks.some((c) => c.id === "continuity" && c.severity === "warn" && /closed/i.test(c.title))).toBe(true);
+  });
+
+  it("keeps the stored code and name, so a re-spelt account is the same account", () => {
+    const p = plan([inc("4000", "SALES (EGP)", "revenue", { "2026-09": 130 })]);
+    expect(p.accounts.find((x) => x.code === "4000")!.name).toBe("Sales");
+  });
+
+  it("refuses moving an account with closed months between the P&L and the balance sheet", () => {
+    const p = plan([inc("4000", "Sales", "cash", { "2026-09": 130 })]);
+    expect(p.checks.some((c) => c.id === "continuity" && c.severity === "block" && /closed/i.test(c.title))).toBe(true);
+  });
+
+  it("a live sync that moves such an account between statements is refused with a reason", async () => {
+    const { withClosedMonths } = await import("@/lib/company/import-plan");
+    expect(() => withClosedMonths([inc("4000", "Sales", "cash", { "2026-09": 130 })], stored, "2026-08")).toThrow(/closed/);
+  });
+});

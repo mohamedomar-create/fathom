@@ -389,15 +389,16 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
         total = await countLedger(d, accts, range);
         // The synced months' journal lines replace those months only, when the last page is in: sales and expense lines
         // as staged saves, stock postings in a fresh batch for those months.
-        const periods = monthsBetween(start, end);
+        // Closed months (0043) are left as they are.
+        const periods = (await closedRange(supabase, companyId, monthsBetween(start, end), false)).periods;
         await clearLedger(supabase, companyId, periods, ["stock"]);
         const open = async (kind: StageKind) => {
           const r = await stageBegin(supabase, kind, { companyId, source: "ledger", periods, filename: name, report: { kind: "odoo" } });
           if (!r.ok) throw new Error(r.missing ? STAGE_UPDATE : r.error);
           return r.stage;
         };
-        const st = await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: periods, p_filename: name });
-        batches = { sales: await open("sales"), expenses: await open("expenses"), stock: st.error ? null : (st.data as string) };
+        const st = periods.length ? await supabase.rpc("begin_stock_ledger_batch", { p_company: companyId, p_periods: periods, p_filename: name }) : { error: true as const, data: null };
+        batches = { sales: periods.length ? await open("sales") : null, expenses: periods.length ? await open("expenses") : null, stock: st.error ? null : (st.data as string) };
       }
       if (total && batches) {
         const p = await ledgerPage(d, accts, range, step.offset);
@@ -406,8 +407,9 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
           if (!b || !ls.length) continue;
           for (let i = 0; i < ls.length; i += 5000) { const r = await stageAdd(supabase, b, ls.slice(i, i + 5000)); if (!r.ok) throw new Error(r.error); }
         }
-        if (batches.stock && p.stock.length) {
-          const r = await supabase.rpc("add_stock_ledger_lines", { p_batch: batches.stock, p_lines: p.stock as unknown as Json });
+        const stock = openLines(p.stock, await closedThroughOf(supabase, companyId)).kept;
+        if (batches.stock && stock.length) {
+          const r = await supabase.rpc("add_stock_ledger_lines", { p_batch: batches.stock, p_lines: stock as unknown as Json });
           if (r.error) throw new DbError(r.error);
         }
       }

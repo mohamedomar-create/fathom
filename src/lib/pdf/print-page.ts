@@ -7,7 +7,7 @@ export function pageBody(html: string): string {
   return (m ? m[1] : "")
     .replace(/<script\b[\s\S]*?<\/script>/gi, "")
     .replace(/<(noscript|template)\b[\s\S]*?<\/\1>/gi, "")
-    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+    .replace(/<[a-z][^>]*>/gi, (tag) => tag.replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, ""));
 }
 
 /** Stylesheets linked from the page that the site itself serves (a path, never another host). */
@@ -24,4 +24,15 @@ export function sameOriginStyles(html: string): string[] {
 
 export function imageSources(html: string): string[] {
   return [...html.matchAll(/<img\b[^>]*\ssrc=["']([^"']+)["']/gi)].map((m) => m[1]);
+}
+
+/**
+ * The address the PDF route fetches its print page from. Never a host the request names: the configured APP_ORIGIN,
+ * else on Vercel the deployment's own address (Vercel only routes its own hosts here), else only a local address.
+ */
+export function printOrigin(reqUrl: string, env: Record<string, string | undefined> = process.env): string | null {
+  if (env.APP_ORIGIN) return new URL(env.APP_ORIGIN).origin;
+  const u = new URL(reqUrl);
+  if (env.VERCEL) return u.origin;
+  return ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname) ? u.origin : null;
 }

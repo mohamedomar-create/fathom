@@ -21,3 +21,25 @@ describe("printing a page the server drew", () => {
     expect(imageSources(page)).toEqual(["https://proj.supabase.co/storage/v1/object/public/logos/a.png", "https://elsewhere.example/b.png"]);
   });
 });
+
+describe("where the PDF route fetches the print page from", () => {
+  it("uses the configured address when there is one", async () => {
+    const { printOrigin } = await import("@/lib/pdf/print-page");
+    expect(printOrigin("https://evil.example/api/pdf", { APP_ORIGIN: "https://aql360.com" })).toBe("https://aql360.com");
+  });
+  it("on Vercel, the deployment's own address (Vercel routes by host)", async () => {
+    const { printOrigin } = await import("@/lib/pdf/print-page");
+    expect(printOrigin("https://aql360.com/api/pdf", { VERCEL: "1" })).toBe("https://aql360.com");
+  });
+  it("elsewhere, only a local address; a host sent in the request is never fetched", async () => {
+    const { printOrigin } = await import("@/lib/pdf/print-page");
+    expect(printOrigin("http://localhost:3000/api/pdf", {})).toBe("http://localhost:3000");
+    expect(printOrigin("http://internal-db:8080/api/pdf", {})).toBeNull();
+  });
+});
+
+describe("commentary text is printed as written", () => {
+  it("only attributes inside tags are removed, never words in the text", () => {
+    expect(pageBody(`<body><p class="c" onmouseover="x()">Staff onboarding = 5 people</p></body>`)).toBe(`<p class="c">Staff onboarding = 5 people</p>`);
+  });
+});

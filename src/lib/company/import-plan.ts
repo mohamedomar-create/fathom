@@ -104,6 +104,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
     incoming = incoming.map((a) => ({ ...a, amounts: Object.fromEntries(Object.entries(a.amounts).filter(([p]) => inc[statementOf(a.cls)].has(p))) }));
   }
   const covered = (cls: ClassKey, p: string) => inc[statementOf(cls)].has(p);
+  const closedChecks: Check[] = [];
   const out = new Map<string, VersionAccount>();
 
   // A merge keeps every stored month the file doesn't cover; a replacement keeps only the closed months.
@@ -128,8 +129,16 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
       out.set(k, { code: n.code, name: n.name, cls: n.cls, amounts: { ...n.amounts }, sources: {}, refs: n.ref ? { new: n.ref } : {}, confidence: n.confidence ?? null, mapped_by: n.mapped_by ?? "auto" });
       continue;
     }
+    // An account with closed months keeps the class and name they were closed under (0043); moving it between the P&L
+    // and the balance sheet needs the months reopened.
+    const closedAt = Object.keys(ex.amounts).filter((p) => isClosed(p, closed)).sort().pop();
+    if (closedAt && statementOf(n.cls) !== statementOf(ex.cls)) {
+      closedChecks.push({ id: "continuity", severity: "block", period: closedAt, statement: statementOf(ex.cls), title: `${ex.code ? `${ex.code} ` : ""}${ex.name} moves between the P&L and the balance sheet, but has closed months`, detail: `Its months up to ${mlabel(closedAt)} are closed. Reopen them in Settings, Month close, or keep its class in the Chart of accounts.` });
+      continue;
+    }
+    if (closedAt && n.cls !== ex.cls) closedChecks.push({ id: "continuity", severity: "warn", period: closedAt, statement: statementOf(ex.cls), title: `${ex.code ? `${ex.code} ` : ""}${ex.name} keeps its class because it has closed months`, detail: `The file classes it differently. Its months up to ${mlabel(closedAt)} are closed, so it stays as it was; reopen them to change its class.` });
     // A class the user chose in the chart of accounts survives re-uploads (within the same statement).
-    const keepUser = ex.mapped_by === "user" && n.mapped_by !== "user" && statementOf(ex.cls) === statementOf(n.cls);
+    const keepUser = (ex.mapped_by === "user" && n.mapped_by !== "user" && statementOf(ex.cls) === statementOf(n.cls)) || !!closedAt;
     const cls = keepUser ? ex.cls : n.cls;
     // Moving between the P&L and the balance sheet changes what each stored month means (a month's movement against a
     // closing balance): the months the file does not cover cannot be converted, so only the file's months are kept.
@@ -137,8 +146,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
     else if (cls !== ex.cls) for (const p of Object.keys(ex.amounts)) ex.amounts[p] = recast(ex.cls, cls, ex.amounts[p]);
     for (const [p, v] of Object.entries(n.amounts)) ex.amounts[p] = (ex.amounts[p] ?? 0) + recast(n.cls, cls, v);
     ex.cls = cls;
-    ex.code = n.code || ex.code;
-    ex.name = n.name || ex.name;
+    if (!closedAt) { ex.code = n.code || ex.code; ex.name = n.name || ex.name; }
     if (!keepUser) { ex.mapped_by = n.mapped_by ?? "auto"; ex.confidence = n.confidence ?? null; }
     if (n.ref && !ex.refs?.new) ex.refs = { ...(ex.refs ?? {}), new: n.ref };
   }
@@ -215,7 +223,7 @@ export function planImport(currentIn: VersionAccount[], incomingIn: IncomingAcco
   const touched = new Set<string>();
   for (const st of ["PL", "BS"] as const) for (const p of inc[st]) { touched.add(p); touched.add(addMonths(p, 1)); }
   for (const p of shifted) touched.add(p);
-  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, unit: opts.unit, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks] })
+  const checks = runChecks({ accounts: accounts.map(asLine), controls: opts.controls, unit: opts.unit, extra: [...(opts.extra ?? []), ...rangeChecks, ...continuity, ...openingChecks, ...closedChecks] })
     .map((c) => (opts.mode === "merge" && c.period && !touched.has(c.period) ? { ...c, existing: true } : c));
   return { accounts, timeline, diffs, checks, overlap, closedSkipped };
 }
@@ -372,7 +380,9 @@ export function withClosedMonths<A extends { code: string; name: string; cls: Cl
     const k = accountIdentity(s);
     const a = out.get(k) ?? ({ code: s.code, name: s.name, cls: s.cls, amounts: {}, odoo_id: s.odoo_id ?? null, odoo_type: s.odoo_type ?? null, mapped_by: s.mapped_by ?? "auto" } as unknown as A);
     // An account with closed months keeps the class it was closed under (a class change needs the month reopened).
+    if (statementOf(a.cls) !== statementOf(s.cls)) throw new Error(`${s.code ? `${s.code} ` : ""}${s.name} moves between the P&L and the balance sheet in Odoo, but has closed months. Reopen them in Settings, Month close, to sync it.`);
     if (a.cls !== s.cls) { for (const p of Object.keys(a.amounts)) a.amounts[p] = recast(a.cls, s.cls, a.amounts[p]); a.cls = s.cls; }
+    a.code = s.code; a.name = s.name;
     for (const [p, v] of closed) a.amounts[p] = v;
     out.set(k, a);
   }

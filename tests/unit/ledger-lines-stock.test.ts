@@ -9,7 +9,7 @@ function fake(rpcResult: (fn: string) => { data: unknown; error: null | { code?:
   const query = (table: string) => {
     const q = {
       delete: () => { log.push(`delete ${table}`); return q; },
-      select: () => q, update: () => q, insert: () => q, single: () => q,
+      select: () => q, update: () => q, insert: () => q, single: () => q, maybeSingle: async () => ({ data: null, error: null }),
       eq: () => q, in: (col: string, vals: string[]) => { log.push(`in ${table} ${col}=${vals.join(",")}`); return q; },
       then: (ok: (v: { data: unknown[]; error: null }) => void) => ok({ data: [], error: null }),
     };

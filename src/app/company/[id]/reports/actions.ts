@@ -74,7 +74,11 @@ export async function publishReport(id: string, publish: boolean, expiresDays: 0
   let frozenAt: string | null = null;
   if (publish) {
     const f = await supabase.rpc("freeze_report", { p_report: id });
-    if (f.error) return { ok: false, error: dbError(f.error, "freeze_report") };
+    if (f.error) {
+      // Never a live link without its frozen figures: sharing is stopped again.
+      await supabase.from("reports").update({ status: "draft", share_token: null, expires_at: null }).eq("id", id);
+      return { ok: false, error: dbError(f.error, "freeze_report") };
+    }
     frozenAt = f.data as string;
   }
   return { ok: true, token: data.share_token, expiresAt: data.expires_at, frozenAt };
