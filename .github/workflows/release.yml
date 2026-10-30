@@ -28,5 +28,5 @@ jobs:
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then echo "already tagged"; exit 0; fi
           prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
           range=${prev:+$prev..}HEAD
-          { echo "Production at $sha."; echo; git log --no-merges --format='- %s' "$range" | head -100; } > notes.md
+          { echo "Production at $sha."; echo; git log --no-merges -n 100 --format='- %s' "$range"; } > notes.md
           gh release create "$tag" --target "$(git rev-parse HEAD)" --title "$tag" --notes-file notes.md
