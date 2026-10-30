@@ -18,10 +18,12 @@ const close = (a: number | null | undefined, b: number | null | undefined, label
  *  - working-capital days, ROCE, activity and asset turnover use average month-end balances; stock and supplier days use
  *    cost of sales before depreciation;
  *  - interest cover is EBIT ÷ interest expense (as lenders measure it);
+ *  - receivable and payable days take the balances net of VAT (14% unless the company sets its rate);
+ *  - return on equity is on average equity, not opening equity (checked in kpis-2b.test.ts);
  *  - operating cash flow follows IAS 7 with interest paid under financing, so the reference's tax shield on interest
  *    moves out of "cash tax" and adjustments move into operating: ocf = reference ocf + tax rate × net interest − adjustments.
  */
-const DELIBERATE = new Set(["ar_days", "inv_days", "ap_days", "roce", "activity", "asset_turn", "int_cover", "cf_margin", "ccc"]);
+const DELIBERATE = new Set(["ar_days", "inv_days", "ap_days", "roce", "activity", "asset_turn", "int_cover", "cf_margin", "ccc", "roe"]);
 
 describe("TypeScript engine matches the Python reference on every sample month", () => {
   for (const g of golden as any[]) {

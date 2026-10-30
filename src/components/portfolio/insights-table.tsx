@@ -11,7 +11,7 @@ import { useDict, useLang } from "@/lib/i18n/context";
 import { monthLabel } from "@/lib/i18n";
 import { term } from "@/lib/i18n/areas/fin";
 
-export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string; asOf?: string | null }
+export interface DashCompany { id: string; name: string; currency: string; taxRate: number; months: MonthData[]; source: string; asOf?: string | null; vatRate?: number }
 /** Margins whose group figure is a total ÷ total revenue (the numerator's P&L key). */
 const MARGIN_OF: Record<string, string> = { gpm: "gross_profit", nim: "net_income", opm: "operating_profit", ebitda_margin: "ebitda" };
 interface Metric { key: string; label: string; group: string; unit: Unit; get: (m: MonthCalc) => number | null; good?: "up" | "down" }
@@ -72,7 +72,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
   const [sort, setSort] = useState<{ key: string; dir: 1 | -1 }>({ key: "name", dir: 1 });
   const rows = useMemo(() => companies.map((c) => {
     // The same month the company's pages open on (the last full one), a part month measured on its days.
-    const calcs = monthCalcs(c.months, c.asOf);
+    const calcs = monthCalcs(c.months, c.asOf, c.vatRate);
     const end = defaultEnd(calcs.map((x) => x.period), c.asOf);
     const i = calcs.findIndex((x) => x.period === end);
     return { c, calcs, last: calcs[i], prev: i > 0 ? calcs[i - 1] : undefined };

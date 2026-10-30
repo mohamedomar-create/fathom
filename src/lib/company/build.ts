@@ -1,4 +1,4 @@
-import { addMonths, BS_KEYS, PL_KEYS, type BSInput, type ClassKey, type MonthData, type PLInput } from "@/lib/engine";
+import { addMonths, BS_KEYS, PL_KEYS, type BSInput, type ClassKey, type MonthData, type PLInput, type SubKey } from "@/lib/engine";
 import type { AccountLine } from "./types";
 
 export const CREDIT_CLASSES = new Set<ClassKey>(["revenue", "other_income", "interest_income", "std", "ap", "tax_liab", "other_cl", "ltd", "other_ncl", "retained_earnings", "other_equity"]);
@@ -40,12 +40,20 @@ export function buildMonths(accounts: AccountLine[]): MonthData[] {
   for (const a of accounts) for (const [p, v] of Object.entries(a.amounts)) if (v) (isPL(a.cls) ? plHeld : bsHeld).add(p);
   return periodRange(accounts).filter((p) => plHeld.has(p) || bsHeld.has(p)).map((period) => {
     const pl: PLInput = {}, bs: BSInput = {};
+    const sub: Partial<Record<SubKey, number>> = {}, subOf: Partial<Record<ClassKey, number>> = {};
+    let subbed = false;
     for (const a of accounts) {
       const v = a.amounts[period] ?? 0;
       if (!v) continue;
       if (isPL(a.cls)) pl[a.cls as keyof PLInput] = (pl[a.cls as keyof PLInput] ?? 0) + v;
       else bs[a.cls as keyof BSInput] = (bs[a.cls as keyof BSInput] ?? 0) + v;
+      if (a.sub) {
+        subbed = true;
+        // A loss filed under other expenses counts against the gain (gains positive).
+        sub[a.sub] = (sub[a.sub] ?? 0) + (a.cls === "other_expenses" ? -v : v);
+        subOf[a.cls] = (subOf[a.cls] ?? 0) + v;
+      }
     }
-    return { period, pl, bs, has: { pl: plHeld.has(period), bs: bsHeld.has(period) } };
+    return { period, pl, bs, has: { pl: plHeld.has(period), bs: bsHeld.has(period) }, ...(subbed ? { sub, subOf } : {}) };
   });
 }

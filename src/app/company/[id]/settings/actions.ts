@@ -2,7 +2,7 @@
 import { revalidatePath } from "next/cache";
 import { deleteCompanyFully } from "./reset-actions";
 import { z } from "zod";
-import type { ClassKey } from "@/lib/engine";
+import { SUB_KEYS, type ClassKey } from "@/lib/engine";
 import { LOCATION_TYPES, mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
 import { AssumptionsSchema } from "@/lib/company/assumptions-schema";
 import { acceptChecks, stillAccepted, type AcceptedItem } from "@/lib/company/accept";
@@ -16,6 +16,7 @@ import { clearedNotice } from "@/lib/company/ledger-tie";
 import { loadAccountMap, rememberClasses, rememberedEntries } from "@/lib/company/account-map";
 import { settingsToCopy } from "@/lib/company/copy-settings";
 import { rememberKey } from "@/lib/ingest/pipeline";
+import { subClassEntries } from "@/lib/ingest/subclass";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
@@ -195,6 +196,8 @@ const ProfileSchema = z.object({
   ai_context: z.object({ goals: z.string().max(2000), strategy: z.string().max(2000), market: z.string().max(2000), position: z.string().max(2000), other: z.string().max(2000) }),
   time_zone: z.string().max(64).refine(validTimeZone, "Choose a time zone from the list").nullable().optional(),
   books_start: z.string().regex(/^\d{4}-\d{2}-01$/, "Choose the month the books start").nullable().optional(),
+  // VAT rate in percent, for debtor and creditor days (null: back to the default 14%).
+  vat_rate: z.number().min(0).max(50).nullable().optional(),
 });
 
 export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise<{ ok: boolean; error?: string }> {
@@ -204,11 +207,11 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   if (!user) return { ok: false, error: "Please sign in again." };
   // The time zone is kept with the company's other settings (kpi_config), never overwriting them.
   let kpi: Json | undefined;
-  if (v.data.time_zone !== undefined || v.data.books_start !== undefined) {
+  if (v.data.time_zone !== undefined || v.data.books_start !== undefined || v.data.vat_rate !== undefined) {
     const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", v.data.companyId).maybeSingle();
     if (e1) return { ok: false, error: dbError(e1, "saveProfile") };
     if (!row) return { ok: false, error: "You do not have permission to change this." };
-    kpi = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}) }) as Json;
+    kpi = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}), ...(v.data.vat_rate !== undefined ? { vatRate: v.data.vat_rate === null ? null : v.data.vat_rate / 100 } : {}) }) as Json;
   }
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,
@@ -342,6 +345,26 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   } catch (e) { console.error("reclassify: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, count: data as number, notice };
+}
+
+/** Saves sub-class choices for accounts ("" = none) in the company's account map: the cash flow reads them (IAS 7). */
+export async function setSubClasses(companyId: string, changes: Record<string, string>): Promise<{ ok: boolean; error?: string; count?: number; refused?: string[] }> {
+  const ok = z.record(z.string().uuid(), z.union([z.enum(SUB_KEYS), z.literal("")])).safeParse(changes);
+  if (!ok.success || !z.string().uuid().safeParse(companyId).success || Object.keys(ok.data).length > 2000) return { ok: false, error: "Invalid changes" };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data: cur, error: e0 } = await supabase.from("companies").select("data_version").eq("id", companyId).maybeSingle();
+  if (e0 || !cur) return { ok: false, error: e0 ? dbError(e0, "setSubClasses") : "Company not found." };
+  const { data: accts, error: e1 } = await supabase.from("source_accounts").select("id, code, name, class").eq("company_id", companyId).eq("version", cur.data_version).in("id", Object.keys(ok.data));
+  if (e1) return { ok: false, error: dbError(e1, "setSubClasses") };
+  const { entries, refused } = subClassEntries((accts ?? []).map((a) => ({ id: a.id, code: a.code ?? "", name: a.name, cls: a.class as ClassKey })), ok.data);
+  if (entries.length) {
+    // Row-level security lets editors only; the class kept is the account's own, so no class changes here.
+    const { error } = await supabase.from("account_map").upsert(entries.map((e) => ({ company_id: companyId, ...e })), { onConflict: "company_id,key" });
+    if (error) return { ok: false, error: dbError(error, "setSubClasses") };
+  }
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true, count: entries.length, refused };
 }
 
 export async function deleteCompany(companyId: string): Promise<{ ok: boolean; error?: string }> {

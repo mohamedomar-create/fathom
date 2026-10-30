@@ -1,4 +1,4 @@
-import { cashFlowStatement } from "./cashflow";
+import { cashFlowStatement, cfSubOf } from "./cashflow";
 import { addMonths, daysIn, mlabel, monthIndex } from "./format";
 import { indexMonths, isAnnualColumn } from "./period";
 import { bsCalc, plCalc, sumPL } from "./statements";
@@ -9,6 +9,8 @@ import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types"
  * When the books start inside the window, the months held are used and annual figures are scaled up, and the basis says so.
  */
 export interface Basis {
+  /** VAT rate for debtor and creditor days (0.14 when not set). */
+  vat?: number;
   end: string;
   start: string;
   /** "12 months to Jun 2026", or "5 months to Jun 2026" when the books start later. */
@@ -41,7 +43,7 @@ export interface Basis {
  * asOf: the last day the books cover when the end month is still in progress ("2026-10-10"): only the days covered count,
  * and the part month counts as that share of a month when flows are scaled to a year.
  */
-export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf?: string | null): Basis {
+export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf?: string | null, vat?: number): Basis {
   const { sorted: all, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(end);
   if (!endMonth) throw new Error(`No data for ${end}`);
@@ -94,8 +96,9 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   const prior = priorPL ? { P: plCalc(priorPL), B: bsCalc(bsAt(priorEnd)?.bs ?? {}) } : null;
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
+    ...(vat !== undefined ? { vat } : {}),
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
     label: `${Math.round(covered * 10) / 10} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
-    ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0).cfo : null,
+    ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0, { sub: cfSubOf(used, bsAt(end), open) }).cfo : null,
   };
 }

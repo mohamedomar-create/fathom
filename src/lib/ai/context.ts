@@ -86,7 +86,7 @@ export function bankContext(months: MonthData[], end: string, settings: CompanyS
 export function realProfitContext(months: MonthData[], end: string, settings: CompanySettings, as: Assumptions, asOf?: string | null) {
   const cur = settings.currency;
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, cur));
-  const r = realProfit(twelveMonths(months, end, settings.fyStartMonth, asOf), as, cur, settings.targets?.ar_days ?? 45);
+  const r = realProfit(twelveMonths(months, end, settings.fyStartMonth, asOf, settings.vatRate), as, cur, settings.targets?.ar_days ?? 45);
   return {
     reported_net_profit: m(r.reported), operating_cash_flow: m(r.cashProfit),
     collection: { collection_rate: r.collection.rate === null ? "n/a" : pct(r.collection.rate, 1), customer_days: r.collection.dso === null ? "n/a" : Math.round(r.collection.dso), cost_of_customer_credit: m(r.collection.creditCost), cash_released_at_target_days: m(r.collection.release) },

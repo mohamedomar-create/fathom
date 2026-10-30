@@ -4,6 +4,8 @@ import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, shown, type CellError, type Fixes, type Marks } from "./trace";
 import { NO_SUPPLIER, type ExpenseLine } from "./expenses";
 import { NO_CATEGORY, type SalesLine } from "./sales";
+import { detectKind, isTradingKind } from "@/lib/cash/kinds";
+import type { HeldBack } from "./cashbook";
 
 /**
  * A bank statement: date, description, money out, money in, and the balance after each line. The balance is the
@@ -28,6 +30,8 @@ export interface BankLayout {
   trace: Marks;
   errors: CellError[];
   checks: { row?: number; col?: number; message: string }[];
+  /** Lines left out of sales or costs when they were counted: loans, owner money, transfers, drawings. */
+  heldBack?: HeldBack[];
   outAsExpenses: boolean;
   inAsSales: boolean;
 }
@@ -142,16 +146,24 @@ export function readBankStatement(g: Grid, ov: BankOverride = {}): { sales: Sale
     }
   }
   const outAsExpenses = !!ov.outAsExpenses, inAsSales = !!ov.inAsSales;
+  // Counted as sales or costs only when trading: a loan, the owner's money, a transfer or drawings is left out (the cash book's kinds).
+  const heldBack: HeldBack[] = [];
+  const trading = (t: { r: number; desc: string; in: number; out: number }, d: "in" | "out") => {
+    const kind = detectKind(d, t.desc);
+    if (isTradingKind(kind)) return true;
+    heldBack.push({ row: t.r, kind, amount: round2(d === "in" ? t.in : t.out), label: t.desc.slice(0, 120) });
+    return false;
+  };
   checks.push({ message: `${sheet}: a bank statement, ${txs.length} lines. Balances follow on ${balanced} of ${txs.filter((t) => t.bal !== null).length} lines. ${outAsExpenses || inAsSales ? `Counted: ${[outAsExpenses ? "money out as expenses" : "", inAsSales ? "money in as sales" : ""].filter(Boolean).join(", ")}.` : "Not added to sales or expenses: a statement also holds transfers, loans and owner money. Tick the boxes beside the sheet to count them."}` });
-  const expenses: ExpenseLine[] = outAsExpenses ? txs.filter((t) => t.out).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", supplier: NO_SUPPLIER, account: "Bank payments", cls: null, category: "Bank payments", label: t.desc.slice(0, 200) || "No description", amount: round2(t.out), src: { sheet, row: t.r } })) : [];
-  const sales: SalesLine[] = inAsSales ? txs.filter((t) => t.in).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", customer: t.desc.slice(0, 80) || "No description", product: "Bank receipts", category: NO_CATEGORY, salesperson: "", qty: null, amount: round2(t.in), cost: null, src: { sheet, row: t.r } })) : [];
+  const expenses: ExpenseLine[] = outAsExpenses ? txs.filter((t) => t.out && trading(t, "out")).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", supplier: NO_SUPPLIER, account: "Bank payments", cls: null, category: "Bank payments", label: t.desc.slice(0, 200) || "No description", amount: round2(t.out), src: { sheet, row: t.r } })) : [];
+  const sales: SalesLine[] = inAsSales ? txs.filter((t) => t.in && trading(t, "in")).map((t) => ({ day: t.day, period: t.day.slice(0, 7), doc: "", series: "", customer: t.desc.slice(0, 80) || "No description", product: "Bank receipts", category: NO_CATEGORY, salesperson: "", qty: null, amount: round2(t.in), cost: null, src: { sheet, row: t.r } })) : [];
   const trace: Marks = [];
   rows.forEach((row, r) => { if (row && !row.every(blank)) trace[r] = marks[r] ?? (r === headerRow ? { role: "header" } : r < headerRow ? { role: "title" } : { role: "unused", note: "nothing to read on this row" }); });
   for (const s of ov.skipRows ?? []) if (s >= 0 && s < g.rows.length) trace[s] = { role: "skipped", note: "left out by you" };
   const layout: BankLayout = {
     sheet, kind: "bank", headerRow, cols, dateOrder: order, newestFirst: datesDown, opening, closing: closing ?? txs.filter((t) => t.bal !== null).at(datesDown ? 0 : -1)?.bal ?? null,
     moneyIn: { lines: txs.filter((t) => t.in).length, total: sum("in") }, moneyOut: { lines: txs.filter((t) => t.out).length, total: sum("out") },
-    balanced, trace, errors: errors.map((e) => ({ sheet, row: e.row, col: e.col, text: e.text, message: `${cellRef(e.row, e.col, origin)}: ${e.message}` })), checks, outAsExpenses, inAsSales,
+    ...(heldBack.length ? { heldBack: heldBack.sort((a, b) => a.row - b.row) } : {}), balanced, trace, errors: errors.map((e) => ({ sheet, row: e.row, col: e.col, text: e.text, message: `${cellRef(e.row, e.col, origin)}: ${e.message}` })), checks, outAsExpenses, inAsSales,
   };
   return { sales, expenses, layout };
 }

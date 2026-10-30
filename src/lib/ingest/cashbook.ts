@@ -1,6 +1,7 @@
 import { tied } from "@/lib/tolerance";
 import type { ClassKey } from "@/lib/engine";
 import { headingField } from "@/lib/cash/read";
+import { detectKind, isTradingKind, KIND_LABEL, type Kind } from "@/lib/cash/kinds";
 import { arRx, cleanNum, detectDateOrder, monthHeading, normAr, parseDay, type Cell, type DateOrder, TOTAL_LABEL } from "./parse";
 import { str, type Grid } from "./extract";
 import { applyFixes, cellRef, colLetter, shown, type CellError, type Fixes, type Marks, type TraceRow } from "./trace";
@@ -46,9 +47,13 @@ export interface CashControl {
   derived: boolean;
 }
 export interface CashCheck { row?: number; col?: number; message: string }
+/** An entry that moves cash but is not a sale or a cost (owner's money, a loan, a transfer, drawings, equipment). */
+export interface HeldBack { row: number; kind: Kind; amount: number; label: string }
 export interface CashLayout {
   sheet: string;
   kind: "cashbook";
+  /** Entries left out of sales and costs, by kind. */
+  heldBack?: HeldBack[];
   headerRow: number;
   blocks: CashBlock[];
   out: { lines: number; total: number };
@@ -257,6 +262,7 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   const outsideHeading: number[] = [];
   const typed: CashControl[] = [];
   const twice: CashLayout["twice"] = [];
+  const heldBack: HeldBack[] = [];
   const summaryNoted = new Set<number>();
   const byHeading = (ov.months ?? "heading") === "heading";
 
@@ -358,6 +364,13 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
         if (v === null || v === 0) continue;
         counted.set(key(r, a.col), v);
         if (vat !== null) vatPairs.push({ r, amount: v as number, vat });
+        // As in the cash book: the owner's money, loans, transfers, drawings and equipment move cash but are not sales or costs.
+        const kind = detectKind(b.dir, `${label} ${b.dir === "out" && b.amounts.length > 1 ? a.header : ""}`);
+        if (!isTradingKind(kind)) {
+          heldBack.push({ row: r, kind, amount: round2(v as number), label: (label || a.header).slice(0, 120) });
+          parts.push(`${KIND_LABEL[kind].en}: ${fmt(v)}, not a ${b.dir === "out" ? "cost" : "sale"}`);
+          continue;
+        }
         if (b.dir === "out") {
           const line: ExpenseLine = {
             day: lineDay, period, doc: "", series: "", supplier: NO_SUPPLIER, account: a.header, cls: costClass(a.header),
@@ -438,8 +451,13 @@ export function readCashBook(g: Grid, ov: CashOverride = {}): { sales: SalesLine
   const cellErrors: CellError[] = errors.map((e) => ({ sheet, row: e.row, col: e.col, text: e.text, message: `${cellRef(e.row, e.col, origin)}: ${e.message}` }));
   const salesOn = !ov.salesOff;
   const sum = (ls: { amount: number }[]) => round2(ls.reduce((a, l) => a + l.amount, 0));
+  if (heldBack.length) {
+    const byKind = new Map<Kind, number>();
+    for (const h of heldBack) byKind.set(h.kind, round2((byKind.get(h.kind) ?? 0) + h.amount));
+    checks.push({ row: heldBack[0].row, message: `${sheet}: ${heldBack.length} entr${heldBack.length === 1 ? "y moves" : "ies move"} cash but ${heldBack.length === 1 ? "is" : "are"} not counted as sales or costs: ${[...byKind].map(([k, v]) => `${KIND_LABEL[k].en.toLowerCase()} ${fmt(v)}`).join(", ")}.` });
+  }
   const layout: CashLayout = {
-    sheet, kind: "cashbook", headerRow, blocks, controls, trace, errors: cellErrors, checks, salesOn, twice,
+    sheet, kind: "cashbook", headerRow, blocks, controls, trace, errors: cellErrors, checks, salesOn, twice, ...(heldBack.length ? { heldBack } : {}),
     out: { lines: expenses.length, total: sum(expenses) }, in: { lines: sales.length, total: sum(sales) },
   };
   return { sales: salesOn ? sales : [], expenses, layout };

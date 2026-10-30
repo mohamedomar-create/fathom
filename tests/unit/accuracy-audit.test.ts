@@ -72,9 +72,9 @@ describe("bank: every measure, by hand", () => {
     ["debt_ebitda", 2300000 / 2000000, "strong"],
     ["lt_funding", 4068750 + 900000 - 2500000, "strong"],
     ["dio", (1600000 / 8000000) * 365, "strong"],
-    ["dso", (2700000 / 12000000) * 365, "watch"],
-    ["dpo", (1450000 / 8000000) * 365, "info"],
-    ["ccc", (2700000 / 12000000) * 365 + (1600000 / 8000000) * 365 - (1450000 / 8000000) * 365, "info"],
+    ["dso", (2700000 / 1.14 / 12000000) * 365, "watch"], // receivables net of 14% VAT
+    ["dpo", (1450000 / 1.14 / 8000000) * 365, "info"],
+    ["ccc", (2700000 / 1.14 / 12000000) * 365 + (1600000 / 8000000) * 365 - (1450000 / 1.14 / 8000000) * 365, "info"],
     ["rev_growth", (12000000 / 9500000 - 1) * 100, "strong"],
     ["int_cover", 1700000 / 450000, "strong"],
   ] as const)("%s", (key, value, band) => {
@@ -229,7 +229,7 @@ describe("balances on the wrong side", () => {
     const a = bankAssessment(twelveMonths(with2025({}, { ar: -400000, other_cl: -3600000 }), "2025-12"));
     const dso = a.ratios.find((r) => r.key === "dso")!;
     // Average receivables (2.2m + −0.4m) ÷ 2 are positive, so the days are still measured here …
-    expect(dso.value).toBeCloseTo((900000 / 12000000) * 365, 6);
+    expect(dso.value).toBeCloseTo((900000 / 1.14 / 12000000) * 365, 6);
     // … and with both month-ends in credit they are not.
     const b = bankAssessment(twelveMonths([{ ...annual[0], bs: { ...annual[0].bs, ar: -100, other_cl: -2200100 } }, with2025({}, { ar: -400000, other_cl: -3600000 })[1]], "2025-12"));
     expect(b.ratios.find((r) => r.key === "dso")!.value).toBeNull();

@@ -30,3 +30,10 @@ export async function rememberClasses(supabase: Supa, companyId: string, entries
   const { error } = await supabase.from("account_map").upsert(entries.map((e) => ({ company_id: companyId, key: e.key, cls: e.cls, name: e.name })), { onConflict: "company_id,key" });
   if (error) console.error("account map: save failed", error.message);
 }
+
+/** The sub-classes a person chose ("" = none), by the account map's key ("#code" or name). Empty when none or unreadable. */
+export async function loadSubMap(supabase: Supa, companyId: string): Promise<Record<string, string>> {
+  const { data, error } = await supabase.from("account_map").select("key, sub_class").eq("company_id", companyId).not("sub_class", "is", null);
+  if (error) { console.error("account map: sub-classes failed", error.message); return {}; }
+  return Object.fromEntries((data ?? []).map((r) => [r.key, r.sub_class as string]));
+}

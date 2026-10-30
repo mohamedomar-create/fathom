@@ -1,11 +1,11 @@
-import { addMonths, averageBS, bsCalc, cashWaterfall, computeKpis, hasBS, hasPL, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
+import { addMonths, averageBS, bsCalc, cashWaterfall, cfSubOf, computeKpis, hasBS, hasPL, KPI_DEFS, plCalc, type BSCalc, type MonthData, type PLCalc, type Unit } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
 
 export interface MetricDef { key: string; label: string; group: "KPIs" | "Profit & Loss" | "Balance Sheet" | "Cash Flow" | "Chart of Accounts"; unit: Unit }
 export interface MonthCalc { period: string; P: PLCalc; B: BSCalc; K: Record<string, number | null>; W: { ocf: number; fcf: number; ncf: number } | null }
 
 /** asOf: the last day the books cover; that part month is measured on its days and grows against the same days before. */
-export function monthCalcs(months: MonthData[], asOf?: string | null): MonthCalc[] {
+export function monthCalcs(months: MonthData[], asOf?: string | null, vat?: number): MonthCalc[] {
   const all = [...months].sort((a, b) => a.period.localeCompare(b.period));
   const by = new Map(all.map((m) => [m.period, m]));
   // A month holding only a balance sheet (the opening balance) is not a month of activity; a P&L-only month carries the last balance sheet.
@@ -17,7 +17,7 @@ export function monthCalcs(months: MonthData[], asOf?: string | null): MonthCalc
     // The calendar month before, not the previous loaded one: a gap must not turn two months' movement into one.
     const before = by.get(addMonths(m.period, -1));
     const B0 = before && hasBS(before) ? bsCalc(before.bs) : null;
-    const W = B0 && hasBS(m) ? cashWaterfall(P, B, B0) : null;
+    const W = B0 && hasBS(m) ? cashWaterfall(P, B, B0, cfSubOf([m], m, before)) : null;
     const [y, mo] = m.period.split("-").map(Number);
     const full = new Date(Date.UTC(y, mo, 0)).getUTCDate();
     const cut = asOf && asOf.startsWith(m.period) ? Number(asOf.slice(8)) : 0;
@@ -25,7 +25,7 @@ export function monthCalcs(months: MonthData[], asOf?: string | null): MonthCalc
     const prevDays = before ? new Date(Date.UTC(Number(before.period.slice(0, 4)), Number(before.period.slice(5)), 0)).getUTCDate() : 0;
     const f = days < full && prevDays ? Math.min(days, prevDays) / prevDays : 1;
     const Pp = before && hasPL(before) ? plCalc(f < 1 ? Object.fromEntries(Object.entries(before.pl).map(([k, v]) => [k, (v ?? 0) * f])) as typeof before.pl : before.pl) : null;
-    return { period: m.period, P, B, K: computeKpis({ P, B, B0, Bavg: B0 ? averageBS([B0, B]) : B, Pprev: Pp, days, ocf: W?.ocf ?? null }), W: W && { ocf: W.ocf, fcf: W.fcf, ncf: W.ncf } };
+    return { period: m.period, P, B, K: computeKpis({ P, B, B0, Bavg: B0 ? averageBS([B0, B]) : B, Pprev: Pp, days, ocf: W?.ocf ?? null, vat }), W: W && { ocf: W.ocf, fcf: W.fcf, ncf: W.ncf } };
   });
 }
 

@@ -1,6 +1,7 @@
 import { balanced } from "@/lib/tolerance";
 import type { Basis } from "./basis";
 import { money, pct } from "./format";
+import { DEFAULT_VAT } from "./kpis";
 
 /**
  * How a credit analyst reads a set of accounts before lending.
@@ -50,6 +51,8 @@ export interface DebtCapacity {
 }
 
 export interface BankInputs {
+  /** VAT rate for the trend's earlier years (the assessment reads it from the basis). */
+  vat?: number;
   /** Annual borrowing rate, %. */
   rate?: number | null;
   /** Years over which a new loan would be repaid. */
@@ -161,9 +164,11 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   const avgAR = b.avg("ar"), avgInv = b.avg("inventory"), avgAP = b.avg("ap"), avgWip = b.avg("wip");
   const cogs = P.cos - P.cos_depreciation;
   // Negative days (a receivable in credit, payables in debit) mean nothing: shown as n/a.
-  const dso = R > 0 && avgAR >= 0 ? (avgAR / R) * b.days : null;
+  // Receivables and payables net of VAT, as on the KPI page (the company's rate, 14% unless set).
+  const vatF = 1 + Math.max(0, b.vat ?? DEFAULT_VAT);
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / vatF / R) * b.days : null;
   const dio = cogs > 0 && avgInv >= 0 ? (avgInv / cogs) * b.days : null;
-  const dpo = cogs > 0 && avgAP >= 0 ? (avgAP / cogs) * b.days : null;
+  const dpo = cogs > 0 && avgAP >= 0 ? (avgAP / vatF / cogs) * b.days : null;
   const tnw = B.te - B.intangibles;
   const ltFunding = B.te + B.tncl - B.tnca;
   const growth = b.prior && b.prior.P.revenue > 0 ? ((Pa.revenue - b.prior.P.revenue) / b.prior.P.revenue) * 100 : null;
@@ -276,7 +281,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     {
       key: "dso", group: "Working capital", name: "Customer days (DSO)", value: dso, unit: "days",
       band: down(dso, 60, 90), guide: "60 days or less",
-      formula: "average receivables ÷ revenue × days (receivables include VAT, so this reads slightly high)",
+      formula: "average receivables net of VAT ÷ revenue × days",
       banker: dso === null && avgAR < 0 ? "Receivables are in credit on average: customers have paid more than they were invoiced, or unpaid invoices sit in another account. Customer days cannot be measured." : "How long customers take to pay. Banks often lend against receivables but exclude balances over 90 days.",
       advice: dso === null && avgAR < 0 ? "Check in Data health which account holds customers' unpaid invoices and map it to Accounts Receivable before showing this to a bank." : dso !== null && dso > 60 ? "Bring the ageing list; show which large customers are slow and that they always pay (government, multinationals)." : "Quick collection: mention it.",
     },
@@ -290,7 +295,7 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
     {
       key: "dpo", group: "Working capital", name: "Supplier days", value: dpo, unit: "days",
       band: "info", guide: "Context only",
-      formula: "average payables ÷ cost of sales before depreciation × days",
+      formula: "average payables net of VAT ÷ cost of sales before depreciation × days",
       banker: "Very long supplier days can mean the business is short of cash and paying late.",
       advice: "If suppliers give long terms by agreement, say so.",
     },
@@ -344,13 +349,13 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
       ocf_ebitda: { name: "التحويل النقدي", guide: "70% أو أكثر", formula: "التدفق النقدي التشغيلي (بعد الضرائب وقبل الفوائد) ÷ الأرباح قبل الفوائد والضرائب والإهلاك",
         banker: ocfE === null ? "يحتاج الميزانية السابقة للفترة." : `${pct(ocfE, 0)} من الربح التشغيلي تحول إلى نقدية. التحويل المنخفض يعني أن الربح محتجز لدى العملاء وفي المخزون.`,
         advice: ocfE !== null && ocfE < 70 ? "جهّز مذكرة قصيرة توضح أين ذهبت النقدية (العملاء، المخزون) والتحصيلات منذ نهاية السنة." : "جودة أرباح قوية: أشر إليها." },
-      dso: { name: "أيام التحصيل من العملاء (DSO)", guide: "60 يومًا أو أقل", formula: "متوسط أرصدة العملاء ÷ الإيرادات × الأيام (أرصدة العملاء تشمل الضريبة، فيظهر الرقم أعلى قليلًا)",
+      dso: { name: "أيام التحصيل من العملاء (DSO)", guide: "60 يومًا أو أقل", formula: "متوسط أرصدة العملاء بعد استبعاد ضريبة القيمة المضافة ÷ الإيرادات × الأيام",
         banker: dso === null && avgAR < 0 ? "أرصدة العملاء دائنة في المتوسط: العملاء دفعوا أكثر مما فُوتر لهم، أو الفواتير غير المسددة في حساب آخر. لا يمكن قياس أيام التحصيل." : "مدة سداد العملاء. البنوك تقرض غالبًا مقابل أرصدة العملاء لكنها تستبعد ما تجاوز 90 يومًا.",
         advice: dso === null && avgAR < 0 ? "راجع في سلامة البيانات أي حساب يحمل فواتير العملاء غير المسددة وصنّفه كعملاء ومدينين قبل عرض ذلك على بنك." : dso !== null && dso > 60 ? "أحضر كشف الأعمار؛ واعرض أي العملاء الكبار بطيئون وأنهم يسددون دائمًا (حكومة، شركات متعددة الجنسيات)." : "تحصيل سريع: اذكره." },
       dio: { name: "أيام المخزون", guide: "90 يومًا أو أقل (يختلف حسب القطاع)", formula: "متوسط المخزون ÷ تكلفة المبيعات قبل الإهلاك × الأيام",
         banker: "المخزون البطيء قد يكون متقادمًا؛ البنوك تقرض مقابله أقل مما تقرض مقابل أرصدة العملاء.",
         advice: dio !== null && dio > 90 ? "اشرح المخزون الموسمي أو الاستراتيجي (استيراد قبل تخفيض العملة، عقد)، وأي أصناف بطيئة خُفضت قيمتها." : "لا يلزم إجراء." },
-      dpo: { name: "أيام السداد للموردين", guide: "للسياق فقط", formula: "متوسط أرصدة الموردين ÷ تكلفة المبيعات قبل الإهلاك × الأيام", banker: "أيام سداد طويلة جدًا قد تعني نقص النقدية والتأخر في السداد.", advice: "إذا منحك الموردون آجالًا طويلة باتفاق، فاذكر ذلك." },
+      dpo: { name: "أيام السداد للموردين", guide: "للسياق فقط", formula: "متوسط أرصدة الموردين بعد استبعاد ضريبة القيمة المضافة ÷ تكلفة المبيعات قبل الإهلاك × الأيام", banker: "أيام سداد طويلة جدًا قد تعني نقص النقدية والتأخر في السداد.", advice: "إذا منحك الموردون آجالًا طويلة باتفاق، فاذكر ذلك." },
       ccc: { name: "الدورة النقدية", guide: "للسياق فقط", formula: "أيام التحصيل + أيام المخزون + أيام الإنتاج تحت التشغيل − أيام السداد للموردين", banker: "أيام النشاط التي يجب أن يمولها النشاط بنفسه، ومن ثم خط رأس المال العامل الذي يحتاجه.", advice: "حدد حجم تسهيل رأس المال العامل الذي تطلبه من هذه الدورة ومن مبيعات العام القادم." },
     };
     for (const r of ratios) Object.assign(r, A[r.key]);

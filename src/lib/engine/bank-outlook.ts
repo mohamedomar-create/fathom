@@ -51,7 +51,7 @@ export function yearTrend(months: MonthData[], end: string, fyStart: number, inp
   for (let k = 0; k < 3; k++) {
     const e = addMonths(end, -12 * k);
     if (!held.has(e)) break;
-    const b = twelveMonths(months, e, fyStart, k === 0 ? asOf : null);
+    const b = twelveMonths(months, e, fyStart, k === 0 ? asOf : null, inp.vat);
     if (k > 0 && b.covered < 12 && !b.annualColumn) break;
     // Repayments for past years always use the estimate: the schedule entered applies to the next 12 months only.
     const a = bankAssessment(b, k === 0 ? inp : { ...inp, principal12m: null }, cur);
@@ -356,12 +356,12 @@ export function bankYearEnd(months: MonthData[], end: string, asOf?: string | nu
   return b.annualColumn || (b.covered === 12 && !b.gaps.length) ? dec : null;
 }
 
-export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
+export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number; vatRate?: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
   const cur = settings.currency;
   const yearEnd = bankYearEnd(months, end, asOf, settings.fyStartMonth);
   if (yearEnd) { end = yearEnd; asOf = null; }
-  const basis = twelveMonths(months, end, settings.fyStartMonth, asOf);
-  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang, taxRate: settings.taxRate };
+  const basis = twelveMonths(months, end, settings.fyStartMonth, asOf, settings.vatRate);
+  const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang, taxRate: settings.taxRate, vat: settings.vatRate };
   const assessment = bankAssessment(basis, inputs, cur);
   const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur, asOf);
   const stress = stressTest(basis, assessment, { taxRate: settings.taxRate, importShare: a.importShare, rate: a.rate, lang });

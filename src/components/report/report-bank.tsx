@@ -75,7 +75,7 @@ export function ReportBankOutlook({ input, head }: { input: ReportInput; head: (
 export function ReportRealProfit({ input, head }: { input: ReportInput; head: (title: string, label: string) => React.ReactNode }) {
   const cur = input.settings.currency;
   const { basis, x } = useMemo(() => {
-    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth, input.asOf);
+    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth, input.asOf, input.settings.vatRate);
     return { basis, x: realProfit(basis, input.assumptions ?? {}, cur, input.settings.targets?.ar_days ?? 45) };
   }, [input.months, input.sel.end, input.settings, input.assumptions, input.asOf, cur]);
   const inf = x.inflation;

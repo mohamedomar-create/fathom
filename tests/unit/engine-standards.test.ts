@@ -35,14 +35,15 @@ describe("standard definitions, checked by hand on a full year", () => {
     expect(K.npat).toBeCloseTo(17.05, 9);
   });
 
-  it("working-capital days use average balances and cost of sales before depreciation", () => {
-    expect(K.ar_days).toBeCloseTo((150000 * 365) / 1.2e6, 9);
+  it("working-capital days use average balances and cost of sales before depreciation; receivables and payables net of VAT", () => {
+    expect(K.ar_days).toBeCloseTo((150000 / 1.14 * 365) / 1.2e6, 9);
     expect(K.inv_days).toBeCloseTo((60000 * 365) / 600000, 9);
-    expect(K.ap_days).toBeCloseTo((40000 * 365) / 600000, 9);
+    expect(K.ap_days).toBeCloseTo((40000 / 1.14 * 365) / 600000, 9);
   });
 
-  it("returns: ROE on opening equity, ROCE and asset turnover on average balances", () => {
-    expect(K.roe).toBeCloseTo((204600 / 340000) * 100, 9);
+  it("returns: ROE, ROCE and asset turnover on average balances", () => {
+    // Average equity 442,300 (13 month-ends).
+    expect(K.roe).toBeCloseTo((204600 / 442300) * 100, 9);
     // Average equity 442,300 + borrowing 170,000; average assets 652,300 (13 month-ends).
     expect(K.roce).toBeCloseTo((276000 / 612300) * 100, 9);
     expect(K.asset_turn).toBeCloseTo(1.2e6 / 652300, 9);
@@ -68,9 +69,15 @@ describe("standard definitions, checked by hand on a full year", () => {
     const m = year({ arGrowth: 10000 });
     const k = analyze(m, { type: "year", end: "2025-12" }, S).K.ar_days!;
     const b = twelveMonths(m, "2025-12");
-    expect(k).toBeCloseTo(((150000 + 60000) * 365) / 1.2e6, 6);
+    expect(k).toBeCloseTo(((150000 + 60000) / 1.14 * 365) / 1.2e6, 6);
     expect(bankAssessment(b, {}, "EGP").ratios.find((r) => r.key === "dso")!.value).toBeCloseTo(k, 6);
     expect(realProfit(b, {}).collection.dso).toBeCloseTo(k, 6);
+    // A company with no VAT: the same on every page.
+    const k0 = analyze(m, { type: "year", end: "2025-12" }, { ...S, vatRate: 0 }).K.ar_days!;
+    const b0 = twelveMonths(m, "2025-12", 1, null, 0);
+    expect(k0).toBeCloseTo(((150000 + 60000) * 365) / 1.2e6, 6);
+    expect(bankAssessment(b0, {}, "EGP").ratios.find((r) => r.key === "dso")!.value).toBeCloseTo(k0, 6);
+    expect(realProfit(b0, {}).collection.dso).toBeCloseTo(k0, 6);
   });
 
   it("a revenue target is per month: a quarter is measured against three months of it", () => {

@@ -1,4 +1,5 @@
 import type { Basis } from "./basis";
+import { DEFAULT_VAT } from "./kpis";
 
 /**
  * Reported profit against the profit the owners really earned, after the time customers take to pay,
@@ -101,7 +102,8 @@ export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso
   const yr = b.days / 365;
   const R = P.revenue;
   const avgAR = b.avg("ar");
-  const dso = R > 0 && avgAR >= 0 ? (avgAR / R) * b.days : null;
+  // Receivables net of VAT, as on the KPI and bank pages.
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / (1 + Math.max(0, b.vat ?? DEFAULT_VAT)) / R) * b.days : null;
   const rate = pos(a.rate) === null ? null : a.rate! / 100;
   const stuck = B0 ? B.ar - B0.ar : null;
   const daily = R > 0 ? R / b.days : null;

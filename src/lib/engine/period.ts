@@ -1,6 +1,7 @@
 import { addMonths, daysIn, mlabel, MONTH_ABBR, monthIndex, parsePeriod, periodFromIndex } from "./format";
 import { averageBS, bsCalc, plCalc, sumPL } from "./statements";
 import { hasBS, hasPL, type BSCalc, type MonthData, type PeriodType, type PLCalc } from "./types";
+import { cfSubOf, type CFSub } from "./cashflow";
 
 export interface PeriodSel { type: PeriodType; end: string }
 
@@ -73,8 +74,10 @@ export interface PeriodView {
   /** Average of the month-end balances held, from the opening balance to the end (closing alone when only one is held). */
   Bavg: BSCalc;
   days: number;
-  prior: { P: PLCalc; B: BSCalc; label: string } | null;
-  ly: { P: PLCalc; B: BSCalc; label: string } | null;
+  prior: { P: PLCalc; B: BSCalc; label: string; sub?: CFSub } | null;
+  ly: { P: PLCalc; B: BSCalc; label: string; sub?: CFSub } | null;
+  /** The window's sub-classed amounts, for the cash flow (undefined when the company marks none). */
+  sub?: CFSub;
   ytd: PLCalc;
   /** Monthly series from the first loaded month up to the end of the window. */
   series: { periods: string[]; P: PLCalc[]; B: BSCalc[]; /** Whether each month's balance sheet is its own (not carried forward). */ own: boolean[] };
@@ -155,7 +158,8 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     // A part month: the comparison's last month is cut to the same days (never more than it has).
     const f = compareWeight(day, w2.end);
     const label = windowLabel(w2, sel.type, fyStart);
-    return { P: plCalc(sumPL(ms.map((m) => (m!.period === w2.end ? cutPL(m!.pl, f) : m!.pl)))), B: bsCalc(b2?.bs ?? {}), label: day ? `${label} (same ${day} days)` : label };
+    const sub = cfSubOf(ms as MonthData[], b2, byPeriod.get(addMonths(w2.start, -1)));
+    return { P: plCalc(sumPL(ms.map((m) => (m!.period === w2.end ? cutPL(m!.pl, f) : m!.pl)))), B: bsCalc(b2?.bs ?? {}), label: day ? `${label} (same ${day} days)` : label, ...(sub ? { sub } : {}) };
   };
   const fy0 = fyStartOf(window.end, fyStart);
   const ytdMonths = sorted.filter((m) => hasPL(m) && m.period >= fy0 && m.period <= window.end);
@@ -165,7 +169,9 @@ export function periodView(months: MonthData[], selIn: PeriodSel, fyStart: numbe
     ? window.label.replace(/\(to [A-Z][a-z]{2}\)$/, `(to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})`)
     : `${window.label} (to ${day} ${MONTH_ABBR[Number(window.end.slice(5))]})` };
   const prior = cmp(SHIFT[sel.type]);
+  const sub = cfSubOf(got, bsMonth, open);
   return {
+    ...(sub ? { sub } : {}),
     sel, window: shownWindow, ...(day ? { partDay: day, likePrior: prior && { P: prior.P, label: prior.label } } : {}), complete: got.length === (annual ? 1 : window.periods.length), P, B, bsAt: bsMonth?.period ?? null, B0, Bavg, days, annual,
     missing: { pl: annual ? [] : window.periods.filter((p) => !plAt(p)), endBS: bsMonth?.period !== window.end, openingBS: !B0, opening },
     prior, ly: cmp(12),

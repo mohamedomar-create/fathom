@@ -2,6 +2,7 @@ import { loadPortfolio } from "@/lib/company/portfolio";
 import { AppBar } from "@/components/shell/app-bar";
 import { InsightsTable } from "@/components/portfolio/insights-table";
 import { getDict } from "@/lib/i18n/server";
+import { vatRateOf } from "@/lib/company/time-zone";
 
 export async function generateMetadata() { return { title: (await getDict()).home.insights }; }
 
@@ -23,7 +24,7 @@ export default async function DashboardPage() {
             <span><b className={`text-lg font-semibold ${risks ? "text-red" : ""}`}>{risks}</b> <span className="text-mute">{t.risks}</span></span>
           </div>
         </div>
-        <InsightsTable companies={items.filter((i) => i.months.length).map((i) => ({ id: i.company.id, name: i.company.name, currency: i.company.currency, taxRate: Number(i.company.tax_rate), months: i.months, source: i.company.source, asOf: i.asOf }))} />
+        <InsightsTable companies={items.filter((i) => i.months.length).map((i) => ({ id: i.company.id, name: i.company.name, currency: i.company.currency, taxRate: Number(i.company.tax_rate), months: i.months, source: i.company.source, asOf: i.asOf, vatRate: vatRateOf(i.company.kpi_config) }))} />
       </main>
     </>
   );

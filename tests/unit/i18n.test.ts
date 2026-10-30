@@ -82,6 +82,18 @@ describe("analysis in Arabic", async () => {
     for (const l of cashFlowStatement(P, B, B0, { showUnreconciled: true }).lines) expect(LINES_AR[l.label], l.label).toBeDefined();
   });
 
+  it("names every IAS 7 line (accounts with sub-classes) in Arabic", () => {
+    const B0 = bsCalc(months[0].bs), B = bsCalc(months[1].bs), P = plCalc(months[1].pl);
+    const all = { interest_payable: 1, dividends_payable: 1, income_tax_payable: 1, provisions: 1, end_of_service: 1, deferred_tax: 1, lease_liability: 1, rou_asset: 1 };
+    const sub = { p: { disposal_gain: 5, fx_unrealised: 3, rou_depreciation: 1 }, b: all, b0: {}, of: {}, of0: {} };
+    const W = cashWaterfall(P, B, B0, sub);
+    for (const r of W.rows) { expect(LINES_AR[r.label], r.label).toBeDefined(); if (r.info) expect(LINES_AR[r.info], r.info).toBeDefined(); }
+    for (const l of cashFlowStatement(P, B, B0, { sub }).lines) expect(LINES_AR[l.label], l.label).toBeDefined();
+    const est = cashFlowStatement(plCalc({ interest_expenses: 1, dividends: 1, tax_expenses: 1 }), B, B0).estimated;
+    expect(est.length).toBe(3);
+    for (const e of est) expect(LINES_AR[e], e).toBeDefined();
+  });
+
   it("writes the analyst notes in Arabic with the same figures, and leaves English as it was", () => {
     const sel = { type: "month" as const, end: "2026-09" };
     const en = analyze(months, sel, settings).findings;

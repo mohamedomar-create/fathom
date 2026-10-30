@@ -7,6 +7,17 @@ export const BS_KEYS = [
   "std", "ap", "tax_liab", "other_cl", "ltd", "other_ncl", "retained_earnings", "other_equity",
 ] as const;
 
+/**
+ * Optional sub-classes under the 30 classes: they never change an account's class or any figure built from classes, and
+ * only let the cash flow statement follow IAS 7 (interest, dividends and income tax paid; disposals; leases; non-cash
+ * movements). A gain is positive, a loss negative (disposal_gain, fx_unrealised).
+ */
+export const SUB_KEYS = [
+  "interest_payable", "dividends_payable", "income_tax_payable", "provisions", "end_of_service", "deferred_tax",
+  "lease_liability", "rou_asset", "rou_depreciation", "disposal_gain", "fx_unrealised",
+] as const;
+export type SubKey = (typeof SUB_KEYS)[number];
+
 export type PLKey = (typeof PL_KEYS)[number];
 export type BSKey = (typeof BS_KEYS)[number];
 export type ClassKey = PLKey | BSKey;
@@ -20,6 +31,10 @@ export interface MonthData {
   bs: BSInput;
   /** Which statements were loaded for the month. Absent means both (hand-built data, the demo). */
   has?: { pl: boolean; bs: boolean };
+  /** Amounts held in sub-classed accounts (absent when the company has none). */
+  sub?: Partial<Record<SubKey, number>>;
+  /** How much of each class sits in sub-classed accounts (natural sign), so a class's change can be split. */
+  subOf?: Partial<Record<ClassKey, number>>;
 }
 
 /** The month's P&L was loaded (a month holding only a balance sheet, such as the opening balance, has none). */
@@ -46,6 +61,8 @@ export interface CompanySettings {
   currency: string;
   fyStartMonth: number; // 1..12
   taxRate: number; // 0.225
+  /** VAT rate for debtor and creditor days (0.14 when not set). */
+  vatRate?: number;
   targets?: Record<string, number | null | undefined>;
   importance?: Record<string, Importance>;
   activeKpis?: string[];

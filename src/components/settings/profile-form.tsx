@@ -9,7 +9,7 @@ import type { ResetPreview } from "@/lib/company/reset";
 import { cn } from "@/lib/cn";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null }
+export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null; vat_rate?: number | null }
 /** Every time zone the browser knows, the company's own first if the list lacks it. */
 const zones = (own: string | null | undefined) => {
   const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Africa/Cairo", "UTC"];
@@ -18,12 +18,12 @@ const zones = (own: string | null | undefined) => {
 
 export function ProfileForm({ initial, readOnly, canDelete, canExport = true, role, reset, resetNote }: { initial: ProfileData; readOnly: boolean; canDelete: boolean; canExport?: boolean; role?: "admin" | "editor" | "viewer"; reset?: ResetPreview | null; resetNote?: string | null }) {
   const router = useRouter();
-  const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
+  const [v, setV] = useState({ ...initial, tax_rate: Math.round(initial.tax_rate * 10000) / 100, vat: initial.vat_rate === undefined ? undefined : initial.vat_rate === null ? "" : String(Math.round(initial.vat_rate * 10000) / 100), ai: { goals: "", strategy: "", market: "", position: "", other: "", ...initial.ai_context } });
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand disabled:bg-band";
   const save = () => start(async () => {
-    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}), ...(v.books_start !== undefined ? { books_start: v.books_start || null } : {}) });
+    const r = await saveProfile({ companyId: v.id, name: v.name, currency: v.currency, fy_start_month: v.fy_start_month, tax_rate: v.tax_rate, industry: v.industry || null, ai_context: v.ai, ...(v.time_zone !== undefined ? { time_zone: v.time_zone || null } : {}), ...(v.books_start !== undefined ? { books_start: v.books_start || null } : {}), ...(v.vat !== undefined ? { vat_rate: v.vat === "" ? null : Number(v.vat) } : {}) });
     setMsg(r.ok ? { ok: true, text: "Saved." } : { ok: false, text: r.error ?? "Could not save" });
     if (r.ok) router.refresh();
   });
@@ -44,6 +44,10 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
         <label><span className="label mb-1 block">Financial year starts</span>
           <select disabled={readOnly} className={field} value={v.fy_start_month} onChange={(e) => setV({ ...v, fy_start_month: Number(e.target.value) })}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></label>
         <label><span className="label mb-1 block">Corporate tax rate %</span><input disabled={readOnly} type="number" step="0.1" className={field} value={v.tax_rate} onChange={(e) => setV({ ...v, tax_rate: Number(e.target.value) })} /></label>
+        {v.vat !== undefined && (
+          <label><span className="label mb-1 block">VAT rate % (debtor and creditor days)</span><input disabled={readOnly} type="number" step="0.1" min={0} max={50} placeholder="14" className={field} value={v.vat} onChange={(e) => setV({ ...v, vat: e.target.value })} data-testid="vat-rate" />
+            <span className="mt-1 block text-xs text-mute">Receivables and payables include VAT; sales and costs do not. Leave empty for 14%; 0 if you charge no VAT.</span></label>
+        )}
         <label><span className="label mb-1 block">Time zone</span>
           <select disabled={readOnly} className={field} value={v.time_zone ?? ""} onChange={(e) => setV({ ...v, time_zone: e.target.value || null })} data-testid="time-zone">
             <option value="">None: dates as the Odoo export shows them (recommended)</option>

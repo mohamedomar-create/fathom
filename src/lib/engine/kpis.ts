@@ -32,10 +32,10 @@ export const KPI_DEFS: KpiDef[] = [
   d("profit_ratio", "EBIT Margin", "Profitability", "%", "up", 10, "Critical", "EBIT Margin = EBIT ÷ Revenue × 100", "Earnings before interest and tax as a share of revenue: how much of each sale becomes operating profit."),
   d("npat", "Net Profit After Tax Margin", "Profitability", "%", "up", 7, "Medium", "Net Profit After Tax Margin = Earnings After Tax ÷ Revenue × 100", "What is left for the owners from each sale after every cost, interest and tax."),
   d("activity", "Activity Ratio", "Activity", "times", "up", 2, "Critical", "Activity Ratio = Annualised Revenue ÷ Average Invested Capital (equity + borrowing)", "How many times a year the capital invested in the business is turned into sales."),
-  d("ar_days", "Accounts Receivable Days", "Activity", "days", "down", 45, "Medium", "Accounts Receivable Days = Average Accounts Receivable × Days ÷ Revenue", "How long customers take, on average, to pay. Receivables include VAT and revenue does not, so with 14% VAT the figure reads about 14% high."),
+  d("ar_days", "Accounts Receivable Days", "Activity", "days", "down", 45, "Medium", "Accounts Receivable Days = Average Accounts Receivable ÷ (1 + VAT rate) × Days ÷ Revenue (VAT-adjusted)", "How long customers take, on average, to pay. Receivables include VAT and revenue does not, so they are taken net of VAT at the company's rate (14% unless set in the company profile)."),
   d("inv_days", "Inventory Days", "Activity", "days", "down", 60, "Medium", "Inventory Days = Average Inventory × Days ÷ Cost of Sales (before depreciation)", "How long stock sits before it is sold."),
-  d("ap_days", "Accounts Payable Days", "Activity", "days", "up", 45, "Medium", "Accounts Payable Days = Average Accounts Payable × Days ÷ Cost of Sales (before depreciation)", "How long the business takes, on average, to pay its suppliers."),
-  d("roe", "Return on Equity", "Efficiency", "%", "up", 15, "Critical", "Return on Equity = Annualised Net Income ÷ Opening Total Equity × 100", "The annual return the owners earn on the equity they have in the business. Not measured when opening equity is zero or negative."),
+  d("ap_days", "Accounts Payable Days", "Activity", "days", "up", 45, "Medium", "Accounts Payable Days = Average Accounts Payable ÷ (1 + VAT rate) × Days ÷ Cost of Sales (before depreciation) (VAT-adjusted)", "How long the business takes, on average, to pay its suppliers. Payables are taken net of VAT at the company's rate."),
+  d("roe", "Return on Equity", "Efficiency", "%", "up", 15, "Critical", "Return on Equity = Annualised Net Income ÷ Average Total Equity × 100", "The annual return the owners earn on the equity they have in the business, on the average equity over the period. Not measured when average equity is zero or negative."),
   d("roce", "Return on Capital Employed", "Efficiency", "%", "up", 12.5, "Critical", "Return on Capital Employed = Annualised EBIT ÷ Average Invested Capital (equity + borrowing) × 100", "Operating return on all capital invested, from owners and lenders."),
   d("gmroi", "Gross Margin Return on Inventory", "Efficiency", "%", "up", 150, "Low", "GMROI = Annualised Gross Profit ÷ Average Inventory × 100", "Gross profit earned for each unit of money tied up in stock."),
   d("asset_turn", "Asset Turnover", "Asset Usage", "times", "up", 2, "Medium", "Asset Turnover = Annualised Revenue ÷ Average Total Assets", "How much revenue each unit of assets generates in a year."),
@@ -79,9 +79,14 @@ export interface KpiInputs {
   ocf: number | null;
   /** Average month-end balances over the period; closing balances are used when not given. */
   Bavg?: BSCalc;
+  /** VAT rate (0.14): receivables and payables include it, revenue and cost of sales do not. */
+  vat?: number;
 }
 
-export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg }: KpiInputs): Record<string, number | null> {
+/** The VAT rate used when a company has not set its own (Egypt's standard rate). */
+export const DEFAULT_VAT = 0.14;
+
+export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VAT }: KpiInputs): Record<string, number | null> {
   const ann = (x: number) => (x * 365) / days;
   const R = P.revenue;
   const A = Bavg ?? B;
@@ -95,11 +100,14 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg }: KpiInputs): Re
   k.npat = R ? (P.eat / R) * 100 : null;
   k.activity = div(ann(R), A.tic);
   // A balance on the wrong side (customers in credit, suppliers in debit) gives negative days, which mean nothing: n/a.
-  k.ar_days = R > 0 && A.ar >= 0 ? div(A.ar * days, R) : null;
+  // Receivables and payables carry VAT; revenue and cost of sales do not, so both balances are taken net of it.
+  const net = (x: number) => x / (1 + Math.max(0, vat));
+  k.ar_days = R > 0 && A.ar >= 0 ? div(net(A.ar) * days, R) : null;
   k.inv_days = cogs > 0 && A.inventory >= 0 ? div(A.inventory * days, cogs) : null;
-  k.ap_days = cogs > 0 && A.ap >= 0 ? div(A.ap * days, cogs) : null;
+  k.ap_days = cogs > 0 && A.ap >= 0 ? div(net(A.ap) * days, cogs) : null;
   // A return on negative equity has no meaning (a loss would read as a positive return).
-  k.roe = B0 && B0.te > 0 ? x100(div(ann(P.net_income), B0.te)) : null;
+  const eq = B0 ? (Bavg ? Bavg.te : (B0.te + B.te) / 2) : null;
+  k.roe = eq !== null && eq > 0 ? x100(div(ann(P.net_income), eq)) : null;
   k.roce = A.tic > 0 ? x100(div(ann(P.ebit), A.tic)) : null;
   // Average month-end stock, as for stock days (with one month and its opening balance this is the two-point average).
   k.gmroi = A.inventory > 0 ? x100(div(ann(P.gross_profit), A.inventory)) : null;

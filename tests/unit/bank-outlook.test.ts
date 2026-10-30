@@ -26,7 +26,7 @@ describe("three-year trend", () => {
     expect(row("revenue").direction).toBe("better");
     expect(row("debt").values).toEqual([1800000, 1900000, 2300000]);
     expect(row("debt").direction).toBe("worse");
-    expect(row("dso").values[2]).toBeCloseTo(82.125, 6);
+    expect(row("dso").values[2]).toBeCloseTo(82.125 / 1.14, 6); // net of 14% VAT
     expect(row("dso").direction).toBe("worse");
   });
   it("leaves out an earlier year that is not complete", () => {

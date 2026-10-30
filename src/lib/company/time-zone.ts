@@ -21,6 +21,12 @@ export function timeZoneOf(kpiConfig: unknown): string | null {
   return p && typeof p.timeZone === "string" && validTimeZone(p.timeZone) ? p.timeZone : null;
 }
 
+/** The VAT rate the company set for debtor and creditor days (0.14 = 14%); undefined when it never set one. */
+export function vatRateOf(kpiConfig: unknown): number | undefined {
+  const v = ((kpiConfig ?? {}) as Record<string, { vatRate?: unknown } | undefined>)[PROFILE_KEY]?.vatRate;
+  return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 0.5 ? v : undefined;
+}
+
 /** The company said its books start from zero: no history before its first month, so no opening balance is due. */
 export function booksFromZeroOf(kpiConfig: unknown): boolean {
   return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;
@@ -39,7 +45,7 @@ export function openingAsAtOf(kpiConfig: unknown): string | null {
 }
 
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] }; tbCheck?: TbCheck | null }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; vatRate?: number | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] }; tbCheck?: TbCheck | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;

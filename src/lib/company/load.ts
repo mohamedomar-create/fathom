@@ -8,12 +8,14 @@ import type { Assumptions, ClassKey, ForecastDrivers, CompanySettings, Importanc
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts, type StoredAccount } from "./build";
+import { loadSubMap } from "./account-map";
+import { withSubClasses } from "@/lib/ingest/subclass";
 import type { AlertSetting, CompanyBundle } from "./types";
 
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
-import { booksFromZeroOf, timeZoneOf } from "./time-zone";
+import { booksFromZeroOf, timeZoneOf, vatRateOf } from "./time-zone";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
 
 export function forecastFromRow(c: Pick<CompanyRow, "kpi_config">): ForecastDrivers {
@@ -52,7 +54,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
     for (const [k, v] of Object.entries(cfg)) if (!RESERVED_KEYS.includes(k) && v.active) active.push(k);
   }
   return {
-    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined },
+    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), ...(vatRateOf(c.kpi_config) !== undefined ? { vatRate: vatRateOf(c.kpi_config) } : {}), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined },
     alerts,
   };
 }
@@ -91,18 +93,20 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   if (cErr) throw new AccessError(cErr.code);
   if (!c) notFound();
   // Everything else in one round, the accounts included.
-  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored] = await Promise.all([
+  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored, subMap] = await Promise.all([
     supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
     supabase.from("commentary").select("period_key, section, body").eq("company_id", id),
     supabase.from("imports").select("report").eq("company_id", id).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadAccounts(supabase, id, c.data_version),
+    loadSubMap(supabase, id),
   ]);
   // Fails closed: a membership that couldn't be read is an error, none means not this person's company.
   const access = accessFrom(mem, memErr);
   if (access === "none") notFound();
-  const accounts = naturalAccounts(stored);
+  // Each account's sub-class (the company's choice, else its name), for the cash flow statement.
+  const accounts = withSubClasses(naturalAccounts(stored), subMap);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);
   const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string; unit?: number };

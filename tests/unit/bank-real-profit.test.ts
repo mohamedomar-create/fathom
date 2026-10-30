@@ -45,7 +45,7 @@ describe("bank readiness", () => {
     expect(r("debt_ebitda").value).toBeCloseTo(1.15, 6);
     expect(r("int_cover").value).toBeCloseTo(1700000 / 450000, 6);
     expect(r("current").value).toBeCloseTo(5600000 / 3131250, 6);
-    expect(r("dso").value).toBeCloseTo(82.125, 6);
+    expect(r("dso").value).toBeCloseTo(82.125 / 1.14, 6); // net of 14% VAT
     expect(r("dso").band).toBe("watch");
     expect(r("ocf_ebitda").band).toBe("weak");
     expect(r("lt_funding").value).toBe(2468750);
@@ -93,7 +93,7 @@ describe("real profit", () => {
     const y = realProfit(b, { rate: 25 }, "EGP", 45);
     expect(y.collection.creditCost).toBeCloseTo(675000, 6);
     expect(y.collection.perDay).toBeCloseTo((12000000 / 365) * 0.25, 6);
-    expect(y.collection.release).toBeCloseTo((82.125 - 45) * (12000000 / 365), 4);
+    expect(y.collection.release).toBeCloseTo((82.125 / 1.14 - 45) * (12000000 / 365), 4);
   });
 
   it("bridges reported to real profit after inflation, stock replacement and depreciation", () => {

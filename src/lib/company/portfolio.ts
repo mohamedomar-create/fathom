@@ -3,6 +3,8 @@ import { analyze, currentAsOf, defaultEnd, hasPL, type Analysis, type MonthData 
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts } from "./build";
+import { loadSubMap } from "./account-map";
+import { withSubClasses } from "@/lib/ingest/subclass";
 import { loadAccounts, settingsFromRow } from "./load";
 import type { PendingInvite } from "@/app/companies/pending-invites";
 
@@ -32,7 +34,8 @@ export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: {
   const orgs = (mems ?? []).map((m) => ({ id: m.org_id, role: m.role, name: (m.organizations as unknown as { name: string } | null)?.name ?? "Organisation" }));
   const orgName = new Map(orgs.map((o) => [o.id, o.name]));
   const items = await Promise.all((companies ?? []).map(async (c) => {
-    const months = buildMonths(naturalAccounts(await loadAccounts(supabase, c.id, c.data_version)));
+    const [stored, subMap] = await Promise.all([loadAccounts(supabase, c.id, c.data_version), loadSubMap(supabase, c.id)]);
+    const months = buildMonths(withSubClasses(naturalAccounts(stored), subMap));
     const { settings, alerts } = settingsFromRow(c);
     // The month the company's pages open on: the last full month that has a P&L.
     const asOf = currentAsOf(await asOfOf(c.id, c.data_version), months.map((m) => m.period));

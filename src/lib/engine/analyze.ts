@@ -66,9 +66,9 @@ export function analyze(
   const { P, B } = view;
   // Cash flow needs the balance sheets at both ends of the window: never one stood in from another month.
   const B0 = view.missing.endBS ? null : view.B0;
-  const W = B0 ? cashWaterfall(P, B, B0) : null;
-  const CF = B0 ? cashFlowStatement(P, B, B0) : null;
-  const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: (view.likePrior ?? view.prior)?.P ?? null, days: view.days, ocf: W?.ocf ?? null });
+  const W = B0 ? cashWaterfall(P, B, B0, view.sub) : null;
+  const CF = B0 ? cashFlowStatement(P, B, B0, { sub: view.sub }) : null;
+  const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: (view.likePrior ?? view.prior)?.P ?? null, days: view.days, ocf: W?.ocf ?? null, vat: settings.vatRate });
   // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
   // A part month counts as the share of its days covered (revenue to the 10th is judged against 10 days' target).
   const partShare = view.partDay ? 1 - view.partDay / daysIn(view.window.end) : 0;
@@ -82,8 +82,8 @@ export function analyze(
       try {
         // The comparison's KPIs on the same days as a part month (its whole end month cut to the days covered).
         const v2 = periodView(months, sel2, settings.fyStartMonth, null, { cutDay: view.partDay });
-        const W2 = v2.B0 && !v2.missing.endBS ? cashWaterfall(v2.P, v2.B, v2.B0) : null;
-        compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Bavg: v2.Bavg, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null });
+        const W2 = v2.B0 && !v2.missing.endBS ? cashWaterfall(v2.P, v2.B, v2.B0, v2.sub) : null;
+        compareK = computeKpis({ P: v2.P, B: v2.B, B0: v2.B0, Bavg: v2.Bavg, Pprev: v2.prior?.P ?? null, days: v2.days, ocf: W2?.ocf ?? null, vat: settings.vatRate });
       } catch { compareK = null; }
     }
   }
@@ -127,7 +127,7 @@ export function kpiHistory(months: MonthData[], settings: CompanySettings, end: 
   const ps = months.filter(hasPL).map((m) => m.period).sort().filter((p) => p <= end).slice(-n);
   return ps.map((p) => {
     const v = periodView(months, { type: "month", end: p }, settings.fyStartMonth, asOf);
-    const W = v.B0 && !v.missing.endBS ? cashWaterfall(v.P, v.B, v.B0) : null;
-    return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null }) };
+    const W = v.B0 && !v.missing.endBS ? cashWaterfall(v.P, v.B, v.B0, v.sub) : null;
+    return { period: p, K: computeKpis({ P: v.P, B: v.B, B0: v.B0, Bavg: v.Bavg, Pprev: v.prior?.P ?? null, days: v.days, ocf: W?.ocf ?? null, vat: settings.vatRate }) };
   });
 }

@@ -1,5 +1,5 @@
 import type { LocationTypes } from "@/lib/ingest/inventory";
-import type { Assumptions, ForecastDrivers, ClassKey, CompanySettings, MonthData } from "@/lib/engine";
+import type { Assumptions, ForecastDrivers, ClassKey, CompanySettings, MonthData, SubKey } from "@/lib/engine";
 
 /** One general-ledger account with its monthly amounts in natural sign
  *  (P&L: movement for the month, positive for revenue and for costs; BS: closing balance, positive as presented). */
@@ -9,6 +9,8 @@ export interface AccountLine {
   name: string;
   cls: ClassKey;
   amounts: Record<string, number>;
+  /** Its sub-class, if any (the company's map, else the name rules). */
+  sub?: SubKey | null;
 }
 
 export interface AlertSetting { active: boolean; threshold: number | null }

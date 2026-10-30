@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { buildMonths, naturalAccounts } from "@/lib/company/build";
+import { withSubClasses } from "@/lib/ingest/subclass";
 import { assumptionsFromRow, forecastFromRow, settingsFromRow } from "@/lib/company/load";
 import { normaliseSections, reportMonths } from "@/lib/report/types";
 import { parseSalesSummary } from "@/lib/company/sales-parse";
@@ -22,6 +23,8 @@ interface Payload {
   accepted?: { title: string; period?: string | null; reason: string }[] | null;
   /** How far the books go (0041): a part month reads as one, as in the app. */
   as_of?: string | null;
+  /** The company's sub-class choices (0042), so the link's cash flow reads as the app's. */
+  sub_classes?: Record<string, string> | null;
 }
 
 export default async function PublicReportPage({ params }: { params: Promise<{ token: string }> }) {
@@ -34,7 +37,7 @@ export default async function PublicReportPage({ params }: { params: Promise<{ t
   ]);
   if (!data) notFound();
   const p = data as unknown as Payload;
-  const accounts = naturalAccounts(p.accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: Object.fromEntries(Object.entries(a.amounts).map(([k, v]) => [k, Number(v)])) })));
+  const accounts = withSubClasses(naturalAccounts(p.accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: Object.fromEntries(Object.entries(a.amounts).map(([k, v]) => [k, Number(v)])) }))), p.sub_classes ?? {});
   const { settings, alerts } = settingsFromRow(p.company);
   const all = buildMonths(accounts);
   return (
