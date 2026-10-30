@@ -34,6 +34,7 @@ create temp table ids as select id co from public.companies where name = 'Close 
 grant select on ids to authenticated, anon;
 -- Books: one account, Jul–Oct 2026 (version 1), plus sales, expense and cash lines in Aug and Sep.
 insert into public.source_accounts (company_id, version, code, name, statement, class) select co, 1, '4000', 'Sales', 'PL', 'revenue' from ids;
+insert into public.source_accounts (company_id, version, code, name, statement, class) select co, 1, '6200', 'Fees', 'PL', 'exp_fixed' from ids;
 insert into public.account_balances (account_id, company_id, period, amount)
   select s.id, s.company_id, p, -100 from public.source_accounts s cross join unnest(array['2026-07', '2026-08', '2026-09', '2026-10']) p where s.name = 'Sales';
 insert into public.sales_batches (company_id, source) select co, 'file' from ids;
@@ -77,6 +78,7 @@ select pg_temp.check('the closed balances cannot be deleted', pg_temp.refused('d
 select pg_temp.check('a balance cannot be added to a closed month directly', pg_temp.refused($q$insert into public.account_balances (account_id, company_id, period, amount) select s.id, s.company_id, '2026-06', 5 from public.source_accounts s where s.name = 'Sales'$q$), 'refused');
 select pg_temp.check('a balance cannot be moved into a closed month', pg_temp.refused($q$update public.account_balances set period = '2026-06' where period = '2026-09'$q$), 'refused');
 select pg_temp.check('an account with closed balances cannot be deleted', pg_temp.refused($q$delete from public.source_accounts where name = 'Sales'$q$), 'refused');
+select pg_temp.check('an editor can still reclassify an account without closed months', public.reclassify_accounts((select co from ids), jsonb_build_object((select id from public.source_accounts where code = '6200')::text, jsonb_build_object('class', 'exp_variable')))::text, '1');
 select pg_temp.check('an account cannot be moved to another version', pg_temp.refused($q$update public.source_accounts set version = 99 where name = 'Sales'$q$), 'refused');
 select pg_temp.check('a company cannot be created already closed', pg_temp.refused(format('insert into public.companies (org_id, name, closed_through) values (%L, %L, %L)', (select org_id from public.companies where name = 'Close Co'), 'Pre-closed', '2026-01')), 'refused');
 reset role;

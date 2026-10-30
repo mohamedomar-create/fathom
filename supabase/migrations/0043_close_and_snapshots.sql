@@ -83,6 +83,8 @@ drop trigger if exists account_class_lock on public.source_accounts;
 -- Stored accounts and balances are written only by the save functions: nobody adds, changes or (balances) deletes them
 -- directly. Pruning old versions still deletes accounts; one of the current version with closed balances can't go.
 revoke insert, update on public.source_accounts from anon, authenticated;
+-- Reclassifying (reclassify_accounts runs with the editor's own rights) still changes an account's class.
+grant update (class, statement, mapped_by, confidence) on public.source_accounts to authenticated;
 revoke insert, update, delete on public.account_balances from anon, authenticated;
 create or replace function private.account_delete_lock() returns trigger language plpgsql security definer set search_path = '' as $$
 declare v_m text;
