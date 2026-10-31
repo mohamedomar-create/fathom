@@ -1,5 +1,5 @@
 import type { LayerKind, MoveKind, OnHand, ProductRow } from "@/lib/ingest/inventory";
-import { positionAt, rollingAbc, stockHistory, type HistoryPoint } from "./inventory-more";
+import { mixedUnits, positionAt, rentalStatus, rollingAbc, stockHistory, type HistoryPoint, type RentalStatus } from "./inventory-more";
 import { layerKind, isInternalLocation, locationClass, locationTypeOf, productKey, type LocationType, type LocationTypes } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
@@ -63,6 +63,10 @@ export interface InventoryData extends Omit<InventoryRecords, "moves" | "rental"
   moves: MoveSummary;
   /** Per month and rental document, the value its valuation rows carry (only documents that carry any). */
   rentalValued: { p: string; ref: string; v: number }[];
+  /** Products whose moves use more than one unit of measure (0045): their quantities are never added together. */
+  uomMixed?: { code: string; product: string; uoms: string[] }[];
+  /** Rental moves (0045): net units out (+) or back (−) per month, product, customer and rental location. */
+  rentals?: { p: string; code: string; product: string; partner: string; loc: string; q: number }[];
 }
 
 export const EMPTY_MOVES: MoveSummary = { months: [], byKind: [], flow: [], asOf: null, byProductLoc: [], rentalLocs: [] };
@@ -145,6 +149,10 @@ export interface InventoryAnalysis {
   history: HistoryPoint[];
   /** What the ABC classes are measured on. */
   abcBasis: string;
+  /** Rental fleet at the period end: on rent vs idle, utilisation, by location and customer (0045). */
+  rental: RentalStatus;
+  /** Products kept in more than one unit of measure (their quantities are not added). */
+  mixedUnits: { count: number; text: string } | null;
   findings: InventoryFinding[];
   headline: string;
 }
@@ -499,6 +507,7 @@ export function inventoryAnalysis(
     hasValue, hasMoves, partialValuation, label, position: pos.position,
     atEnd: hasMoves ? positionAt(d, end) : [], history: hasValue || hasMoves ? stockHistory(d, end, 12) : [],
     abcBasis: L(`Cost of sales over the 12 months to ${ml(end)}`, `تكلفة المبيعات خلال 12 شهرًا حتى ${ml(end)}`),
+    rental: rentalStatus(d, end, 12), mixedUnits: mixedUnits(d),
     tiles: { value, days: avgStock !== null && avgStock >= 0 && cogs && cogs > 0 ? Math.round((avgStock / cogs) * daysWin) : null, cogs, slow, dead },
     bridge, products, movements: [...mv.values()].map((m) => ({ ...m, q: Math.round(m.q * 10000) / 10000 })), locations: [...locs.values()],
     tieouts, findings, headline,

@@ -45,6 +45,8 @@ export function InventoryMovements() {
         </table>
       </div>
       {rental && <p className="mt-2 text-xs text-mute">{t.rentalNote}</p>}
+      {s.mixedUnits && <p role="status" className="mt-6 rounded border border-amber/60 bg-amber/10 px-4 py-2 text-[13px]" data-testid="inv-mixed-units">{s.mixedUnits.text}</p>}
+      <RentalSection s={s} ar={T.lang === "ar"} />
       <StockAtEnd s={s} ar={T.lang === "ar"} ml={T.ml} />
       <StockHistoryTable s={s} ar={T.lang === "ar"} ms={T.ms} />
       <h3 className="mb-2 mt-10 text-lg font-normal">{t.locationsTitle}</h3>
@@ -120,6 +122,29 @@ function StockHistoryTable({ s, ar, ms }: { s: View; ar: boolean; ms: (p: string
         </table>
       </div>
       <p className="mt-1 text-xs text-mute">{ar ? "الوحدات والقيمة من التقييم؛ الوحدات حسب الموقع من الحركات." : "Units and value from the valuation; units by location from the moves."}</p>
+    </section>
+  );
+}
+
+/** Rented units at the period end: on rent vs idle per item, utilisation, and where they are (location, customer). */
+function RentalSection({ s, ar }: { s: View; ar: boolean }) {
+  const r = s.rental;
+  if (!r.items.length) return null;
+  const pct = (x: number | null) => (x === null ? "–" : `${Math.round(x * 100)}%`);
+  return (
+    <section className="mt-10" data-testid="inv-rental">
+      <h3 className="mb-2 text-lg font-normal">{ar ? "التأجير: مؤجر مقابل متاح" : "Rental: on rent vs idle"} <span className="text-sm text-mute" data-testid="inv-rental-util">· {ar ? "نسبة الاستخدام" : "utilisation"} {pct(r.utilisation)}</span></h3>
+      <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <table className="tbl min-w-[560px]">
+          <thead><tr><th className="!text-start">{ar ? "الصنف" : "Item"}</th><th>{ar ? "المملوك" : "Owned"}</th><th>{ar ? "مؤجر" : "On rent"}</th><th>{ar ? "متاح" : "Idle"}</th><th>{ar ? "الاستخدام" : "Utilisation"}</th></tr></thead>
+          <tbody>{r.items.slice(0, 30).map((x) => <tr key={x.code || x.product} className="row" data-testid="inv-rental-row"><td className="!text-start">{x.product}</td><td className="num">{q(x.fleet)}</td><td className="num">{q(x.onRent)}</td><td className="num">{q(x.idle)}</td><td className="num">{pct(x.utilisation)}</td></tr>)}</tbody>
+        </table>
+      </div>
+      <div className="mt-4 grid gap-6 sm:grid-cols-2">
+        <div><h4 className="mb-1 text-sm font-medium">{ar ? "حسب العميل" : "By customer"}</h4><ul className="text-[13px]" data-testid="inv-rental-customers">{r.byCustomer.slice(0, 10).map((c) => <li key={c.partner} className="flex justify-between border-b border-line py-1"><span>{c.partner}</span><span className="num">{q(c.units)}</span></li>)}</ul></div>
+        <div><h4 className="mb-1 text-sm font-medium">{ar ? "حسب موقع التأجير" : "By rental location"}</h4><ul className="text-[13px]">{r.byLocation.slice(0, 10).map((c) => <li key={c.loc} className="flex justify-between border-b border-line py-1"><span>{c.loc}</span><span className="num">{q(c.units)}</span></li>)}</ul></div>
+      </div>
+      <p className="mt-1 text-xs text-mute">{ar ? "الاستخدام = الوحدات المؤجرة ÷ المملوكة في نهاية كل شهر خلال 12 شهرًا (عدّ نهاية الشهر، لا الأيام)." : "Utilisation = units on rent ÷ units owned at each month end over the 12 months (month-end counts, not days)."}</p>
     </section>
   );
 }

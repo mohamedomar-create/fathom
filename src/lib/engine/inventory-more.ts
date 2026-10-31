@@ -45,17 +45,70 @@ export interface HistoryPoint { p: string; units: number; value: number; byCateg
 /** Units and value at each of the `n` month ends to `end` (from the valuation), by category, and units by location. */
 export function stockHistory(d: InventoryData, end: string, n = 12): HistoryPoint[] {
   const months = Array.from({ length: n }, (_, i) => addMonths(end, i - n + 1));
+  // Units of a product kept in more than one unit of measure can't be added: its value counts, its units don't.
+  const mixed = new Set((d.uomMixed ?? []).map((x) => productKey(x.code, x.product)));
   return months.map((p) => {
     const byCategory: HistoryPoint["byCategory"] = {};
     let units = 0, value = 0;
     for (const l of d.layers) {
       if (l.p > p) continue;
       const c = (byCategory[l.category || "—"] ??= { units: 0, value: 0 });
-      c.units += l.q; c.value += l.v; units += l.q; value += l.v;
+      const q = mixed.has(productKey(l.code, l.product)) ? 0 : l.q;
+      c.units += q; c.value += l.v; units += q; value += l.v;
     }
     for (const c of Object.values(byCategory)) { c.units = r4(c.units); c.value = r2(c.value); }
     const byLocation: Record<string, number> = {};
     for (const x of positionAt(d, p)) byLocation[x.loc] = x.units;
     return { p, units: r4(units), value: r2(value), byCategory, byLocation };
   });
+}
+
+/** Products kept in more than one unit of measure, named (their quantities are never added). */
+export function mixedUnits(d: InventoryData): { count: number; text: string } | null {
+  const m = d.uomMixed ?? [];
+  if (!m.length) return null;
+  return { count: m.length, text: `${m.length} product${m.length === 1 ? " is" : "s are"} recorded in more than one unit of measure, so their quantities are not added into unit totals (their value is): ${m.slice(0, 5).map((x) => `${x.product || x.code} (${x.uoms.join(", ")})`).join("; ")}${m.length > 5 ? "…" : ""}. Set one unit per product in Odoo, or check the conversions.` };
+}
+
+export interface RentalStatus {
+  /** Per rented product: units owned (valued) at the period end, on rent, idle, and the share on rent over the window. */
+  items: { code: string; product: string; fleet: number; onRent: number; idle: number; utilisation: number | null }[];
+  byLocation: { loc: string; units: number }[];
+  byCustomer: { partner: string; units: number }[];
+  /** Units on rent ÷ units owned, averaged over the window's month ends (all rented products). */
+  utilisation: number | null;
+}
+
+/**
+ * Rental fleet at the end of `end`: each rented product's units owned (from the valuation; rented units stay the
+ * company's), units out on rent (rental moves out less back), idle, and utilisation at the month ends of the `n` months
+ * to `end` (month-end counts, not days).
+ */
+export function rentalStatus(d: InventoryData, end: string, n = 12): RentalStatus {
+  const rent = d.rentals ?? [];
+  if (!rent.length) return { items: [], byLocation: [], byCustomer: [], utilisation: null };
+  const months = Array.from({ length: n }, (_, i) => addMonths(end, i - n + 1));
+  const keys = new Map<string, { code: string; product: string }>();
+  for (const r of rent) keys.set(productKey(r.code, r.product), { code: r.code, product: r.product });
+  const owned = (k: string, p: string) => d.layers.reduce((s, l) => (l.p <= p && productKey(l.code, l.product) === k ? s + l.q : s), 0);
+  const out = (k: string, p: string) => rent.reduce((s, r) => (r.p <= p && productKey(r.code, r.product) === k ? s + r.q : s), 0);
+  let onAll = 0, fleetAll = 0;
+  const items = [...keys].map(([k, x]) => {
+    let on = 0, fl = 0;
+    for (const p of months) { const f = owned(k, p); if (f > 0) { fl += f; on += Math.max(0, Math.min(out(k, p), f)); } }
+    onAll += on; fleetAll += fl;
+    const fleet = r4(owned(k, end)), onRent = r4(Math.max(0, Math.min(out(k, end), fleet)));
+    return { ...x, fleet, onRent, idle: r4(Math.max(0, fleet - onRent)), utilisation: fl > 0 ? Math.round((on / fl) * 1000) / 1000 : null };
+  }).sort((a, b) => b.onRent - a.onRent);
+  const sumBy = (key: "loc" | "partner") => {
+    const m = new Map<string, number>();
+    for (const r of rent) if (r.p <= end) m.set(r[key] || "—", (m.get(r[key] || "—") ?? 0) + r.q);
+    return [...m].filter(([, q]) => Math.abs(q) > 1e-9).map(([k, q]) => [k, r4(q)] as const).sort((a, b) => b[1] - a[1]);
+  };
+  return {
+    items,
+    byLocation: sumBy("loc").map(([loc, units]) => ({ loc, units })),
+    byCustomer: sumBy("partner").map(([partner, units]) => ({ partner, units })),
+    utilisation: fleetAll > 0 ? Math.round((onAll / fleetAll) * 1000) / 1000 : null,
+  };
 }

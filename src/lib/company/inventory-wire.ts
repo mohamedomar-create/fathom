@@ -88,6 +88,9 @@ export function fromWire(raw: unknown): InventoryData {
     ledger: arr(o.ledger).map((r) => ({ p: s(r[0]), ref: s(r[1]), v: n(r[2]) })),
     rentalValued: arr(o.rv).map((r) => ({ p: s(r[0]), ref: s(r[1]), v: n(r[2]) })),
     meta: { withIds: meta.withIds === true, kinds: strs(meta.kinds), periods: strs(meta.periods) },
+    // 0045: products kept in more than one unit, and rental moves by customer and location (absent before it).
+    ...(Array.isArray(o.uoms) ? { uomMixed: arr(o.uoms).map((r) => { const [code, product] = prod(r[0]); return { code, product, uoms: strs(r[1]) }; }) } : {}),
+    ...(Array.isArray(o.rent) ? { rentals: arr(o.rent).map((r) => { const [code, product] = prod(r[1]); return { p: s(r[0]), code, product, partner: s(r[2]), loc: s(r[3]), q: n(r[4]) }; }) } : {}),
   };
 }
 
