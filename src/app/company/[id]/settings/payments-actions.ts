@@ -7,7 +7,9 @@ import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
 import { stageAdd, stageBegin, stageFinish } from "@/lib/company/line-stage";
-import { controlAccountsOf, withProfile } from "@/lib/company/time-zone";
+import { controlAccountsOf } from "@/lib/company/time-zone";
+import { PROFILE_KEY } from "@/lib/company/config-keys";
+import { patchSettings } from "@/lib/company/settings-patch";
 
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -120,9 +122,8 @@ export async function saveControlAccounts(companyId: string, side: "receivable" 
     if (e1) return { ok: false, error: dbError(e1, "saveControlAccounts") };
     if (!row) return { ok: false, error: "You do not have permission to change this." };
     const now = controlAccountsOf(row.kpi_config);
-    const { error, count } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { controlAccounts: { ...now, [side]: v.data.codes } }) as Json }, { count: "exact" }).eq("id", companyId);
-    if (error) return { ok: false, error: dbError(error, "saveControlAccounts") };
-    if (!count) return { ok: false, error: "You do not have permission to change this." };
+    const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { controlAccounts: { ...now, [side]: v.data.codes } } });
+    if (!r.ok) return r;
     revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true };
   } catch (e) {

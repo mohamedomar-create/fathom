@@ -19,8 +19,10 @@ import { rememberKey } from "@/lib/ingest/pipeline";
 import { subClassEntries } from "@/lib/ingest/subclass";
 import { getUser } from "@/lib/supabase/server";
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "@/lib/company/load";
+import { PROFILE_KEY } from "@/lib/company/config-keys";
+import { patchSettings } from "@/lib/company/settings-patch";
 import { ForecastSchema } from "@/lib/company/forecast-schema";
-import { booksStartOf, validTimeZone, withProfile } from "@/lib/company/time-zone";
+import { booksStartOf, validTimeZone } from "@/lib/company/time-zone";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
@@ -130,8 +132,8 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     if (d.booksStart || d.opening) {
       const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", d.companyId).maybeSingle();
       if (row && (booksStartOf(row.kpi_config) !== d.booksStart || d.opening)) {
-        const { error: eStart } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { ...(d.booksStart ? { booksStart: d.booksStart } : {}), ...(d.opening ? { openingAsAt: d.opening.asAt } : {}) }) as Json }).eq("id", d.companyId);
-        if (eStart) console.error("commitImport: books start", eStart.message);
+        const r = await patchSettings(supabase, d.companyId, { [PROFILE_KEY]: { ...(d.booksStart ? { booksStart: d.booksStart } : {}), ...(d.opening ? { openingAsAt: d.opening.asAt } : {}) } });
+        if (!r.ok) console.error("commitImport: books start", r.error);
       }
     }
     revalidatePath(`/company/${d.companyId}`, "layout");
@@ -205,20 +207,18 @@ export async function saveProfile(input: z.input<typeof ProfileSchema>): Promise
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  // The time zone is kept with the company's other settings (kpi_config), never overwriting them.
-  let kpi: Json | undefined;
-  if (v.data.time_zone !== undefined || v.data.books_start !== undefined || v.data.vat_rate !== undefined) {
-    const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", v.data.companyId).maybeSingle();
-    if (e1) return { ok: false, error: dbError(e1, "saveProfile") };
-    if (!row) return { ok: false, error: "You do not have permission to change this." };
-    kpi = withProfile(row.kpi_config, { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}), ...(v.data.vat_rate !== undefined ? { vatRate: v.data.vat_rate === null ? null : v.data.vat_rate / 100 } : {}) }) as Json;
-  }
   const { error, count } = await supabase.from("companies").update({
     name: v.data.name, currency: v.data.currency.toUpperCase(), fy_start_month: v.data.fy_start_month, tax_rate: v.data.tax_rate / 100,
-    industry: v.data.industry, ai_context: v.data.ai_context, ...(kpi !== undefined ? { kpi_config: kpi } : {}),
+    industry: v.data.industry, ai_context: v.data.ai_context,
   }, { count: "exact" }).eq("id", v.data.companyId);
   if (error) return { ok: false, error: dbError(error, "saveProfile") };
   if (!count) return { ok: false, error: "You do not have permission to change this." };
+  // The time zone, books start and VAT rate are profile settings: only they are sent, merged with the rest (0044).
+  const profile = { ...(v.data.time_zone !== undefined ? { timeZone: v.data.time_zone } : {}), ...(v.data.books_start !== undefined ? { booksStart: v.data.books_start } : {}), ...(v.data.vat_rate !== undefined ? { vatRate: v.data.vat_rate === null ? null : v.data.vat_rate / 100 } : {}) };
+  if (Object.keys(profile).length) {
+    const r = await patchSettings(supabase, v.data.companyId, { [PROFILE_KEY]: profile });
+    if (!r.ok) return r;
+  }
   revalidatePath(`/company/${v.data.companyId}`, "layout");
   return { ok: true };
 }
@@ -232,17 +232,11 @@ export async function saveKpiConfig(companyId: string, config: Record<string, z.
   if (!parsed.success || !z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid KPI settings" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  // The economic assumptions and forecast drivers share this column; keep them when the KPI settings are saved.
-  const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  const old = (row?.kpi_config ?? {}) as Record<string, unknown>;
+  // The whole KPI set replaces the old one; the other settings in the same column are kept by the database (0044).
   const next: Record<string, unknown> = { ...parsed.data };
-  for (const k of RESERVED_KEYS) {
-    delete next[k];
-    if (old[k] !== undefined) next[k] = old[k];
-  }
-  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "saveKpiConfig") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  for (const k of RESERVED_KEYS) delete next[k];
+  const r = await patchSettings(supabase, companyId, next, { replaceKpis: true });
+  if (!r.ok) return r;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -254,14 +248,9 @@ export async function saveAssumptions(companyId: string, input: z.input<typeof A
   if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  if (e1) return { ok: false, error: dbError(e1, "saveAssumptions") };
-  if (!row) return { ok: false, error: "You do not have permission to change this." };
   const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined && x !== ""));
-  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [ECONOMY_KEY]: clean };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "saveAssumptions") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  const r = await patchSettings(supabase, companyId, { [ECONOMY_KEY]: clean });
+  if (!r.ok) return r;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -275,13 +264,13 @@ export async function saveInventorySettings(companyId: string, input: { rentalLo
   const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
   if (e1) return { ok: false, error: dbError(e1, "saveInventorySettings") };
   if (!row) return { ok: false, error: "You do not have permission to change this." };
-  const cfg = (row.kpi_config ?? {}) as Record<string, unknown>;
-  const was = (cfg[INVENTORY_KEY] ?? {}) as { locationTypes?: LocationTypes };
-  // Location types are kept unless new ones are given (Odoo's own types from an export, or the person's choice).
-  const next = { ...cfg, [INVENTORY_KEY]: { rentalLocation: v.data.rentalLocation || null, locationTypes: mergeLocationTypes(was.locationTypes ?? {}, v.data.locationTypes ?? {}, v.data.from ?? "person") } };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "saveInventorySettings") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  const was = (((row.kpi_config ?? {}) as Record<string, unknown>)[INVENTORY_KEY] ?? {}) as { locationTypes?: LocationTypes };
+  // Location types are kept unless new ones are given (Odoo's own types from an export, or the person's choice); only
+  // the inventory settings are sent, merged with the rest (0044).
+  const patch: Record<string, unknown> = { rentalLocation: v.data.rentalLocation || null };
+  if (v.data.locationTypes && Object.keys(v.data.locationTypes).length) patch.locationTypes = mergeLocationTypes(was.locationTypes ?? {}, v.data.locationTypes, v.data.from ?? "person");
+  const r = await patchSettings(supabase, companyId, { [INVENTORY_KEY]: patch });
+  if (!r.ok) return r;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -291,12 +280,8 @@ export async function setBooksFromZero(companyId: string, value: boolean): Promi
   if (!z.string().uuid().safeParse(companyId).success || typeof value !== "boolean") return { ok: false, error: "Invalid request." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  if (e1) return { ok: false, error: dbError(e1, "setBooksFromZero") };
-  if (!row) return { ok: false, error: "You do not have permission to change this." };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { booksFromZero: value }) as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "setBooksFromZero") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { booksFromZero: value } });
+  if (!r.ok) return r;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -308,14 +293,9 @@ export async function saveForecast(companyId: string, input: z.input<typeof Fore
   if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  if (e1) return { ok: false, error: dbError(e1, "saveForecast") };
-  if (!row) return { ok: false, error: "You do not have permission to change this." };
   const clean = Object.fromEntries(Object.entries(v.data).filter(([, x]) => x !== null && x !== undefined && x !== ""));
-  const next = { ...((row.kpi_config ?? {}) as Record<string, unknown>), [FORECAST_KEY]: clean };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: next as Json }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "saveForecast") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  const r = await patchSettings(supabase, companyId, { [FORECAST_KEY]: clean });
+  if (!r.ok) return r;
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true };
 }
@@ -411,8 +391,8 @@ export async function copyCompanySettings(companyId: string, fromId: string): Pr
   const hasProfile = Object.keys(profile).length > 1 || profile.booksFromZero;
   {
     // The source is remembered, so Data health compares this company's figures with it.
-    const { error } = await supabase.from("companies").update({ kpi_config: withProfile(target.kpi_config, { ...profile, compareWith: fromId }) as Json }).eq("id", companyId);
-    if (error) return { ok: false, error: dbError(error, "copyCompanySettings") };
+    const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { ...profile, compareWith: fromId } });
+    if (!r.ok) return r;
   }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, classes: entries.length, profile: hasProfile };

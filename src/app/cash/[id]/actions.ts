@@ -5,7 +5,8 @@ import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
-import { withCashColumns, withMode, withOpeningCash } from "@/lib/company/mode";
+import { PROFILE_KEY } from "@/lib/company/config-keys";
+import { patchSettings } from "@/lib/company/settings-patch";
 import { saveCashBasisBooks } from "@/lib/cash/to-books";
 import type { Json } from "@/lib/supabase/database.types";
 import { ALL_KINDS } from "@/lib/cash/kinds";
@@ -119,15 +120,17 @@ export async function entryDelete(companyId: string, id: number): Promise<Result
 }
 
 /** The business's settings and remembered column choices, kept with its other settings. */
-async function patchProfile(companyId: string, patch: (cfg: unknown) => unknown, extra: { name?: string; currency?: string } = {}): Promise<Result> {
+/** Saves profile settings (only those given, merged with the rest by the database: 0044), and the name or currency. */
+async function patchProfile(companyId: string, profile: Record<string, unknown>, extra: { name?: string; currency?: string } = {}): Promise<Result> {
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
-  const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-  if (e1) return { ok: false, error: dbError(e1, "cashSettings") };
-  if (!row) return { ok: false, error: "You do not have permission to change this." };
-  const { error, count } = await supabase.from("companies").update({ kpi_config: patch(row.kpi_config) as Json, ...extra }, { count: "exact" }).eq("id", companyId);
-  if (error) return { ok: false, error: dbError(error, "cashSettings") };
-  if (!count) return { ok: false, error: "You do not have permission to change this." };
+  if (Object.keys(extra).length) {
+    const { error, count } = await supabase.from("companies").update(extra, { count: "exact" }).eq("id", companyId);
+    if (error) return { ok: false, error: dbError(error, "cashSettings") };
+    if (!count) return { ok: false, error: "You do not have permission to change this." };
+  }
+  const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: profile });
+  if (!r.ok) return r;
   refresh(companyId);
   return { ok: true };
 }
@@ -136,13 +139,13 @@ export async function saveCashSettings(companyId: string, input: { name: string;
   const v = z.object({ companyId: Id, name: z.string().trim().min(1, "A name is needed.").max(120), currency: z.string().trim().min(3).max(6),
     opening: z.object({ amount: z.number().finite(), asOf: Day }).nullable() }).safeParse({ companyId, ...input });
   if (!v.success) return { ok: false, error: v.error.issues[0]?.message ?? "That value isn't valid." };
-  return patchProfile(v.data.companyId, (cfg) => withOpeningCash(cfg, v.data.opening), { name: v.data.name, currency: v.data.currency.toUpperCase() });
+  return patchProfile(v.data.companyId, { openingCash: v.data.opening }, { name: v.data.name, currency: v.data.currency.toUpperCase() });
 }
 
 export async function rememberColumns(companyId: string, map: Record<string, string>): Promise<Result> {
   const v = z.object({ companyId: Id, map: z.record(z.string().min(1).max(120), z.enum(FIELDS)).refine((m) => Object.keys(m).length <= 60) }).safeParse({ companyId, map });
   if (!v.success) return { ok: false, error: "Those column choices aren't valid." };
-  return patchProfile(v.data.companyId, (cfg) => withCashColumns(cfg, v.data.map));
+  return patchProfile(v.data.companyId, { cashColumns: v.data.map });
 }
 
 export interface FullPreview { sales: { copy: string[]; skip: string[] }; expenses: { copy: string[]; skip: string[] }; held: { kind: string; entries: number; amount: number }[] }
@@ -167,7 +170,7 @@ export async function switchToFull(companyId: string): Promise<Result> {
   // Cash-basis books from the cash book, so Financials and the dashboard work at once (books already uploaded are kept).
   const books = await saveCashBasisBooks(supabase, companyId);
   if (!books.ok) return books;
-  const r = await patchProfile(companyId, (cfg) => withMode(cfg, "full"));
+  const r = await patchProfile(companyId, { mode: "full" });
   if (r.ok) revalidatePath(`/company/${companyId}`, "layout");
   return r;
 }
@@ -190,7 +193,7 @@ export async function switchToCash(companyId: string): Promise<Result> {
   if (!user) return { ok: false, error: "Please sign in again." };
   const { error } = await supabase.rpc("cash_from_full", { p_company: companyId });
   if (error) return { ok: false, error: said(error, "switchToCash") };
-  const r = await patchProfile(companyId, (cfg) => withMode(cfg, "simple"));
+  const r = await patchProfile(companyId, { mode: "simple" });
   if (r.ok) revalidatePath(`/company/${companyId}`, "layout");
   return r;
 }

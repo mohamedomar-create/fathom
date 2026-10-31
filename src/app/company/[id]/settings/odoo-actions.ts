@@ -19,7 +19,9 @@ import { atLeast, connectionVerdict, continuesChain, STALE_MS, unbalancedSync, t
 import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
 import { limited } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
-import { booksStartOf, withProfile } from "@/lib/company/time-zone";
+import { booksStartOf } from "@/lib/company/time-zone";
+import { PROFILE_KEY } from "@/lib/company/config-keys";
+import { patchSettings } from "@/lib/company/settings-patch";
 import { probe, syncOdoo, type OdooProbe } from "@/lib/odoo/sync";
 import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger } from "@/lib/company/ledger-lines";
@@ -294,7 +296,11 @@ export async function syncOdooNow(companyId: string): Promise<Result<{ months: n
     if (done.error) throw new DbError(done.error);
     claimed = false;
     // A books start proposed from Odoo's opening date is kept for the next syncs and uploads (the company had none).
-    await supabase.from("companies").update({ source: "odoo", ...(res.booksStart && !booksStartOf(co?.kpi_config) ? { kpi_config: withProfile(co?.kpi_config, { booksStart: res.booksStart.suggested, openingAsAt: res.booksStart.day }) as Json } : {}) }).eq("id", companyId);
+    await supabase.from("companies").update({ source: "odoo" }).eq("id", companyId);
+    if (res.booksStart && !booksStartOf(co?.kpi_config)) {
+      const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { booksStart: res.booksStart.suggested, openingAsAt: res.booksStart.day } });
+      if (!r.ok) console.error("syncOdoo: books start", r.error);
+    }
     await audit(supabase, companyId, "sync", true, `${res.periods[0]}–${res.periods[res.periods.length - 1]} · ${res.accounts.length} accounts · trial balance ${res.diagnostics.trialBalanceCheck}${detail ? ` · ${detail}` : ""}`, res.diagnostics.groups);
     revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true, data: { months: res.periods.length, accounts: res.accounts.length, method: res.diagnostics.method, tb: res.diagnostics.trialBalanceCheck, unmapped: res.diagnostics.unmapped, offBalance: res.diagnostics.offBalance ?? [], version: res.diagnostics.version, detail } };
@@ -451,7 +457,10 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
         if (f.error) throw new DbError(f.error);
       }
       // Odoo's own location usage fills the company's location types (a person's choice is kept).
-      if (step.offset === 0) await supabase.from("companies").update({ kpi_config: { ...((co?.kpi_config ?? {}) as Record<string, unknown>), [INVENTORY_KEY]: { ...inv, locationTypes: mergeLocationTypes(inv.locationTypes ?? {}, loc.types, "export") } } as Json }).eq("id", companyId);
+      if (step.offset === 0) {
+        const r = await patchSettings(supabase, companyId, { [INVENTORY_KEY]: { locationTypes: mergeLocationTypes(inv.locationTypes ?? {}, loc.types, "export") } });
+        if (!r.ok) console.error("syncOdooDetail: location types", r.error);
+      }
     } else {
       const loc = await readLocations(d);
       const rows = await onHand(d, loc);

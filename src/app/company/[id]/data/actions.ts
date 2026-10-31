@@ -4,7 +4,8 @@ import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import type { Json } from "@/lib/supabase/database.types";
-import { withProfile } from "@/lib/company/time-zone";
+import { PROFILE_KEY } from "@/lib/company/config-keys";
+import { patchSettings } from "@/lib/company/settings-patch";
 
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Amount = z.number().finite().refine((v) => Math.abs(v) < 1e15, "amount out of range");
@@ -26,13 +27,9 @@ export async function saveTbCheck(companyId: string, check: z.input<typeof Check
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   try {
-    const { data: row, error: e1 } = await supabase.from("companies").select("kpi_config").eq("id", companyId).maybeSingle();
-    if (e1) return { ok: false, error: dbError(e1, "saveTbCheck") };
-    if (!row) return { ok: false, error: "You do not have permission to change this." };
     const tbCheck = { at: new Date().toISOString(), ...v.data };
-    const { error, count } = await supabase.from("companies").update({ kpi_config: withProfile(row.kpi_config, { tbCheck }) as Json }, { count: "exact" }).eq("id", companyId);
-    if (error) return { ok: false, error: dbError(error, "saveTbCheck") };
-    if (!count) return { ok: false, error: "You do not have permission to change this." };
+    const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { tbCheck } });
+    if (!r.ok) return r;
     revalidatePath(`/company/${companyId}`, "layout");
     return { ok: true };
   } catch (e) {
