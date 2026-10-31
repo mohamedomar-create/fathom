@@ -32,6 +32,11 @@ export function booksFromZeroOf(kpiConfig: unknown): boolean {
   return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;
 }
 
+/** The books were built from the company's cash book when it moved to the full system (cash basis, not accruals). */
+export function cashBasisOf(kpiConfig: unknown): boolean {
+  return ((kpiConfig ?? {}) as Record<string, { cashBasis?: unknown } | undefined>)[PROFILE_KEY]?.cashBasis === true;
+}
+
 /** The day the company's books start in Odoo ("2021-07-01"): everything dated before it is the opening balance. */
 export function booksStartOf(kpiConfig: unknown): string | null {
   const v = ((kpiConfig ?? {}) as Record<string, { booksStart?: unknown } | undefined>)[PROFILE_KEY]?.booksStart;
@@ -45,7 +50,7 @@ export function openingAsAtOf(kpiConfig: unknown): string | null {
 }
 
 /** The company's settings with one profile setting changed, every other setting kept. */
-export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; booksStart?: string | null; openingAsAt?: string | null; vatRate?: number | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] }; tbCheck?: TbCheck | null }): Record<string, unknown> {
+export function withProfile(kpiConfig: unknown, patch: { timeZone?: string | null; booksFromZero?: boolean; cashBasis?: boolean; booksStart?: string | null; openingAsAt?: string | null; vatRate?: number | null; compareWith?: string | null; controlAccounts?: { receivable?: string[]; payable?: string[] }; tbCheck?: TbCheck | null }): Record<string, unknown> {
   const cfg = { ...((kpiConfig ?? {}) as Record<string, unknown>) };
   cfg[PROFILE_KEY] = { ...((cfg[PROFILE_KEY] ?? {}) as Record<string, unknown>), ...patch };
   return cfg;

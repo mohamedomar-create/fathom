@@ -111,6 +111,7 @@ export const en = {
     body: (name: string) => `Upload an Odoo export or connect your Odoo database to see KPIs, breakeven, cash flow and more for ${name}.`,
     add: "Add financial data",
   },
+  healthUnknown: "This company's accounting checks couldn't be read just now, so we can't say whether its figures pass them. Reload the page to try again.",
   health: (n: number) => `${n} accounting check${n > 1 ? "s fail" : " fails"} in this company's data (for example the balance sheet does not balance). Figures may be wrong: review them in Data health.`,
   footer: { operatedBy: (entity: string) => `operated by ${entity}`, privacy: "Privacy", terms: "Terms", contact: "Contact", legal: "Legal", effective: "Effective" },
   dialog: { close: "Close" },

@@ -3,12 +3,12 @@ import { getUser } from "@/lib/supabase/server";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { loadCompanyMeta } from "@/lib/company/meta";
 import { loadDataFacts } from "@/lib/company/data-facts";
-import { loadSales, noSales } from "@/lib/company/sales-load";
-import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
+import { loadSales } from "@/lib/company/sales-load";
+import { loadExpenses } from "@/lib/company/expenses-load";
 import { loadInventory } from "@/lib/company/inventory-load";
-import { loadPayments, noPayments } from "@/lib/company/payments-load";
-import { unknownState } from "@/lib/company/loaded";
-import type { StepId } from "@/lib/company/data-steps";
+import { loadPayments } from "@/lib/company/payments-load";
+import { moduleStates } from "@/lib/company/status";
+import { moduleLoads } from "@/lib/company/module-loads";
 import { fromWire } from "@/lib/company/inventory-wire";
 import { subLedgerStatus } from "@/lib/company/data-status";
 import { DataSteps, type DataFacts } from "@/components/data/data-steps";
@@ -22,12 +22,8 @@ async function WithSubLedgers({ id, facts }: { id: string; facts: DataFacts }) {
     accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, payments: payments.data,
   });
   // A summary that could not be read leaves its step unknown ("couldn't be checked"), never "to do".
-  const unread: StepId[] = [
-    ...(unknownState(sales, (d) => noSales(d as typeof sales.data)) ? ["sales" as const] : []),
-    ...(inventory.error === "LOAD_FAILED" || unknownState(expenses, (d) => noExpenses(d as typeof expenses.data)) ? ["stock" as const] : []),
-    ...(unknownState(payments, (d) => noPayments((d as typeof payments.data).data)) ? ["ageing" as const] : []),
-  ];
-  return <DataSteps facts={facts} sub={{ ...sub, unread }} />;
+  const { unread, pending } = moduleStates(moduleLoads(sales, expenses, payments, inventory));
+  return <DataSteps facts={facts} sub={{ ...sub, unread, pending }} />;
 }
 
 export default async function DataStepsPage({ params }: { params: Promise<{ id: string }> }) {

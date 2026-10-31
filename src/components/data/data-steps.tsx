@@ -4,8 +4,9 @@ import { AlertTriangle, CheckCircle2, CircleDashed, Lock, ShieldCheck } from "lu
 import { useMemo } from "react";
 import { hasPL, mlabel } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
-import { checkKey, runChecks } from "@/lib/company/checks";
-import { dataSteps, type DataStatus, type StepStatus } from "@/lib/company/data-steps";
+import { runChecks } from "@/lib/company/checks";
+import { dataStatusOf, type DataStatus, type StepStatus } from "@/lib/company/data-steps";
+import { openChecks } from "@/lib/company/status";
 import type { SubLedgers } from "@/lib/company/data-status";
 import type { TbCheck } from "@/lib/company/time-zone";
 import { cn } from "@/lib/cn";
@@ -15,22 +16,26 @@ export interface DataFacts {
   /** A General Ledger was loaded (lines from it exist) or the books come from the Odoo connection. */
   ledger: boolean;
   odoo: boolean;
+  /** The books were built from the cash book when the company moved to the full system. */
+  cashBasis?: boolean;
   openingInLedger: boolean;
   booksStart: string | null;
   openingAsAt: string | null;
   tbCheck: TbCheck | null;
   /** Checks accepted with a reason on the current data (they no longer count as open). */
   accepted: string[];
+  /** The accepted checks couldn't be read, so the open ones can't be counted. */
+  acceptedUnread?: boolean;
 }
 
 const ICON: Record<StepStatus, React.ReactNode> = {
   verified: <ShieldCheck className="h-5 w-5 text-green-d" />, done: <CheckCircle2 className="h-5 w-5 text-green-d" />,
   issues: <AlertTriangle className="h-5 w-5 text-[#9a6b00]" />, todo: <CircleDashed className="h-5 w-5 text-mute" />, locked: <Lock className="h-5 w-5 text-mute" />,
-  unchecked: <AlertTriangle className="h-5 w-5 text-mute" />,
+  unchecked: <AlertTriangle className="h-5 w-5 text-mute" />, pending: <CircleDashed className="h-5 w-5 animate-pulse text-mute" />,
 };
 /** Steps whose status comes from the sub-ledger checks, which arrive a moment after the page. */
 const CHECKING = new Set(["sales", "stock", "ageing"]);
-const WORD: Record<StepStatus, string> = { verified: "Verified", done: "Done", issues: "Differences", todo: "To do", locked: "Locked", unchecked: "Couldn't be checked" };
+const WORD: Record<StepStatus, string> = { verified: "Verified", done: "Done", issues: "Differences", todo: "To do", locked: "Locked", unchecked: "Couldn't be checked", pending: "Adding up" };
 
 /**
  * The one sequence, in the order an accountant closes the books. The General Ledger is the book of record; the Trial
@@ -39,18 +44,20 @@ const WORD: Record<StepStatus, string> = { verified: "Verified", done: "Done", i
 /** sub: the sub-ledger checks, or null while they are still being worked out (those steps say so). */
 export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers | null }) {
   const c = useCompany();
-  const steps = useMemo(() => {
+  const { steps, next } = useMemo(() => {
     const pl = c.months.filter(hasPL).map((m) => m.period).sort();
-    const accepted = new Set(facts.accepted);
-    const open = runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }).filter((k) => k.severity !== "info" && !accepted.has(checkKey(k))).length;
+    // The one open-check count (the health banner counts the same way).
+    const open = openChecks(runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), facts.accepted);
     const s: DataStatus = {
       basePath: c.basePath, booksStart: facts.booksStart, opening: facts.openingAsAt ? { asAt: facts.openingAsAt } : null, booksFromZero: !!c.booksFromZero,
       openingInLedger: facts.openingInLedger,
-      ledger: facts.ledger && pl.length ? { from: pl[0], to: pl[pl.length - 1], odoo: facts.odoo, issues: open } : null,
+      ledger: facts.ledger && pl.length ? { from: pl[0], to: pl[pl.length - 1], odoo: facts.odoo, issues: facts.acceptedUnread ? 0 : open.blocking } : null,
+      // Books with no General Ledger behind them are still books: monthly statements, or a cash book moved to the full system.
+      books: !facts.ledger && pl.length ? { from: pl[0], to: pl[pl.length - 1], basis: facts.cashBasis ? "cash" : "statements" } : null,
       tb: facts.tbCheck ? { at: facts.tbCheck.at, file: facts.tbCheck.file, months: facts.tbCheck.months, diffs: facts.tbCheck.diffs.length } : null,
-      ...(sub ?? { sales: null, stock: null, ageing: [] }), openChecks: open,
+      ...(sub ?? { sales: null, stock: null, ageing: [] }), openChecks: facts.acceptedUnread ? null : open.blocking, warnings: open.warnings,
     };
-    return dataSteps(s);
+    return dataStatusOf(s);
   }, [c, facts, sub]);
   const tb = facts.tbCheck;
   // While the sub-ledgers stream in, this list is the placeholder: its test ids carry "pending-" so the finished list
@@ -58,6 +65,8 @@ export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers | 
   const id = (x: string) => (sub ? x : `pending-${x}`);
   return (
     <div data-testid={id("data-steps")} data-checking={sub ? undefined : "true"}>
+      {/* The next thing to do, from the same status as the steps below (the wizard's "back to the data steps" lands here). */}
+      {sub && <p className="mb-4 rounded-md bg-band px-4 py-3 text-sm" data-testid="data-next">{next ? <>Next: <strong>{next.n}. {next.title}</strong>: {next.detail}</> : "Setup is complete. Optional steps below add detail."}</p>}
       <ol className="space-y-3">
         {steps.map((s) => (
           <li key={s.id} className={cn("rounded-lg border p-4", s.status === "locked" ? "border-line bg-band/40" : s.status === "issues" ? "border-amber" : "border-line")} data-testid={id(`step-${s.id}`)} data-status={s.status}>

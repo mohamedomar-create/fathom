@@ -61,7 +61,8 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
 
 import { currentAsOf, KPI_DEFS } from "@/lib/engine";
 import { loadBalances } from "./balances";
-import { checkKey, runChecks } from "./checks";
+import { runChecks } from "./checks";
+import { openChecks } from "./status";
 import { accessFrom, AccessError } from "./access";
 function withDefaults(active: string[], cfg: KpiConfig) {
   const set = new Set(active);
@@ -93,7 +94,7 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   if (cErr) throw new AccessError(cErr.code);
   if (!c) notFound();
   // Everything else in one round, the accounts included.
-  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp }, stored, subMap] = await Promise.all([
+  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp, error: impErr }, stored, subMap] = await Promise.all([
     supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
@@ -116,7 +117,9 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const ok = new Set(accepted.map((a) => a.key));
   const tChecks = Date.now();
   const unit = report.unit === 1000 || report.unit === 1_000_000 ? report.unit : 1;
-  const failing = runChecks({ accounts, months, unit }).filter((x) => x.severity === "block" && !ok.has(checkKey(x))).length;
+  // One count everywhere (status.ts). If what was accepted couldn't be read, the checks can't be judged: unknown, never failing.
+  const open = impErr ? null : openChecks(runChecks({ accounts, months, unit }), ok);
+  const health = { failing: open?.blocking ?? 0, warnings: open?.warnings ?? 0, state: !open ? "unknown" as const : open.blocking ? "failing" as const : "ok" as const };
   const commentary: Record<string, string> = {};
   for (const r of comm ?? []) commentary[`${r.period_key}|${r.section}`] = r.body;
   logOp({ op: "company_bundle", company: id, ms: Date.now() - t0, attempts: 1, outcome: "ok", detail: `checks ${Date.now() - tChecks} ms, ${accounts.length} accounts, ${months.length} months` });
@@ -126,6 +129,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health: { failing }, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), closedThrough: c.closed_through ?? null,
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), closedThrough: c.closed_through ?? null,
   };
 });

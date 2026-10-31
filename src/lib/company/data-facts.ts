@@ -1,5 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
-import { booksStartOf, openingAsAtOf, tbCheckOf } from "./time-zone";
+import { booksStartOf, cashBasisOf, openingAsAtOf, tbCheckOf } from "./time-zone";
 import type { DataFacts } from "@/components/data/data-steps";
 
 /**
@@ -9,7 +9,7 @@ import type { DataFacts } from "@/components/data/data-steps";
  */
 export async function loadDataFacts(supabase: Awaited<ReturnType<typeof createClient>>, id: string, dataVersion: number): Promise<DataFacts> {
   const head = { count: "exact" as const, head: true };
-  const [{ data: c }, { data: imports }, s, e, p] = await Promise.all([
+  const [{ data: c }, { data: imports, error: impErr }, s, e, p] = await Promise.all([
     supabase.from("companies").select("source, kpi_config").eq("id", id).maybeSingle(),
     supabase.from("imports").select("data_version, action, report").eq("company_id", id).eq("action", "import").order("created_at", { ascending: false }).limit(40),
     supabase.from("sales_batches").select("id", head).eq("company_id", id).eq("source", "ledger"),
@@ -22,9 +22,11 @@ export async function loadDataFacts(supabase: Awaited<ReturnType<typeof createCl
   // The current books, not history: a ledger replaced by summary statements leaves no ledger lines behind.
   const ledger = odoo || reports.find((x) => x.v === dataVersion)?.r.source === "ledger" || !!s.count || !!e.count || !!p.count;
   return {
-    ledger, odoo,
+    ledger, odoo, cashBasis: cashBasisOf(c?.kpi_config),
     openingInLedger: reports.some((x) => x.r.openingBasis === "file"),
     booksStart: booksStartOf(c?.kpi_config), openingAsAt: openingAsAtOf(c?.kpi_config), tbCheck: tbCheckOf(c?.kpi_config),
     accepted: (reports.find((x) => x.v === dataVersion)?.r.accepted ?? []).map((a) => a.key),
+    // What was accepted couldn't be read: the open checks can't be counted (never shown as all open).
+    acceptedUnread: !!impErr,
   };
 }

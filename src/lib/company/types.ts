@@ -36,7 +36,8 @@ export interface CompanyBundle {
   /** Known data issues accepted at import (shown in reports). */
   accepted?: { title: string; period?: string; reason: string }[];
   /** Blocking checks failing in the current data that nobody accepted. */
-  health?: { failing: number };
+  /** failing: blocking checks not accepted; state comes from the one status model (unknown when the checks couldn't be read). */
+  health?: { failing: number; warnings?: number; state?: "ok" | "failing" | "unknown" };
   /** The latest month is a part month whose figures stop on this day ("2026-10-10"). */
   asOf?: string;
   /** The books are closed up to and including this month (0043): nothing in it changes until it is reopened. */

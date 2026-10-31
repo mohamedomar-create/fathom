@@ -158,4 +158,11 @@ describe("readiness when a module's figures could not be read", () => {
     expect(all.find((r) => r.key === "financials")?.unread).toBeUndefined();
     expect(readiness(base).some((r) => r.unread)).toBe(false);
   });
+
+  it("a sector still being added up is pending (O11): not scored as missing, and not called unread either", () => {
+    const base = company(ps("2025-12", 13), { bsOnly: ["2025-12"] });
+    const inv = readiness({ ...base, pending: ["inventory"] }).find((r) => r.key === "inventory")!;
+    expect(inv.pending).toBe(true);
+    expect(inv.unread).toBeUndefined();
+  });
 });

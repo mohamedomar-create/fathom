@@ -7,7 +7,7 @@ import { agedTieouts, inventoryTies, type ReadinessInput } from "./readiness";
 import type { DataStatus } from "./data-steps";
 
 /** The sub-ledger steps' status: small enough to send to the page instead of the data behind it. */
-export type SubLedgers = Pick<DataStatus, "sales" | "stock" | "ageing" | "unread">;
+export type SubLedgers = Pick<DataStatus, "sales" | "stock" | "ageing" | "unread" | "pending">;
 
 export function subLedgerStatus(x: ReadinessInput): SubLedgers {
   const s = x.sales;

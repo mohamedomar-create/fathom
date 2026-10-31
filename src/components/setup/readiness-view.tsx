@@ -95,9 +95,13 @@ export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: str
     <section className="rounded-lg border border-line p-4" data-testid={`readiness-${r.key}`}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-lg font-medium">{r.label}</h3>
-        {!r.unread && <RadarLegend />}
+        {!r.unread && !r.pending && <RadarLegend />}
       </div>
-      {r.unread ? (
+      {r.pending ? (
+        <p role="status" className="rounded border border-line bg-band px-4 py-3 text-sm" data-testid={`readiness-pending-${r.key}`}>
+          Still adding up your latest upload. Nothing is missing because of this; reload the page in a minute.
+        </p>
+      ) : r.unread ? (
         <p role="status" className="rounded border border-amber/60 bg-amber/10 px-4 py-3 text-sm" data-testid={`readiness-unread-${r.key}`}>
           Couldn&apos;t be checked just now: these figures couldn&apos;t be read. Nothing is missing because of this. Reload the page to try again.
         </p>
