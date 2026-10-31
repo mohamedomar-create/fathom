@@ -35,8 +35,25 @@ export interface InventoryWire {
 }
 
 /** What a page receives: the summary (when one is ready), whether a newer one is being prepared, and a build error. */
-export interface InventoryState { wire: unknown; pending: boolean; error: string | null; builtAt: string | null }
+/** failedAt: the latest rebuild failed at that time; wire is then the last good copy (from builtAt), shown as stale. */
+export interface InventoryState { wire: unknown; pending: boolean; error: string | null; builtAt: string | null; failedAt?: string | null }
 export const NO_INVENTORY_STATE: InventoryState = { wire: null, pending: false, error: null, builtAt: null };
+
+/** inventory_state's answer as the pages read it (0044: a failed rebuild keeps the last good copy beside its error). */
+export function inventoryStateFrom(data: unknown): InventoryState {
+  const o = (data ?? {}) as { summary?: unknown; pending?: boolean; built_at?: string | null; error?: string | null; error_at?: string | null };
+  const summary = o.summary as { error?: string } | null | undefined;
+  // An old-style summary holding only its error (before 0044) has no good copy either.
+  const good = summary && !summary.error ? summary : null;
+  const failed = !!o.error || !!summary?.error;
+  return {
+    wire: good,
+    pending: o.pending === true,
+    error: failed && !good ? "BUILD_FAILED" : null,
+    builtAt: good ? o.built_at ?? null : null,
+    failedAt: failed && good ? o.error_at ?? null : null,
+  };
+}
 
 const n = (v: unknown) => (typeof v === "number" ? v : typeof v === "string" && v !== "" && Number.isFinite(Number(v)) ? Number(v) : 0);
 const nOrNull = (v: unknown) => (v === null || v === undefined || v === "" ? null : n(v));

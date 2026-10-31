@@ -30,7 +30,11 @@ export async function loadKept<T>(kind: Kind, companyId: string, parse: (raw: un
     // latest figures straight away. If that is too slow or fails, the previous figures (marked as updating) or the
     // waiting screen stand.
     const live = await liveSummary(kind, companyId, parse, ref);
-    return live ? loaded(isEmpty(live) ? "empty" : "ready", live) : state;
+    if (!live) return state;
+    // The live re-sum is the latest good copy too (O17): if the next read fails, it is what is shown, with its time.
+    const at = new Date().toISOString();
+    keepGood(kind, companyId, null, at, live);
+    return loaded(isEmpty(live) ? "empty" : "ready", live, at);
   }
   logOp({ op: `summary_state:${kind}`, company: companyId, ms: Date.now() - t0, attempts, outcome: held ? "stale" : "failed", code: result.error.code, ref });
   return afterError(held, empty, ref, result.error.code);

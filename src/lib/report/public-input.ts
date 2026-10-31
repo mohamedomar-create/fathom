@@ -7,7 +7,8 @@ import { normaliseSections, reportMonths, type ReportInput } from "@/lib/report/
 import { parseSalesSummary } from "@/lib/company/sales-parse";
 import { parseExpenseSummary } from "@/lib/company/expenses-parse";
 import type { ClassKey, PeriodType } from "@/lib/engine";
-import { currentAsOf } from "@/lib/engine";
+import { currentAsOf, selectableEnds } from "@/lib/engine";
+import { linkState } from "./link-state";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 
 interface Payload {
@@ -29,16 +30,28 @@ interface Payload {
 
 const longDate = (d: Date) => d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 
-/** A published report's figures for its link (the frozen ones once published), or null when the link doesn't work. */
+/** The link's figures couldn't be read just now (not the same as a link that doesn't exist). */
+export class ReportUnavailable extends Error {}
+
+/**
+ * A published report's figures for its link (the frozen ones once published), or null when the link doesn't work.
+ * Throws ReportUnavailable when they couldn't be read; sales or expenses that couldn't be read are named in unread.
+ */
 export async function loadPublicReportInput(token: string): Promise<ReportInput | null> {
   const supabase = await createClient();
-  const [{ data }, { data: salesRaw }, { data: expensesRaw }] = await Promise.all([
+  const [{ data, error }, { data: salesRaw, error: salesErr }, { data: expensesRaw, error: expensesErr }] = await Promise.all([
     supabase.rpc("get_published_report", { p_token: token }),
     supabase.rpc("get_published_sales", { p_token: token }),
     supabase.rpc("get_published_expenses", { p_token: token }),
   ]);
-  if (!data) return null;
-  const p = data as unknown as Payload;
+  const p = data as unknown as Payload | null;
+  const all0 = p ? buildMonths(withSubClasses(naturalAccounts(p.accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: Object.fromEntries(Object.entries(a.amounts).map(([k, v]) => [k, Number(v)])) }))), p.sub_classes ?? {})) : [];
+  const state = linkState({
+    mainError: !!error, found: !!p, salesError: !!salesErr, expensesError: !!expensesErr, frozen: !!p?.frozen_at, end: p?.report.period_end ?? "",
+    ends: p ? selectableEnds(all0, p.report.period_type as PeriodType, settingsFromRow(p.company).settings.fyStartMonth) : [],
+  });
+  if (state.kind === "unavailable") { console.error("get_published_report", error?.code); throw new ReportUnavailable("unavailable"); }
+  if (state.kind === "not_found" || !p) return null;
   const accounts = withSubClasses(naturalAccounts(p.accounts.map((a) => ({ id: a.id, code: a.code, name: a.name, cls: a.class as ClassKey, raw: Object.fromEntries(Object.entries(a.amounts).map(([k, v]) => [k, Number(v)])) }))), p.sub_classes ?? {});
   const { settings: base, alerts } = settingsFromRow(p.company);
   const settings = typeof p.vat_rate === "number" && p.vat_rate >= 0 && p.vat_rate <= 0.5 ? { ...base, vatRate: p.vat_rate } : base;
@@ -53,5 +66,6 @@ export async function loadPublicReportInput(token: string): Promise<ReportInput 
     preparedOn: longDate(p.frozen_at ? new Date(p.frozen_at) : new Date()),
     // As on the company's pages: the stop day counts only while it falls in the latest month the link carries.
     asOf: currentAsOf(p.as_of, all.map((m) => m.period)),
+    unread: state.unread, periodGone: state.periodGone,
   };
 }

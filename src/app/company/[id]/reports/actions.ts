@@ -1,4 +1,6 @@
 "use server";
+import { reportRefusal } from "@/lib/report/create-guard";
+import { loadCompanyMeta } from "@/lib/company/meta";
 import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
@@ -16,6 +18,12 @@ const SIGN_IN = { ok: false, error: "Please sign in again." } as const;
 export async function createReport(companyId: string, periodEnd: string) {
   const { supabase, user } = await getUser();
   if (!user) redirect("/login");
+  // The role is checked here, not only by hiding the button; a refusal comes back to the page with its reason.
+  const invalid = reportRefusal("editor", companyId, periodEnd);
+  if (invalid) redirect(Uuid.safeParse(companyId).success ? `/company/${companyId}/reports?error=${invalid}` : "/companies");
+  const meta = await loadCompanyMeta(companyId);
+  const refused = reportRefusal(meta.role, companyId, periodEnd);
+  if (refused) redirect(`/company/${companyId}/reports?error=${refused}`);
   // A second press within a few seconds (a double-click before the page was ready) opens the report just made.
   const since = new Date(Date.now() - 10_000).toISOString();
   const { data: just } = await supabase.from("reports").select("id").eq("company_id", Uuid.parse(companyId)).eq("created_by", user.id).gte("created_at", since).limit(1).maybeSingle();
@@ -24,7 +32,7 @@ export async function createReport(companyId: string, periodEnd: string) {
     company_id: Uuid.parse(companyId), period_end: Period.parse(periodEnd), period_type: "month", title: "Monthly Performance Report",
     sections: DEFAULT_SECTIONS as unknown as Json, created_by: user.id,
   }).select("id").single();
-  if (error) throw new Error(dbError(error, "createReport"));
+  if (error) { console.error("createReport", dbError(error, "createReport")); redirect(`/company/${companyId}/reports?error=save`); }
   redirect(`/company/${companyId}/reports/${data.id}`);
 }
 
@@ -52,8 +60,15 @@ export async function saveCommentary(companyId: string, periodKey: string, secti
   const { supabase, user } = await getUser();
   if (!user) return SIGN_IN;
   if (body.trim() === "") {
-    const { error } = await supabase.from("commentary").delete().eq("company_id", companyId).eq("period_key", periodKey).eq("section", section);
-    return error ? { ok: false, error: dbError(error, "saveCommentary") } : { ok: true };
+    const { error, count } = await supabase.from("commentary").delete({ count: "exact" }).eq("company_id", companyId).eq("period_key", periodKey).eq("section", section);
+    if (error) return { ok: false, error: dbError(error, "saveCommentary") };
+    // Nothing removed: either there was nothing to clear, or row security refused it (a viewer). Say which.
+    if (!count) {
+      const { data: still } = await supabase.from("commentary").select("section").eq("company_id", companyId).eq("period_key", periodKey).eq("section", section).maybeSingle();
+      if (still) return { ok: false, error: "You do not have permission to change this." };
+    }
+    revalidatePath(`/company/${companyId}`, "layout");
+    return { ok: true };
   }
   const { error } = await supabase.from("commentary").upsert({ company_id: companyId, period_key: periodKey, section, body, source: "user", updated_by: user.id, updated_at: new Date().toISOString() }, { onConflict: "company_id,period_key,section" });
   revalidatePath(`/company/${companyId}`, "layout");

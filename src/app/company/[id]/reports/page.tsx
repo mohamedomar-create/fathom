@@ -4,10 +4,12 @@ import { getUser } from "@/lib/supabase/server";
 import { windowFor, type PeriodType } from "@/lib/engine";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { createReport } from "./actions";
+import { isRefusal, REPORT_REFUSAL } from "@/lib/report/create-guard";
 import { SubmitOnce } from "@/components/ui/submit-once";
 
-export default async function ReportsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ReportsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
   const { id } = await params;
+  const { error: refusal } = await searchParams;
   const { supabase } = await getUser();
   // The same figures the other pages show (the company bundle, loaded once per request), so "Create report" is open
   // exactly when the pages have financial months. It used to read the balances table separately and treat a failed or
@@ -19,7 +21,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
   const last = c.months.length ? c.months[c.months.length - 1].period : null;
   const canEdit = !c.readOnly;
   // Why the button is not offered or not usable, in one sentence.
-  const blocked = !canEdit ? "View-only access: an editor or admin of this company creates reports."
+  const blocked = !canEdit ? REPORT_REFUSAL["view-only"]
     : !last ? `No financial figures are loaded for the current version (version ${c.dataVersion}). Upload the General Ledger on Data ▸ Steps first.`
     : null;
   const create = createReport.bind(null, id, last ?? new Date().toISOString().slice(0, 7));
@@ -30,6 +32,7 @@ export default async function ReportsPage({ params }: { params: Promise<{ id: st
           <p className="text-mute">Branded A4 reports with commentary — download as PDF or share a link.</p></div>
         {canEdit && <form action={create}><SubmitOnce disabled={!last} aria-describedby={blocked ? "report-blocked" : undefined} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50" data-testid="create-report"><Plus className="h-4 w-4" />Create report</SubmitOnce></form>}
       </div>
+      {isRefusal(refusal) && <p role="alert" className="mb-4 rounded bg-red-bg px-3 py-2 text-sm text-red" data-testid="report-refused">{REPORT_REFUSAL[refusal]}</p>}
       {blocked && (
         <p id="report-blocked" className="mb-4 rounded bg-amber/15 px-3 py-2 text-sm" data-testid="report-blocked">
           {blocked}{canEdit && !last && <> <Link href={`/company/${id}/data`} className="underline">Open Data ▸ Steps</Link></>}

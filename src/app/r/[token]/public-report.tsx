@@ -6,6 +6,7 @@ import { APP_NAME } from "@/lib/brand";
 import { ReportDocument } from "@/components/report/report-document";
 import { downloadReportPdf } from "@/lib/report/export";
 import type { ReportInput } from "@/lib/report/types";
+import { UnreadModules } from "@/components/shell/module-state";
 
 export function PublicReport({ input, token }: { input: ReportInput; token: string }) {
   const [busy, setBusy] = useState(false);
@@ -21,7 +22,9 @@ export function PublicReport({ input, token }: { input: ReportInput; token: stri
         </div>
       </div>
       {err && <p className="no-print mx-auto mt-3 max-w-xl rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
-      <div className="py-6 print:p-0"><ReportDocument input={input} /></div>
+      {input.periodGone && <p role="alert" className="mx-auto mt-3 max-w-xl rounded bg-amber/15 px-3 py-2 text-sm" data-testid="report-period-gone">This period is no longer in the books: the company changed its figures after this link was shared. Ask them for an updated link.</p>}
+      {!!input.unread?.length && <p role="status" className="no-print mx-auto mt-3 max-w-xl rounded border border-amber/60 bg-amber/10 px-3 py-2 text-sm" data-testid="report-unread">{input.unread.map((m) => (m === "sales" ? "Sales" : "Expense")).join(" and ")} detail couldn&apos;t be loaded just now, so those parts are marked below. Reload the page to try again.</p>}
+      <UnreadModules modules={input.unread ?? []}><div className="py-6 print:p-0"><ReportDocument input={input} /></div></UnreadModules>
       <footer className="no-print pb-6 text-center text-xs text-mute">
         Shared with {APP_NAME} · <Link href="/privacy" className="hover:text-ink">Privacy</Link> · <Link href="/terms" className="hover:text-ink">Terms</Link>
       </footer>

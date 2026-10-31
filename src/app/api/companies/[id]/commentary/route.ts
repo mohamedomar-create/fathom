@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { analyze, stampMemo } from "@/lib/engine";
 import { buildContext, linesContext } from "@/lib/ai/context";
-import { loadSales } from "@/lib/company/sales-load";
-import { loadExpenses } from "@/lib/company/expenses-load";
+import { loadSales, noSales } from "@/lib/company/sales-load";
+import { commentaryRefusal } from "@/lib/ai/commentary-guard";
+import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
 import { COMMENTARY_SECTIONS, CommentaryError, commentaryStatus, writeCommentary } from "@/lib/ai/commentary";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { getUser } from "@/lib/supabase/server";
@@ -42,9 +43,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const a = analyze(bundle.months, { type: parsed.data.type, end: parsed.data.end }, bundle.settings, { alerts: bundle.alerts, asOf: bundle.asOf });
     const sel = { type: parsed.data.type, end: parsed.data.end };
     const [salesState, expensesState] = await Promise.all([loadSales(id), loadExpenses(id)]);
-    // Commentary written from figures that could not be read would describe zeros: refuse, so the person can retry.
-    if (salesState.status === "failed" || expensesState.status === "failed")
-      return NextResponse.json({ error: `Sales or expense figures couldn't be read just now (ref ${salesState.ref ?? expensesState.ref}). Please try again in a moment.` }, { status: 503 });
+    // Commentary written from figures that could not be read (or are still being added up) would describe zeros: refuse.
+    const refusal = commentaryRefusal([
+      { status: salesState.status, empty: noSales(salesState.data), ref: salesState.ref },
+      { status: expensesState.status, empty: noExpenses(expensesState.data), ref: expensesState.ref },
+    ]);
+    if (refusal) return NextResponse.json({ error: refusal }, { status: 503 });
     const sales = salesState.data, expenses = expensesState.data;
     const context = {
       ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, asOf: bundle.asOf ?? null, industry: row?.industry, aiContext: (row?.ai_context ?? {}) as Record<string, string>, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, parsed.data.sections),

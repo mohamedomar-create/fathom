@@ -9,7 +9,7 @@ import type { ModuleStatus } from "@/lib/company/loaded";
 const when = (iso: string | null, lang: string) => iso ? new Date(iso).toLocaleString(lang === "ar" ? "ar-EG" : "en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : null;
 
 /** Refreshes the page's server data every `every` ms while `on`, for at most `max` ms; then reports that it gave up. */
-function useAutoRefresh(on: boolean, every: number, max: number) {
+export function useAutoRefresh(on: boolean, every: number, max: number) {
   const router = useRouter();
   const [gaveUp, setGaveUp] = useState(false);
   const started = useRef<number | null>(null);
@@ -25,7 +25,7 @@ function useAutoRefresh(on: boolean, every: number, max: number) {
   return on && gaveUp;
 }
 
-function RetryButton() {
+export function RetryButton() {
   const router = useRouter();
   const t = useT().d.state;
   const [busy, start] = useTransition();
@@ -80,6 +80,18 @@ export function ModuleGate({ module, state, children }: { module: "sales" | "exp
       )}
       {children}
     </>
+  );
+}
+
+/** A page that checks against another module's figures which are an older copy (the latest couldn't be read): says so (O14). */
+export function StaleDependency({ module, builtAt }: { module: "sales" | "expenses" | "payments"; builtAt: string | null }) {
+  const T = useT();
+  const t = T.d.state;
+  return (
+    <div role="status" className="mb-4 flex flex-wrap items-center gap-3 rounded border border-amber/60 bg-amber/10 px-4 py-2 text-sm" data-testid="dependency-stale" data-module={module}>
+      <span className="flex-1">{t.staleDependency(t.modules[module] ?? module, when(builtAt, T.lang) ?? "an earlier read")}</span>
+      <RetryButton />
+    </div>
   );
 }
 

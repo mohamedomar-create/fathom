@@ -3,7 +3,7 @@ import { loadExpenses } from "@/lib/company/expenses-load";
 import { InventoryProvider } from "@/lib/company/inventory-context";
 import { loadInventory } from "@/lib/company/inventory-load";
 import { forInventory } from "@/lib/engine/inventory";
-import { DependencyNote, UnreadModules } from "@/components/shell/module-state";
+import { DependencyNote, StaleDependency, UnreadModules } from "@/components/shell/module-state";
 import { unknownState } from "@/lib/company/loaded";
 import { noExpenses } from "@/lib/company/expenses-load";
 
@@ -16,6 +16,7 @@ export default async function InventoryLayout({ children, params }: { children: 
   return (
     <UnreadModules modules={unread}>
       <DependencyNote modules={unread} />
+      {expenses.status === "stale" && <StaleDependency module="expenses" builtAt={expenses.builtAt} />}
       <ExpensesProvider value={forInventory(expenses.data)}><InventoryProvider state={inventory}>{children}</InventoryProvider></ExpensesProvider>
     </UnreadModules>
   );

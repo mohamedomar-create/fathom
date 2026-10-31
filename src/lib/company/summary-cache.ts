@@ -29,6 +29,8 @@ export function forget(companyId?: string) {
 // database leaves an unchanged summary out, and shown (marked as not the latest, with its time) when a read fails.
 const good = new Map<string, { seq: number | null; builtAt: string | null; data: unknown; at: number }>();
 const GOOD_MAX = 60;
+/** A copy older than this is no longer served as good (O16): a failed read then says so rather than show old figures. */
+const GOOD_TTL_MS = 30 * 60_000;
 
 export function keepGood<T>(kind: string, companyId: string, seq: number | null, builtAt: string | null, data: T) {
   const key = `${kind}:${companyId}`;
@@ -38,7 +40,11 @@ export function keepGood<T>(kind: string, companyId: string, seq: number | null,
 }
 
 export function goodOf<T>(kind: string, companyId: string): { seq: number | null; builtAt: string | null; data: T } | null {
-  return (good.get(`${kind}:${companyId}`) as { seq: number | null; builtAt: string | null; data: T } | undefined) ?? null;
+  const key = `${kind}:${companyId}`;
+  const hit = good.get(key) as { seq: number | null; builtAt: string | null; data: T; at: number } | undefined;
+  if (!hit) return null;
+  if (Date.now() - hit.at > GOOD_TTL_MS) { good.delete(key); return null; }
+  return hit;
 }
 
 /** Forget the last good copies too (tests, or one company). */

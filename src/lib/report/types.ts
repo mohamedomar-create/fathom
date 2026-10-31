@@ -58,6 +58,10 @@ export interface ReportInput {
   forecast?: ForecastDrivers;
   /** Sales by customer and product per month, for the Sales page (left out when there are none). */
   sales?: SalesData;
+  /** A shared link whose sales or expense detail couldn't be read just now (named on the page, never shown as empty). */
+  unread?: ("sales" | "expenses")[];
+  /** A link read live whose period is no longer in the books. */
+  periodGone?: boolean;
   /** Expense lines by supplier and account per month, for the Expenses page (suppliers are left out when there are none). */
   expenses?: ExpensesData;
 }

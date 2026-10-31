@@ -36,3 +36,17 @@ describe("remembered summaries", () => {
     expect(await remember("sales", "co", "s", async () => 5)).toBe(5);
   });
 });
+
+describe("last good copies have an age limit (O16)", () => {
+  it("a copy older than 30 minutes is no longer served as good", async () => {
+    const { keepGood, goodOf, forgetGood } = await import("@/lib/company/summary-cache");
+    forgetGood();
+    vi.useFakeTimers();
+    keepGood("sales", "co", 3, "2026-10-31T10:00:00Z", { total: 1 });
+    vi.advanceTimersByTime(29 * 60_000);
+    expect(goodOf("sales", "co")?.data).toEqual({ total: 1 });
+    vi.advanceTimersByTime(2 * 60_000);
+    expect(goodOf("sales", "co")).toBeNull();
+    vi.useRealTimers();
+  });
+});
