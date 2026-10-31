@@ -166,3 +166,19 @@ describe("readiness when a module's figures could not be read", () => {
     expect(inv.unread).toBeUndefined();
   });
 });
+
+describe("readiness for books without a General Ledger (Phase 3a)", () => {
+  it("statement books: no fix asks for a General Ledger; months and costs are asked for as statements and expense lines", () => {
+    const base = company(["2025-06", "2025-07", "2025-08"]);
+    const all = readiness({ ...base, basis: "statements" });
+    const fixes = all.flatMap((r) => r.items).map((i) => i.fix).filter(Boolean);
+    expect(fixes.length).toBeGreaterThan(0);
+    expect(fixes.filter((f) => /general ledger/i.test(`${f!.what} ${f!.how}`))).toEqual([]);
+    expect(financialsReadiness({ ...base, basis: "statements" }).items.find((i) => i.id === "pl")!.fix!.what).toMatch(/earlier month/);
+    expect(expensesReadiness({ ...base, basis: "statements" }).items[0].fix).toMatchObject({ template: "expenses", href: "data/upload?step=expenses" });
+  });
+  it("ledger books keep asking for the General Ledger (unchanged)", () => {
+    const base = company(["2025-06", "2025-07", "2025-08"]);
+    expect(expensesReadiness(base).items[0].fix!.what).toMatch(/General Ledger/);
+  });
+});

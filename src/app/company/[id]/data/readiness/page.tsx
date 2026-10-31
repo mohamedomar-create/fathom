@@ -25,7 +25,7 @@ export default async function DataReadinessPage({ params }: { params: Promise<{ 
   const all = readiness({
     months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales: sales.data, expenses: expenses.data, inventory: inventory?.wire ? fromWire(inventory.wire) : null, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes,
-    assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero, payments: payments.data, unread, pending,
+    assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero, payments: payments.data, unread, pending, basis: c.booksBasis,
   });
   return <ReadinessView all={all} rows={dataMapRows(c.months, sales.data, expenses.data)} />;
 }

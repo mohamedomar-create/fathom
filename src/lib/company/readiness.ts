@@ -65,6 +65,8 @@ export interface ReadinessInput {
   unread?: ReadinessSector[];
   /** Sectors whose figures are still being added up. */
   pending?: ReadinessSector[];
+  /** Where the books come from: statements and cash books have no General Ledger, so fixes never ask for one. */
+  basis?: "ledger" | "odoo" | "statements" | "cash";
 }
 
 const pct = (x: number) => Math.round(Math.max(0, Math.min(1, x)) * 100);
@@ -73,6 +75,11 @@ const item = (i: Omit<ReadinessItem, "status">): ReadinessItem => ({ ...i, statu
 const isoToday = () => new Date().toISOString().slice(0, 10);
 
 const GL_FIX: ReadinessFix = { what: "Upload your General Ledger for this year", how: "Odoo: Accounting → Reporting → General Ledger → Export. Or use our template.", template: "financials", href: "data/upload?step=financials" };
+const STATEMENTS_FIX: ReadinessFix = { what: "Upload your monthly P&L and balance sheet", how: "Odoo: Accounting → Reporting → Profit and Loss and Balance Sheet, one column per month → Export. Or use our template.", template: "financials", href: "data/upload?step=financials" };
+/** Books without a General Ledger behind them (statements, or a cash book moved to the full system). */
+const noLedger = (x: Pick<ReadinessInput, "basis">) => x.basis === "statements" || x.basis === "cash";
+/** What to upload for more months of books: the General Ledger, or statements when the company keeps no ledger. */
+const booksFix = (x: Pick<ReadinessInput, "basis">) => (noLedger(x) ? STATEMENTS_FIX : GL_FIX);
 
 function summarise(items: ReadinessItem[]): { completion: number; accuracy: number | null } {
   const completion = Math.round(items.reduce((s, i) => s + i.completion, 0) / Math.max(1, items.length));
@@ -92,14 +99,14 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
   const blockedIn = (p: string, st?: "PL" | "BS") => x.checks.some((c) => c.severity === "block" && c.period === p && (!st || !c.statement || c.statement === st));
   const annual = pl.length > 0 && isAnnualColumn(x.months, pl[pl.length - 1].period, x.fyStart);
   if (!pl.length) {
-    items.push(item({ id: "pl", axis: "P&L months", title: "Monthly P&L", completion: 0, accuracy: null, detail: "No P&L is loaded yet.", fix: GL_FIX }));
+    items.push(item({ id: "pl", axis: "P&L months", title: "Monthly P&L", completion: 0, accuracy: null, detail: "No P&L is loaded yet.", fix: booksFix(x) }));
   } else {
     const n = annual ? 12 : last12.length;
     items.push(item({
       id: "pl", axis: "P&L months", title: "Monthly P&L for the last 12 months",
       completion: pct(n / 12), accuracy: pct(1 - last12.filter((m) => blockedIn(m.period, "PL")).length / Math.max(1, last12.length)),
       detail: annual ? "Loaded as annual figures (audited statements): monthly analysis, trends and the forecast need monthly figures." : `${last12.length} of the last 12 months have a P&L (${mlabel(last12[0].period)} to ${mlabel(last12[last12.length - 1].period)}).`,
-      fix: n < 12 || annual ? { ...GL_FIX, what: annual ? "Upload month-by-month figures (General Ledger), 12 months" : `Upload ${12 - n} earlier month${12 - n === 1 ? "" : "s"}` } : undefined,
+      fix: n < 12 || annual ? { ...booksFix(x), what: annual ? `Upload month-by-month figures (${noLedger(x) ? "monthly statements" : "General Ledger"}), 12 months` : `Upload ${12 - n} earlier month${12 - n === 1 ? "" : "s"}` } : undefined,
     }));
   }
   const withBS = last12.filter(hasBS);
@@ -108,7 +115,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "bs", axis: "Balance sheets", title: "A balance sheet at every month end",
     completion: pl.length ? pct(withBS.length / last12.length) : 0, accuracy: withBS.length ? pct(balanced.length / withBS.length) : null,
     detail: !pl.length ? "No months loaded." : `${withBS.length} of ${last12.length} months have a balance sheet; ${balanced.length} of them balance.`,
-    fix: withBS.length < last12.length ? { what: "Upload a balance sheet for each month", how: GL_FIX.how, template: "financials", href: "data/upload?step=financials" }
+    fix: withBS.length < last12.length ? { what: "Upload a balance sheet for each month", how: booksFix(x).how, template: "financials", href: "data/upload?step=financials" }
       : balanced.length < withBS.length ? { what: "Fix the months that don't balance", how: "Data health shows which months, and by how much.", href: "data/checks" } : undefined,
   }));
   const first = pl[0]?.period;
@@ -123,7 +130,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
     id: "opening", axis: "Opening balance", title: "Opening balance sheet (the month before the first month)",
     completion: openOk ? 100 : 0, accuracy: openOk ? (openBal ? 100 : 0) : null,
     detail: !first ? "No months loaded." : openOk ? `Loaded for ${mlabel(open!.period)}${openBal ? "" : ", but it does not balance"}.` : `None loaded: balances start from zero at ${mlabel(first)}. Upload opening balances if the company had balances before.`,
-    fix: openOk ? undefined : { what: `Upload opening balances${first ? ` (the balance sheet at ${monthEndLabel(addMonths(first, -1))})` : ""}`, how: "On the Opening balances card: Odoo's General Ledger or Trial Balance for that one day, or our template.", template: "opening", href: "data/upload?step=opening" },
+    fix: openOk ? undefined : { what: `Upload opening balances${first ? ` (the balance sheet at ${monthEndLabel(addMonths(first, -1))})` : ""}`, how: noLedger(x) ? "On the Opening balances card: a Trial Balance or balance sheet for that one day, or our template." : "On the Opening balances card: Odoo's General Ledger or Trial Balance for that one day, or our template.", template: "opening", href: "data/upload?step=opening" },
   }));
   if (pl.length) {
     const span = monthIndex(pl[pl.length - 1].period) - monthIndex(pl[0].period) + 1;
@@ -132,7 +139,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "gaps", axis: "No gaps", title: "Every month between the first and the latest",
       completion: pct(1 - gaps / Math.max(1, span)), accuracy: null,
       detail: gaps ? `${gaps} month${gaps === 1 ? " is" : "s are"} missing inside the range loaded.` : "No missing months.",
-      fix: gaps ? { ...GL_FIX, what: "Upload the missing months", href: "data/checks" } : undefined,
+      fix: gaps ? { ...booksFix(x), what: "Upload the missing months", href: "data/checks" } : undefined,
     }));
     const today = x.today ?? isoToday();
     const behind = monthIndex(today.slice(0, 7)) - monthIndex(pl[pl.length - 1].period);
@@ -140,7 +147,7 @@ export function financialsReadiness(x: ReadinessInput): SectorReadiness {
       id: "fresh", axis: "Up to date", title: "The latest month is loaded",
       completion: behind <= 1 ? 100 : behind === 2 ? 60 : behind === 3 ? 30 : 0, accuracy: null,
       detail: `Latest month: ${mlabel(pl[pl.length - 1].period)}.`,
-      fix: behind > 1 ? { ...GL_FIX, what: `Upload the months after ${mlabel(pl[pl.length - 1].period)}` } : undefined,
+      fix: behind > 1 ? { ...booksFix(x), what: `Upload the months after ${mlabel(pl[pl.length - 1].period)}` } : undefined,
     }));
     const cf = cashFlowByMonth(x.months, last12.map((m) => m.period));
     const clean = cf.rows.filter((r) => r.unreconciled === 0).length;
@@ -200,7 +207,11 @@ const costsOf = (m: MonthData) => COST_CLASSES.reduce((t, k) => t + ((m.pl as Re
 
 export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   const e = x.expenses;
-  const FIX: ReadinessFix = { what: "Upload your General Ledger", how: "Odoo: Accounting → Reporting → General Ledger → Export. Its cost lines show who you pay.", template: "financials", href: "data/upload?step=financials" };
+  const nl = noLedger(x);
+  const FIX: ReadinessFix = nl
+    ? { what: "Upload your expense lines", how: "Odoo: Accounting → Vendors → Bills → list view → Export, or our expenses template with every cost (salaries, rent, depreciation too).", template: "expenses", href: "data/upload?step=expenses" }
+    : { what: "Upload your General Ledger", how: "Odoo: Accounting → Reporting → General Ledger → Export. Its cost lines show who you pay.", template: "financials", href: "data/upload?step=financials" };
+  const forMonths = nl ? "Upload expense lines" : "Upload the General Ledger";
   const months = e ? expenseMonths(e) : [];
   const items: ReadinessItem[] = [];
   if (!e || !months.length) {
@@ -212,7 +223,7 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   const covered = pl.length ? n / pl.length : 1;
   items.push(item({ id: "loaded", axis: "Months covered", title: "Expense lines for every financial month", completion: pct(covered), accuracy: null,
     detail: pl.length ? `${n} of ${pl.length} financial months have expense lines.` : `${months.length} months of expense lines.`,
-    fix: covered < 1 ? { ...FIX, what: "Upload the General Ledger for the missing months" } : undefined }));
+    fix: covered < 1 ? { ...FIX, what: `${forMonths} for the missing months` } : undefined }));
   const byMonth = new Map<string, number>();
   for (const r of e.suppliers) if (isCostLine(r.c)) byMonth.set(r.p, (byMonth.get(r.p) ?? 0) + r.a);
   const both = pl.filter((m) => byMonth.has(m.period));
@@ -229,7 +240,8 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
       + (noCos.length ? ` Cost of sales missing: ${Math.round(missing).toLocaleString("en-US")} a month on average, in ${noCos.length} month${noCos.length > 1 ? "s" : ""}.` : "")
       + ` ${COSTS_DEFINITION}`,
     fix: both.length && tied.length < both.length ? (noCos.length
-      ? { what: "Include cost of sales in the expense lines", how: "Include cost of sales, salaries, rent, depreciation and every other cost, so each month matches your P&L. The General Ledger has them all.", template: "financials", href: "expenses/trend" }
+      ? { what: "Include cost of sales in the expense lines", how: `Include cost of sales, salaries, rent, depreciation and every other cost, so each month matches your P&L.${nl ? "" : " The General Ledger has them all."}`, template: nl ? "expenses" : "financials", href: "expenses/trend" }
+      : nl ? { what: "Use an expense file with every cost", how: "A bills file holds bills only. Add salaries, rent and depreciation so each month matches your P&L.", template: "expenses", href: "expenses/trend" }
       : { what: "Use the General Ledger for all costs", how: "A bills file holds bills only. The ledger also has salaries, rent and depreciation.", template: "financials", href: "expenses/trend" }) : undefined }));
   const pay = e.suppliers.filter((r) => r.s !== "Depreciation (no payment)" && r.s !== "Cost of goods sold (stock)" && isCostLine(r.c));
   const total = pay.reduce((t, r) => t + Math.abs(r.a), 0) || 1;
@@ -245,7 +257,7 @@ export function expensesReadiness(x: ReadinessInput): SectorReadiness {
   const latest = pl[pl.length - 1]?.period;
   if (latest) items.push(item({ id: "fresh", axis: "Up to date", title: "The latest month has expense lines", completion: months.includes(latest) ? 100 : 0, accuracy: null,
     detail: months.includes(latest) ? `${mlabel(latest)} is in.` : `${mlabel(latest)} has no expense lines yet.`,
-    fix: months.includes(latest) ? undefined : { ...FIX, what: `Upload the General Ledger for ${mlabel(latest)}` } }));
+    fix: months.includes(latest) ? undefined : { ...FIX, what: `${forMonths} for ${mlabel(latest)}` } }));
   return { key: "expenses", label: "Expenses", ...summarise(items), items };
 }
 
@@ -286,7 +298,7 @@ export function inventoryReadiness(x: ReadinessInput): SectorReadiness {
     const checked = all.filter((t) => t.status !== "no_ledger"), ok = checked.filter((t) => t.status === "ok");
     items.push(item({ id: `tie_${key}`, axis, title, completion: checked.length ? 100 : 0, accuracy: checked.length ? pct(ok.length / checked.length) : null,
       detail: checked.length ? `${ok.length} of ${checked.length} month${checked.length === 1 ? "" : "s"} agree.` : "Nothing in the accounts to check against yet.",
-      fix: !checked.length ? { ...GL_FIX, what: "Upload your General Ledger for the same months" } : ok.length < checked.length ? { what: "Find the documents behind each difference", how: "On the Valuation page, each difference lists its documents.", href: "inventory/valuation" } : undefined }));
+      fix: !checked.length ? { ...booksFix(x), what: noLedger(x) ? "Upload your P&L and balance sheet for the same months" : "Upload your General Ledger for the same months" } : ok.length < checked.length ? { what: "Find the documents behind each difference", how: "On the Valuation page, each difference lists its documents.", href: "inventory/valuation" } : undefined }));
   }
   return { key: "inventory", label: "Inventory", ...summarise(items), items };
 }
@@ -330,7 +342,7 @@ export function bankingReadiness(x: ReadinessInput): SectorReadiness {
   const hist = annualYears >= 3 ? 1 : Math.max(pl.length / 24, annualYears / 3);
   items.push(item({ id: "history", axis: "History", title: "Two years of months, or three audited years", completion: pct(hist), accuracy: null,
     detail: `${pl.length} months${annualYears ? ` (${annualYears} annual)` : ""} loaded. Banks look at 2–3 years.`,
-    fix: hist < 1 ? { what: "Add earlier years", how: "Upload each year's General Ledger, or audited statements (PDF works).", template: "financials", href: "data/upload?step=financials" } : undefined }));
+    fix: hist < 1 ? { what: "Add earlier years", how: noLedger(x) ? "Upload each year's statements (audited PDFs work)." : "Upload each year's General Ledger, or audited statements (PDF works).", template: "financials", href: "data/upload?step=financials" } : undefined }));
   const last = [...x.months].filter(hasBS).sort((p, q) => p.period.localeCompare(q.period)).pop();
   const debt = last ? bsCalc(last.bs).debt : 0;
   const hasNum = (v: unknown) => typeof v === "number" && Number.isFinite(v);
@@ -357,10 +369,10 @@ export function forecastReadiness(x: ReadinessInput): SectorReadiness {
   const last = pl[pl.length - 1];
   const items: ReadinessItem[] = [
     item({ id: "run", axis: "History", title: "12 or more consecutive months (24 for seasonality)", completion: pct(run / 12), accuracy: null, detail: `${run} consecutive months up to the latest.`,
-      fix: run < 12 ? { ...GL_FIX, what: "Upload earlier months: 12 in a row" } : undefined }),
+      fix: run < 12 ? { ...booksFix(x), what: "Upload earlier months: 12 in a row" } : undefined }),
     item({ id: "start", axis: "Starting point", title: "The latest month has a balance sheet", completion: last && hasBS(last) ? 100 : 0, accuracy: null,
       detail: last ? (hasBS(last) ? `Starts from ${mlabel(last.period)}.` : `${mlabel(last.period)} has no balance sheet.`) : "No months loaded.",
-      fix: last && hasBS(last) ? undefined : { ...GL_FIX, what: "Upload the balance sheet for the latest month" } }),
+      fix: last && hasBS(last) ? undefined : { ...booksFix(x), what: "Upload the balance sheet for the latest month" } }),
     item({ id: "drivers", axis: "Drivers", title: "Forecast drivers reviewed and saved", completion: x.forecast && Object.keys(x.forecast).length ? 100 : 0, accuracy: null,
       detail: x.forecast && Object.keys(x.forecast).length ? "Saved for this company." : "Using the measured defaults; review growth, margin, days and loans.",
       fix: x.forecast && Object.keys(x.forecast).length ? undefined : { what: "Check the forecast settings and save", how: "On the Forecast page.", href: "analysis/forecast" } }),

@@ -40,8 +40,8 @@ export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData |
   return useMemo(() => readiness({
     months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
-    payments: payments ?? undefined,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.inventorySettings, c.unit, sales, expenses, inventory, payments]);
+    payments: payments ?? undefined, basis: c.booksBasis,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.booksBasis, c.inventorySettings, c.unit, sales, expenses, inventory, payments]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
