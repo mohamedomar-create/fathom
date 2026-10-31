@@ -1,4 +1,5 @@
 import type { LayerKind, MoveKind, OnHand, ProductRow } from "@/lib/ingest/inventory";
+import { positionAt, rollingAbc, stockHistory, type HistoryPoint } from "./inventory-more";
 import { layerKind, isInternalLocation, locationClass, locationTypeOf, productKey, type LocationType, type LocationTypes } from "@/lib/ingest/inventory";
 import { addMonths, daysIn, mlabel, money } from "./format";
 import { windowFor, type PeriodSel } from "./period";
@@ -138,6 +139,12 @@ export interface InventoryAnalysis {
   tieouts: TieOut[];
   /** Where the valued stock is: warehouses, out with customers on rental, in transit (adds up to the stock value). */
   position: StockPosition | null;
+  /** Units in each stock location at the end of the period chosen (not only the latest month). */
+  atEnd: { loc: string; type: LocationType; units: number }[];
+  /** Units and value at each of the 12 month ends to the period's end, by category and location. */
+  history: HistoryPoint[];
+  /** What the ABC classes are measured on. */
+  abcBasis: string;
   findings: InventoryFinding[];
   headline: string;
 }
@@ -370,12 +377,9 @@ export function inventoryAnalysis(
     return { code: x.code, product: x.product, category: x.category, value: v, qty: q, cogs: c, days: c > 0 ? Math.round(v / (c / daysWin)) : null,
       turnover: v > 0 && c > 0 ? r2((c * 365 / daysWin) / v) : null, abc: "C" as ProductStat["abc"], lastOut, flag };
   });
-  const totalCogs = sum(stats.filter((s) => s.cogs > 0), (s) => s.cogs);
-  let cum = 0;
-  for (const s of [...stats].sort((a, b) => b.cogs - a.cogs)) {
-    if (totalCogs > 0 && s.cogs > 0) s.abc = cum / totalCogs < 0.8 ? "A" : cum / totalCogs < 0.95 ? "B" : "C";
-    cum += Math.max(s.cogs, 0);
-  }
+  // ABC on a rolling 12 months to the period's end (cost of sales), so a quiet month doesn't reclass the range.
+  const abc = rollingAbc(d, end);
+  for (const s of stats) s.abc = abc.get(productKey(s.code, s.product)) ?? "C";
   const products = stats.sort((a, b) => b.value - a.value);
   const slow = hasValue ? r2(sum(products.filter((p) => p.flag === "slow"), (p) => p.value)) : null;
   const dead = hasValue ? r2(sum(products.filter((p) => p.flag === "dead"), (p) => p.value)) : null;
@@ -493,6 +497,8 @@ export function inventoryAnalysis(
 
   return {
     hasValue, hasMoves, partialValuation, label, position: pos.position,
+    atEnd: hasMoves ? positionAt(d, end) : [], history: hasValue || hasMoves ? stockHistory(d, end, 12) : [],
+    abcBasis: L(`Cost of sales over the 12 months to ${ml(end)}`, `تكلفة المبيعات خلال 12 شهرًا حتى ${ml(end)}`),
     tiles: { value, days: avgStock !== null && avgStock >= 0 && cogs && cogs > 0 ? Math.round((avgStock / cogs) * daysWin) : null, cogs, slow, dead },
     bridge, products, movements: [...mv.values()].map((m) => ({ ...m, q: Math.round(m.q * 10000) / 10000 })), locations: [...locs.values()],
     tieouts, findings, headline,

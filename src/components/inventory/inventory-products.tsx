@@ -35,6 +35,7 @@ export function InventoryProducts() {
           </button>
         ))}
       </div>
+      <p className="mb-2 text-xs text-mute" data-testid="inv-abc-basis">ABC: {s.abcBasis}</p>
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[860px]" data-testid="inv-products">
           <thead>
