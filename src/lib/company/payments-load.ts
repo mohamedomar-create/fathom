@@ -1,3 +1,4 @@
+import type { Unpaid } from "@/lib/cash/figures";
 import "server-only";
 import { cache } from "react";
 import { EMPTY_PAYMENTS, type PaymentsData } from "@/lib/engine/payments";
@@ -7,7 +8,8 @@ import { loadCompanyMeta } from "./meta";
 import { loadKept } from "./summary-load";
 import type { Loaded } from "./loaded";
 
-export interface PaymentsBundle { data: PaymentsData; control: { receivable?: string[]; payable?: string[] } }
+/** cashOwed: what the cash book marks unpaid, for a business whose books came from its cash book and that has no ageing report. */
+export interface PaymentsBundle { data: PaymentsData; control: { receivable?: string[]; payable?: string[] }; cashOwed?: { toYou: Unpaid; byYou: Unpaid; asOf: string } | null }
 
 export const noPayments = (d: PaymentsData) => d.payments.length === 0 && Object.keys(d.aged).length === 0;
 

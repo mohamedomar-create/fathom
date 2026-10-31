@@ -137,6 +137,13 @@ test("a kiosk: its own cash book, its own sheet, figures, entries, and the way t
   await expect(page).toHaveURL(new RegExp(`/company/${id}`), { timeout: 30_000 });
   await page.goto(`/company/${id}/sales?type=year&end=2026-03`);
   await expect(page.getByTestId("tile-sales")).toContainText("4,500", { timeout: 30_000 });
+  // Cash-basis books were built from the cash book: Financials works at once, and says on what basis.
+  await page.goto(`/company/${id}/summary`);
+  await expect(page.getByTestId("cash-basis")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("no-data")).toHaveCount(0);
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("step-ledger")).toContainText("Cash book (cash basis)", { timeout: 30_000 });
+  await expect(page.getByTestId("step-review")).not.toHaveAttribute("data-status", "locked");
   await page.goto(`/company/${id}/settings/profile`);
   await page.getByTestId("to-cash").click();
   await page.getByTestId("to-cash-dialog").getByRole("button", { name: "Move to the cash book" }).click();

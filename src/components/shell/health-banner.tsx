@@ -13,16 +13,27 @@ export function HealthBanner() {
   const n = c.health?.failing ?? 0;
   if (path.includes("/settings/") || path.includes("/data")) return null;
   // The checks couldn't be read: say so plainly, never "N checks fail" and never nothing at all.
-  if (c.health?.state === "unknown") return (
+  if (c.health?.state === "unknown") return (<><CashBasis />
     <p role="status" className="mt-3 flex items-center gap-2 rounded-md bg-band px-4 py-2 text-[13px] text-mute no-print" data-testid="health-unknown">
       <AlertTriangle className="h-4 w-4 shrink-0" />{d.healthUnknown}
-    </p>
+    </p></>
   );
-  if (!n) return null;
-  return (
+  if (!n) return <CashBasis />;
+  return (<><CashBasis />
     <Link prefetch={false} href={`${c.basePath}/data/checks`} className="mt-3 flex items-center gap-2 rounded-md bg-red-bg px-4 py-2 text-[13px] text-red hover:underline no-print" data-testid="health-banner">
       <AlertTriangle className="h-4 w-4 shrink-0" />
       {d.health(n)}
-    </Link>
+    </Link></>
+  );
+}
+
+/** Books built from the cash book: money counted when it moves, so credit sales and bills show once paid. */
+function CashBasis() {
+  const c = useCompany();
+  if (c.booksBasis !== "cash") return null;
+  return (
+    <p role="note" className="mt-3 rounded-md bg-band px-4 py-2 text-[13px] text-mute no-print" data-testid="cash-basis">
+      Cash basis, from your cash book: money is counted in the month it moves. Sales on credit and unpaid bills appear once they are paid.
+    </p>
   );
 }

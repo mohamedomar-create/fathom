@@ -6,6 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { withCashColumns, withMode, withOpeningCash } from "@/lib/company/mode";
+import { saveCashBasisBooks } from "@/lib/cash/to-books";
 import type { Json } from "@/lib/supabase/database.types";
 import { ALL_KINDS } from "@/lib/cash/kinds";
 import { isClosed, openPeriods } from "@/lib/company/close";
@@ -163,6 +164,9 @@ export async function switchToFull(companyId: string): Promise<Result> {
   if (!user) return { ok: false, error: "Please sign in again." };
   const { error } = await supabase.rpc("cash_to_full", { p_company: companyId });
   if (error) return { ok: false, error: said(error, "switchToFull") };
+  // Cash-basis books from the cash book, so Financials and the dashboard work at once (books already uploaded are kept).
+  const books = await saveCashBasisBooks(supabase, companyId);
+  if (!books.ok) return books;
   const r = await patchProfile(companyId, (cfg) => withMode(cfg, "full"));
   if (r.ok) revalidatePath(`/company/${companyId}`, "layout");
   return r;

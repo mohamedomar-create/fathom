@@ -1,5 +1,5 @@
 import type { createClient } from "@/lib/supabase/server";
-import { booksStartOf, cashBasisOf, openingAsAtOf, tbCheckOf } from "./time-zone";
+import { booksStartOf, openingAsAtOf, tbCheckOf } from "./time-zone";
 import type { DataFacts } from "@/components/data/data-steps";
 
 /**
@@ -22,7 +22,8 @@ export async function loadDataFacts(supabase: Awaited<ReturnType<typeof createCl
   // The current books, not history: a ledger replaced by summary statements leaves no ledger lines behind.
   const ledger = odoo || reports.find((x) => x.v === dataVersion)?.r.source === "ledger" || !!s.count || !!e.count || !!p.count;
   return {
-    ledger, odoo, cashBasis: cashBasisOf(c?.kpi_config),
+    // Books built from the cash book when the business moved to the full system (the upload that made the current figures).
+    ledger, odoo, cashBasis: reports.find((x) => x.v === dataVersion)?.r.source === "cashbook",
     openingInLedger: reports.some((x) => x.r.openingBasis === "file"),
     booksStart: booksStartOf(c?.kpi_config), openingAsAt: openingAsAtOf(c?.kpi_config), tbCheck: tbCheckOf(c?.kpi_config),
     accepted: (reports.find((x) => x.v === dataVersion)?.r.accepted ?? []).map((a) => a.key),

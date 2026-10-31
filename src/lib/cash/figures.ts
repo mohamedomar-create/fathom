@@ -65,6 +65,11 @@ export interface CashFigures {
   unpaidOut: Fig<Unpaid>;
 }
 
+/** What is still owed, from entries marked unpaid: to the business (money in) and by it (money out), aged from their day. */
+export function cashOwed(entries: Entry[], today: string): { toYou: Unpaid; byYou: Unpaid } {
+  return { toYou: age(entries.filter((e) => e.direction === "in" && e.paid === false), today), byYou: age(entries.filter((e) => e.direction === "out" && e.paid === false), today) };
+}
+
 export function cashFigures(entries: Entry[], o: { opening: { amount: number; asOf: string } | null; today: string; range: Range }): CashFigures {
   const all = [...entries].sort((a, b) => a.day.localeCompare(b.day));
   // Money in and out, months, averages, best month and the forecast are trading that came in or went out: not the owner's

@@ -35,9 +35,33 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
 
 const KIND_LABEL: Record<PaymentKind, string> = { customers: "Customers", suppliers: "Suppliers", transfer: "Between own accounts", other: "Other" };
 
+/** What the cash book marks unpaid, for a business whose books came from it and that has no ageing report yet. */
+function CashOwed() {
+  const c = useCompany();
+  const o = usePayments().cashOwed;
+  if (!o || (!o.toYou.total && !o.byYou.total)) return null;
+  const cur = c.settings.currency;
+  const B = ["0–30 days", "31–60", "61–90", "Over 90"];
+  return (
+    <section className="mx-auto mt-6 max-w-xl rounded-lg border border-line p-4 text-sm" data-testid="cash-owed">
+      <h2 className="font-medium">From your cash book, at {o.asOf}</h2>
+      {([["Still to be paid to you", o.toYou, "cash-owed-to-you"], ["Still to pay", o.byYou, "cash-owed-by-you"]] as const).map(([label, u, id]) => u.total ? (
+        <div key={id} className="mt-2" data-testid={id}>
+          <div><span className="font-medium">{label}: {money(u.total, cur)}</span></div>
+          <div className="text-mute">{u.buckets.map((b, i) => `${B[i]}: ${money(b, cur)}`).join(" · ")}</div>
+        </div>
+      ) : null)}
+      <p className="mt-2 text-[12px] text-mute">Entries marked unpaid in your cash book, aged from their date. An Aged Receivable or Payable from your accounting system replaces this.</p>
+    </section>
+  );
+}
+
 function NoPayments() {
   const c = useCompany();
-  if (useUnread("payments")) return <UnreadInline module="payments" />;
+  const unread = useUnread("payments");
+  const owed = usePayments().cashOwed;
+  if (unread) return <UnreadInline module="payments" />;
+  if (owed) return <CashOwed />;
   return (
     <div className="mx-auto max-w-xl py-16 text-center" data-testid="no-payments">
       <HandCoins className="mx-auto mb-4 h-12 w-12 text-brand" strokeWidth={1.4} />

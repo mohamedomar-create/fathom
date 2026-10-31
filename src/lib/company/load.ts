@@ -15,7 +15,7 @@ import type { AlertSetting, CompanyBundle } from "./types";
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
-import { booksFromZeroOf, cashBasisOf, timeZoneOf, vatRateOf } from "./time-zone";
+import { booksFromZeroOf, timeZoneOf, vatRateOf } from "./time-zone";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
 
 export function forecastFromRow(c: Pick<CompanyRow, "kpi_config">): ForecastDrivers {
@@ -112,7 +112,7 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const months = buildMonths(accounts);
   const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string; unit?: number; source?: string };
   // Where the books come from: Odoo, a cash book moved to the full system, a General Ledger, or monthly statements.
-  const booksBasis = c.source === "odoo" ? "odoo" as const : cashBasisOf(c.kpi_config) ? "cash" as const : report.source === "ledger" ? "ledger" as const : report.source === "summary" ? "statements" as const : undefined;
+  const booksBasis = c.source === "odoo" ? "odoo" as const : report.source === "cashbook" ? "cash" as const : report.source === "ledger" ? "ledger" as const : report.source === "summary" ? "statements" as const : undefined;
   const accepted = report.accepted ?? [];
   // Only the latest month can be a part month: an older import's stop day no longer applies once later months exist.
   const asOf = currentAsOf(report.asOf, months.map((m) => m.period)) ?? undefined;
