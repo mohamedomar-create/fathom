@@ -39,7 +39,7 @@ begin
 end $f$;
 
 select pg_temp.login('ra@x.test');
-select pg_temp.check('no stock yet: nothing due, no summary', pg_temp.state()::text, '{"pending": false, "summary": null, "built_at": null}');
+select pg_temp.check('no stock yet: nothing due, no summary', pg_temp.state()::text, '{"error": null, "pending": false, "summary": null, "built_at": null, "error_at": null}');
 
 -- A valuation upload: nothing is due while it is open; finishing it marks the company.
 create temp table b1 as select public.begin_inventory_batch((select co from ids), 'valuation', array['2026-08', '2026-09'], 'v.xlsx', 'replace', '{}'::jsonb) as id;

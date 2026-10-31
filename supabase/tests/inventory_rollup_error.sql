@@ -10,8 +10,8 @@ begin
   raise notice 'ok  %', label;
 end $f$;
 create function pg_temp.uid(e text) returns uuid language sql as $f$ select id from auth.users where email = e $f$;
-insert into public.companies (org_id, name) select org_id, 'Rollup Co' from public.memberships where user_id = pg_temp.uid('ir-ed@x.test') limit 1;
-create temp table ids as select id co from public.companies where name = 'Rollup Co';
+insert into public.companies (org_id, name) select org_id, 'Rollup Error Co' from public.memberships where user_id = pg_temp.uid('ir-ed@x.test') limit 1;
+create temp table ids as select id co from public.companies where name = 'Rollup Error Co';
 grant select on ids to authenticated;
 create temp table wire_def as select pg_get_functiondef('private.inventory_wire(uuid)'::regprocedure) def;
 create function pg_temp.state() returns jsonb language plpgsql as $f$
@@ -48,9 +48,9 @@ select pg_temp.check('tried again after 10 minutes', private.refresh_inventory_r
 select pg_temp.check('the error is cleared', coalesce(pg_temp.state() ->> 'error', 'none'), 'none');
 
 -- A company whose very first build fails has no summary and says why.
-insert into public.companies (org_id, name) select org_id, 'Rollup Two' from public.memberships where user_id = pg_temp.uid('ir-ed@x.test') limit 1;
+insert into public.companies (org_id, name) select org_id, 'Rollup Error Two' from public.memberships where user_id = pg_temp.uid('ir-ed@x.test') limit 1;
 create or replace function private.inventory_wire(p_company uuid) returns jsonb language plpgsql set search_path = '' as $f$ begin raise exception 'first'; end $f$;
-select private.mark_inventory((select id from public.companies where name = 'Rollup Two'));
+select private.mark_inventory((select id from public.companies where name = 'Rollup Error Two'));
 select private.refresh_inventory_rollups(50);
-select pg_temp.check('first build failed: no summary, the error kept', (select concat((summary is null)::text, ' ', error) from public.inventory_rollups where company_id = (select id from public.companies where name = 'Rollup Two')), 'true first');
+select pg_temp.check('first build failed: no summary, the error kept', (select concat((summary is null)::text, ' ', error) from public.inventory_rollups where company_id = (select id from public.companies where name = 'Rollup Error Two')), 'true first');
 do $$ begin execute (select def from wire_def); end $$;
