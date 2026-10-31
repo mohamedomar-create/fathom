@@ -26,7 +26,7 @@ begin
   if p_patch is null or jsonb_typeof(p_patch) <> 'object' then
     raise exception 'settings must be an object' using errcode = '22023';
   end if;
-  select org_id, coalesce(kpi_config, '{}'::jsonb) into v_org, v_cfg from public.companies where id = p_company for update;
+  select org_id, coalesce(kpi_config, '{}'::jsonb) into v_org, v_cfg from public.companies where id = p_company and deleted_at is null for update;
   if v_org is null or not private.is_member(v_org, 'editor') then
     raise exception 'not allowed' using errcode = '42501';
   end if;

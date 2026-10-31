@@ -69,3 +69,27 @@ describe("what is still owed, carried over to Payments", () => {
     expect(o.byYou).toEqual({ total: 80, buckets: [80, 0, 0, 0] });
   });
 });
+
+describe("review fixes: opening cash", () => {
+  it("movements before the opening date are not counted on top of the opening cash; the P&L keeps them", () => {
+    const r = cashBooks([e("2026-01-10", "in", 3000, "sale"), e("2026-02-10", "out", 1000, "expense"), e("2026-03-05", "in", 500, "sale")], { opening: { amount: 10000, asOf: "2026-03-01" }, today: "2026-03-31" });
+    const months = buildMonths(r.accounts as unknown as AccountLine[]);
+    const mar = bsCalc(months.find((m) => m.period === "2026-03")!.bs);
+    expect(mar).toMatchObject({ cash: 10500, other_equity: 10000, retained_earnings: 500 });
+    expect(Math.abs(mar.imbalance)).toBeLessThan(0.01);
+    expect(months.find((m) => m.period === "2026-01")!.pl.revenue).toBe(3000);
+  });
+  it("an opening dated after the last movement still gives that month's balance sheet", () => {
+    const r = cashBooks([e("2026-01-10", "in", 300, "sale")], { opening: { amount: 1000, asOf: "2026-02-01" }, today: "2026-03-31" });
+    const feb = bsCalc(buildMonths(r.accounts as unknown as AccountLine[]).find((m) => m.period === "2026-02")!.bs);
+    expect(feb.cash).toBe(1000);
+  });
+});
+
+describe("switching to the full system with closed months", () => {
+  it("is refused with a reason before anything is copied", async () => {
+    const { fullSwitchRefusal } = await import("@/lib/cash/books");
+    expect(fullSwitchRefusal("2026-06")).toMatch(/closed through Jun 2026/);
+    expect(fullSwitchRefusal(null)).toBeNull();
+  });
+});

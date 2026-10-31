@@ -72,3 +72,9 @@ select pg_temp.check('a patch that is not an object is refused', pg_temp.refused
 reset role;
 select pg_temp.check('null removes the setting', (pg_temp.cfg() ? 'economy')::text, 'false');
 select pg_temp.check('the merged settings are returned', (select (public.update_company_settings((select co from ids), '{}') ? 'profile')::text), 'true');
+
+-- A company in the bin (soft-deleted) can't be changed.
+update public.companies set deleted_at = now() where id = (select co from ids);
+select pg_temp.login('cs-ed@x.test');
+select pg_temp.check('a deleted company is refused', pg_temp.refused('select public.update_company_settings((select co from ids), ''{"profile": {"vatRate": 0.2}}'')'), 'refused');
+reset role;

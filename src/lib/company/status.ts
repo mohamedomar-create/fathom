@@ -105,7 +105,7 @@ export function companyStatus(s: CompanyStatusInput): CompanyStatus {
     : basis === "cash" ? `${span(b.from, b.to)}, built from your cash book: money in and out, month by month. Sales on credit are not in it until they are paid.`
     : `${span(b.from, b.to)}${basis === "odoo" ? " (Odoo live)" : ""}. ${checksLine || "Every account rolls forward and the balance sheet balances."} Sales, expenses, stock postings and payments come from it.`;
   steps.push({ id: "ledger", n: 3, title: b ? BOOKS_TITLE[b.basis] : "General Ledger", role: basis === "statements" ? "Record: your monthly statements" : basis === "cash" ? "Record: your cash book" : "Record: every account, every month",
-    status: !b ? "todo" : blocking ? "issues" : ledgerBasis ? "verified" : "done", detail: booksDetail,
+    status: !b ? "todo" : !s.checks ? "unchecked" : blocking ? "issues" : ledgerBasis ? "verified" : "done", detail: !b || s.checks ? booksDetail : `${span(b.from, b.to)}. Couldn't be checked just now: the checks couldn't be read. Reload the page to try again.`,
     file: "Accounting → Reporting → General Ledger, from your books start to today, with Initial Balance ticked → Export",
     verifies: "Opening plus entries equals closing for every account; the balance sheet balances every month.", action: { label: b ? (ledgerBasis ? "Upload a newer one" : "Upload a General Ledger") : "Upload", href: up("financials") } });
 
@@ -136,6 +136,12 @@ export function companyStatus(s: CompanyStatusInput): CompanyStatus {
     detail: blocking ? `${plural(blocking, "check")} to look at or accept with a reason.${warnLine}` : `Everything loaded agrees.${warnLine}${basisWord}`,
     action: { label: "Open checks", href: `${s.basePath}/data/checks` } }));
 
+  // Cash-basis books count money when it moves; sales lines are by invoice day and include credit sales, so the two are
+  // not compared (a difference there is the basis, not an error).
+  if (basis === "cash") {
+    const x = steps.find((y) => y.id === "sales")!;
+    if (x.status === "issues" || x.status === "verified") { x.status = "done"; x.detail = `${span(sl!.months[0], sl!.months[sl!.months.length - 1])}. Not compared with your books: they are on a cash basis (money when paid), the sales lines by invoice day.`; }
+  }
   // A sub-ledger that could not be read, or is still being added up, is unknown, not missing: no upload is suggested.
   for (const x of steps) {
     const m = s.modules?.[x.id as "sales" | "stock" | "ageing"];
@@ -161,14 +167,15 @@ export interface ModuleLoad { status: "ready" | "empty" | "pending" | "stale" | 
  * a failed build, a database not yet updated) is unread, never "missing"; a rebuild with a previous copy shows that copy.
  * Stock is checked against the expenses' cost of sales, so it is unread when they are.
  */
-export function moduleStates(x: { sales: ModuleLoad; expenses: ModuleLoad; payments: ModuleLoad; inventory: { error: string | null; pending: boolean; wire: unknown } }): { unread: ("sales" | "stock" | "ageing")[]; pending: ("sales" | "stock" | "ageing")[] } {
+export function moduleStates(x: { sales: ModuleLoad; expenses: ModuleLoad; payments: ModuleLoad; inventory: { error: string | null; pending: boolean; wire: unknown; failedAt?: string | null } }): { unread: ("sales" | "stock" | "ageing")[]; pending: ("sales" | "stock" | "ageing")[] } {
   const unread: ("sales" | "stock" | "ageing")[] = [], pending: ("sales" | "stock" | "ageing")[] = [];
   const of = (m: ModuleLoad, id: "sales" | "stock" | "ageing") => {
     if (m.status === "failed") unread.push(id);
     else if (m.status === "pending" && m.empty) pending.push(id);
   };
   of(x.sales, "sales");
-  if (x.inventory.error || x.expenses.status === "failed") unread.push("stock");
+  // A failed rebuild shows its last good copy on the stock pages, but the checks can't vouch for the latest records.
+  if (x.inventory.error || x.inventory.failedAt || x.expenses.status === "failed") unread.push("stock");
   else if ((x.inventory.pending && !x.inventory.wire) || (x.expenses.status === "pending" && x.expenses.empty)) pending.push("stock");
   of(x.payments, "ageing");
   return { unread, pending };

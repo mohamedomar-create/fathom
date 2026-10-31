@@ -8,6 +8,7 @@ import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { PROFILE_KEY } from "@/lib/company/config-keys";
 import { patchSettings } from "@/lib/company/settings-patch";
 import { saveCashBasisBooks } from "@/lib/cash/to-books";
+import { fullSwitchRefusal } from "@/lib/cash/books";
 import type { Json } from "@/lib/supabase/database.types";
 import { ALL_KINDS } from "@/lib/cash/kinds";
 import { isClosed, openPeriods } from "@/lib/company/close";
@@ -165,6 +166,8 @@ export async function switchToFull(companyId: string): Promise<Result> {
   if (!Id.safeParse(companyId).success) return { ok: false, error: "That business isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  // Closed months can't take the copied entries or the books: say so before anything is copied.
+  { const refused = fullSwitchRefusal(await closedThroughOf(supabase, companyId)); if (refused) return { ok: false, error: refused }; }
   const { error } = await supabase.rpc("cash_to_full", { p_company: companyId });
   if (error) return { ok: false, error: said(error, "switchToFull") };
   // Cash-basis books from the cash book, so Financials and the dashboard work at once (books already uploaded are kept).

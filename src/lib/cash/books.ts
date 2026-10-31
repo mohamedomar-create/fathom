@@ -17,16 +17,18 @@ export function cashBooks(entries: Entry[], o: { opening: { amount: number; asOf
   const last = monthOf(o.today);
   const heldOut = { unpaidIn: 0, unpaidOut: 0 };
   // Each entry's cash month: when it was paid (or its own day when the paid date isn't known); none when unpaid.
-  const moved: { p: string; e: Entry }[] = [];
+  const moved: { p: string; d: string; e: Entry }[] = [];
   for (const e of entries) {
     if (e.paid === false) { if (e.direction === "in") heldOut.unpaidIn = r2(heldOut.unpaidIn + e.amount); else heldOut.unpaidOut = r2(heldOut.unpaidOut + e.amount); continue; }
-    const p = monthOf(e.paid && e.paidOn ? e.paidOn : e.day);
+    const d = e.paid && e.paidOn ? e.paidOn : e.day;
+    const p = monthOf(d);
     if (p > last || e.kind === "transfer") continue;
-    moved.push({ p, e });
+    moved.push({ p, d, e });
   }
   if (!moved.length) return { accounts: [], months: [], heldOut };
   const first = [moved.reduce((a, x) => (x.p < a ? x.p : a), moved[0].p), ...(o.opening ? [monthOf(o.opening.asOf)] : [])].reduce((a, b) => (b < a ? b : a));
-  const end = moved.reduce((a, x) => (x.p > a ? x.p : a), first);
+  const openAt = o.opening ? monthOf(o.opening.asOf) : null;
+  const end = [moved.reduce((a, x) => (x.p > a ? x.p : a), first), ...(openAt && openAt <= last ? [openAt] : [])].reduce((a, b) => (b > a ? b : a));
   const months: string[] = [];
   for (let [y, m] = first.split("-").map(Number); `${y}-${String(m).padStart(2, "0")}` <= end; m === 12 ? (y++, m = 1) : m++) months.push(`${y}-${String(m).padStart(2, "0")}`);
 
@@ -38,8 +40,10 @@ export function cashBooks(entries: Entry[], o: { opening: { amount: number; asOf
   };
   // Movements per month for the balance sheet.
   const mv = new Map<string, { cash: number; assets: number; loans: number; owner: number; profit: number }>(months.map((p) => [p, { cash: 0, assets: 0, loans: 0, owner: 0, profit: 0 }]));
-  for (const { p, e } of moved) {
-    const m = mv.get(p)!;
+  for (const { p, d, e } of moved) {
+    // The opening cash is the balance on its day: what moved before it is already in it (the cash book counts the same
+    // way), so it stays out of the balance sheet; the P&L still shows it.
+    const m = o.opening && d < o.opening.asOf ? { cash: 0, assets: 0, loans: 0, owner: 0, profit: 0 } : mv.get(p)!;
     const signed = e.direction === "in" ? e.amount : -e.amount;
     m.cash += signed;
     switch (e.kind) {
@@ -53,13 +57,12 @@ export function cashBooks(entries: Entry[], o: { opening: { amount: number; asOf
         else { addPl(e.category.trim() || "Expenses (cash book)", "exp_variable", p, e.amount); m.profit -= e.amount; }
     }
   }
-  const openAt = o.opening ? monthOf(o.opening.asOf) : null;
   const bs: Record<"cash" | "assets" | "loans" | "owner" | "profit", Record<string, number>> = { cash: {}, assets: {}, loans: {}, owner: {}, profit: {} };
   const run = { cash: 0, assets: 0, loans: 0, owner: 0, profit: 0 };
   for (const p of months) {
     const m = mv.get(p)!;
     if (openAt === p) { run.cash += o.opening!.amount; run.owner += o.opening!.amount; }
-    for (const k of Object.keys(run) as (keyof typeof run)[]) { run[k] = r2(run[k] + m[k]); bs[k][p] = run[k]; }
+    for (const k of Object.keys(run) as (keyof typeof run)[]) { run[k] = r2(run[k] + m[k]); if (!openAt || p >= openAt) bs[k][p] = run[k]; }
   }
   const BS: [keyof typeof bs, string, ClassKey][] = [
     ["cash", "Cash (cash book)", "cash"], ["assets", "Equipment and assets (cash book)", "fixed_assets"], ["loans", "Loans (cash book)", "ltd"],
@@ -70,4 +73,12 @@ export function cashBooks(entries: Entry[], o: { opening: { amount: number; asOf
     ...BS.map(([k, name, cls]) => ({ code: "", name, cls, amounts: bs[k], mapped_by: "system" as const })),
   ];
   return { accounts, months, heldOut };
+}
+
+/** Moving to the full system copies entries into every month; months already closed can't change (0043), so refuse first. */
+export function fullSwitchRefusal(closedThrough: string | null): string | null {
+  if (!closedThrough) return null;
+  const [y, m] = closedThrough.split("-").map(Number);
+  const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+  return `The books are closed through ${label}, so the cash book can't be copied into those months. Reopen them in Month close first, then switch.`;
 }

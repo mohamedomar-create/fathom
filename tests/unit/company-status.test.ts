@@ -105,3 +105,21 @@ describe("module states for the status model (O11)", () => {
       .toEqual({ unread: ["stock", "ageing"], pending: ["sales"] });
   });
 });
+
+describe("review fixes", () => {
+  it("the books step is not 'verified' when the checks couldn't be read", () => {
+    const s: CompanyStatusInput = { ...base, books: { from: "2026-01", to: "2026-10", basis: "ledger" }, checks: null };
+    expect(step(s, "ledger").status).toBe("unchecked");
+  });
+  it("cash-basis books: sales lines (by invoice day) are not failed against cash revenue, and never become the next step", () => {
+    const s: CompanyStatusInput = { ...base, booksStart: "2026-01-01", booksFromZero: true, books: { from: "2026-01", to: "2026-10", basis: "cash" }, sales: { months: ["2026-01"], untied: ["2026-01"] } };
+    expect(step(s, "sales").status).toBe("done");
+    expect(step(s, "sales").detail).toMatch(/cash basis/i);
+    expect(companyStatus(s).next).toBeNull();
+  });
+  it("a stock rebuild that failed (last good copy shown) is couldn't-be-checked", async () => {
+    const { moduleStates } = await import("@/lib/company/status");
+    const ok = { status: "ready" as const, empty: false };
+    expect(moduleStates({ sales: ok, expenses: ok, payments: ok, inventory: { error: null, pending: false, wire: {}, failedAt: "2026-10-31T09:00:00Z" } })).toEqual({ unread: ["stock"], pending: [] });
+  });
+});
