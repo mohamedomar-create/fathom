@@ -27,6 +27,10 @@ export interface SideView {
   top: { name: string; share: number } | null;
   /** Days of sales (receivable) or of cost (payable) the balance stands for; null without the figures. */
   days: number | null;
+  /** The same days from the balance sheet (the KPI), when given, to show beside them. */
+  kpiDays?: number | null;
+  /** Not yet due and falling due within 30 days of the ageing date (undated items included). */
+  dueSoon: number;
   findings: { id: string; message: string }[];
 }
 export interface Flows {
@@ -63,7 +67,7 @@ export function suggestControl(side: Side, total: number, period: string, accoun
   return own.map((a) => a.code);
 }
 
-function sideView(side: Side, d: AgedData, perDay: number | null): SideView {
+function sideView(side: Side, d: AgedData, perDay: number | null, vatRate = 0, kpiDays?: number | null): SideView {
   const notDueIx = d.buckets.findIndex((b) => NOT_DUE.test(b.trim()));
   const over90Ix = d.buckets.map((b, i) => (OVER_90(b) ? i : -1)).filter((i) => i >= 0);
   const by = new Map<string, PartnerAge>();
@@ -84,6 +88,8 @@ function sideView(side: Side, d: AgedData, perDay: number | null): SideView {
   const total = r2(d.total.total);
   const clamp = (v: number, hi: number) => Math.min(Math.max(v, 0), hi);
   const debtors = all.filter((p) => p.total > 0.005);
+  const in30 = new Date(Date.UTC(+d.asOf.slice(0, 4), +d.asOf.slice(5, 7) - 1, +d.asOf.slice(8, 10) + 30)).toISOString().slice(0, 10);
+  const dueSoon = notDueIx < 0 ? 0 : r2(d.items.filter((it) => !it.day || it.day <= in30).reduce((s, it) => s + Math.max(it.amounts[notDueIx] ?? 0, 0), 0));
   const overdue = r2(debtors.reduce((s, p) => s + clamp(p.overdue, p.total), 0));
   return {
     side, asOf: d.asOf, buckets: d.buckets, total, owed: r2(owedSum), credits: r2(all.filter((p) => p.total < -0.005).reduce((s, p) => s + p.total, 0)),
@@ -91,12 +97,15 @@ function sideView(side: Side, d: AgedData, perDay: number | null): SideView {
     partners: all.filter((p) => Math.abs(p.total) > 0.005 || p.amounts.some((v) => Math.abs(v) > 0.005)).sort((a, b) => b.overdue - a.overdue || b.total - a.total),
     credit: all.filter((p) => p.total < -0.005 && !NO_PARTNER.test(p.name.trim())).sort((a, b) => a.total - b.total),
     top: biggest && owedSum > 0 ? { name: biggest.name, share: biggest.total / owedSum } : null,
-    days: perDay && perDay > 0 ? Math.round(total / perDay) : null,
+    // On the KPI's basis: the balance net of VAT (the figures it is divided by carry none).
+    days: perDay && perDay > 0 ? Math.round(total / (1 + vatRate) / perDay) : null,
+    ...(kpiDays !== undefined ? { kpiDays } : {}),
+    dueSoon,
     findings: d.findings,
   };
 }
 
-export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string; booksAsOf?: string | null } = {}): PaymentsAnalysis {
+export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string; booksAsOf?: string | null; vatRate?: number; kpiDays?: Partial<Record<Side, number | null>> } = {}): PaymentsAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
   const cur = opts.cur ?? "EGP";
@@ -112,8 +121,8 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     const days = ps.reduce((s, p) => s + daysOf(p), 0);
     return ps.reduce((s, p) => s + flows[p], 0) / days;
   };
-  const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue)) : null;
-  const payable = d.aged.payable ? sideView("payable", d.aged.payable, perDay(d.aged.payable.asOf, opts.cost)) : null;
+  const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue), opts.vatRate, opts.kpiDays?.receivable) : null;
+  const payable = d.aged.payable ? sideView("payable", d.aged.payable, perDay(d.aged.payable.asOf, opts.cost), opts.vatRate, opts.kpiDays?.payable) : null;
 
   // The General Ledger's payments, when loaded, are the record (every bank entry, tied to the books); a payments file
   // then only adds what the ledger can't say: cheques still in process.
@@ -186,6 +195,34 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     kind: "watch",
     title: L(`One customer holds ${Math.round(receivable.top.share * 100)}% of what is owed`, `عميل واحد عليه ${Math.round(receivable.top.share * 100)}% من المستحقات`),
     text: L(`${receivable.top.name}: if it pays late, cash is hit hard.`, `${receivable.top.name}: أي تأخير في سداده يؤثر بقوة على السيولة.`),
+  });
+  if (payable && payable.owed > 0 && payable.over90 / payable.owed > 0.2) findings.push({
+    kind: "watch",
+    title: L(`${Math.round((payable.over90 / payable.owed) * 100)}% of what you owe suppliers is more than 90 days old`, `${Math.round((payable.over90 / payable.owed) * 100)}% مما عليك للموردين تجاوز 90 يومًا`),
+    text: L(`${fmt(payable.over90)} owed for over 90 days (${payable.partners.filter((p) => p.over90 > 0).slice(0, 3).map((p) => `${p.name} ${fmt(p.over90)}`).join(", ")}). Old unpaid bills can stop supply; check whether they are disputed or not matched to payments.`,
+      `${fmt(payable.over90)} مستحقة منذ أكثر من 90 يومًا (${payable.partners.filter((p) => p.over90 > 0).slice(0, 3).map((p) => `${p.name} ${fmt(p.over90)}`).join("، ")}). الفواتير القديمة قد توقف التوريد؛ تأكد إن كانت متنازعًا عليها أو غير مطابقة لمدفوعات.`),
+  });
+  if (payable?.top && payable.top.share > 0.3) findings.push({
+    kind: "watch",
+    title: L(`One supplier holds ${Math.round(payable.top.share * 100)}% of what you owe`, `مورد واحد له ${Math.round(payable.top.share * 100)}% مما عليك`),
+    text: L(`${payable.top.name}: the business depends on its terms; a stop in supply would hit hard.`, `${payable.top.name}: النشاط يعتمد على شروطه؛ توقف التوريد سيؤثر بقوة.`),
+  });
+  if (payable && payable.dueSoon > 0) findings.push({
+    kind: "watch",
+    title: L(`${fmt(payable.dueSoon)} of bills fall due in the next 30 days`, `${fmt(payable.dueSoon)} من الفواتير تستحق خلال 30 يومًا`),
+    text: L(`Not yet due at ${payable.asOf}, and due by 30 days after it (bills with no date are included). Make sure the cash is there.`, `غير مستحقة في ${payable.asOf} وتستحق خلال 30 يومًا بعده (الفواتير بلا تاريخ محسوبة). تأكد من توفر النقدية.`),
+  });
+  if (receivable?.days != null && payable?.days != null && payable.days + 15 < receivable.days) findings.push({
+    kind: "watch",
+    title: L(`You pay suppliers in ${payable.days} days but customers take ${receivable.days} days`, `تسدد للموردين خلال ${payable.days} يومًا بينما يسدد العملاء خلال ${receivable.days} يومًا`),
+    text: L("Paying out faster than money comes in ties up cash. Ask suppliers for longer terms, or customers for shorter ones.", "السداد أسرع من التحصيل يحبس النقدية. اطلب آجالًا أطول من الموردين أو أقصر من العملاء."),
+  });
+  for (const v of [receivable, payable]) if (v?.days != null && v.kpiDays != null && Math.abs(v.days - v.kpiDays) > 15) findings.push({
+    kind: "watch",
+    title: v.side === "payable" ? L(`Creditor days differ: ${v.days} from the ageing, ${v.kpiDays} from the balance sheet`, `أيام الموردين مختلفة: ${v.days} من تقرير الأعمار و${v.kpiDays} من الميزانية`)
+      : L(`Debtor days differ: ${v.days} from the ageing, ${v.kpiDays} from the balance sheet`, `أيام العملاء مختلفة: ${v.days} من تقرير الأعمار و${v.kpiDays} من الميزانية`),
+    text: L(`Both are net of VAT. The ageing is one day (${v.asOf}); the balance-sheet figure averages the month ends of the period. A large gap usually means the ageing and the books are not for the same date, or balances sit outside the ${v.side === "payable" ? "suppliers'" : "customers'"} ageing.`,
+      `كلاهما بعد استبعاد ضريبة القيمة المضافة. تقرير الأعمار ليوم واحد (${v.asOf})، ورقم الميزانية متوسط نهايات الأشهر. الفرق الكبير يعني غالبًا اختلاف التاريخ أو أرصدة خارج التقرير.`),
   });
   for (const v of [receivable, payable]) if (v?.credit.length) findings.push({
     kind: "watch",

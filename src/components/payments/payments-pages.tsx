@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { CheckCircle2, HandCoins, TriangleAlert } from "lucide-react";
-import { hasPL, money, pct, type ClassKey } from "@/lib/engine";
+import { analyze, hasPL, money, pct, type ClassKey } from "@/lib/engine";
 import { CLASS_LABEL } from "@/lib/ingest/classes";
 import { paymentsAnalysis, type PaymentKind, type PaymentsAnalysis, type PaymentsFinding, type Side, type SideView } from "@/lib/engine/payments";
 import { useCompany } from "@/lib/company/context";
@@ -29,8 +29,16 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
     const revenue = Object.fromEntries(pl.map((m) => [m.period, m.pl.revenue ?? 0]));
     const cost = Object.fromEntries(pl.map((m) => [m.period, (m.pl.cos_variable ?? 0) + (m.pl.cos_fixed ?? 0)]));
     const accounts = c.accounts.filter((x) => x.cls === "ar" || x.cls === "ap").map((x) => ({ code: x.code, name: x.name, cls: x.cls, amounts: x.amounts }));
-    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency, booksAsOf: c.asOf }), months, hasPayments: data.payments.length > 0 };
-  }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings.fyStartMonth, c.settings.currency, lang, c.asOf]);
+    // The KPI's debtor and creditor days for the ageing's month (balance sheet basis), to show beside the ageing's own.
+    const kpiAt = (asOf?: string) => {
+      const p = asOf?.slice(0, 7);
+      if (!p || !pl.some((m) => m.period === p)) return null;
+      try { return analyze(c.months, { type: "month", end: p }, c.settings, { asOf: c.asOf }).K; } catch { return null; }
+    };
+    const kr = kpiAt(data.aged.receivable?.asOf), kp = kpiAt(data.aged.payable?.asOf);
+    const kpiDays = { receivable: kr?.ar_days != null ? Math.round(kr.ar_days) : null, payable: kp?.ap_days != null ? Math.round(kp.ap_days) : null };
+    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency, booksAsOf: c.asOf, vatRate: c.settings.vatRate ?? 0.14, kpiDays }), months, hasPayments: data.payments.length > 0 };
+  }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings, c.settings.fyStartMonth, c.settings.currency, lang, c.asOf]);
 }
 
 const KIND_LABEL: Record<PaymentKind, string> = { customers: "Customers", suppliers: "Suppliers", transfer: "Between own accounts", other: "Other" };
@@ -235,12 +243,16 @@ export function AgeingPage({ side }: { side: Side }) {
   return (
     <>
       <PageHeader title={title} right={<span className="text-[15px]">As of <b>{v.asOf}</b></span>} />
-      <div className="mb-6 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-5">
+      <div className="mb-6 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-4">
         <Tile label={side === "receivable" ? "Owed by customers" : "Owed to suppliers"} value={money(v.owed, cur)} testId="side-owed" />
         <Tile label="Not yet due" value={money(v.notDue, cur)} />
         <Tile label="Overdue" value={money(v.overdue, cur)} neg={v.overdue > v.notDue} />
         <Tile label="Over 90 days" value={money(v.over90, cur)} neg={v.owed > 0 && v.over90 / v.owed > 0.2} />
         <Tile label={side === "receivable" ? "Customers in credit" : "Suppliers in debit"} value={money(-v.credits, cur)} sub={`${v.credit.length} partners`} neg={v.credit.length > 0} />
+        {/* Days from the ageing on the KPI's basis (net of VAT), with the balance-sheet figure beside it. */}
+        <Tile label={side === "receivable" ? "Debtor days (ageing)" : "Creditor days (ageing)"} value={v.days != null ? `${v.days}` : "–"}
+          sub={v.kpiDays != null ? `balance sheet: ${v.kpiDays}${v.days != null && Math.abs(v.days - v.kpiDays) > 15 ? " (differs)" : ""}` : "net of VAT"} testId="side-days" />
+        {side === "payable" && <Tile label="Due in 30 days" value={money(v.dueSoon, cur)} sub="not yet due" testId="side-due-soon" />}
       </div>
       {v.findings.length > 0 && <ul className="mb-6 list-disc ps-5 text-[13px]" data-testid="side-findings">{v.findings.map((f) => <li key={f.id}>{f.message}</li>)}</ul>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a partner" className="mb-3 w-full max-w-sm rounded border border-line px-3 py-2" data-testid="partner-search" />

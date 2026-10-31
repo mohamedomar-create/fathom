@@ -136,3 +136,43 @@ describe("Payments engine on the General Ledger's payments", () => {
     expect(d.payments[0]).toMatchObject({ kind: "customers", counter: "ar", source: "ledger" });
   });
 });
+
+describe("Payables to standard (Phase 3b)", () => {
+  const P = ["At Date", "1-30", "31-60", "61-90", "91-120", "Older"];
+  const it2 = (partner: string, ref: string, amounts: number[], day: string | null = null) => ({ partner, ref, memo: "", day, amounts, total: amounts.reduce((a, b) => a + b, 0) });
+  const payables = (items: ReturnType<typeof it2>[]): PaymentsData => ({ aged: { payable: { asOf: "2026-09-30", buckets: P, findings: [], total: { amounts: P.map((_, i) => items.reduce((s, x) => s + x.amounts[i], 0)), total: items.reduce((s, x) => s + x.total, 0) }, items } }, payments: [] });
+  const titles = (a: ReturnType<typeof paymentsAnalysis>) => a.findings.map((f) => f.title).join(" | ");
+
+  it("over 90 days, one supplier holding most of it, and bills due in the next 30 days are findings", () => {
+    const a = paymentsAnalysis(payables([it2("Medline", "B1", [100, 0, 0, 0, 0, 900]), it2("Aerogen", "B2", [300, 0, 0, 0, 0, 0], "2026-10-15"), it2("Late", "B3", [200, 0, 0, 0, 0, 0], "2026-12-01")]), SEP, 1);
+    expect(titles(a)).toMatch(/60% of what you owe suppliers is more than 90 days old/);
+    expect(titles(a)).toMatch(/One supplier holds 67% of what you owe/);
+    // Due in 30 days: not-due bills dated within 30 days of the ageing, and undated ones (Medline 100 + Aerogen 300).
+    expect(a.payable!.dueSoon).toBe(400);
+    expect(titles(a)).toMatch(/EGP 400 of bills fall due in the next 30 days/);
+  });
+
+  it("creditor days from the ageing use the KPI's basis (net of VAT, cost of sales before depreciation)", () => {
+    const d = payables([it2("Medline", "B1", [1140, 0, 0, 0, 0, 0])]);
+    const cost = { "2026-07": 930, "2026-08": 930, "2026-09": 900 }; // 2,760 over 92 days = 30 a day
+    expect(paymentsAnalysis(d, SEP, 1, { cost, vatRate: 0.14 }).payable!.days).toBe(33); // 1,000 net of VAT ÷ 30
+    expect(paymentsAnalysis(d, SEP, 1, { cost }).payable!.days).toBe(38); // no VAT rate given: as before
+  });
+
+  it("paying suppliers much faster than customers pay you is a finding", () => {
+    const d: PaymentsData = { ...payables([it2("Medline", "B1", [300, 0, 0, 0, 0, 0])]) };
+    d.aged.receivable = { asOf: "2026-09-30", buckets: P, findings: [], total: { amounts: [3000, 0, 0, 0, 0, 0], total: 3000 }, items: [it2("North", "I1", [3000, 0, 0, 0, 0, 0])] };
+    const flat = { "2026-07": 31, "2026-08": 31, "2026-09": 30 };
+    const a = paymentsAnalysis(d, SEP, 1, { cost: flat, revenue: flat });
+    expect(titles(a)).toMatch(/You pay suppliers in 300 days but customers take 3000 days|customers take/);
+  });
+
+  it("creditor days from the ageing that differ from the balance-sheet figure by more than 15 days carry a note", () => {
+    const d = payables([it2("Medline", "B1", [1140, 0, 0, 0, 0, 0])]);
+    const cost = { "2026-07": 930, "2026-08": 930, "2026-09": 900 };
+    const a = paymentsAnalysis(d, SEP, 1, { cost, vatRate: 0.14, kpiDays: { payable: 60 } });
+    expect(a.payable!.kpiDays).toBe(60);
+    expect(titles(a)).toMatch(/Creditor days differ: 33 from the ageing, 60 from the balance sheet/);
+    expect(titles(paymentsAnalysis(d, SEP, 1, { cost, vatRate: 0.14, kpiDays: { payable: 40 } }))).not.toMatch(/Creditor days differ/);
+  });
+});
