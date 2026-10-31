@@ -52,7 +52,7 @@ export function InventoryProducts() {
                   {p.flag && <span className={cn("ms-2 rounded px-1.5 text-[10.5px] font-semibold", p.flag === "dead" ? "bg-red-bg text-red" : "bg-amber/15 text-[#9a6b00]")}>{p.flag === "dead" ? t.flagDead : t.flagSlow}</span>}
                 </td>
                 <td className="max-w-[180px] truncate !text-start text-mute" title={p.category}>{p.category || "–"}</td>
-                <td className="!text-start"><span data-testid={`abc-${p.abc}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", p.abc === "A" ? "bg-brand-bg text-brand-d" : "bg-band text-mute")}>{p.abc}</span></td>
+                <td className="!text-start">{p.abc ? <span data-testid={`abc-${p.abc}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", p.abc === "A" ? "bg-brand-bg text-brand-d" : "bg-band text-mute")}>{p.abc}</span> : <span className="text-mute" title="No cost of sales in the 12 months">–</span>}</td>
                 <td className="num">{p.qty.toLocaleString("en-US")}</td>
                 <td className="num">{money(p.value, cur)}</td>
                 <td className="num text-mute">{p.cogs ? money(p.cogs, cur) : "–"}</td>

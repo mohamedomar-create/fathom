@@ -108,6 +108,7 @@ function StockHistoryTable({ s, ar, ms }: { s: View; ar: boolean; ms: (p: string
   if (!s.history.length) return null;
   const last = s.history[s.history.length - 1];
   const cats = Object.entries(last.byCategory).sort((a, b) => b[1].value - a[1].value).slice(0, 6).map(([k]) => k);
+  const locs = Object.entries(last.byLocation).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k);
   return (
     <section className="mt-10" data-testid="inv-history">
       <h3 className="mb-2 text-lg font-normal">{ar ? "تاريخ المخزون: وحدات وقيمة في نهاية كل شهر" : "Stock history: units and value at each month end"}</h3>
@@ -115,9 +116,11 @@ function StockHistoryTable({ s, ar, ms }: { s: View; ar: boolean; ms: (p: string
         <table className="tbl min-w-[720px]">
           <thead><tr><th className="!text-start" />{s.history.map((h) => <th key={h.p}>{ms(h.p)}</th>)}</tr></thead>
           <tbody>
-            <tr className="row font-medium"><td className="!text-start">{ar ? "الوحدات" : "Units"}</td>{s.history.map((h) => <td key={h.p} className="num">{q(h.units)}</td>)}</tr>
-            <tr className="row font-medium"><td className="!text-start">{ar ? "القيمة" : "Value"}</td>{s.history.map((h) => <td key={h.p} className="num">{Math.round(h.value).toLocaleString("en-US")}</td>)}</tr>
+            <tr className="row font-medium"><td className="!text-start">{ar ? "الوحدات" : "Units"}</td>{s.history.map((h) => <td key={h.p} className="num">{h.units === null ? "–" : q(h.units)}</td>)}</tr>
+            <tr className="row font-medium"><td className="!text-start">{ar ? "القيمة" : "Value"}</td>{s.history.map((h) => <td key={h.p} className="num">{h.value === null ? "–" : Math.round(h.value).toLocaleString("en-US")}</td>)}</tr>
             {cats.map((c) => <tr key={c} className="row"><td className="!text-start">{c} · {ar ? "وحدات" : "units"}</td>{s.history.map((h) => <td key={h.p} className="num">{h.byCategory[c] ? q(h.byCategory[c].units) : "–"}</td>)}</tr>)}
+            {cats.map((c) => <tr key={`${c}-v`} className="row"><td className="!text-start">{c} · {ar ? "قيمة" : "value"}</td>{s.history.map((h) => <td key={h.p} className="num">{h.byCategory[c] ? Math.round(h.byCategory[c].value).toLocaleString("en-US") : "–"}</td>)}</tr>)}
+            {locs.map((l) => <tr key={`loc-${l}`} className="row"><td className="!text-start">{l} · {ar ? "وحدات" : "units"}</td>{s.history.map((h) => <td key={h.p} className="num">{h.byLocation[l] !== undefined ? q(h.byLocation[l]) : "–"}</td>)}</tr>)}
           </tbody>
         </table>
       </div>
@@ -137,14 +140,14 @@ function RentalSection({ s, ar }: { s: View; ar: boolean }) {
       <div className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[560px]">
           <thead><tr><th className="!text-start">{ar ? "الصنف" : "Item"}</th><th>{ar ? "المملوك" : "Owned"}</th><th>{ar ? "مؤجر" : "On rent"}</th><th>{ar ? "متاح" : "Idle"}</th><th>{ar ? "الاستخدام" : "Utilisation"}</th></tr></thead>
-          <tbody>{r.items.slice(0, 30).map((x) => <tr key={x.code || x.product} className="row" data-testid="inv-rental-row"><td className="!text-start">{x.product}</td><td className="num">{q(x.fleet)}</td><td className="num">{q(x.onRent)}</td><td className="num">{q(x.idle)}</td><td className="num">{pct(x.utilisation)}</td></tr>)}</tbody>
+          <tbody>{r.items.slice(0, 30).map((x) => <tr key={x.code || x.product} className="row" data-testid="inv-rental-row"><td className="!text-start">{x.product}</td><td className="num">{q(x.fleet)}</td><td className="num">{q(x.onRent)}</td><td className="num">{q(x.idle)}</td><td className="num">{pct(x.utilisation)}{x.over && <span className="ms-1 text-red" title={ar ? "المؤجر أكثر من المملوك: السجلات غير متطابقة" : "More on rent than owned: the records disagree"} data-testid="inv-rental-over">!</span>}</td></tr>)}</tbody>
         </table>
       </div>
       <div className="mt-4 grid gap-6 sm:grid-cols-2">
         <div><h4 className="mb-1 text-sm font-medium">{ar ? "حسب العميل" : "By customer"}</h4><ul className="text-[13px]" data-testid="inv-rental-customers">{r.byCustomer.slice(0, 10).map((c) => <li key={c.partner} className="flex justify-between border-b border-line py-1"><span>{c.partner}</span><span className="num">{q(c.units)}</span></li>)}</ul></div>
         <div><h4 className="mb-1 text-sm font-medium">{ar ? "حسب موقع التأجير" : "By rental location"}</h4><ul className="text-[13px]">{r.byLocation.slice(0, 10).map((c) => <li key={c.loc} className="flex justify-between border-b border-line py-1"><span>{c.loc}</span><span className="num">{q(c.units)}</span></li>)}</ul></div>
       </div>
-      <p className="mt-1 text-xs text-mute">{ar ? "الاستخدام = الوحدات المؤجرة ÷ المملوكة في نهاية كل شهر خلال 12 شهرًا (عدّ نهاية الشهر، لا الأيام)." : "Utilisation = units on rent ÷ units owned at each month end over the 12 months (month-end counts, not days)."}</p>
+      <p className="mt-1 text-xs text-mute">{ar ? "الاستخدام = مجموع الوحدات المؤجرة ÷ مجموع المملوكة في نهايات الأشهر خلال 12 شهرًا (متوسط مرجّح، عدّ نهاية الشهر لا الأيام). علامة ! تعني أن المؤجر أكثر من المملوك." : "Utilisation = all units on rent ÷ all units owned over the 12 month ends (a weighted average; month-end counts, not days). ! means more is on rent than owned: the records disagree."}</p>
     </section>
   );
 }

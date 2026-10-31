@@ -32,6 +32,10 @@ export interface InventoryWire {
   /** Rental documents carrying value: [month, document, value] */
   rv: [string, string, number][];
   meta: { withIds: boolean; kinds: string[]; periods: string[] };
+  /** 0045: [product, units of measure] for products whose moves use more than one. */
+  uoms?: [number, string[]][];
+  /** 0045: rental moves [month, product, customer, rental location, net units (out +, back −)]. */
+  rent?: [string, number, string, string, number][];
 }
 
 /** What a page receives: the summary (when one is ready), whether a newer one is being prepared, and a build error. */
@@ -121,6 +125,8 @@ export function toWire(d: InventoryData): InventoryWire {
     byRef: d.byRef.map((r) => [r.p, r.ref, r.kind, r.v]),
     ledger: d.ledger.map((r) => [r.p, r.ref, r.v]),
     rv: d.rentalValued.map((r) => [r.p, r.ref, r.v]),
+    ...(d.uomMixed ? { uoms: d.uomMixed.map((x) => [at(x.code, x.product), x.uoms] as [number, string[]]) } : {}),
+    ...(d.rentals ? { rent: d.rentals.map((r) => [r.p, at(r.code, r.product), r.partner, r.loc, r.q] as [string, number, string, string, number]) } : {}),
     meta: d.meta,
   };
 }

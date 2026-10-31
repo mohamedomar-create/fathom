@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useMemo, useState, useTransition } from "react";
 import { CheckCircle2, HandCoins, TriangleAlert } from "lucide-react";
-import { analyze, hasPL, money, pct, type ClassKey } from "@/lib/engine";
+import { analyze, hasBS, hasPL, money, pct, type ClassKey } from "@/lib/engine";
 import { CLASS_LABEL } from "@/lib/ingest/classes";
 import { paymentsAnalysis, type PaymentKind, type PaymentsAnalysis, type PaymentsFinding, type Side, type SideView } from "@/lib/engine/payments";
 import { useCompany } from "@/lib/company/context";
@@ -32,7 +32,8 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
     // The KPI's debtor and creditor days for the ageing's month (balance sheet basis), to show beside the ageing's own.
     const kpiAt = (asOf?: string) => {
       const p = asOf?.slice(0, 7);
-      if (!p || !pl.some((m) => m.period === p)) return null;
+      // Only a month with its own P&L and balance sheet: otherwise the KPI would use an older or empty balance sheet.
+      if (!p || !c.months.some((m) => m.period === p && hasPL(m) && hasBS(m))) return null;
       try { return analyze(c.months, { type: "month", end: p }, c.settings, { asOf: c.asOf }).K; } catch { return null; }
     };
     const kr = kpiAt(data.aged.receivable?.asOf), kp = kpiAt(data.aged.payable?.asOf);
@@ -252,7 +253,7 @@ export function AgeingPage({ side }: { side: Side }) {
         {/* Days from the ageing on the KPI's basis (net of VAT), with the balance-sheet figure beside it. */}
         <Tile label={side === "receivable" ? "Debtor days (ageing)" : "Creditor days (ageing)"} value={v.days != null ? `${v.days}` : "–"}
           sub={v.kpiDays != null ? `balance sheet: ${v.kpiDays}${v.days != null && Math.abs(v.days - v.kpiDays) > 15 ? " (differs)" : ""}` : "net of VAT"} testId="side-days" />
-        {side === "payable" && <Tile label="Due in 30 days" value={money(v.dueSoon, cur)} sub="not yet due" testId="side-due-soon" />}
+        {side === "payable" && <Tile label="Due in 30 days" value={v.dueSoon === null ? "–" : money(v.dueSoon, cur)} sub={v.dueSoon === null ? "the ageing has no not-due column" : "not yet due"} testId="side-due-soon" />}
       </div>
       {v.findings.length > 0 && <ul className="mb-6 list-disc ps-5 text-[13px]" data-testid="side-findings">{v.findings.map((f) => <li key={f.id}>{f.message}</li>)}</ul>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a partner" className="mb-3 w-full max-w-sm rounded border border-line px-3 py-2" data-testid="partner-search" />

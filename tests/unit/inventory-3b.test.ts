@@ -64,13 +64,21 @@ describe("units of measure and rental (0045)", () => {
     expect(d.rentals).toEqual([{ p: "2026-02", code: "V1", product: "Vent", partner: "Al Salam Hospital", loc: "Rental/Out", q: 3 }]);
   });
 
-  it("units of a product kept in more than one unit are never added: left out of the unit totals and named", async () => {
-    const { stockHistory, mixedUnits } = await import("@/lib/engine/inventory-more");
-    const dd: InventoryData = { ...d, uomMixed: [{ code: "B1", product: "B1", uoms: ["Units", "Box"] }] };
-    const feb = stockHistory(dd, "2026-02", 1)[0];
-    expect(feb.units).toBe(20); // OLD 10 + A1 10; B1's 40 left out
-    expect(feb.byCategory.Spares).toEqual({ units: 10, value: 500 }); // value still counted
+  it("valuation units are in each product's own unit and stay counted; products whose moves mix units are named, and rental leaves them out", async () => {
+    const { stockHistory, mixedUnits, rentalStatus } = await import("@/lib/engine/inventory-more");
+    const dd: InventoryData = { ...d, uomMixed: [{ code: "B1", product: "B1", uoms: ["Units", "Box"] }],
+      rentals: [{ p: "2026-02", code: "B1", product: "B1", partner: "X", loc: "Rental/Out", q: 3 }] };
+    expect(stockHistory(dd, "2026-02", 1)[0].units).toBe(60);
     expect(mixedUnits(dd)).toMatchObject({ count: 1, text: expect.stringMatching(/B1 \(Units, Box\)/) });
+    expect(rentalStatus(dd, "2026-02", 1).items).toEqual([]);
+  });
+
+  it("months before the first stock record, and units or value with no valuation, are missing, not 0", async () => {
+    const { stockHistory } = await import("@/lib/engine/inventory-more");
+    const h = stockHistory(d, "2025-02", 3);
+    expect(h[0]).toMatchObject({ p: "2024-12", units: null, value: null });
+    expect(h[2]).toMatchObject({ p: "2025-02", units: 10, value: 100 });
+    expect(stockHistory({ ...d, layers: [] }, "2026-02", 1)[0]).toMatchObject({ units: null, value: null, byLocation: { "WH/Stock": 40, "Rental/Out": 10 } });
   });
 
   it("rental: on rent and idle at the period end, utilisation over the window, by location and customer", async () => {
@@ -85,9 +93,40 @@ describe("units of measure and rental (0045)", () => {
       ],
     };
     const r = rentalStatus(rd, "2026-03", 3);
-    expect(r.items).toEqual([{ code: "V1", product: "V1", fleet: 10, onRent: 6, idle: 4, utilisation: 0.6 }]); // month ends 4, 8, 6 of 10
+    expect(r.items).toEqual([{ code: "V1", product: "V1", fleet: 10, onRent: 6, idle: 4, utilisation: 0.6, over: false }]); // month ends 4, 8, 6 of 10
     expect(r.byCustomer).toEqual([{ partner: "Nile", units: 4 }, { partner: "Salam", units: 2 }]);
     expect(r.byLocation).toEqual([{ loc: "Rental/Out", units: 6 }]);
     expect(r.utilisation).toBe(0.6);
+  });
+
+  it("rental moves that carry value took units out of the valuation: those units still count as owned", async () => {
+    const { rentalStatus } = await import("@/lib/engine/inventory-more");
+    const rd: InventoryData = { ...EMPTY_INVENTORY, layers: [layer("2026-01", "receipt", "V1", "Machines", 10, 100000), { ...layer("2026-01", "delivery", "V1", "Machines", -4, -40000) }],
+      rentalValued: [{ p: "2026-01", ref: "RENT/1", v: 40000 }], rentals: [{ p: "2026-01", code: "V1", product: "V1", partner: "Salam", loc: "Rental/Out", q: 4 }] };
+    expect(rentalStatus(rd, "2026-01", 1).items[0]).toMatchObject({ fleet: 10, onRent: 4, idle: 6, over: false });
+  });
+
+  it("more on rent than owned is flagged, never quietly capped", async () => {
+    const { rentalStatus } = await import("@/lib/engine/inventory-more");
+    const rd: InventoryData = { ...EMPTY_INVENTORY, layers: [layer("2026-01", "receipt", "V1", "Machines", 2, 20000)], rentals: [{ p: "2026-01", code: "V1", product: "V1", partner: "Salam", loc: "Rental/Out", q: 5 }] };
+    expect(rentalStatus(rd, "2026-01", 1).items[0]).toMatchObject({ fleet: 2, onRent: 5, idle: 0, over: true });
+  });
+});
+
+describe("ABC basis (3b review)", () => {
+  it("says the months actually covered, and products with no cost of sales have no class", async () => {
+    const { abcBasisMonths, rollingAbc } = await import("@/lib/engine/inventory-more");
+    expect(abcBasisMonths(d, "2026-03")).toBe(4); // Dec 2025 – Mar 2026 hold layers within the 12 months
+    expect(rollingAbc(d, "2026-03").has("[OLD] OLD")).toBe(false);
+  });
+});
+
+describe("toWire keeps units and rental (3b review)", () => {
+  it("round-trips uomMixed and rentals", async () => {
+    const { fromWire, toWire } = await import("@/lib/company/inventory-wire");
+    const x: InventoryData = { ...d, uomMixed: [{ code: "B1", product: "B1", uoms: ["Units", "Box"] }], rentals: [{ p: "2026-02", code: "A1", product: "A1", partner: "S", loc: "Rental/Out", q: 2 }] };
+    const back = fromWire(JSON.parse(JSON.stringify(toWire(x))));
+    expect(back.uomMixed).toEqual(x.uomMixed);
+    expect(back.rentals).toEqual(x.rentals);
   });
 });

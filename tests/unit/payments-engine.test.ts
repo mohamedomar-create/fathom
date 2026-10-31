@@ -176,3 +176,11 @@ describe("Payables to standard (Phase 3b)", () => {
     expect(titles(paymentsAnalysis(d, SEP, 1, { cost, vatRate: 0.14, kpiDays: { payable: 40 } }))).not.toMatch(/Creditor days differ/);
   });
 });
+
+describe("review fixes (3b)", () => {
+  it("due in 30 days is unknown (null) when the ageing has no not-due bucket", () => {
+    const B2 = ["1-30", "31-60", "Older"];
+    const a = paymentsAnalysis({ aged: { payable: { asOf: "2026-09-30", buckets: B2, findings: [], total: { amounts: [100, 0, 0], total: 100 }, items: [{ partner: "M", ref: "B", memo: "", day: null, amounts: [100, 0, 0], total: 100 }] } }, payments: [] }, SEP, 1);
+    expect(a.payable!.dueSoon).toBeNull();
+  });
+});

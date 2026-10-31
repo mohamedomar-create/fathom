@@ -40,26 +40,27 @@ export function positionAt(d: InventoryData, end: string): { loc: string; type: 
   return out.sort((a, b) => order.indexOf(a.type) - order.indexOf(b.type) || b.units - a.units);
 }
 
-export interface HistoryPoint { p: string; units: number; value: number; byCategory: Record<string, { units: number; value: number }>; byLocation: Record<string, number> }
+/** units and value are null for a month before the first stock record, or with no valuation loaded (missing, not 0). */
+export interface HistoryPoint { p: string; units: number | null; value: number | null; byCategory: Record<string, { units: number; value: number }>; byLocation: Record<string, number> }
 
 /** Units and value at each of the `n` month ends to `end` (from the valuation), by category, and units by location. */
 export function stockHistory(d: InventoryData, end: string, n = 12): HistoryPoint[] {
   const months = Array.from({ length: n }, (_, i) => addMonths(end, i - n + 1));
-  // Units of a product kept in more than one unit of measure can't be added: its value counts, its units don't.
-  const mixed = new Set((d.uomMixed ?? []).map((x) => productKey(x.code, x.product)));
+  // Valuation quantities are in each product's own unit, so they add per product; months before the first record are missing.
+  const first = d.layers.reduce<string | null>((a, l) => (a === null || l.p < a ? l.p : a), null);
   return months.map((p) => {
     const byCategory: HistoryPoint["byCategory"] = {};
     let units = 0, value = 0;
     for (const l of d.layers) {
       if (l.p > p) continue;
       const c = (byCategory[l.category || "—"] ??= { units: 0, value: 0 });
-      const q = mixed.has(productKey(l.code, l.product)) ? 0 : l.q;
-      c.units += q; c.value += l.v; units += q; value += l.v;
+      c.units += l.q; c.value += l.v; units += l.q; value += l.v;
     }
     for (const c of Object.values(byCategory)) { c.units = r4(c.units); c.value = r2(c.value); }
     const byLocation: Record<string, number> = {};
     for (const x of positionAt(d, p)) byLocation[x.loc] = x.units;
-    return { p, units: r4(units), value: r2(value), byCategory, byLocation };
+    const known = first !== null && p >= first;
+    return { p, units: known ? r4(units) : null, value: known ? r2(value) : null, byCategory: known ? byCategory : {}, byLocation };
   });
 }
 
@@ -67,38 +68,46 @@ export function stockHistory(d: InventoryData, end: string, n = 12): HistoryPoin
 export function mixedUnits(d: InventoryData): { count: number; text: string } | null {
   const m = d.uomMixed ?? [];
   if (!m.length) return null;
-  return { count: m.length, text: `${m.length} product${m.length === 1 ? " is" : "s are"} recorded in more than one unit of measure, so their quantities are not added into unit totals (their value is): ${m.slice(0, 5).map((x) => `${x.product || x.code} (${x.uoms.join(", ")})`).join("; ")}${m.length > 5 ? "…" : ""}. Set one unit per product in Odoo, or check the conversions.` };
+  return { count: m.length, text: `${m.length} product${m.length === 1 ? "'s moves use" : "s' moves use"} more than one unit of measure: ${m.slice(0, 5).map((x) => `${x.product || x.code} (${x.uoms.join(", ")})`).join("; ")}${m.length > 5 ? "…" : ""}. Units by location include these moves as Odoo recorded them, so they can mix units; rental leaves these products out. Stock value and the history's units (from the valuation) are not affected. Set one unit per product in Odoo, or check the conversions.` };
 }
 
 export interface RentalStatus {
-  /** Per rented product: units owned (valued) at the period end, on rent, idle, and the share on rent over the window. */
-  items: { code: string; product: string; fleet: number; onRent: number; idle: number; utilisation: number | null }[];
+  /** Per rented product: units owned at the period end, on rent, idle, the share on rent over the window, and whether
+   *  more is on rent than owned (a sign the records disagree; never capped silently). */
+  items: { code: string; product: string; fleet: number; onRent: number; idle: number; utilisation: number | null; over: boolean }[];
   byLocation: { loc: string; units: number }[];
   byCustomer: { partner: string; units: number }[];
-  /** Units on rent ÷ units owned, averaged over the window's month ends (all rented products). */
+  /** Σ units on rent ÷ Σ units owned over the window's month ends (a weighted average, all rented products). */
   utilisation: number | null;
 }
 
 /**
- * Rental fleet at the end of `end`: each rented product's units owned (from the valuation; rented units stay the
- * company's), units out on rent (rental moves out less back), idle, and utilisation at the month ends of the `n` months
- * to `end` (month-end counts, not days).
+ * Rental fleet at the end of `end`: each rented product's units owned, units out on rent (rental moves out less back),
+ * idle, and utilisation over the `n` month ends to `end` (month-end counts, not days). Owned is the valuation's units;
+ * when rental moves carry value they took units out of the valuation, so units on rent are added back. Products whose
+ * moves mix units of measure are left out.
  */
 export function rentalStatus(d: InventoryData, end: string, n = 12): RentalStatus {
-  const rent = d.rentals ?? [];
+  const mixed = new Set((d.uomMixed ?? []).map((x) => productKey(x.code, x.product)));
+  const rent = (d.rentals ?? []).filter((r) => !mixed.has(productKey(r.code, r.product)));
   if (!rent.length) return { items: [], byLocation: [], byCustomer: [], utilisation: null };
   const months = Array.from({ length: n }, (_, i) => addMonths(end, i - n + 1));
+  const valued = (d.rentalValued ?? []).length > 0;
+  // Each product's units by month, indexed once: owned (valuation) and out (rental moves).
   const keys = new Map<string, { code: string; product: string }>();
-  for (const r of rent) keys.set(productKey(r.code, r.product), { code: r.code, product: r.product });
-  const owned = (k: string, p: string) => d.layers.reduce((s, l) => (l.p <= p && productKey(l.code, l.product) === k ? s + l.q : s), 0);
-  const out = (k: string, p: string) => rent.reduce((s, r) => (r.p <= p && productKey(r.code, r.product) === k ? s + r.q : s), 0);
+  const outBy = new Map<string, Map<string, number>>(), ownBy = new Map<string, Map<string, number>>();
+  const add = (m: Map<string, Map<string, number>>, k: string, p: string, q: number) => { const x = m.get(k) ?? new Map<string, number>(); x.set(p, (x.get(p) ?? 0) + q); m.set(k, x); };
+  for (const r of rent) { const k = productKey(r.code, r.product); keys.set(k, { code: r.code, product: r.product }); add(outBy, k, r.p, r.q); }
+  for (const l of d.layers) { const k = productKey(l.code, l.product); if (keys.has(k)) add(ownBy, k, l.p, l.q); }
+  const upTo = (m: Map<string, number> | undefined, p: string) => { let s = 0; for (const [q, v] of m ?? []) if (q <= p) s += v; return s; };
   let onAll = 0, fleetAll = 0;
   const items = [...keys].map(([k, x]) => {
+    const at = (p: string) => { const out = upTo(outBy.get(k), p); return { out, own: upTo(ownBy.get(k), p) + (valued ? Math.max(out, 0) : 0) }; };
     let on = 0, fl = 0;
-    for (const p of months) { const f = owned(k, p); if (f > 0) { fl += f; on += Math.max(0, Math.min(out(k, p), f)); } }
+    for (const p of months) { const { out, own } = at(p); if (own > 0) { fl += own; on += Math.max(0, Math.min(out, own)); } }
     onAll += on; fleetAll += fl;
-    const fleet = r4(owned(k, end)), onRent = r4(Math.max(0, Math.min(out(k, end), fleet)));
-    return { ...x, fleet, onRent, idle: r4(Math.max(0, fleet - onRent)), utilisation: fl > 0 ? Math.round((on / fl) * 1000) / 1000 : null };
+    const e = at(end), fleet = r4(e.own), onRent = r4(Math.max(0, e.out));
+    return { ...x, fleet, onRent, idle: r4(Math.max(0, fleet - onRent)), utilisation: fl > 0 ? Math.round((on / fl) * 1000) / 1000 : null, over: onRent > fleet + 1e-9 };
   }).sort((a, b) => b.onRent - a.onRent);
   const sumBy = (key: "loc" | "partner") => {
     const m = new Map<string, number>();
@@ -111,4 +120,10 @@ export function rentalStatus(d: InventoryData, end: string, n = 12): RentalStatu
     byCustomer: sumBy("partner").map(([partner, units]) => ({ partner, units })),
     utilisation: fleetAll > 0 ? Math.round((onAll / fleetAll) * 1000) / 1000 : null,
   };
+}
+
+/** How many months within the 12 to `end` hold valuation records (what the ABC classes are really measured on). */
+export function abcBasisMonths(d: InventoryData, end: string): number {
+  const start = addMonths(end, -11);
+  return new Set(d.layers.filter((l) => l.p >= start && l.p <= end).map((l) => l.p)).size;
 }

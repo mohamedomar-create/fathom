@@ -29,8 +29,8 @@ export interface SideView {
   days: number | null;
   /** The same days from the balance sheet (the KPI), when given, to show beside them. */
   kpiDays?: number | null;
-  /** Not yet due and falling due within 30 days of the ageing date (undated items included). */
-  dueSoon: number;
+  /** Not yet due and falling due within 30 days of the ageing date (undated items included); null with no not-due bucket. */
+  dueSoon: number | null;
   findings: { id: string; message: string }[];
 }
 export interface Flows {
@@ -89,7 +89,7 @@ function sideView(side: Side, d: AgedData, perDay: number | null, vatRate = 0, k
   const clamp = (v: number, hi: number) => Math.min(Math.max(v, 0), hi);
   const debtors = all.filter((p) => p.total > 0.005);
   const in30 = new Date(Date.UTC(+d.asOf.slice(0, 4), +d.asOf.slice(5, 7) - 1, +d.asOf.slice(8, 10) + 30)).toISOString().slice(0, 10);
-  const dueSoon = notDueIx < 0 ? 0 : r2(d.items.filter((it) => !it.day || it.day <= in30).reduce((s, it) => s + Math.max(it.amounts[notDueIx] ?? 0, 0), 0));
+  const dueSoon = notDueIx < 0 ? null : r2(d.items.filter((it) => !it.day || it.day <= in30).reduce((s, it) => s + Math.max(it.amounts[notDueIx] ?? 0, 0), 0));
   const overdue = r2(debtors.reduce((s, p) => s + clamp(p.overdue, p.total), 0));
   return {
     side, asOf: d.asOf, buckets: d.buckets, total, owed: r2(owedSum), credits: r2(all.filter((p) => p.total < -0.005).reduce((s, p) => s + p.total, 0)),
@@ -207,10 +207,11 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     title: L(`One supplier holds ${Math.round(payable.top.share * 100)}% of what you owe`, `مورد واحد له ${Math.round(payable.top.share * 100)}% مما عليك`),
     text: L(`${payable.top.name}: the business depends on its terms; a stop in supply would hit hard.`, `${payable.top.name}: النشاط يعتمد على شروطه؛ توقف التوريد سيؤثر بقوة.`),
   });
-  if (payable && payable.dueSoon > 0) findings.push({
+  const undated = payable ? (d.aged.payable?.items ?? []).every((it) => !it.day) : false;
+  if (payable && payable.dueSoon && payable.dueSoon > 0) findings.push({
     kind: "watch",
     title: L(`${fmt(payable.dueSoon)} of bills fall due in the next 30 days`, `${fmt(payable.dueSoon)} من الفواتير تستحق خلال 30 يومًا`),
-    text: L(`Not yet due at ${payable.asOf}, and due by 30 days after it (bills with no date are included). Make sure the cash is there.`, `غير مستحقة في ${payable.asOf} وتستحق خلال 30 يومًا بعده (الفواتير بلا تاريخ محسوبة). تأكد من توفر النقدية.`),
+    text: L(undated ? `The ageing has no dates, so this is everything not yet due at ${payable.asOf}; some may fall due later. Make sure the cash is there.` : `Not yet due at ${payable.asOf}, and due by 30 days after it (bills with no date are included). Make sure the cash is there.`, `غير مستحقة في ${payable.asOf} وتستحق خلال 30 يومًا بعده (الفواتير بلا تاريخ محسوبة). تأكد من توفر النقدية.`),
   });
   if (receivable?.days != null && payable?.days != null && payable.days + 15 < receivable.days) findings.push({
     kind: "watch",
