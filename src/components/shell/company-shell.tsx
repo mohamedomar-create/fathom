@@ -5,6 +5,7 @@ import type { CompanyBundle } from "@/lib/company/types";
 import { TipProvider } from "@/components/ui/tooltip";
 import { TopBar } from "./top-bar";
 import { IconRail } from "./icon-rail";
+import { BottomBar } from "./bottom-bar";
 import { NoDataGate } from "./no-data";
 import { HealthBanner } from "./health-banner";
 
@@ -16,8 +17,9 @@ export function CompanyShell({ company, children, right, rail = true }: { compan
           <TopBar right={right} />
           <div className="flex flex-col md:flex-row">
             {rail && <IconRail />}
-            <main className="min-w-0 flex-1 px-4 pb-16 sm:px-8"><HealthBanner /><NoDataGate>{children}</NoDataGate></main>
+            <main className="min-w-0 flex-1 px-4 pb-24 sm:px-8 md:pb-16"><HealthBanner /><NoDataGate>{children}</NoDataGate></main>
           </div>
+          <BottomBar />
         </Suspense>
       </TipProvider>
     </CompanyProvider>

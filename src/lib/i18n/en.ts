@@ -39,6 +39,8 @@ export const en = {
     people: "User management",
     logout: "Logout",
   },
+  navGroups: { overview: "Overview", performance: "Performance", cash: "Cash & statements", plan: "Plan" },
+  bottom: { home: "Home", pages: "Pages", more: "More", sectionPages: "Pages in this section", everything: "All sections" },
   sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {

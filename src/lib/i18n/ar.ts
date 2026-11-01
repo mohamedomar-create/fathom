@@ -37,6 +37,8 @@ export const ar: Dict = {
     people: "إدارة المستخدمين",
     logout: "تسجيل الخروج",
   },
+  navGroups: { overview: "نظرة عامة", performance: "الأداء", cash: "النقدية والقوائم", plan: "التخطيط" },
+  bottom: { home: "الرئيسية", pages: "الصفحات", more: "المزيد", sectionPages: "صفحات هذا القسم", everything: "كل الأقسام" },
   sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],

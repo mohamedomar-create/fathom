@@ -3,7 +3,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
-export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Starts a second group (a line above it in the rail). */ group?: boolean }
+export type NavGroupKey = "overview" | "performance" | "cash" | "plan";
+export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Financials only: the heading this page sits under. */ group?: NavGroupKey }
 
 export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
@@ -12,17 +13,17 @@ export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 export const SECTORS: Sector[] = [
   {
     key: "financials", label: "Financials", items: [
-      { href: "summary", label: "Summary", title: "Executive Summary", icon: LayoutDashboard },
-      { href: "analysis/kpis", label: "KPIs", title: "KPIs", icon: ClipboardCheck },
-      { href: "analysis/explorer", label: "KPI Explorer", title: "KPI Explorer", icon: Gauge },
-      { href: "analysis/profitability", label: "Profitability", title: "Profitability", icon: ChartNoAxesCombined },
-      { href: "analysis/cashflow", label: "Cash Flow", title: "Cash Flow", icon: Waves },
-      { href: "analysis/growth", label: "Growth", title: "Growth", icon: Sprout },
-      { href: "analysis/trend", label: "Trend", title: "Trend", icon: TrendingUp },
-      { href: "analysis/goalseek", label: "Goalseek", title: "Goalseek", icon: Telescope },
-      { href: "analysis/forecast", label: "Forecast", title: "Forecast", icon: CalendarRange },
-      { href: "analysis/financials", label: "Financials", title: "Financials", icon: FileSpreadsheet },
-      { href: "analysis/real-profit", label: "Real Profit", title: "Real Profit", icon: Scale, group: true },
+      { href: "summary", label: "Summary", title: "Executive Summary", icon: LayoutDashboard, group: "overview" },
+      { href: "analysis/kpis", label: "KPIs", title: "KPIs", icon: ClipboardCheck, group: "overview" },
+      { href: "analysis/explorer", label: "KPI Explorer", title: "KPI Explorer", icon: Gauge, group: "overview" },
+      { href: "analysis/profitability", label: "Profitability", title: "Profitability", icon: ChartNoAxesCombined, group: "performance" },
+      { href: "analysis/growth", label: "Growth", title: "Growth", icon: Sprout, group: "performance" },
+      { href: "analysis/trend", label: "Trend", title: "Trend", icon: TrendingUp, group: "performance" },
+      { href: "analysis/real-profit", label: "Real Profit", title: "Real Profit", icon: Scale, group: "performance" },
+      { href: "analysis/cashflow", label: "Cash Flow", title: "Cash Flow", icon: Waves, group: "cash" },
+      { href: "analysis/financials", label: "Financials", title: "Financials", icon: FileSpreadsheet, group: "cash" },
+      { href: "analysis/forecast", label: "Forecast", title: "Forecast", icon: CalendarRange, group: "plan" },
+      { href: "analysis/goalseek", label: "Goalseek", title: "Goalseek", icon: Telescope, group: "plan" },
     ],
   },
   {
@@ -71,4 +72,30 @@ export function sectorOf(rel: string): Sector {
   const first = r.split("/")[0];
   const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
+}
+
+export interface NavGroup { key: NavGroupKey | null; items: NavItem[] }
+
+/** A sector's pages in their groups, in order: Financials has four headed groups, the others one group with no heading. */
+export function navGroups(sector: Sector): NavGroup[] {
+  const out: NavGroup[] = [];
+  for (const it of sector.items) {
+    const k = it.group ?? null;
+    const last = out[out.length - 1];
+    if (last && last.key === k) last.items.push(it);
+    else out.push({ key: k, items: [it] });
+  }
+  return out;
+}
+
+export type BottomTab = "home" | "sales" | "expenses" | "pages" | "more";
+
+/** Which phone bottom-bar tab a page lights, from its path relative to the company. */
+export function bottomTab(rel: string): BottomTab {
+  const first = rel.replace(/^\/+/, "").split("/")[0];
+  if (first === "data" || first === "settings" || first === "reports") return "more";
+  const s = sectorOf(rel).key;
+  if (s === "financials") return "home";
+  if (s === "sales" || s === "expenses") return s;
+  return "pages";
 }
