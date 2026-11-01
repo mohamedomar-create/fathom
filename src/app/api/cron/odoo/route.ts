@@ -52,8 +52,8 @@ async function work(origin: string, hop: number, job: Job | null) {
     if (error) throw new Error(error.message);
     return data;
   };
-  const finish = (company: string, ok: boolean, detail: string | null, rows?: number, version?: string) =>
-    call("odoo_cron_finish", { p_secret: secret, p_company: company, p_ok: ok, p_detail: detail, p_rows: rows ?? null, p_version: version ?? null })
+  const finish = (company: string, run: string, ok: boolean, detail: string | null, rows?: number, version?: string) =>
+    call("odoo_cron_finish", { p_secret: secret, p_company: company, p_run: run, p_ok: ok, p_detail: detail, p_rows: rows ?? null, p_version: version ?? null })
       .catch((e) => log("error", "finish failed", { company, error: (e as Error).message }));
   const deadline = Date.now() + BUDGET_MS;
   let cur = job;
@@ -70,31 +70,38 @@ async function work(origin: string, hop: number, job: Job | null) {
       try {
         ({ client } = await connect(c.url, c.db, c.login, openKey(c.api_key_enc, ctx.company_id, c.url, c.db, c.login), deadline + 120_000));
       } catch (e) {
-        await finish(ctx.company_id, false, (e as Error).message.slice(0, 400));
+        await finish(ctx.company_id, ctx.run, false, (e as Error).message.slice(0, 400));
         cur = null;
         continue;
       }
-      const rpc = (fn: string, args: Record<string, unknown>) => call("odoo_cron_rpc", { p_secret: secret, p_company: ctx.company_id, p_fn: fn, p_args: args });
+      const rpc = (fn: string, args: Record<string, unknown>) => call("odoo_cron_rpc", { p_secret: secret, p_company: ctx.company_id, p_run: ctx.run, p_fn: fn, p_args: args });
       const out = await runNightly(rpc, ctx, client, cur.step, deadline);
       if (!out.ok) {
-        await finish(ctx.company_id, false, out.error ?? "The nightly sync failed.", out.rows);
+        await finish(ctx.company_id, ctx.run, false, out.error ?? "The nightly sync failed.", out.rows);
         cur = null;
         continue;
       }
       if (out.next) { cur = { ctx, step: out.next }; break; }
-      await finish(ctx.company_id, true, out.detail ?? "synced", out.rows, out.version);
+      await finish(ctx.company_id, ctx.run, true, out.detail ?? "synced", out.rows, out.version);
       log("info", "company synced", { company: ctx.company_id, rows: out.rows });
       cur = null;
     }
   } catch (e) {
     log("error", "run stopped", { error: (e as Error).message });
-    if (cur) await finish(cur.ctx.company_id, false, `The nightly sync stopped: ${(e as Error).message}`.slice(0, 400));
+    if (cur) await finish(cur.ctx.company_id, cur.ctx.run, false, `The nightly sync stopped: ${(e as Error).message}`.slice(0, 400));
     return;
   }
   // Time is up: carry on in a fresh call, with the company in progress (or to look for the next one).
-  if (hop + 1 > MAX_HOPS) { log("error", "too many hops; the rest waits for the next night"); return; }
-  await fetch(`${origin}/api/cron/odoo`, {
-    method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
-    body: JSON.stringify({ hop: hop + 1, ...(cur ? { job: cur } : {}) }),
-  }).catch((e) => log("error", "could not hand on", { error: (e as Error).message }));
+  // If the hand-on fails, the company in progress is closed as failed (never left running until the next night).
+  const giveUp = async (why: string) => { log("error", why); if (cur) await finish(cur.ctx.company_id, cur.ctx.run, false, `The nightly sync stopped part-way: ${why}`); };
+  if (hop + 1 > MAX_HOPS) { await giveUp("too many hand-ons; the rest waits for the next night"); return; }
+  try {
+    const r = await fetch(`${origin}/api/cron/odoo`, {
+      method: "POST", headers: { authorization: `Bearer ${secret}`, "content-type": "application/json" },
+      body: JSON.stringify({ hop: hop + 1, ...(cur ? { job: cur } : {}) }),
+    });
+    if (!r.ok) await giveUp(`the next step could not start (HTTP ${r.status})`);
+  } catch (e) {
+    await giveUp(`the next step could not start (${(e as Error).message})`);
+  }
 }

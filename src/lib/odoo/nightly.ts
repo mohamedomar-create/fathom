@@ -24,6 +24,8 @@ export type Rpc = (fn: string, args: Record<string, unknown>) => Promise<unknown
 /** What odoo_cron_next hands out with a job. */
 export interface NightlyCtx {
   company_id: string;
+  /** The run this job belongs to (0047): every call names it. */
+  run: string;
   connection: { url: string; db: string; login: string; api_key_enc: string; odoo_company_id: number; odoo_company_name: string | null; include_branches: boolean; months_history: number };
   company: { kpi_config: unknown; closed_through: string | null; data_version: number };
   last_import: { created_at: string; report: unknown } | null;
@@ -109,15 +111,16 @@ export async function nightlyStep(rpc: Rpc, ctx: NightlyCtx, client: OdooClient,
     if (step.offset === 0 && accts.length) {
       total = await countLedger(d, accts, range);
       // Begin replaces the stock postings of these months; closed months are left as they are.
-      const periods = closedRangeFor(closedThrough, monthsBetween(start, end), false, end).periods;
+      const periods = closedRangeFor(closedThrough, monthsBetween(start, end).slice(-240), false, end).periods;
       const st = periods.length ? (await rpc("begin_stock_ledger_batch", { p_company: co, p_periods: periods, p_filename: name })) as string : null;
       batches = { sales: periods.length ? await stage("sales", "ledger", periods) : null, expenses: periods.length ? await stage("expenses", "ledger", periods) : null, stock: st };
     }
     if (total && batches) {
       const p = await ledgerPage(d, accts, range, step.offset);
       const strip = <T extends { src?: unknown }>(ls: T[]) => ls.map(({ src, ...l }) => { void src; return l; });
-      if (batches.sales) await addLines(batches.sales, strip(p.sales));
-      if (batches.expenses) await addLines(batches.expenses, strip(p.expenses));
+      // Closed months keep their lines: only lines in the months the save replaces are sent.
+      if (batches.sales) await addLines(batches.sales, openLines(strip(p.sales), closedThrough).kept);
+      if (batches.expenses) await addLines(batches.expenses, openLines(strip(p.expenses), closedThrough).kept);
       const stock = openLines(p.stock, closedThrough).kept;
       if (batches.stock && stock.length) await rpc("add_stock_ledger_lines", { p_batch: batches.stock, p_lines: stock });
     }
@@ -125,11 +128,11 @@ export async function nightlyStep(rpc: Rpc, ctx: NightlyCtx, client: OdooClient,
     if (done >= total && batches) for (const b of [batches.sales, batches.expenses]) if (b) await rpc("stage_lines_finish", { p_stage: b });
   } else if (step.part === "sales") {
     if (step.offset === 0) {
-      const periods = closedRangeFor(closedThrough, monthsBetween(start, end), false, end).periods;
+      const periods = closedRangeFor(closedThrough, monthsBetween(start, end).slice(-240), false, end).periods;
       total = periods.length ? await countPart(d, "sales", range) : 0;
       batch = periods.length ? await stage("sales", "file", periods) : null;
     }
-    if (total && batch) await addLines(batch, await salesPage(d, range, step.offset));
+    if (total && batch) await addLines(batch, openLines(await salesPage(d, range, step.offset), closedThrough).kept);
     done = Math.min(total, step.offset + PAGE.sales);
     if (done >= total && batch) await rpc("stage_lines_finish", { p_stage: batch });
   } else if (step.part === "moves" || step.part === "valuation") {
@@ -137,7 +140,7 @@ export async function nightlyStep(rpc: Rpc, ctx: NightlyCtx, client: OdooClient,
     if (step.offset === 0) {
       total = await countPart(d, step.part, range);
       const first = (await firstStockDay(d)) ?? today;
-      const cr = closedRangeFor(closedThrough, monthsBetween(first.slice(0, 7), end), true, end);
+      const cr = closedRangeFor(closedThrough, monthsBetween(first.slice(0, 7), end).slice(-240), true, end);
       batch = (await rpc("begin_inventory_batch", { p_company: co, p_kind: step.part, p_periods: cr.periods, p_filename: name, p_mode: cr.all ? "all" : "replace", p_report: { kind: "odoo" } })) as string;
       // Odoo's own location usage fills the company's location types (a person's choice is kept).
       await rpc("update_company_settings", { p_company: co, p_patch: { [INVENTORY_KEY]: { locationTypes: mergeLocationTypes(inv.locationTypes ?? {}, loc.types, "export") } } });

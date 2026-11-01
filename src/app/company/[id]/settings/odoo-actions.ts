@@ -102,6 +102,10 @@ async function reusableKey(supabase: Supa, companyId: string, url: string, db: s
 async function takeOverStale(supabase: Supa, companyId: string) {
   const { data } = await supabase.from("odoo_connections").select("status, sync_started_at").eq("company_id", companyId).maybeSingle();
   if (data?.status !== "syncing" || (data.sync_started_at && Date.now() - Date.parse(data.sync_started_at) < STALE_MS)) return;
+  // A night run makes no database calls while it reads Odoo for minutes: it is alive while its last call was under 15
+  // minutes ago (0047), and its lock is not taken over.
+  const night = await supabase.rpc("odoo_night_running", { p_company: companyId });
+  if (night.data === true) throw new Error("The nightly sync is running for this company now. Try again in a few minutes, or press Stop sync.");
   await supabase.from("odoo_connections").update({ status: "error", sync_started_at: null, last_error: "The last sync was cut off before it finished." }).eq("company_id", companyId);
   await audit(supabase, companyId, "sync", false, "the last sync was cut off before it finished; its lock was released");
 }
@@ -410,7 +414,9 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
       if (total && batches) {
         const p = await ledgerPage(d, accts, range, step.offset);
         const strip = <T extends { src?: unknown }>(ls: T[]) => ls.map(({ src, ...l }) => { void src; return l; });
-        for (const [b, ls] of [[batches.sales, strip(p.sales)], [batches.expenses, strip(p.expenses)]] as const) {
+        // Closed months (0043) keep their lines: only lines in the months the save replaces are sent.
+        const closedAt = await closedThroughOf(supabase, companyId);
+        for (const [b, ls] of [[batches.sales, openLines(strip(p.sales), closedAt).kept], [batches.expenses, openLines(strip(p.expenses), closedAt).kept]] as const) {
           if (!b || !ls.length) continue;
           for (let i = 0; i < ls.length; i += 5000) { const r = await stageAdd(supabase, b, ls.slice(i, i + 5000)); if (!r.ok) throw new Error(r.error); }
         }
@@ -432,7 +438,7 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
         if (!r.ok) throw new Error(r.missing ? STAGE_UPDATE : r.error);
         batch = r.stage;
       }
-      const lines = total ? await salesPage(d, range, step.offset) : [];
+      const lines = total ? openLines(await salesPage(d, range, step.offset), await closedThroughOf(supabase, companyId)).kept : [];
       for (let i = 0; i < lines.length; i += 5000) { const r = await stageAdd(supabase, batch!, lines.slice(i, i + 5000)); if (!r.ok) throw new Error(r.error); }
       done = Math.min(total, step.offset + PAGE.sales);
       if (done >= total && batch) { const f = await stageFinish(supabase, batch); if (!f.ok) throw new Error(f.error); }

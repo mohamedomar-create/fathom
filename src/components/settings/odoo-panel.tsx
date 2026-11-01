@@ -254,7 +254,7 @@ function NightlyToggle({ companyId, job }: { companyId: string; job: OdooNightly
     <div className="mb-5 rounded-md border border-line px-4 py-3 text-sm" data-testid="odoo-nightly">
       <label className="flex items-center gap-2 font-medium">
         <input type="checkbox" checked={on} onChange={toggle} disabled={pending} data-testid="odoo-nightly-toggle" />
-        Sync every night (around 02:30 Cairo time)
+        Sync every night (between about 02:30 and 04:30 Cairo time)
       </label>
       <p className="mt-0.5 text-xs text-mute">The server runs the same sync as Sync now, with your editor rights. If you stop being an editor of this company, it switches itself off.</p>
       {job?.last_run_at && (

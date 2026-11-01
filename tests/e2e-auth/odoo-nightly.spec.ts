@@ -38,16 +38,16 @@ test.describe("nightly Odoo sync (0046)", () => {
       const got = (await call("odoo_cron_next", { p_secret: SECRET })) as NightlyCtx | null;
       if (!got) break;
       if (got.company_id === co) ctx = got;
-      else await call("odoo_cron_finish", { p_secret: SECRET, p_company: got.company_id, p_ok: false, p_detail: "skipped by test" });
+      else await call("odoo_cron_finish", { p_secret: SECRET, p_company: got.company_id, p_run: got.run, p_ok: false, p_detail: "skipped by test" });
     }
     expect(ctx?.company_id).toBe(co);
 
     const client = new OdooClient("https://x.odoo.com", "db", "me@x.com", "secret", fakeOdoo(18).fetch);
-    const rpc = (fn: string, args: Record<string, unknown>) => call("odoo_cron_rpc", { p_secret: SECRET, p_company: co, p_fn: fn, p_args: args });
+    const rpc = (fn: string, args: Record<string, unknown>) => call("odoo_cron_rpc", { p_secret: SECRET, p_company: co, p_run: ctx!.run, p_fn: fn, p_args: args });
     const out = await runNightly(rpc, ctx!, client, { part: "balances" }, Date.now() + 60_000);
     expect(out.error ?? null).toBeNull();
     expect(out.next).toBeNull();
-    await call("odoo_cron_finish", { p_secret: SECRET, p_company: co, p_ok: true, p_detail: out.detail, p_rows: out.rows, p_version: out.version });
+    await call("odoo_cron_finish", { p_secret: SECRET, p_company: co, p_run: ctx!.run, p_ok: true, p_detail: out.detail, p_rows: out.rows, p_version: out.version });
 
     expect(Number(sql(`select data_version from public.companies where id = '${co}'`))).toBeGreaterThan(0);
     expect(Number(sql(`select count(*) from public.sales_lines where company_id = '${co}'`))).toBeGreaterThan(0);

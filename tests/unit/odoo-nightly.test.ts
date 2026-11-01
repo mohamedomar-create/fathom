@@ -15,11 +15,15 @@ function recorder() {
   const calls: { fn: string; args: Record<string, unknown> }[] = [];
   let n = 0;
   const id = () => `00000000-0000-4000-8000-${String(++n).padStart(12, "0")}`;
+  const stages = new Map<string, Set<string>>();
   const rpc = async (fn: string, args: Record<string, unknown>): Promise<unknown> => {
     calls.push({ fn, args });
+    // As the database does (0035): a staged line must fall in the months its save replaces.
+    if (fn === "stage_lines_add") for (const l of args.p_lines as { period: string }[]) if (!stages.get(args.p_stage as string)?.has(l.period)) throw new Error("a line is outside the months of this save");
+    if (fn === "stage_lines_begin") { const s = id(); stages.set(s, new Set(args.p_periods as string[])); return s; }
     switch (fn) {
       case "save_company_version": return { version: 7, import_id: id() };
-      case "stage_lines_begin": case "begin_stock_ledger_batch": case "begin_inventory_batch": return id();
+      case "begin_stock_ledger_batch": case "begin_inventory_batch": return id();
       case "stage_lines_add": case "add_stock_ledger_lines": case "set_stock_onhand": { const x = (args.p_lines ?? args.p_rows) as unknown[] | undefined; return Array.isArray(x) ? x.length : 0; }
       case "company_balances": return [];
       default: return {};
@@ -30,6 +34,7 @@ function recorder() {
 
 const ctx = (over: Partial<NightlyCtx["company"]> = {}): NightlyCtx => ({
   company_id: CO,
+  run: "2026-11-01T00:30:00Z",
   connection: { url: "https://x.odoo.com", db: "db", login: "me@x.com", api_key_enc: "v2.x.y.z", odoo_company_id: 1, odoo_company_name: "X", include_branches: false, months_history: 25 },
   company: { kpi_config: { profile: { booksStart: "2021-07-01" } }, closed_through: null, data_version: 0, ...over },
   last_import: null, account_map: [], accounts: [],
@@ -83,6 +88,18 @@ describe("the nightly steps", () => {
     expect(stock).toEqual([]);
     expect(r.calls.some((c) => c.fn === "stage_lines_begin")).toBe(false);
     expect(r.calls.find((c) => c.fn === "company_balances")?.args).toEqual({ p_company: CO, p_version: 0 });
+  });
+});
+
+describe("closed months part-way through the history", () => {
+  it("journal and sales lines in closed months are left out, so the run completes", async () => {
+    const r = recorder();
+    const out = await runNightly(r.rpc, ctx({ closed_through: "2026-03" }), client(), { part: "balances" }, Date.now() + 60_000);
+    expect(out.error ?? null).toBeNull();
+    expect(out.ok).toBe(true);
+    const sent = r.calls.filter((c) => c.fn === "stage_lines_add").flatMap((c) => c.args.p_lines as { period: string }[]);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.every((l) => l.period > "2026-03")).toBe(true);
   });
 });
 
