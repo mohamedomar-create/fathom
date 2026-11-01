@@ -12,6 +12,7 @@ import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportOrg, type ReportSection } from "@/lib/report/types";
 import { deleteReport, publishReport, saveCommentary, saveReport, updatePublishedFigures } from "@/app/company/[id]/reports/actions";
 import { dateIn, ReportDocument, titleIn } from "./report-document";
+import { titleToStore } from "@/lib/report/title";
 import { useT } from "@/lib/i18n/use-t";
 import { useMsg } from "@/lib/i18n/msg";
 import { cn } from "@/lib/cn";
@@ -63,7 +64,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   const run = (key: string, f: () => Promise<void>) => { setBusy(key); setMsg(null); start(async () => { try { await f(); } catch (e) { setMsg({ ok: false, text: m((e as Error).message) }); } finally { setBusy(null); } }); };
 
   const save = () => run("save", async () => {
-    const r = await saveReport({ id: report.id, title, period_type: type, period_end: validEnd, sections });
+    const r = await saveReport({ id: report.id, title: titleToStore(title, T.d.rep.defaultTitle), period_type: type, period_end: validEnd, sections });
     setMsg(r.ok ? { ok: true, text: t.saved } : { ok: false, text: r.error ? m(r.error) : t.couldNotSave });
   });
   const ai = (section?: string) => run(section ? `ai:${section}` : "ai", async () => {
@@ -87,7 +88,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
     setEditing(null);
   });
   const publish = (on: boolean) => run("pub", async () => {
-    await saveReport({ id: report.id, title, period_type: type, period_end: validEnd, sections });
+    await saveReport({ id: report.id, title: titleToStore(title, T.d.rep.defaultTitle), period_type: type, period_end: validEnd, sections });
     const r = await publishReport(report.id, on, expiry);
     if (!r.ok) throw new Error(r.error);
     setToken(r.token ?? null);
@@ -98,7 +99,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
   // The server prints the saved report from its own figures: what is on screen is saved first.
   const pdf = () => run("pdf", async () => {
     if (demo) return downloadReportPdf({ title: `${c.name} - ${title}`, footer, demo });
-    if (!c.readOnly) { const r = await saveReport({ id: report.id, title, period_type: type, period_end: validEnd, sections }); if (!r.ok) throw new Error(r.error ?? t.couldNotSave); }
+    if (!c.readOnly) { const r = await saveReport({ id: report.id, title: titleToStore(title, T.d.rep.defaultTitle), period_type: type, period_end: validEnd, sections }); if (!r.ok) throw new Error(r.error ?? t.couldNotSave); }
     await downloadReportPdf({ title: `${c.name} - ${title}`, footer, companyId: c.id, reportId: report.id });
   });
   const shareUrl = token && typeof window !== "undefined" ? `${window.location.origin}/r/${token}` : null;

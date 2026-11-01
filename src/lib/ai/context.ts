@@ -1,3 +1,4 @@
+import { MEMO_HEADINGS } from "./memo-headings";
 import { balanced } from "@/lib/tolerance";
 import {
   bankPack, breakeven, formatBankValue, goalseekTable, mlabel, money, num, pct, quadrantOf, bsCalc, plCalc, realProfit, REQUEST_LABEL, twelveMonths,
@@ -121,7 +122,7 @@ Section lengths: "summary" is one headline sentence followed by up to three acti
 const ARABIC_RULES = `- Write in Modern Standard Arabic, the way Egyptian accountants write a management report (for example قائمة الدخل، الميزانية، هامش مجمل الربح، التدفقات النقدية). Write every section in Arabic.
 - Keep every number exactly as it appears in the data, in Western digits (0-9) with the same currency code, separators and signs (for example "EGP 1,066,138", "12.5%", "45 days" becomes "45 يومًا" but the 45 stays). Never convert numbers to Arabic-Indic digits (٠-٩), never spell them out in words and never round or recompute them.
 - Keep product and system names in Latin letters (Odoo, Excel, PDF, EGP, KPI codes), and keep customer, product, account and supplier names exactly as given.
-- Write "Question for management: …" as "سؤال للإدارة: …". In the "bank" memo, write the headings in Arabic, in this order: "أبرز نقاط القوة" (Lead with), "المخاطر وكيفية الرد عليها" (Risks and how to answer them), "ما الذي تطلبه" (What to ask for), "أسئلة متوقعة" (Questions to expect). Keep the "• " bullets.`;
+- Write "Question for management: …" as "سؤال للإدارة: …". In the "bank" memo, write the headings in Arabic, in this order: ${MEMO_HEADINGS.ar.map((h, i) => `"${h}" (${MEMO_HEADINGS.en[i]})`).join(", ")}. Keep the "• " bullets.`;
 
 /** The system prompt in the report's language: British English, or Modern Standard Arabic with figures unchanged. */
 export function systemPrompt(lang: "en" | "ar" = "en"): string {

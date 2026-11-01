@@ -84,8 +84,8 @@ body { background: #fff !important; margin: 0; }
 </style></head><body>${html}</body></html>`;
   try {
     const pdf = await htmlToPdf(doc, { footer: b.footer });
-    const name = b.title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "report";
-    return new Response(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${name}.pdf"`, "cache-control": "no-store" } });
+    const name = b.title.replace(/[^\p{L}\p{N}\- ]+/gu, "").trim().replace(/\s+/g, "-") || "report";
+    return new Response(Buffer.from(pdf), { headers: { "content-type": "application/pdf", "content-disposition": `attachment; filename="${name.replace(/[^\x20-\x7e]/g, "") || "report"}.pdf"; filename*=UTF-8''${encodeURIComponent(name)}.pdf`, "cache-control": "no-store" } });
   } catch (e) {
     console.error("PDF render failed", e);
     return NextResponse.json({ error: "Could not render the PDF. Use Print → Save as PDF instead." }, { status: 500 });

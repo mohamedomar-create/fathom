@@ -48,7 +48,7 @@ export async function downloadReportPdf(opts: { title: string; footer?: string; 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${opts.title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "report"}.pdf`;
+  a.download = `${opts.title.replace(/[^\p{L}\p{N}\- ]+/gu, "").trim().replace(/\s+/g, "-") || "report"}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();

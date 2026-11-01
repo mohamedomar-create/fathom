@@ -19,16 +19,17 @@ import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
 
 /** The link that downloads a blank template for this company's financial year and currency. */
-export function templateHref(kind: TemplateKind, c: { name: string; settings: { currency: string; fyStartMonth: number } }) {
-  const q = new URLSearchParams({ fy: String(c.settings.fyStartMonth), currency: /^[A-Z]{3}$/.test(c.settings.currency) ? c.settings.currency : "EGP", company: c.name.slice(0, 80) });
+export function templateHref(kind: TemplateKind, c: { name: string; settings: { currency: string; fyStartMonth: number } }, lang: "en" | "ar" = "en") {
+  const q = new URLSearchParams({ fy: String(c.settings.fyStartMonth), currency: /^[A-Z]{3}$/.test(c.settings.currency) ? c.settings.currency : "EGP", company: c.name.slice(0, 80), lang });
   return `/api/templates/${kind}?${q}`;
 }
 
 export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; compact?: boolean }) {
   const c = useCompany();
-  const t = useT().d.dat.ready;
+  const T = useT();
+  const t = T.d.dat.ready;
   return (
-    <a href={templateHref(kind, c)} download className={cn("inline-flex items-center gap-1.5 rounded border border-brand-d text-brand-d hover:bg-brand-bg", compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm")} data-testid={`template-${kind}`}>
+    <a href={templateHref(kind, c, T.lang)} download className={cn("inline-flex items-center gap-1.5 rounded border border-brand-d text-brand-d hover:bg-brand-bg", compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm")} data-testid={`template-${kind}`}>
       <Download className="h-3.5 w-3.5" />{t.download(t.template[kind])}
     </a>
   );

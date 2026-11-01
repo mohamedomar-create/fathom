@@ -4,6 +4,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { analyze, defaultEnd, hasPL, indexMonths, isAnnualColumn, type Comparison, type PeriodSel, type PeriodType } from "@/lib/engine";
 import { useCompany } from "./context";
 import { useLang } from "@/lib/i18n/context";
+import { inLang } from "@/lib/i18n/script";
 import { kpiName } from "@/lib/i18n/kpis";
 
 /** Period selection lives in the URL (?type=month&end=2026-09&cmp=target) so views are shareable. */
@@ -50,5 +51,7 @@ export function useComments() {
   const company = useCompany();
   const { sel } = usePeriod();
   const key = `${sel.type}:${sel.end}`;
-  return (section: string): string | undefined => company.commentary[`${key}|${section}`] ?? company.commentary[section];
+  const lang = useLang();
+  // Saved text in the other language gives way to the page's own automatic notes.
+  return (section: string): string | undefined => inLang(company.commentary[`${key}|${section}`] ?? company.commentary[section], lang);
 }

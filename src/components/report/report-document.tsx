@@ -23,6 +23,7 @@ import { ReportForecast } from "./report-forecast";
 import { useT } from "@/lib/i18n/use-t";
 import { dirOf, htmlLang, monthNames } from "@/lib/i18n";
 import { DEMO_NOTE } from "@/lib/company/demo-note";
+import { inLang } from "@/lib/i18n/script";
 
 type TT = ReturnType<typeof useT>;
 
@@ -49,7 +50,7 @@ export function ReportDocument({ input }: { input: ReportInput }) {
   const enabled = input.sections.filter((s) => s.enabled && (s.key !== "sales" || canPrintSales(input)) && (s.key !== "expenses" || hasExpenses(input))).map((s) => s.key);
   const comment = (k: SectionKey) => {
     const key = SECTION_COMMENT[k];
-    const typed = key ? input.commentary[key] : undefined;
+    const typed = key ? inLang(input.commentary[key], T.lang) : undefined;
     if (typed) return <div className="rcomment whitespace-pre-line">{typed}</div>;
     const fs = a.findings.filter((f) => AUTO_SECTIONS[k]?.includes(f.section)).slice(0, 3);
     if (!fs.length) return null;

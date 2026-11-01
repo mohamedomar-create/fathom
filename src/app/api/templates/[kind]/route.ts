@@ -12,6 +12,7 @@ const Q = z.object({
   fy: z.coerce.number().int().min(1).max(12).default(1),
   currency: z.string().regex(/^[A-Z]{3}$/).default("EGP"),
   company: z.string().max(80).optional(),
+  lang: z.enum(["en", "ar"]).optional(),
 });
 
 /** The blank template for one kind of data, for the company's financial year (no data in it, so no sign-in needed). */
@@ -25,7 +26,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ kind: string }>
   const year = q.data.year ?? (now.getMonth() + 1 >= q.data.fy ? now.getFullYear() : now.getFullYear() - 1);
   const company = q.data.company?.replace(/[^\p{L}\p{N} .&()-]/gu, "").trim() || undefined;
   // Titles and help in the language chosen on this browser; the headings iReport reads back are the same in both.
-  const lang = await getLang();
+  // The language is in the address (so a shared cache never mixes them up); the cookie only stands in without it.
+  const lang = q.data.lang ?? (await getLang());
   const buf = await buildTemplate(kind as TemplateKind, { year, fyStart: q.data.fy, currency: q.data.currency, company, lang });
   const file = `ireport-${kind}-template${kind === "financials" ? `-${year}` : ""}.xlsx`;
   return new NextResponse(new Uint8Array(buf), {

@@ -1,4 +1,5 @@
 "use client";
+import { isMemoHeading } from "@/lib/ai/memo-headings";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Loader2, Sparkles } from "lucide-react";
@@ -9,7 +10,6 @@ import { readMemo } from "@/lib/engine";
 import { useT } from "@/lib/i18n/use-t";
 
 // The rule memo's headings in both languages (real-profit and AI text use "# " headings).
-const HEADINGS = /^(lead with|risks and how to answer them|what to ask for|questions to expect|ابدأ بـ|المخاطر وكيف ترد عليها|ما الذي تطلبه|أسئلة متوقعة)\s*:?$/i;
 
 /** Memo text as written by the AI or the automatic memo: a headline, then headed groups of "• " bullets. */
 export function MemoText({ text, className }: { text: string; className?: string }) {
@@ -17,7 +17,7 @@ export function MemoText({ text, className }: { text: string; className?: string
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (!line) continue;
-    if (HEADINGS.test(line) || (/^#+\s/.test(line))) { blocks.push({ heading: line.replace(/^#+\s*/, "").replace(/:$/, ""), lines: [] }); continue; }
+    if (isMemoHeading(line) || (/^#+\s/.test(line))) { blocks.push({ heading: line.replace(/^#+\s*/, "").replace(/:$/, ""), lines: [] }); continue; }
     blocks[blocks.length - 1].lines.push(line);
   }
   return (

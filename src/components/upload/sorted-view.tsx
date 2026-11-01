@@ -109,7 +109,7 @@ export function SortedView(p: SortedViewProps) {
         )}
       </div>
       {p.picked?.note && <div className="border-b border-line bg-amber/10 px-3 py-1.5 text-[12.5px]" data-testid="picked-note">{p.picked.note}</div>}
-      <div tabIndex={0} className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
+      <div className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
         {tabs.map((t) => (
           <button key={t.k} role="tab" aria-selected={shown === t.k} onClick={() => setTab(t.k)} data-testid={`reading-tab-${t.k}`}
             className={cn("shrink-0 rounded-t border border-b-0 px-2.5 py-1 text-xs", shown === t.k ? "border-line bg-white font-medium" : "border-transparent text-mute")}>
