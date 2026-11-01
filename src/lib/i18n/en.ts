@@ -77,7 +77,8 @@ export const en = {
   dataNav: {
     title: "Data",
     sub: "The General Ledger is your book of record. Everything else adds detail or checks it, in this order.",
-    tabs: { "": "Steps", "/upload": "Upload", "/checks": "Checks & history", "/readiness": "Readiness", "/end-users": "End users", "/odoo": "Odoo live" } as Record<string, string>,
+    tabs: { steps: "Steps", checks: "Checks & history", connections: "Connections" },
+    sub2: { steps: "Steps", readiness: "Readiness by sector", upload: "Upload a file", odoo: "Odoo live", endUsers: "End users" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `${n} months loaded`,

@@ -16,6 +16,7 @@ export interface KpiConfigEntry { active?: boolean; importance?: Importance; tar
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
 import { booksFromZeroOf, timeZoneOf, vatRateOf } from "./time-zone";
+import { systemOf } from "./system";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
 
 export function forecastFromRow(c: Pick<CompanyRow, "kpi_config">): ForecastDrivers {
@@ -131,6 +132,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, booksBasis, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), closedThrough: c.closed_through ?? null,
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, booksBasis, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), system: systemOf(c.kpi_config, c.source), closedThrough: c.closed_through ?? null,
   };
 });

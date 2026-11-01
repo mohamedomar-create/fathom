@@ -60,11 +60,12 @@ test("the Data tabs open quickly one after another on a large company", async ({
   keptReady(id);
   await page.goto(`/company/${id}/data`);
   await page.getByTestId("data-steps").waitFor({ timeout: 60_000 });
-  const tabs: [string, string][] = [["Upload", "[data-testid=wiz-steps]"], ["Checks & history", "[data-testid=health-calendar]"], ["Readiness", "[data-testid=readiness-overview]"], ["End users", "[data-testid=end-user-choices]"], ["Odoo live", "main button:has-text(\"Test connection\")"], ["Steps", "[data-testid=data-steps]"]];
+  // Three tabs (Steps, Checks & history, Connections); Upload and Readiness open under Steps, Odoo and End users under Connections.
+  const tabs: [string, string][] = [["data-sub-upload", "[data-testid=wiz-steps]"], ["data-tab-checks", "[data-testid=health-calendar]"], ["data-tab-steps", "[data-testid=data-steps]"], ["data-sub-readiness", "[data-testid=readiness-overview]"], ["data-tab-connections", "main button:has-text(\"Test connection\")"], ["data-sub-end-users", "[data-testid=end-user-choices]"], ["data-tab-steps", "[data-testid=data-steps]"]];
   const rows: { tab: string; ms: number }[] = [];
   for (const [label, sel] of tabs) {
     const t0 = Date.now();
-    await page.getByTestId("data-nav").getByRole("link", { name: label }).click();
+    await page.getByTestId(label).click();
     await page.locator(sel).first().waitFor({ timeout: 60_000 });
     rows.push({ tab: label, ms: Date.now() - t0 });
   }

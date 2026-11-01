@@ -124,3 +124,14 @@ export async function removeAgencyStatement(companyId: string): Promise<{ ok: tr
     return { ok: false, error: safeError(e, "removeAgencyStatement") };
   }
 }
+
+/** The "Which accounting system?" answer for a company created before the picker. Editors only (patchSettings checks). */
+export async function setAccountingSystem(companyId: string, system: "odoo" | "other"): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!z.string().uuid().safeParse(companyId).success || !z.enum(["odoo", "other"]).safeParse(system).success) return { ok: false, error: "That choice is not valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { system } });
+  if (!r.ok) return r;
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}

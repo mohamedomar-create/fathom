@@ -49,7 +49,8 @@ export async function signOut(page: Page) {
 export async function createCompany(page: Page, name: string) {
   await page.goto("/companies");
   await page.getByTestId("add-company").click();
-  await page.getByRole("button", { name: /Odoo export \(Excel \/ CSV\)/ }).click();
+  await page.getByTestId("tile-odoo").click();
+  await page.getByTestId("odoo-files").click();
   await page.getByLabel("Company name").fill(name);
   await page.getByRole("button", { name: "Create company" }).click();
   await expect(page).toHaveURL(/\/company\/[0-9a-f-]{36}\/data/);

@@ -7,6 +7,7 @@ import { saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { withMode } from "@/lib/company/mode";
+import { withSystem } from "@/lib/company/system";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
@@ -30,6 +31,8 @@ const CompanySchema = z.object({
   source: z.enum(["upload", "odoo"]).default("upload"),
   /** Simple mode: a Sales and an Expenses sheet only. Absent: Full. */
   mode: z.enum(["simple", "full"]).optional(),
+  /** Which accounting system the books come from (the picker). */
+  system: z.enum(["odoo", "other", "cash"]).optional(),
   org_id: z.string().uuid().optional().or(z.literal("")),
 });
 
@@ -42,7 +45,7 @@ export async function createCompany(formData: FormData): Promise<{ error: string
   const { supabase, user, orgId } = ctx;
   const { data, error } = await supabase.from("companies").insert({
     org_id: orgId, name: v.name, currency: v.currency.toUpperCase(), fy_start_month: v.fy_start_month, tax_rate: v.tax_rate / 100, source: v.source, created_by: user.id,
-    ...(v.mode === "simple" ? { kpi_config: withMode({}, "simple") as Json } : {}),
+    ...(v.mode === "simple" || v.system ? { kpi_config: (v.system ? withSystem(v.mode === "simple" ? withMode({}, "simple") : {}, v.system) : withMode({}, "simple")) as Json } : {}),
   }).select("id").single();
   if (error) return { error: dbError(error, "createCompany") };
   revalidatePath("/companies");

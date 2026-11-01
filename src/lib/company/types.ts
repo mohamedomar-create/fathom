@@ -54,6 +54,8 @@ export interface CompanyBundle {
   timeZone?: string | null;
   /** The company said its books start from zero (no opening balance due). */
   booksFromZero?: boolean;
+  /** Which accounting system the books come from (Phase 4a picker); null until chosen. */
+  system?: import("./system").AcctSystem | null;
   /** Forecast drivers the company has saved. */
   forecast?: ForecastDrivers;
 }

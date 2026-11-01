@@ -74,7 +74,8 @@ export const ar: Dict = {
   dataNav: {
     title: "البيانات",
     sub: "دفتر الأستاذ العام هو سجلك الأساسي. كل ما عداه يضيف تفاصيل أو يتحقق منه، بهذا الترتيب.",
-    tabs: { "": "الخطوات", "/upload": "الرفع", "/checks": "الفحوص والسجل", "/readiness": "الجاهزية", "/end-users": "المستخدمون النهائيون", "/odoo": "Odoo المباشر" },
+    tabs: { steps: "الخطوات", checks: "الفحوص والسجل", connections: "الاتصالات" },
+    sub2: { steps: "الخطوات", readiness: "الجاهزية حسب القسم", upload: "رفع ملف", odoo: "Odoo المباشر", endUsers: "المستخدمون النهائيون" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `عدد الأشهر المحمّلة: ${n}`,

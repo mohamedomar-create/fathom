@@ -600,6 +600,13 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
 
   // 2 · Get your file
   if (screen === "get") {
+    // "Another system or Excel" (the picker): the same files from any accounting program, or our template; no Odoo menus.
+    const otherSystem = company.system === "other" && kind !== "inventory" && kind !== "payments";
+    const otherSteps = kind === "opening"
+      ? ["In your accounting program, open the Trial Balance (or General Ledger).", "Pick the day before your books start (e.g. 30/06/2021).", "Export it to Excel."]
+      : kind === "sales" ? ["In your accounting program, open the list of sales invoices.", "Show date, customer, product and amount.", "Export it to Excel."]
+        : kind === "expenses" ? ["In your accounting program, open the list of bills or expenses.", "Show date, supplier, account and amount.", "Export it to Excel."]
+          : ["In your accounting program, open the General Ledger (or Trial Balance, with a column per month).", "Pick dates from your books start to today.", "Export it to Excel."];
     const steps = kind === "opening"
       ? ["Open Odoo: Accounting → Reporting → General Ledger (or Trial Balance).", "Pick one day: from and to the day before your books start (e.g. 30/06/2021).", "Tick “Initial balance” if you see it. Click Export → Excel."]
       : kind === "payments"
@@ -625,10 +632,10 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           </p>
         )}
         <div className="grid max-w-4xl gap-4 md:grid-cols-2">
-          <section className="rounded-xl border border-line p-5" data-testid="get-odoo">
-            <h3 className="mb-3 text-lg font-medium">{kind === "expenses" ? "Vendor bills from Odoo" : "From Odoo"}</h3>
+          <section className="rounded-xl border border-line p-5" data-testid={otherSystem ? "get-other" : "get-odoo"}>
+            <h3 className="mb-3 text-lg font-medium">{otherSystem ? "From your accounting program" : kind === "expenses" ? "Vendor bills from Odoo" : "From Odoo"}</h3>
             <ol className="space-y-2.5 text-[15px]">
-              {steps.map((t, k) => <li key={k} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-bg text-[12px] font-semibold text-brand-d">{k + 1}</span>{t}</li>)}
+              {(otherSystem ? otherSteps : steps).map((t, k) => <li key={k} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-bg text-[12px] font-semibold text-brand-d">{k + 1}</span>{t}</li>)}
             </ol>
           </section>
           {kind === "inventory" ? (
@@ -638,7 +645,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
             </section>
           ) : (
           <section className="rounded-xl border border-line p-5" data-testid="get-template">
-            <h3 className="mb-3 text-lg font-medium">No Odoo? Use our template</h3>
+            <h3 className="mb-3 text-lg font-medium">{otherSystem ? "Or fill in our template" : "No Odoo? Use our template"}</h3>
             <TemplateButton kind={kind === "opening" ? "opening" : kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : "financials"} />
             <ul className="mt-3 space-y-1.5 text-[15px] text-mute"><li>Fill it in. Save it.</li><li>One number in each box.</li></ul>
           </section>
