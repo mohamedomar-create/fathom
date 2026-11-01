@@ -5,12 +5,13 @@ import { useMemo, useState, useTransition } from "react";
 import { money, type ClassKey } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import type { AccountLine } from "@/lib/company/types";
-import { CLASS_LABEL, CLASS_OPTIONS } from "@/lib/ingest/pipeline";
+import { CLASS_OPTIONS } from "@/lib/ingest/pipeline";
 import { isPL } from "@/lib/company/build";
 import { reclassify, setSubClasses } from "@/app/company/[id]/settings/actions";
 import { SUB_LABEL, SUB_PARENTS } from "@/lib/ingest/subclass";
 import type { SubKey } from "@/lib/engine";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/i18n/use-t";
 
 const PAIRS: Partial<Record<ClassKey, ClassKey>> = { cos_variable: "cos_fixed", cos_fixed: "cos_variable", exp_variable: "exp_fixed", exp_fixed: "exp_variable" };
 const BEHAVIOUR: Partial<Record<ClassKey, string>> = { cos_variable: "VARIABLE", exp_variable: "VARIABLE", cos_fixed: "FIXED", exp_fixed: "FIXED", cos_depreciation: "DEPRECIATION", exp_depreciation: "DEPRECIATION" };
@@ -18,6 +19,9 @@ const BEHAVIOUR: Partial<Record<ClassKey, string>> = { cos_variable: "VARIABLE",
 export function CoaEditor() {
   const c = useCompany();
   const router = useRouter();
+  const T = useT();
+  const x = T.d.setx;
+  const o = x.coa;
   const [tab, setTab] = useState<"PL" | "BS">("PL");
   const [q, setQ] = useState("");
   const [changes, setChanges] = useState<Record<string, ClassKey>>({});
@@ -41,32 +45,32 @@ export function CoaEditor() {
     const parts: string[] = [];
     if (Object.keys(changes).length) {
       const r = await reclassify(c.id, changes);
-      if (!r.ok) { setMsg(r.error ?? "Could not save"); return; }
-      parts.push(`${r.count} account(s) reclassified. All analysis now uses the new mapping.${r.notice ? ` ${r.notice}` : ""}`);
+      if (!r.ok) { setMsg(r.error ?? x.common.couldNotSave); return; }
+      parts.push(o.reclassified(r.count ?? 0, r.notice ?? ""));
       setChanges({});
     }
     if (Object.keys(subs).length) {
       const r = await setSubClasses(c.id, subs);
-      if (!r.ok) { setMsg(r.error ?? "Could not save"); return; }
-      parts.push(`${r.count} sub-class(es) saved: the cash flow statement uses them.${r.refused?.length ? ` Not saved (they don't fit the account's class): ${r.refused.join(", ")}.` : ""}`);
+      if (!r.ok) { setMsg(r.error ?? x.common.couldNotSave); return; }
+      parts.push(o.subSaved(r.count ?? 0, r.refused?.length ? r.refused.join(", ") : ""));
       setSubs({});
     }
     setMsg(parts.join(" "));
     router.refresh();
   });
-  if (!c.accounts.length) return <p className="text-mute">No accounts yet — import data first.</p>;
+  if (!c.accounts.length) return <p className="text-mute">{o.noAccounts}</p>;
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="flex gap-1 rounded-md bg-band p-1 text-sm">
-          {(["PL", "BS"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={cn("rounded px-3 py-1", tab === t ? "bg-white font-semibold shadow-sm" : "text-mute")}>{t === "PL" ? "P&L" : "Balance Sheet"}</button>)}
+          {(["PL", "BS"] as const).map((t) => <button key={t} onClick={() => setTab(t)} className={cn("rounded px-3 py-1", tab === t ? "bg-white font-semibold shadow-sm" : "text-mute")}>{t === "PL" ? o.pl : o.bs}</button>)}
         </div>
-        <label className="flex items-center gap-2 rounded border border-line px-2.5 py-1.5 text-sm"><Search className="h-4 w-4 text-mute" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search accounts" className="outline-none" /></label>
+        <label className="flex items-center gap-2 rounded border border-line px-2.5 py-1.5 text-sm"><Search className="h-4 w-4 text-mute" /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder={o.search} className="outline-none" /></label>
       </div>
       {groups.map(([cls, accts]) => (
         <div key={cls} className="mb-5">
           <div className="mb-1 flex items-center gap-2 border-b border-ink pb-1 text-xs font-bold uppercase tracking-wider">
-            <span className="flex h-5 w-5 items-center justify-center rounded-sm bg-bar text-[10px] text-white">{CLASS_LABEL[cls][0]}</span>{CLASS_LABEL[cls]} <span className="font-normal text-mute">· {accts.length}</span>
+            <span className="flex h-5 w-5 items-center justify-center rounded-sm bg-bar text-[10px] text-white">{o.cls[cls][0]}</span>{o.cls[cls]} <span className="font-normal text-mute">· {accts.length}</span>
           </div>
           {accts.map((a) => {
             const now = changes[a.id] ?? a.cls;
@@ -76,20 +80,20 @@ export function CoaEditor() {
               <div key={a.id} className={cn("grid grid-cols-[1fr_auto] items-center gap-3 border-b border-line py-2 text-[13px] sm:grid-cols-[1fr_110px_120px_220px]", (changes[a.id] || a.id in subs) && "bg-amber/10")}>
                 <div><span className="me-2 text-xs text-mute">{a.code}</span>{a.name}</div>
                 <div className="hidden sm:block">{BEHAVIOUR[now] && (
-                  <button disabled={c.readOnly || !PAIRS[now]} onClick={() => setChanges((x) => ({ ...x, [a.id]: PAIRS[now]! }))} title={PAIRS[now] ? "Click to switch fixed / variable" : undefined}
-                    className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider", BEHAVIOUR[now] === "VARIABLE" ? "bg-[#fdebd9] text-[#b4621a]" : BEHAVIOUR[now] === "FIXED" ? "bg-[#e3eefb] text-[#2a6cc0]" : "bg-band text-mute")}>{BEHAVIOUR[now]}</button>
+                  <button disabled={c.readOnly || !PAIRS[now]} onClick={() => setChanges((x) => ({ ...x, [a.id]: PAIRS[now]! }))} title={PAIRS[now] ? o.switchTip : undefined}
+                    className={cn("rounded px-1.5 py-0.5 text-[10px] font-semibold tracking-wider", BEHAVIOUR[now] === "VARIABLE" ? "bg-[#fdebd9] text-[#b4621a]" : BEHAVIOUR[now] === "FIXED" ? "bg-[#e3eefb] text-[#2a6cc0]" : "bg-band text-mute")}>{o.behaviour[BEHAVIOUR[now]!] ?? BEHAVIOUR[now]}</button>
                 )}</div>
                 <div className="num hidden text-end text-mute sm:block">{money(isPL(now) ? fyTotal(a.amounts) : a.amounts[last ?? ""] ?? 0, c.settings.currency, true)}</div>
                 <div className="flex flex-col items-end gap-1">
-                  <select disabled={c.readOnly} value={now} onChange={(e) => setChanges((x) => ({ ...x, [a.id]: e.target.value as ClassKey }))} aria-label={`Reclassify ${a.name}`}
+                  <select disabled={c.readOnly} value={now} onChange={(e) => setChanges((x) => ({ ...x, [a.id]: e.target.value as ClassKey }))} aria-label={o.reclassifyAria(a.name)}
                     className="max-w-56 rounded border border-line px-1.5 py-1 text-xs">
-                    {CLASS_OPTIONS.map((k) => <option key={k} value={k}>{CLASS_LABEL[k]}</option>)}
+                    {CLASS_OPTIONS.map((k) => <option key={k} value={k}>{o.cls[k]}</option>)}
                   </select>
                   {subOptions.length > 0 && !changes[a.id] && (
-                    <select disabled={c.readOnly} value={subNow} onChange={(e) => setSubs((x) => ({ ...x, [a.id]: e.target.value as SubKey | "" }))} aria-label={`Sub-class of ${a.name}`} data-testid={`sub-${a.id}`}
+                    <select disabled={c.readOnly} value={subNow} onChange={(e) => setSubs((x) => ({ ...x, [a.id]: e.target.value as SubKey | "" }))} aria-label={o.subAria(a.name)} data-testid={`sub-${a.id}`}
                       className="max-w-56 rounded border border-line px-1.5 py-1 text-[11px] text-mute">
-                      <option value="">No sub-class</option>
-                      {subOptions.map((k) => <option key={k} value={k}>{SUB_LABEL[k].en}</option>)}
+                      <option value="">{o.noSub}</option>
+                      {subOptions.map((k) => <option key={k} value={k}>{SUB_LABEL[k][T.lang]}</option>)}
                     </select>
                   )}
                 </div>
@@ -98,14 +102,14 @@ export function CoaEditor() {
           })}
         </div>
       ))}
-      <p className="text-xs text-mute">Amounts: P&amp;L = last 12 months; balance sheet = latest month. Fixed/variable drives the breakeven and goalseek tools — ask “if sales doubled, would this cost roughly double?” A sub-class (interest or income tax payable, provisions, leases, disposals…) lets the cash flow show what was paid; it never changes the account&apos;s class or any other figure. Change the class and the sub-class in separate saves.</p>
+      <p className="text-xs text-mute">{o.footnote}</p>
       <div data-testid="settings-save-bar" className="sticky bottom-[calc(49px+env(safe-area-inset-bottom))] md:bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
         {msg && <span className="me-auto text-sm text-green-d">{msg}</span>}
-        {c.readOnly ? <span className="text-sm text-mute">Read-only.</span> : (
+        {c.readOnly ? <span className="text-sm text-mute">{x.common.readOnly}</span> : (
           <>
-            <span className="text-sm text-mute">{dirty} change(s)</span>
-            <button onClick={() => { setChanges({}); setSubs({}); }} disabled={!dirty} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">Discard</button>
-            <button onClick={save} disabled={!dirty || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? "Saving…" : "Save mapping"}</button>
+            <span className="text-sm text-mute">{o.changes(dirty)}</span>
+            <button onClick={() => { setChanges({}); setSubs({}); }} disabled={!dirty} className="rounded px-4 py-2 text-mute hover:bg-band disabled:opacity-40">{x.common.discard}</button>
+            <button onClick={save} disabled={!dirty || pending} className="rounded bg-brand-d px-5 py-2 font-medium text-white disabled:opacity-50">{pending ? x.common.saving : o.saveMapping}</button>
           </>
         )}
       </div>
