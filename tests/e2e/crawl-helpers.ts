@@ -104,3 +104,37 @@ export async function axeViolations(page: Page, url: string): Promise<string[]> 
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
   return r.violations.map((v) => `${url} ${v.id} (${v.impact}): ${v.nodes.length}× e.g. ${v.nodes[0]?.target.join(" ")}`);
 }
+
+/**
+ * English left on an Arabic page: runs of three or more Latin words in the visible text. Names that stay Latin in
+ * Arabic (company and product names, Odoo, PDF, EGP, KPI codes) are allowed.
+ */
+const LATIN_OK = /\b(Odoo|PDF|EGP|USD|KPI|KPIs|CSV|Excel|API|iReport|Corner Kiosk|Nile|Demo|QuickBooks|Xero|Daftra|WH\/\S+|INV\/\S+)\b/g;
+export async function englishOnArabicPage(page: Page, url: string, dataNames: string[] = []): Promise<string[]> {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  const texts: string[] = await page.evaluate(() => {
+    const out: string[] = [];
+    const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      const el = n.parentElement;
+      if (!el || el.closest("script,style,noscript,[data-latin-ok],code,pre,.num") || !el.checkVisibility?.()) continue;
+      const t = (n.textContent ?? "").replace(/\s+/g, " ").trim();
+      if (t) out.push(t);
+    }
+    // Labels people hear but do not see.
+    for (const el of Array.from(document.querySelectorAll("[aria-label],[placeholder],[title]"))) {
+      for (const a of ["aria-label", "placeholder", "title"]) { const v = el.getAttribute(a); if (v) out.push(v); }
+    }
+    return out;
+  });
+  const bad = new Set<string>();
+  for (const t of texts) {
+    // The company's own data (account, customer, supplier and product names) stays as it was entered.
+    let clean = t.replace(/^\s*\d{3,}\s+.*$/, " ");
+    for (const n of dataNames) if (clean.includes(n)) clean = clean.split(n).join(" ");
+    clean = clean.replace(LATIN_OK, " ");
+    if (/\b[A-Za-z]{2,}\b[^؀-ۿ\d]{0,3}\b[A-Za-z]{2,}\b[^؀-ۿ\d]{0,3}\b[A-Za-z]{2,}\b/.test(clean)) bad.add(t.slice(0, 80));
+  }
+  return [...bad].map((t) => `${url}: "${t}"`);
+}
