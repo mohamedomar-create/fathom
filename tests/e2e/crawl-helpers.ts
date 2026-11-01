@@ -99,6 +99,8 @@ export function expectClean(all: PageIssues[]) {
 
 /** WCAG 2.2 AA violations on a page (axe-core), one line each. */
 export async function axeViolations(page: Page, url: string): Promise<string[]> {
+  // Colours are measured once animations have settled (fades would otherwise read as low contrast).
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(url);
   await page.waitForLoadState("networkidle").catch(() => {});
   const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
