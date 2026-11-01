@@ -26,7 +26,7 @@ grant select on s to anon;
 select private.set_cron_secret((select good from s));
 insert into public.odoo_sync_jobs (company_id, nightly, requested_by, next_run_at) values ((select co from ids), true, pg_temp.uid('or-ed@x.test'), now() - interval '1 minute');
 
-select pg_temp.check('schema version 47', public.schema_version()::text, '47');
+select pg_temp.check('schema version 47 or later', (public.schema_version() >= 47)::text, 'true');
 select pg_temp.check('the old call shapes are gone', (select count(*) from pg_proc where proname in ('odoo_cron_rpc', 'odoo_cron_finish') and pronargs in (4, 6))::text, '0');
 
 select pg_temp.anon();

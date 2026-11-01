@@ -9,6 +9,7 @@ import { logOp, newRef } from "@/lib/observe";
 import type { CashUploadRow } from "@/lib/supabase/database.types";
 import type { CashField } from "./read";
 import type { Entry } from "./figures";
+import type { CategoryRule } from "./categorise";
 
 export interface CashCompany {
   id: string; name: string; currency: string; role: "admin" | "editor" | "viewer"; readOnly: boolean; simple: boolean;
@@ -71,3 +72,14 @@ export async function loadCashUploads(id: string): Promise<CashUpload[]> {
   const { data } = await supabase.from("cash_uploads").select("id, filename, months, mode, rows, skipped, created_at").eq("company_id", id).eq("status", "done").order("created_at", { ascending: false }).limit(50);
   return (data ?? []) as CashUpload[];
 }
+
+/** The categories the cash book learned (0048), most recently used first; none when they could not be read. */
+export const loadCashRules = cache(async (id: string): Promise<CategoryRule[]> => {
+  const { supabase } = await getUser();
+  const { data, error } = await supabase.from("cash_category_rules").select("id, direction, match_on, match, category, kind, uses, last_used")
+    .eq("company_id", id).order("last_used", { ascending: false }).limit(2000);
+  if (error) { logOp({ op: "cash_category_rules", company: id, ms: 0, attempts: 1, outcome: "failed", code: error.code, ref: newRef() }); return []; }
+  return (data ?? []).filter((r) => (ALL_KINDS as string[]).includes(r.kind)).map((r) => ({
+    id: Number(r.id), direction: r.direction, matchOn: r.match_on, match: r.match, category: r.category, kind: r.kind as Kind, uses: r.uses, lastUsed: r.last_used,
+  }));
+});

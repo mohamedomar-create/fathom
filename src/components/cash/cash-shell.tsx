@@ -7,6 +7,8 @@ import { useDict } from "@/lib/i18n/context";
 import { LangSwitch } from "@/components/shell/lang-switch";
 import { TipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/cn";
+import { useCashMaybe } from "@/lib/cash/context";
+import { QuickEntry } from "./quick-entry";
 
 const TABS = ["", "in", "out", "cash", "entries", "upload", "settings"] as const;
 
@@ -16,6 +18,8 @@ export function CashShell({ id, name, right, children, base: baseIn, demo = fals
   const t = d.cash;
   const path = usePathname();
   const base = baseIn ?? `/cash/${id}`;
+  // Adding needs the business's entries (for the suggestions); a viewer or the demo never adds.
+  const canAdd = !!useCashMaybe() && !readOnly && !demo;
   return (
     <TipProvider>
       <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-3 text-[13px] text-[#ddd] no-print">
@@ -30,15 +34,16 @@ export function CashShell({ id, name, right, children, base: baseIn, demo = fals
           const on = k ? path.startsWith(href) : path === base;
           return <Link prefetch={false} key={k} href={href} className={cn("-mb-px shrink-0 border-b-2 px-3 py-2.5 text-sm", on ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")} data-testid={`cash-tab-${k || "overview"}`}>{t.nav[k]}</Link>;
         })}
+        {canAdd && <QuickEntry trigger={<button type="button" className="ms-auto my-1.5 shrink-0 rounded bg-brand-d px-3 py-1 text-sm font-medium text-white" data-testid="cash-quick-add">+ {t.addEntry}</button>} />}
       </nav>
       <main className="mx-auto max-w-6xl px-4 pb-24 pt-6 sm:px-8 sm:pb-16">{children}</main>
-      <CashBottomBar base={base} path={path} demo={demo} readOnly={readOnly} />
+      <CashBottomBar base={base} path={path} demo={demo} canAdd={canAdd} />
     </TipProvider>
   );
 }
 
 /** The cash book on a phone: Overview, Add (in the middle), Entries, and the other pages under More. */
-function CashBottomBar({ base, path, demo, readOnly }: { base: string; path: string; demo: boolean; readOnly: boolean }) {
+function CashBottomBar({ base, path, demo, canAdd }: { base: string; path: string; demo: boolean; canAdd: boolean }) {
   const d = useDict();
   const t = d.cash;
   const on = path === base ? "" : path.startsWith(`${base}/entries`) ? "entries" : "more";
@@ -46,9 +51,9 @@ function CashBottomBar({ base, path, demo, readOnly }: { base: string; path: str
   return (
     <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center border-t border-line bg-white pb-[env(safe-area-inset-bottom)] sm:hidden no-print" aria-label={d.shell.sections} data-testid="cash-bottom-bar">
       <Link prefetch={false} href={base} className={tab("")} aria-current={on === "" ? "page" : undefined} data-testid="cash-bottom-overview"><LayoutDashboard className="h-5 w-5" strokeWidth={1.7} />{t.nav[""]}</Link>
-      {!readOnly && <Link prefetch={false} href={`${base}/entries`} className="flex flex-1 justify-center" aria-label={t.addEntry} data-testid="cash-bottom-add">
+      {canAdd && <QuickEntry trigger={<button type="button" className="flex flex-1 justify-center" aria-label={t.addEntry} data-testid="cash-bottom-add">
         <span className="-mt-5 flex h-12 w-12 items-center justify-center rounded-full bg-brand-d text-white shadow-lg"><Plus className="h-6 w-6" /></span>
-      </Link>}
+      </button>} />}
       <Link prefetch={false} href={`${base}/entries`} className={tab("entries")} aria-current={on === "entries" ? "page" : undefined} data-testid="cash-bottom-entries"><ListOrdered className="h-5 w-5" strokeWidth={1.7} />{t.nav.entries}</Link>
       <D.Root>
         <D.Trigger className={tab("more")} data-testid="cash-bottom-more"><Menu className="h-5 w-5" strokeWidth={1.7} />{d.bottom.more}</D.Trigger>

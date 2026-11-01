@@ -13,9 +13,11 @@ import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/cn";
 import { useLang } from "@/lib/i18n/context";
 import { detectKind, KIND_LABEL, kindsFor, type Kind } from "@/lib/cash/kinds";
+import { suggest, topCategories } from "@/lib/cash/categorise";
 
-type Draft = { day: string; direction: "in" | "out"; amount: string; category: string; party: string; note: string; paid: "" | "yes" | "no"; paidOn: string; kind: "" | Kind };
-const blank = (): Draft => ({ day: "", direction: "in", amount: "", category: "", party: "", note: "", paid: "", paidOn: "", kind: "" });
+// autoCat: the category was filled in from what the cash book learned, so it follows the name and description until typed over.
+type Draft = { day: string; direction: "in" | "out"; amount: string; category: string; party: string; note: string; paid: "" | "yes" | "no"; paidOn: string; kind: "" | Kind; autoCat?: boolean };
+const blank = (day = ""): Draft => ({ day, direction: "in", amount: "", category: "", party: "", note: "", paid: "", paidOn: "", kind: "" });
 const draftOf = (e: StoredEntry): Draft => ({ day: e.day, direction: e.direction, amount: String(e.amount), category: e.category, party: e.party, note: e.note, paid: e.paid === true ? "yes" : e.paid === false ? "no" : "", paidOn: e.paidOn ?? "", kind: e.kind });
 const inputOf = (d: Draft): EntryInput => ({
   day: d.day, direction: d.direction, amount: typedAmount(d.amount) ?? 0, category: d.category, party: d.party, note: d.note,
@@ -27,7 +29,7 @@ const SHOW = 300;
 
 /** Every entry, newest first: add one, change one, remove one (editors). */
 export function CashEntries() {
-  const { company, entries } = useCash();
+  const { company, entries, rules = [] } = useCash();
   const T = useT();
   const t = T.d.cash;
   const router = useRouter();
@@ -39,7 +41,13 @@ export function CashEntries() {
   const rows = entries.filter((e) => shown === "all" || e.day.startsWith(shown)).sort((a, b) => b.day.localeCompare(a.day) || b.id - a.id);
   const pageNo = Math.min(page, Math.max(0, Math.ceil(rows.length / SHOW) - 1));
   const from = pageNo * SHOW;
-  const [adding, setAdding] = useState<Draft>(blank());
+  const [adding, setAddingRaw] = useState<Draft>(() => blank(company.today));
+  // The add row offers the learned category for its name and description (an untouched or empty category only).
+  const setAdding = (d: Draft) => {
+    if (d.category && !d.autoCat) return setAddingRaw(d);
+    const s = suggest(rules, { direction: d.direction, party: d.party, note: d.note });
+    setAddingRaw({ ...d, category: s.category || (d.autoCat ? "" : d.category), autoCat: !!s.category });
+  };
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>(blank());
   const [error, setError] = useState<string | null>(null);
@@ -59,7 +67,8 @@ export function CashEntries() {
       <td className="px-1.5 py-1.5"><select aria-label={t.kind} className={fieldCls} value={d.kind && kindsFor(d.direction).includes(d.kind) ? d.kind : ""} onChange={(e) => set({ ...d, kind: e.target.value as Draft["kind"] })} data-testid={`${p}-kind`}>
         <option value="">{t.kindAuto}</option>{kindsFor(d.direction).map((k) => <option key={k} value={k}>{KIND_LABEL[k][lang]}</option>)}</select></td>
       <td className="px-1.5 py-1.5"><input inputMode="decimal" aria-label={t.amount} className={fieldCls} value={d.amount} onChange={(e) => set({ ...d, amount: e.target.value })} data-testid={`${p}-amount`} /></td>
-      <td className="px-1.5 py-1.5"><input aria-label={t.category} className={fieldCls} value={d.category} onChange={(e) => set({ ...d, category: e.target.value })} data-testid={`${p}-category`} /></td>
+      <td className="px-1.5 py-1.5"><input aria-label={t.category} list={`${p}-categories`} className={fieldCls} value={d.category} onChange={(e) => set({ ...d, category: e.target.value, autoCat: false })} data-testid={`${p}-category`} />
+        <datalist id={`${p}-categories`}>{topCategories(entries, d.direction, "", 20).map((c) => <option key={c} value={c} />)}</datalist></td>
       <td className="px-1.5 py-1.5"><input aria-label={t.party} className={fieldCls} value={d.party} onChange={(e) => set({ ...d, party: e.target.value })} data-testid={`${p}-party`} /></td>
       <td className="px-1.5 py-1.5"><input aria-label={t.note} className={fieldCls} value={d.note} onChange={(e) => set({ ...d, note: e.target.value })} data-testid={`${p}-note`} /></td>
       <td className="px-1.5 py-1.5"><select aria-label={t.paid} className={fieldCls} value={d.paid} data-testid={`${p}-paid`}
@@ -93,7 +102,7 @@ export function CashEntries() {
           <tbody>
             {!company.readOnly && <tr className="border-b border-line bg-band/50" data-testid="entries-add-row">
               {fields(adding, setAdding, "add")}
-              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={() => run(() => entryAdd(company.id, inputOf(adding)), () => setAdding(blank()))} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
+              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={() => run(() => entryAdd(company.id, inputOf(adding)), () => setAddingRaw(blank(company.today)))} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
             </tr>}
             {rows.slice(from, from + SHOW).map((e) => editing === e.id ? (
               <tr key={e.id} className="border-b border-line" data-testid="entries-edit-row">

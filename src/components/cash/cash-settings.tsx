@@ -2,7 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCash } from "@/lib/cash/context";
-import { clearCashBook, previewToFull, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
+import { clearCashBook, previewToFull, ruleDelete, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
 import { KIND_LABEL, type Kind } from "@/lib/cash/kinds";
 import { money } from "@/lib/engine/format";
 import { useLang } from "@/lib/i18n/context";
@@ -32,6 +32,39 @@ function SwitchPreview({ companyId, currency }: { companyId: string; currency: s
       {skip.length > 0 && <p className="text-[#7d5600]" data-testid="cash-to-full-skip">{t.previewSkip(months(skip))}</p>}
       {p.held.length > 0 && <p data-testid="cash-to-full-held">{t.previewHeld(p.held.map((h) => `${KIND_LABEL[h.kind as Kind]?.[lang] ?? h.kind} ${money(Number(h.amount), currency)}`).join(", "))}</p>}
     </div>
+  );
+}
+
+/** The categories the cash book learned from saved entries (0048); an editor can forget one. */
+function LearnedRules() {
+  const { company, rules = [] } = useCash();
+  const t = useT().d.cash;
+  const m = useMsg();
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  return (
+    <section className="rounded-md border border-line p-4" data-testid="cash-rules">
+      <h2 className="text-lg font-normal">{t.rulesTitle}</h2>
+      <p className="mb-3 text-sm text-mute">{t.rulesText}</p>
+      {error && <p role="alert" className="mb-2 text-sm text-red">{m(error)}</p>}
+      {rules.length === 0 ? <p className="text-sm text-mute" data-testid="cash-rules-none">{t.rulesNone}</p> : (
+        <ul className="divide-y divide-line text-sm">
+          {rules.slice(0, 200).map((r) => (
+            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5" data-testid="cash-rule">
+              <span className={r.direction === "in" ? "text-green-d" : "text-red"}>{r.direction === "in" ? t.inWord : t.outWord}</span>
+              <span className="text-mute">{t.ruleOn[r.matchOn]}:</span>
+              <span className="font-medium">{r.match}</span>
+              <span aria-hidden>→</span>
+              <span data-testid="cash-rule-category">{r.category}</span>
+              <span className="text-xs text-mute">{t.ruleUses(r.uses)}</span>
+              {!company.readOnly && <button type="button" disabled={pending} className="ms-auto text-red hover:underline disabled:opacity-50" data-testid="cash-rule-forget"
+                onClick={() => start(async () => { setError(null); const x = await ruleDelete(company.id, r.id); if (!x.ok) setError(x.error); else router.refresh(); })}>{t.ruleForget}</button>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 
@@ -72,6 +105,7 @@ export function CashSettings() {
           {msg && <span role="status" className={msg.ok ? "text-green-d" : "text-red"} data-testid="cash-set-msg">{msg.text}</span>}
         </div>}
       </section>
+      <LearnedRules />
       {!ro && <section className="rounded-md border border-line p-4">
         <h2 className="text-lg font-normal">{t.fullTitle}</h2>
         <p className="mb-3 text-sm text-mute">{t.fullText}</p>

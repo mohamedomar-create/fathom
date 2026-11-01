@@ -120,6 +120,17 @@ export async function entryDelete(companyId: string, id: number): Promise<Result
   return { ok: true };
 }
 
+/** Forgets one learned category (editors). */
+export async function ruleDelete(companyId: string, id: number): Promise<Result> {
+  if (!Id.safeParse(companyId).success || !Number.isInteger(id) || id <= 0) return { ok: false, error: "That rule isn't valid." };
+  const s = await editor("cash_entry");
+  if ("error" in s) return { ok: false, error: s.error! };
+  const { error } = await s.supabase.rpc("cash_rule_delete", { p_id: id });
+  if (error) return { ok: false, error: said(error, "ruleDelete") };
+  refresh(companyId);
+  return { ok: true };
+}
+
 /** The business's settings and remembered column choices, kept with its other settings. */
 /** Saves profile settings (only those given, merged with the rest by the database: 0044), and the name or currency. */
 async function patchProfile(companyId: string, profile: Record<string, unknown>, extra: { name?: string; currency?: string } = {}): Promise<Result> {

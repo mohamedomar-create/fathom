@@ -23,6 +23,12 @@ export function money(v: number | null | undefined, cur = "$", short = false): s
   return (neg ? "-" : "") + `${cur} ` + s;
 }
 
+/** An amount exactly as typed (a confirmation): whole amounts without decimals, others to two places, never rounded away. */
+export function moneyExact(v: number, cur = "$"): string {
+  const a = Math.abs(v);
+  return (v < 0 ? "-" : "") + `${cur} ` + grouped(a, Number.isInteger(Math.round(a * 100) / 100) ? 0 : 2);
+}
+
 export function pct(v: number | null | undefined, d = 2): string {
   if (v === null || v === undefined || Number.isNaN(v)) return "–";
   if (Math.abs(v) < 0.5 * 10 ** -d) v = 0;

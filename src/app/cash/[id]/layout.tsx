@@ -2,7 +2,7 @@ import { SchemaGate } from "@/components/shell/schema-gate";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getUser } from "@/lib/supabase/server";
-import { loadCashCompany, loadCashEntries } from "@/lib/cash/load";
+import { loadCashCompany, loadCashEntries, loadCashRules } from "@/lib/cash/load";
 import { CashProvider } from "@/lib/cash/context";
 import { CashShell } from "@/components/cash/cash-shell";
 import { UserMenu } from "@/components/shell/user-menu";
@@ -24,15 +24,14 @@ async function CashLayoutInner({ children, params }: { children: React.ReactNode
   const company = await loadCashCompany(id);
   // A company on the full system has its own pages.
   if (!company.simple) redirect(`/company/${id}`);
-  const [{ user }, loaded, d] = await Promise.all([getUser(), loadCashEntries(id), getDict()]);
-  return (
-    <CashShell id={id} name={company.name} readOnly={company.readOnly} right={<UserMenu email={user?.email ?? ""} />}>
-      {loaded.ok ? <CashProvider value={{ company, entries: loaded.entries }}>{children}</CashProvider> : (
-        <div role="alert" className="mx-auto max-w-xl py-16 text-center" data-testid="cash-unavailable">
-          <p className="text-lg">{loaded.reason === "update" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : `${d.state.failedTitle(d.cash.tag)} (ref ${loaded.ref})`}</p>
-        </div>
-      )}
-    </CashShell>
+  const [{ user }, loaded, rules, d] = await Promise.all([getUser(), loadCashEntries(id), loadCashRules(id), getDict()]);
+  const shell = (body: React.ReactNode) => <CashShell id={id} name={company.name} readOnly={company.readOnly} right={<UserMenu email={user?.email ?? ""} />}>{body}</CashShell>;
+  // The provider is around the frame too, so its Add button (quick entry) has the entries and learned categories.
+  if (loaded.ok) return <CashProvider value={{ company, entries: loaded.entries, rules }}>{shell(children)}</CashProvider>;
+  return shell(
+    <div role="alert" className="mx-auto max-w-xl py-16 text-center" data-testid="cash-unavailable">
+      <p className="text-lg">{loaded.reason === "update" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : `${d.state.failedTitle(d.cash.tag)} (ref ${loaded.ref})`}</p>
+    </div>,
   );
 }
 export const maxDuration = 60;
