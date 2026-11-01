@@ -7,6 +7,8 @@
 import { mlabel } from "@/lib/engine";
 import type { Check } from "./checks";
 import { checkKey } from "./checks";
+import { monthLabel, type Lang } from "@/lib/i18n";
+import { dat } from "@/lib/i18n/areas/dat";
 
 export type StepId = "setup" | "opening" | "ledger" | "tb" | "sales" | "stock" | "ageing" | "review";
 /** pending: still being added up; unchecked: its figures couldn't be read just now (never "to do"). */
@@ -69,12 +71,11 @@ export function openChecks(checks: readonly Pick<Check, "id" | "period" | "state
   return { blocking, warnings };
 }
 
-const span = (a: string, b: string) => (a === b ? mlabel(a) : `${mlabel(a)} – ${mlabel(b)}`);
-const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-
-const BOOKS_TITLE: Record<BooksBasis, string> = { ledger: "General Ledger", odoo: "General Ledger", statements: "Statements (no General Ledger)", cash: "Cash book (cash basis)" };
-
-export function companyStatus(s: CompanyStatusInput): CompanyStatus {
+/** The steps' words in the chosen language (English when none is given). */
+export function companyStatus(s: CompanyStatusInput, lang: Lang = "en"): CompanyStatus {
+  const t = lang === "ar" ? dat.ar.st : dat.en.st;
+  const ml = lang === "ar" ? (p: string) => monthLabel(p, "ar") : mlabel;
+  const span = (a: string, b: string) => (a === b ? ml(a) : `${ml(a)} – ${ml(b)}`);
   const up = (step: string) => `${s.basePath}/data/upload?step=${step}`;
   const b = s.books;
   const basis = b?.basis ?? null;
@@ -85,75 +86,74 @@ export function companyStatus(s: CompanyStatusInput): CompanyStatus {
   const after = (st: DataStep): DataStep =>
     !locked ? st
       // Loaded before the books: kept and shown, but nothing to check it against yet.
-      : st.status !== "todo" && st.id !== "review" ? { ...st, status: "done", detail: `${st.detail.replace(/\s*$/, "")} Not checked yet: load the General Ledger first.` }
-      : { ...st, status: "locked", detail: "After the General Ledger: it is what this is checked against.", action: null };
+      : st.status !== "todo" && st.id !== "review" ? { ...st, status: "done", detail: `${st.detail.replace(/\s*$/, "")} ${t.notCheckedYet}` }
+      : { ...st, status: "locked", detail: t.afterLedger, action: null };
   const steps: DataStep[] = [];
 
-  steps.push({ id: "setup", n: 1, title: "Company and period", role: "Settings", status: s.booksStart ? "done" : "todo",
-    detail: s.booksStart ? `Books start ${s.booksStart}.` : "Set the currency, financial year and the day your books start.",
-    action: { label: s.booksStart ? "Check" : "Set up", href: `${s.basePath}/settings/profile` } });
+  steps.push({ id: "setup", n: 1, title: t.setupTitle, role: t.setupRole, status: s.booksStart ? "done" : "todo",
+    detail: s.booksStart ? t.booksStart(s.booksStart) : t.setupTodo,
+    action: { label: s.booksStart ? t.check : t.setUp, href: `${s.basePath}/settings/profile` } });
 
   const openingDone = !!s.opening || s.booksFromZero || s.openingInLedger;
-  steps.push({ id: "opening", n: 2, title: "Opening balances", role: "Record: the balance sheet the day before the books start", status: openingDone ? "done" : "todo",
-    detail: s.opening ? `Loaded at ${s.opening.asAt}.` : s.booksFromZero ? "Your books start from zero." : s.openingInLedger ? "Carried by your General Ledger." : "Skip this if your General Ledger has opening balances, or your books start from zero.",
-    file: "Accounting → Reporting → General Ledger or Trial Balance, for the day before your books start",
-    verifies: "Debits equal credits; the balance sheet balances.", action: { label: "Upload", href: up("opening") } });
+  steps.push({ id: "opening", n: 2, title: t.openingTitle, role: t.openingRole, status: openingDone ? "done" : "todo",
+    detail: s.opening ? t.openingLoaded(s.opening.asAt) : s.booksFromZero ? t.fromZero : s.openingInLedger ? t.inLedger : t.openingTodo,
+    file: t.openingFile,
+    verifies: t.openingVerifies, action: { label: t.upload, href: up("opening") } });
 
-  const checksLine = blocking ? `${plural(blocking, "check")} to look at.` : "";
-  const booksDetail = !b ? "The book of record. It also gives your sales and expense lines, stock postings and payments in and out."
-    : basis === "statements" ? `${span(b.from, b.to)}, from your P&L and balance sheet. ${checksLine || "The balance sheet balances every month."} Without a General Ledger, sales and expense lines come from their own files.`
-    : basis === "cash" ? `${span(b.from, b.to)}, built from your cash book: money in and out, month by month. Sales on credit are not in it until they are paid.`
-    : `${span(b.from, b.to)}${basis === "odoo" ? " (Odoo live)" : ""}. ${checksLine || "Every account rolls forward and the balance sheet balances."} Sales, expenses, stock postings and payments come from it.`;
-  steps.push({ id: "ledger", n: 3, title: b ? BOOKS_TITLE[b.basis] : "General Ledger", role: basis === "statements" ? "Record: your monthly statements" : basis === "cash" ? "Record: your cash book" : "Record: every account, every month",
-    status: !b ? "todo" : !s.checks ? "unchecked" : blocking ? "issues" : ledgerBasis ? "verified" : "done", detail: !b || s.checks ? booksDetail : `${span(b.from, b.to)}. Couldn't be checked just now: the checks couldn't be read. Reload the page to try again.`,
-    file: "Accounting → Reporting → General Ledger, from your books start to today, with Initial Balance ticked → Export",
-    verifies: "Opening plus entries equals closing for every account; the balance sheet balances every month.", action: { label: b ? (ledgerBasis ? "Upload a newer one" : "Upload a General Ledger") : "Upload", href: up("financials") } });
+  const checksLine = blocking ? t.checksLine(blocking) : "";
+  const booksDetail = !b ? t.booksTodo
+    : basis === "statements" ? t.booksStatements(span(b.from, b.to), checksLine || t.bsBalances)
+    : basis === "cash" ? t.booksCash(span(b.from, b.to))
+    : t.booksLedger(span(b.from, b.to), basis === "odoo", checksLine || t.rollsForward);
+  steps.push({ id: "ledger", n: 3, title: b ? t.booksTitle[b.basis] : t.ledgerTitle, role: basis === "statements" ? t.roleStatements : basis === "cash" ? t.roleCash : t.roleLedger,
+    status: !b ? "todo" : !s.checks ? "unchecked" : blocking ? "issues" : ledgerBasis ? "verified" : "done", detail: !b || s.checks ? booksDetail : t.ledgerUnread(span(b.from, b.to)),
+    file: t.ledgerFile,
+    verifies: t.ledgerVerifies, action: { label: b ? (ledgerBasis ? t.uploadNewer : t.uploadGl) : t.upload, href: up("financials") } });
 
   const tb = s.tb;
-  steps.push(after({ id: "tb", n: 4, title: "Trial Balance", role: "Verification only: never saved as data", status: !tb ? "todo" : tb.diffs ? "issues" : "verified",
-    detail: !tb ? "Optional proof: every account in Odoo's Trial Balance is compared with your books." : tb.diffs ? `${plural(tb.diffs, "difference")} against the books (${span(tb.months[0], tb.months[tb.months.length - 1])}).` : `Agrees with the books, account by account (${span(tb.months[0], tb.months[tb.months.length - 1])}).`,
-    file: "Accounting → Reporting → Trial Balance, same dates → Export", verifies: ledgerBasis ? "Your General Ledger, account by account, month by month." : "Your books, account by account, month by month.", action: { label: tb ? "Check another" : "Check", href: up("tb") } }));
+  steps.push(after({ id: "tb", n: 4, title: t.tbTitle, role: t.tbRole, status: !tb ? "todo" : tb.diffs ? "issues" : "verified",
+    detail: !tb ? t.tbTodo : tb.diffs ? t.tbDiffs(tb.diffs, span(tb.months[0], tb.months[tb.months.length - 1])) : t.tbAgrees(span(tb.months[0], tb.months[tb.months.length - 1])),
+    file: t.tbFile, verifies: ledgerBasis ? t.tbVerifiesLedger : t.tbVerifiesBooks, action: { label: tb ? t.checkAnother : t.check, href: up("tb") } }));
 
-  const booksWord = ledgerBasis ? "the ledger's" : "the books'";
   const sl = s.sales;
-  steps.push(after({ id: "sales", n: 5, title: "Sales detail", role: "Sub-ledger: products, quantities, customers", status: !sl || !sl.months.length ? "todo" : sl.untied.length ? "issues" : "verified",
-    detail: !sl || !sl.months.length ? (ledgerBasis ? "Optional: products and quantities. Your sales totals already come from the General Ledger." : "Optional: products, quantities and customers.") : sl.untied.length ? `${plural(sl.untied.length, "month")} differ from ${booksWord} revenue (${sl.untied.map(mlabel).join(", ")}).` : `${span(sl.months[0], sl.months[sl.months.length - 1])}; every month ties to ${booksWord} revenue.`,
-    file: "Invoicing → Reporting → Invoice Analysis → list view → Export", verifies: ledgerBasis ? "Revenue in the General Ledger, month by month." : "Revenue in your books, month by month.", action: { label: "Upload", href: up("sales") } }));
+  steps.push(after({ id: "sales", n: 5, title: t.salesTitle, role: t.salesRole, status: !sl || !sl.months.length ? "todo" : sl.untied.length ? "issues" : "verified",
+    detail: !sl || !sl.months.length ? (ledgerBasis ? t.salesTodoLedger : t.salesTodoBooks) : sl.untied.length ? t.salesUntied(sl.untied.length, ledgerBasis, sl.untied.map(ml).join(", ")) : t.salesTied(span(sl.months[0], sl.months[sl.months.length - 1]), ledgerBasis),
+    file: t.salesFile, verifies: ledgerBasis ? t.salesVerifiesLedger : t.salesVerifiesBooks, action: { label: t.upload, href: up("sales") } }));
 
   const st = s.stock;
-  steps.push(after({ id: "stock", n: 6, title: "Stock", role: "Sub-ledger: stock value and movements", status: !st || !st.checked ? "todo" : st.ok < st.checked ? "issues" : "verified",
-    detail: !st || !st.checked ? "Optional: stock value, movements and slow stock." : st.ok < st.checked ? `${st.checked - st.ok} of ${st.checked} month checks differ from the stock accounts.` : `All ${st.checked} month checks agree with the stock accounts.`,
-    file: "Inventory → Reporting → Valuation, Moves History and Stock → Export (one or all three)", verifies: "Stock accounts and cost of sales in your books.", action: { label: "Upload", href: up("inventory") } }));
+  steps.push(after({ id: "stock", n: 6, title: t.stockTitle, role: t.stockRole, status: !st || !st.checked ? "todo" : st.ok < st.checked ? "issues" : "verified",
+    detail: !st || !st.checked ? t.stockTodo : st.ok < st.checked ? t.stockOff(st.checked - st.ok, st.checked) : t.stockOk(st.checked),
+    file: t.stockFile, verifies: t.stockVerifies, action: { label: t.upload, href: up("inventory") } }));
 
   const off = s.ageing.filter((a) => a.status === "off");
-  steps.push(after({ id: "ageing", n: 7, title: "Receivables and payables", role: "Sub-ledger: open items by customer and supplier", status: !s.ageing.length ? "todo" : off.length ? "issues" : "verified",
-    detail: !s.ageing.length ? "Optional: who owes what, and how old it is." : s.ageing.map((a) => `${a.side === "receivable" ? "Receivable" : "Payable"} at ${a.asOf}: ${a.status === "ok" ? "agrees with the books" : a.status === "off" ? "differs from the books" : "no books for that month yet"}`).join("; ") + ".",
-    file: "Accounting → Reporting → Aged Receivable and Aged Payable, same date → Export", verifies: "The receivable and payable control accounts at that date.", action: { label: "Upload", href: up("payments") } }));
+  steps.push(after({ id: "ageing", n: 7, title: t.ageTitle, role: t.ageRole, status: !s.ageing.length ? "todo" : off.length ? "issues" : "verified",
+    detail: !s.ageing.length ? t.ageTodo : s.ageing.map((a) => t.ageLine(a.side, a.asOf, a.status)).join(t.ageSep) + t.ageEnd,
+    file: t.ageFile, verifies: t.ageVerifies, action: { label: t.upload, href: up("payments") } }));
 
-  const warnLine = warnings ? ` ${plural(warnings, "warning")} to read (they don't stop anything).` : "";
-  const basisWord = basis === "statements" ? " Verified on a statement basis: your P&L and balance sheet agree; there is no ledger to prove them account by account." : basis === "cash" ? " Verified on a cash basis: the figures are your cash book's money in and out." : "";
-  steps.push(after({ id: "review", n: 8, title: "Review", role: "Sign-off", status: blocking ? "issues" : "verified",
-    detail: blocking ? `${plural(blocking, "check")} to look at or accept with a reason.${warnLine}` : `Everything loaded agrees.${warnLine}${basisWord}`,
-    action: { label: "Open checks", href: `${s.basePath}/data/checks` } }));
+  const warnLine = warnings ? t.warnLine(warnings) : "";
+  const basisWord = basis === "statements" ? t.basisStatements : basis === "cash" ? t.basisCash : "";
+  steps.push(after({ id: "review", n: 8, title: t.reviewTitle, role: t.reviewRole, status: blocking ? "issues" : "verified",
+    detail: blocking ? t.reviewIssues(blocking, warnLine) : t.reviewOk(warnLine, basisWord),
+    action: { label: t.openChecks, href: `${s.basePath}/data/checks` } }));
 
   // Cash-basis books count money when it moves; sales lines are by invoice day and include credit sales, so the two are
   // not compared (a difference there is the basis, not an error).
   if (basis === "cash") {
     const x = steps.find((y) => y.id === "sales")!;
-    if (x.status === "issues" || x.status === "verified") { x.status = "done"; x.detail = `${span(sl!.months[0], sl!.months[sl!.months.length - 1])}. Not compared with your books: they are on a cash basis (money when paid), the sales lines by invoice day.`; }
+    if (x.status === "issues" || x.status === "verified") { x.status = "done"; x.detail = t.cashSales(span(sl!.months[0], sl!.months[sl!.months.length - 1])); }
   }
   // A sub-ledger that could not be read, or is still being added up, is unknown, not missing: no upload is suggested.
   for (const x of steps) {
     const m = s.modules?.[x.id as "sales" | "stock" | "ageing"];
     if (!m || x.status === "locked") continue;
     x.status = m === "pending" ? "pending" : "unchecked";
-    x.detail = m === "pending" ? "Still adding up your latest upload. This updates by itself in a minute." : "Couldn't be checked just now: its figures couldn't be read. Reload the page to try again.";
+    x.detail = m === "pending" ? t.pending : t.unread;
     x.action = null;
   }
   const review = steps[steps.length - 1];
-  if (!locked && !s.checks) { review.status = "unchecked"; review.detail = "Couldn't be checked just now: the checks couldn't be read. Reload the page to try again."; }
+  if (!locked && !s.checks) { review.status = "unchecked"; review.detail = t.checksUnread; }
   // Ledger books are only proven once the Trial Balance is in; statements and cash books have nothing to prove them against.
-  else if (!locked && ledgerBasis && !blocking && !tb) { review.status = "todo"; review.detail = "Add the Trial Balance check to prove the books, then review."; }
+  else if (!locked && ledgerBasis && !blocking && !tb) { review.status = "todo"; review.detail = t.addTb; }
 
   const required = new Set<StepId>(["setup", "opening", "ledger", "review"]);
   const next = steps.find((x) => x.status === "issues" || (x.status === "todo" && (required.has(x.id) || (x.id === "tb" && review.status === "todo")))) ?? null;

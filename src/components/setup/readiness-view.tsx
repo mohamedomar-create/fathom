@@ -16,6 +16,7 @@ import type { PaymentsBundle } from "@/lib/company/payments-load";
 import type { TemplateKind } from "@/lib/templates/spec";
 import { RadarChart, RadarLegend } from "@/components/charts/radar-chart";
 import { cn } from "@/lib/cn";
+import { useT } from "@/lib/i18n/use-t";
 
 /** The link that downloads a blank template for this company's financial year and currency. */
 export function templateHref(kind: TemplateKind, c: { name: string; settings: { currency: string; fyStartMonth: number } }) {
@@ -23,13 +24,12 @@ export function templateHref(kind: TemplateKind, c: { name: string; settings: { 
   return `/api/templates/${kind}?${q}`;
 }
 
-const TEMPLATE_NAME: Record<TemplateKind, string> = { financials: "monthly financials template", sales: "sales template", expenses: "expenses template", opening: "opening balances template" };
-
 export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; compact?: boolean }) {
   const c = useCompany();
+  const t = useT().d.dat.ready;
   return (
     <a href={templateHref(kind, c)} download className={cn("inline-flex items-center gap-1.5 rounded border border-brand-d text-brand-d hover:bg-brand-bg", compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm")} data-testid={`template-${kind}`}>
-      <Download className="h-3.5 w-3.5" />Download the {TEMPLATE_NAME[kind]}
+      <Download className="h-3.5 w-3.5" />{t.download(t.template[kind])}
     </a>
   );
 }
@@ -37,11 +37,12 @@ export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; 
 /** All sectors' readiness for the company (checks, sales and expense lines, and stock included when available). */
 export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData | null, inventory?: InventoryData | null, payments?: PaymentsBundle | null): SectorReadiness[] {
   const c = useCompany();
+  const { lang } = useT();
   return useMemo(() => readiness({
     months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales, expenses, inventory, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes, assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero,
-    payments: payments ?? undefined, basis: c.booksBasis,
-  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.booksBasis, c.inventorySettings, c.unit, sales, expenses, inventory, payments]);
+    payments: payments ?? undefined, basis: c.booksBasis, lang,
+  }), [c.months, c.accounts, c.settings.fyStartMonth, c.assumptions, c.forecast, c.booksFromZero, c.booksBasis, c.inventorySettings, c.unit, sales, expenses, inventory, payments, lang]);
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
@@ -49,10 +50,11 @@ function Icon({ s }: { s: ReadinessItem["status"] }) {
 }
 
 function Score({ label, v, testId }: { label: string; v: number | null; testId?: string }) {
+  const t = useT().d.dat.ready;
   return (
     <div data-testid={testId}>
       <div className="label">{label}</div>
-      <div className={cn("num text-2xl", v === null ? "text-mute" : v >= 90 ? "text-green-d" : v >= 60 ? "text-[#7d5600]" : "text-red")} title={v === null ? "Nothing loaded here can be checked yet" : undefined}>{v === null ? "–" : `${v}%`}</div>
+      <div className={cn("num text-2xl", v === null ? "text-mute" : v >= 90 ? "text-green-d" : v >= 60 ? "text-[#7d5600]" : "text-red")} title={v === null ? t.nothingToCheck : undefined}>{v === null ? "–" : `${v}%`}</div>
     </div>
   );
 }
@@ -63,11 +65,12 @@ function BooksFromZero() {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
+  const t = useT().d.dat.ready;
   if (c.readOnly || c.basePath === "/demo") return null;
   return (
     <>
-      <button disabled={pending} onClick={() => start(async () => { const r = await setBooksFromZero(c.id, true); if (r.ok) router.refresh(); else setErr(r.error ?? "Could not save"); })}
-        className="inline-flex items-center rounded border border-brand-d px-2 py-1 text-xs text-brand-d hover:bg-brand-bg" data-testid="books-from-zero">My books start from zero (no history before)</button>
+      <button disabled={pending} onClick={() => start(async () => { const r = await setBooksFromZero(c.id, true); if (r.ok) router.refresh(); else setErr(r.error ?? t.couldNotSave); })}
+        className="inline-flex items-center rounded border border-brand-d px-2 py-1 text-xs text-brand-d hover:bg-brand-bg" data-testid="books-from-zero">{t.fromZero}</button>
       {err && <span className="text-red">{err}</span>}
     </>
   );
@@ -75,14 +78,15 @@ function BooksFromZero() {
 
 export function FixLine({ item, basePath }: { item: ReadinessItem; basePath: string }) {
   const f = item.fix;
+  const t = useT().d.dat.ready;
   if (!f) return null;
   return (
     <div className="mt-1 text-[12.5px]">
-      <div><b>What:</b> {f.what}.</div>
-      <div className="text-mute"><b className="text-ink">How:</b> {f.how}</div>
+      <div><b>{t.what}</b> {f.what}.</div>
+      <div className="text-mute"><b className="text-ink">{t.how}</b> {f.how}</div>
       <div className="mt-1.5 flex flex-wrap gap-2">
         {f.template && <TemplateButton kind={f.template} compact />}
-        {f.href && <Link href={`${basePath}/${f.href}`} className="inline-flex items-center rounded bg-brand-d px-2 py-1 text-xs text-white">Go there</Link>}
+        {f.href && <Link href={`${basePath}/${f.href}`} className="inline-flex items-center rounded bg-brand-d px-2 py-1 text-xs text-white">{t.go}</Link>}
         {item.id === "opening" && <BooksFromZero />}
       </div>
     </div>
@@ -91,6 +95,7 @@ export function FixLine({ item, basePath }: { item: ReadinessItem; basePath: str
 
 /** One sector: its radar, the two scores and every item with what to do about it. */
 export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: string }) {
+  const t = useT().d.dat.ready;
   return (
     <section className="rounded-lg border border-line p-4" data-testid={`readiness-${r.key}`}>
       <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
@@ -99,17 +104,17 @@ export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: str
       </div>
       {r.pending ? (
         <p role="status" className="rounded border border-line bg-band px-4 py-3 text-sm" data-testid={`readiness-pending-${r.key}`}>
-          Still adding up your latest upload. Nothing is missing because of this; reload the page in a minute.
+          {t.pending}
         </p>
       ) : r.unread ? (
         <p role="status" className="rounded border border-amber/60 bg-amber/10 px-4 py-3 text-sm" data-testid={`readiness-unread-${r.key}`}>
-          Couldn&apos;t be checked just now: these figures couldn&apos;t be read. Nothing is missing because of this. Reload the page to try again.
+          {t.unread}
         </p>
       ) : (
       <div className="grid gap-4 lg:grid-cols-[390px_1fr]">
         <div className="flex flex-col items-center gap-3">
           <RadarChart axes={r.items.map((i) => ({ label: i.axis, completion: i.completion, accuracy: i.accuracy }))} size={250} testId={`radar-${r.key}`} />
-          <div className="flex gap-8"><Score label="Complete" v={r.completion} testId={`score-complete-${r.key}`} /><Score label="Accurate" v={r.accuracy} testId={`score-accurate-${r.key}`} /></div>
+          <div className="flex gap-8"><Score label={t.complete} v={r.completion} testId={`score-complete-${r.key}`} /><Score label={t.accurate} v={r.accuracy} testId={`score-accurate-${r.key}`} /></div>
         </div>
         <ul className="divide-y divide-line">
           {r.items.map((i) => (
@@ -117,7 +122,7 @@ export function SectorPanel({ r, basePath }: { r: SectorReadiness; basePath: str
               <div className="flex items-start gap-2">
                 <Icon s={i.status} />
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap justify-between gap-2 text-sm"><span className="font-medium">{i.title}</span><span className="num text-xs text-mute">{i.completion}% complete{i.accuracy !== null ? ` · ${i.accuracy}% accurate` : ""}</span></div>
+                  <div className="flex flex-wrap justify-between gap-2 text-sm"><span className="font-medium">{i.title}</span><span className="num text-xs text-mute">{t.scores(i.completion, i.accuracy)}</span></div>
                   <div className="text-[12.5px] text-mute">{i.detail}</div>
                   {i.status !== "done" && <FixLine item={i} basePath={basePath} />}
                 </div>
@@ -143,6 +148,7 @@ const readOpen = (sector: string) => { try { return localStorage.getItem(`${KEY}
  */
 export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
   const c = useCompany();
+  const t = useT().d.dat.ready;
   const sales = useSales();
   const expenses = useExpenses();
   const inventory = useInventory();
@@ -156,8 +162,8 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
   return (
     <div className="mb-6 rounded-lg border border-line bg-band/60" data-testid={`readiness-card-${sector}`}>
       <button onClick={toggle} className="flex w-full items-center gap-3 px-4 py-2.5 text-start text-sm" aria-expanded={open}>
-        <span className="font-medium">Data readiness</span>
-        <span className="num text-mute">{r.completion}% complete{r.accuracy !== null ? ` · ${r.accuracy}% accurate` : ""}</span>
+        <span className="font-medium">{t.readiness}</span>
+        <span className="num text-mute">{t.scores(r.completion, r.accuracy)}</span>
         <ChevronDown className={cn("ms-auto h-4 w-4 transition", open && "rotate-180")} />
       </button>
       {open && (
@@ -165,12 +171,12 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
           <RadarChart axes={r.items.map((i) => ({ label: i.axis, completion: i.completion, accuracy: i.accuracy }))} size={150} compact testId={`radar-card-${sector}`} />
           {next && (
             <div className="min-w-0 flex-1">
-              <div className="text-sm"><span className="label me-2">Next</span><b>{next.title}</b></div>
+              <div className="text-sm"><span className="label me-2">{t.next}</span><b>{next.title}</b></div>
               <div className="text-[12.5px] text-mute">{next.detail}</div>
               <FixLine item={next} basePath={c.basePath} />
             </div>
           )}
-          <Link href={`${c.basePath}/data`} className="text-sm text-brand-d underline" data-testid="readiness-setup-link">See every step</Link>
+          <Link href={`${c.basePath}/data`} className="text-sm text-brand-d underline" data-testid="readiness-setup-link">{t.seeAll}</Link>
         </div>
       )}
     </div>

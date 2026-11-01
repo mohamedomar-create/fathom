@@ -1,5 +1,6 @@
 // The Data section's one sequence. The steps themselves come from the one status model (status.ts); this keeps the
 // shape the Data page has always passed in.
+import type { Lang } from "@/lib/i18n";
 import { companyStatus, type BooksBasis, type CompanyStatus, type DataStep, type ModuleState, type StepId, type StepStatus } from "./status";
 
 export type { DataStep, StepId, StepStatus };
@@ -36,7 +37,7 @@ export function dataSteps(s: DataStatus): DataStep[] {
 }
 
 /** The whole status (steps, next action, health) from the Data page's shape. */
-export function dataStatusOf(s: DataStatus): CompanyStatus {
+export function dataStatusOf(s: DataStatus, lang: Lang = "en"): CompanyStatus {
   const modules: Partial<Record<"sales" | "stock" | "ageing", ModuleState>> = {};
   for (const id of s.unread ?? []) if (id === "sales" || id === "stock" || id === "ageing") modules[id] = "failed";
   for (const id of s.pending ?? []) if (id === "sales" || id === "stock" || id === "ageing") modules[id] ??= "pending";
@@ -45,5 +46,5 @@ export function dataStatusOf(s: DataStatus): CompanyStatus {
     books: s.ledger ? { from: s.ledger.from, to: s.ledger.to, basis: s.ledger.odoo ? "odoo" : "ledger" } : s.books ?? null,
     checks: s.openChecks === null ? null : { blocking: s.openChecks, warnings: s.warnings ?? 0 },
     tb: s.tb, sales: s.sales, stock: s.stock, ageing: s.ageing, modules,
-  });
+  }, lang);
 }
