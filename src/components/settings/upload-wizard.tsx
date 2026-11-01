@@ -4,7 +4,8 @@ import { accountsCounted, PreflightSummary, RejectedDownload } from "@/component
 import type { PreflightModule, PreflightRun } from "@/lib/preflight";
 import { AlertTriangle, CheckCircle2, ChevronDown, FileSpreadsheet, Loader2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, useTransition } from "react";
+import { initialWizard, wizardReducer } from "./wizard-state";
 import { addMonths, mlabel, money, type ClassKey } from "@/lib/engine";
 import { materialUnmapped, rememberKey, toAccountInputs, type IngestOptions } from "@/lib/ingest/pipeline";
 import type { Grid, Overrides, RawLine } from "@/lib/ingest/extract";
@@ -82,26 +83,32 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
 export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false }: { companyId: string; ledgerLoaded?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
-  const [kind, setKind] = useState<Kind | null>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" || setupStep === "tb" ? "accounts" : null);
-  const [screen, setScreen] = useState<Screen>(setupStep ? "get" : "what");
+  // Card, screen, files, sheets read, preview, error and done message: one reducer, one transition per move (wizard-state.ts).
+  const [nav, dispatch] = useReducer(wizardReducer<Kind, Grid, PreviewResult>, initialWizard<Kind, Grid, PreviewResult>(setupStep === "opening" ? "opening" : setupStep === "sales" ? "sales" : setupStep === "expenses" ? "expenses" : setupStep === "inventory" ? "inventory" : setupStep === "payments" ? "payments" : setupStep === "financials" || setupStep === "tb" ? "accounts" : null));
+  const { kind, screen, done, files, grids: allGrids, preview, err } = nav;
+  const { setScreen, setErr, setFiles, setAllGrids, setPreview, start: startCard } = useMemo(() => ({
+    setScreen: (screen: Screen) => dispatch({ type: "go", screen }),
+    setErr: (err: string | null) => dispatch({ type: "set", patch: { err } }),
+    setFiles: (files: File[]) => dispatch({ type: "set", patch: { files } }),
+    setAllGrids: (grids: Grid[] | null) => dispatch({ type: "set", patch: { grids } }),
+    setPreview: (preview: PreviewResult | null) => dispatch({ type: "set", patch: { preview } }),
+    start: (k: Kind | null) => dispatch({ type: "start", kind: k }),
+  }), []);
   const [modeChosen, setModeChosen] = useState(false);
   const [salesMode, setSalesMode] = useState<SaveMode | null>(null);
   const [expMode, setExpMode] = useState<SaveMode | null>(null);
-  const [done, setDone] = useState<{ what: string } | null>(null);
   const [checked, setChecked] = useState(false);
   // Saving in steps after the figures: what is being saved now, and a stopped save that can continue.
   const [saveProgress, setSaveProgress] = useState<{ what: string; done: number; of: number } | null>(null);
   const [post, setPost] = useState<{ steps: PostStep[]; at: number; doneMsg: string } | null>(null);
   // The person chose, on purpose, to save a summary report as figures although the books come from a ledger.
   const [asFigures, setAsFigures] = useState(false);
-  const [files, setFiles] = useState<File[]>([]);
   // Preflight: the upload as read, waiting for its check; the check's result once it is done (for the save screen).
   const [pf, setPf] = useState<{ files: File[]; grids: Grid[] } | null>(null);
   const [pfRun, setPfRun] = useState<PreflightRun | null>(null);
   const pfModule: PreflightModule = kind === "opening" ? "opening" : kind === "sales" ? "sales" : kind === "expenses" ? "expenses" : kind === "inventory" ? "stock" : kind === "payments" ? "payments" : "accounts";
   const pfLabel = kind === "opening" ? "Opening balances" : kind === "sales" ? "Sales" : kind === "expenses" ? "Expenses" : kind === "inventory" ? "Stock" : kind === "payments" ? "Receivables, payables & payments" : "Accounts";
   // Every sheet of the upload, what each one is (iReport's guess, or the person's choice), and their confirmation.
-  const [allGrids, setAllGrids] = useState<Grid[] | null>(null);
   // The same sheets kept in the background worker (under this token), where every reading of them runs.
   const [sheetsToken, setSheetsToken] = useState<string | null>(null);
   const [guesses, setGuesses] = useState<RoleGuess[]>([]);
@@ -114,7 +121,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [overrides, setOverrides] = useState<Overrides>({});
   const [diag, setDiag] = useState<Diagnostic | null>(null);
   const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
   const [opts, setOpts] = useState<Omit<IngestOptions, "mapping">>({ fyStart, ytd: "auto", closeEarnings: "auto", plugEquity: false });
   // The books start: the person's choice ("" = none), else the company's, else the day after Odoo's opening entry.
   const [startChoice, setStartChoice] = useState<string | undefined>(undefined);
@@ -123,7 +129,6 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const [mapping, setMapping] = useState<Record<string, ClassKey | "">>(savedMapping as Record<string, ClassKey | "">);
   const [saving, start] = useTransition();
   const [mode, setMode] = useState<ImportMode>("merge");
-  const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [acceptOn, setAcceptOn] = useState(false);
   const [reason, setReason] = useState("");
@@ -188,7 +193,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     // The reading panel's findings come with the first reading, from the worker.
     setDiag(diagnostic(fs, gs, { warnings: [], skippedCols: [] }));
     setFocus(null); setPicked(null); setScreen("check");
-  }, []);
+  }, [setAllGrids, setScreen]);
 
   // Several files are read as one upload: a General Ledger gives the months, a Trial Balance or P&L for the same period checks them.
   const onFiles = useCallback(async (fs: File[]) => {
@@ -213,7 +218,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       console.error("upload read failed", e);
       setErr((e as Error).message || "The file could not be read."); setAllGrids(null);
     } finally { setBusy(false); }
-  }, [demo]);
+  }, [demo, setAllGrids, setErr, setFiles, setPreview]);
   const pfReady = useCallback(async ({ run }: { run: PreflightRun }) => {
     const job = pf;
     if (!job) return;
@@ -224,7 +229,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     const gs = job.grids.flatMap((g) => (leftOut.has(g.name) ? [g] : run.cleaned.forImport.filter((c) => c.name === g.name)));
     try { takeSheets(job.files, gs, await putSheets(gs), hints); }
     catch (e) { setErr((e as Error).message || "The file could not be read."); }
-  }, [pf, takeSheets]);
+  }, [pf, takeSheets, setErr]);
   async function pdfDone(pdfGrids: Grid[], summary: PdfSummary) {
     const job = pdfJob;
     setPdfJob(null); setPdfSummary(summary); setErr(null);
@@ -281,7 +286,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <span className="text-mute">Your opening balances: the balance sheet at {fmtDay(asAtDay)}. The books start the next day, {fmtDay(booksStart!)}.</span>
     </label>
   );
-  const reset = (k: Kind | null) => { setAllGrids(null); setFiles([]); setPreview(null); setErr(null); setDone(null); setKind(k); setScreen(k ? "get" : "what"); };
+  const reset = (k: Kind | null) => startCard(k);
   const dateFields = kind === "opening" ? asAtField : <>{cutoffField}{startField}</>;
   // No opening balances loaded and none in this file: balances start from zero (allowed, and said plainly).
   const firstMonth = res?.openingFrom ?? null;
@@ -453,7 +458,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     try {
       const out = await previewImport(p);
       if (!out.ok) { setErr(out.error); return; }
-      setPreview(out.data); setScreen("save"); setAcceptOn(false);
+      dispatch({ type: "preview", preview: out.data }); setAcceptOn(false);
       // The file repeats loaded months with the very same figures: adding only the new months is the safe default.
       if (kind !== "opening" && !modeChosen && m === "merge" && out.data.overlap.length && out.data.overlap.every((o) => o.same)) { setMode("add"); setModeChosen(true); void runPreview("add"); }
     } catch (e) {
@@ -481,8 +486,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
     }
     setSaveProgress(null);
     setPost(null);
-    setDone({ what: doneMsg });
-    setScreen("done");
+    dispatch({ type: "saved", what: doneMsg });
     router.refresh();
   }
   const continuePost = () => { if (!post) return; setErr(null); start(() => runPost(post.steps, post.at, post.doneMsg)); };
@@ -583,12 +587,12 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <WizardSteps at="what" />
         <WizardTitle title="What are you uploading?" hint="Pick one." />
         <div className="grid max-w-6xl gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => { setKind("opening"); setScreen("get"); }} testId="pick-opening" />
-          <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => { setKind("accounts"); setScreen("get"); }} testId="pick-accounts" />
-          <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => { setKind("sales"); setScreen("get"); }} testId="pick-sales" />
-          <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => { setKind("expenses"); setScreen("get"); }} testId="pick-expenses" />
-          <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => { setKind("inventory"); setScreen("get"); }} testId="pick-inventory" />
-          {!demo && <ChoiceCard icon="🤝" title="Receivables and payments" sub="Odoo's ageing reports and payments: who owes what, who paid." onClick={() => { setKind("payments"); setScreen("get"); }} testId="pick-payments" />}
+          <ChoiceCard icon="📒" title="Opening balances" sub="Your balance sheet the day before your books start." onClick={() => startCard("opening")} testId="pick-opening" />
+          <ChoiceCard icon="📊" title="My accounts" sub="Profit and loss, and balance sheet." onClick={() => startCard("accounts")} testId="pick-accounts" />
+          <ChoiceCard icon="🧾" title="My sales" sub="Invoices: who bought what." onClick={() => startCard("sales")} testId="pick-sales" />
+          <ChoiceCard icon="💸" title="My expenses" sub="Bills and costs: who you pay." onClick={() => startCard("expenses")} testId="pick-expenses" />
+          <ChoiceCard icon="📦" title="My stock" sub="Odoo Inventory: valuation, moves, stock on hand." onClick={() => startCard("inventory")} testId="pick-inventory" />
+          {!demo && <ChoiceCard icon="🤝" title="Receivables and payments" sub="Odoo's ageing reports and payments: who owes what, who paid." onClick={() => startCard("payments")} testId="pick-payments" />}
         </div>
       </div>
     );
@@ -714,14 +718,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   const wrong = wrongKind && (
     <div className="mb-4 flex flex-wrap items-center gap-3 rounded-lg border-2 border-amber bg-amber/10 px-4 py-3 text-[15px]" data-testid="upload-notice">
       <span>This looks like {KIND_WORD[wrongKind]} file.</span>
-      <button onClick={() => setKind(wrongKind)} className="rounded bg-ink px-3 py-1.5 text-sm text-white" data-testid="switch-kind">Switch to {wrongKind}</button>
+      <button onClick={() => dispatch({ type: "switch", kind: wrongKind })} className="rounded bg-ink px-3 py-1.5 text-sm text-white" data-testid="switch-kind">Switch to {wrongKind}</button>
     </div>
   );
   const fileLine = (
     <div className="mb-4 flex flex-wrap items-center gap-2 text-[14px]">
       <FileSpreadsheet className="h-4 w-4 text-brand-d" />
       <span className="font-medium">{files.map((f) => f.name).join(" + ")}</span>
-      <button onClick={() => { setAllGrids(null); setFiles([]); setScreen("upload"); }} className="text-mute underline">Choose another file</button>
+      <button onClick={() => dispatch({ type: "another" })} className="text-mute underline">Choose another file</button>
     </div>
   );
   const more = (children: React.ReactNode) => (
@@ -771,14 +775,14 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       <div className="rounded-xl border border-line bg-card p-6" data-testid="stock-elsewhere">
         {fileLine}
         <p className="text-[15px]">These are stock exports. Upload them on the Stock card: it checks every row before anything is saved.</p>
-        <button onClick={() => { setKind("inventory"); setScreen("get"); }} className="mt-4 rounded bg-ink px-4 py-2 text-sm text-white" data-testid="go-stock">Go to the Stock card</button>
+        <button onClick={() => startCard("inventory")} className="mt-4 rounded bg-ink px-4 py-2 text-sm text-white" data-testid="go-stock">Go to the Stock card</button>
       </div>
     );
   }
   if (!res && !hasBooks && !salesRead && !expRead && invParts) {
     return <InventoryStep parts={invParts} companyId={companyId} currency={currency} demo={demo} filename={files.map((f) => f.name).join(" + ")}
       rentalLocation={rentalLoc} onRental={setRentalLoc} rolesPanel={rolesPanel} fileLine={fileLine} rolesBlock={rolesBlock}
-      onBack={() => setScreen("upload")} onDone={(what) => { setDone({ what }); setScreen("done"); router.refresh(); }} />;
+      onBack={() => setScreen("upload")} onDone={(what) => { dispatch({ type: "saved", what }); router.refresh(); }} />;
   }
 
   // 4 · Check (money in and out: cash books, bank statements, or a sales list with a bills list)
@@ -835,9 +839,9 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
               if (!e.ok) { setErr(e.error); return; }
               const sv = await saveSalesAs(companyId, salesToSave, name, report, salesMode ?? "changed", salesLoaded, (done, of) => setSaveProgress({ what: "Saving sales lines", done, of }));
               if (!sv.ok) { setErr(`The expenses were saved, but the sales could not be: ${sv.error}`); return; }
-              setDone({ what: `${e.summary} ${sv.summary}${plSaved ? ` And a P&L for ${plSaved} months.` : ""}` });
-              if (plSaved) setKind("accounts");
-              setScreen("done"); router.refresh();
+              if (plSaved) dispatch({ type: "switch", kind: "accounts" });
+              dispatch({ type: "saved", what: `${e.summary} ${sv.summary}${plSaved ? ` And a P&L for ${plSaved} months.` : ""}` });
+              router.refresh();
             })} />
         </div>
       );
@@ -907,7 +911,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
               setErr(null);
               const out = await saveExpensesAs(companyId, expToSave, files.map((f) => f.name).join(" + "), { layouts: expRead.layouts.map((l) => ({ sheet: l.sheet, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded, flipped: l.flipped })), fixes: fixes() }, expMode ?? "changed", expensesLoaded, (done, of) => setSaveProgress({ what: "Saving expense lines", done, of }));
               if (!out.ok) { setErr(out.error); return; }
-              setDone({ what: out.summary }); setScreen("done"); router.refresh();
+              dispatch({ type: "saved", what: out.summary }); router.refresh();
             })} />
         </div>
       );
@@ -956,7 +960,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
               setErr(null);
               const out = await saveSalesAs(companyId, salesToSave, files.map((f) => f.name).join(" + "), { layouts: salesRead.layouts.map((l) => ({ sheet: l.sheet, kind: l.kind, lines: l.lines, total: l.total, taxIncluded: l.taxIncluded })), fixes: fixes() }, salesMode ?? "changed", salesLoaded, (done, of) => setSaveProgress({ what: "Saving sales lines", done, of }));
               if (!out.ok) { setErr(out.error); return; }
-              setDone({ what: out.summary }); setScreen("done"); router.refresh();
+              dispatch({ type: "saved", what: out.summary }); router.refresh();
             })} />
         </div>
       );
@@ -1019,7 +1023,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // copy of the figures (the ledger is the book of record).
   if (verifyOnly) {
     return <TbVerify companyId={companyId} fileName={files.map((f) => f.name).join(" + ") || "file"} file={toAccountInputs(res)} ranges={res.ranges} books={company.accounts} currency={currency} demo={demo}
-      onBack={() => setScreen("upload")} onDone={(what) => { setChecked(true); setDone({ what }); setScreen("done"); router.refresh(); }} onUseAsFigures={() => setAsFigures(true)} />;
+      onBack={() => setScreen("upload")} onDone={(what) => { setChecked(true); dispatch({ type: "saved", what }); router.refresh(); }} onUseAsFigures={() => setAsFigures(true)} />;
   }
 
   // 5 · Save (accounts)
