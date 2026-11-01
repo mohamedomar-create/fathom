@@ -173,7 +173,7 @@ export async function switchToFull(companyId: string): Promise<Result> {
   // Cash-basis books from the cash book, so Financials and the dashboard work at once (books already uploaded are kept).
   const books = await saveCashBasisBooks(supabase, companyId);
   if (!books.ok) return books;
-  const r = await patchProfile(companyId, { mode: "full" });
+  const r = await patchProfile(companyId, { mode: "full", system: null });
   if (r.ok) revalidatePath(`/company/${companyId}`, "layout");
   return r;
 }

@@ -26,7 +26,7 @@ async function CashLayoutInner({ children, params }: { children: React.ReactNode
   if (!company.simple) redirect(`/company/${id}`);
   const [{ user }, loaded, d] = await Promise.all([getUser(), loadCashEntries(id), getDict()]);
   return (
-    <CashShell id={id} name={company.name} right={<UserMenu email={user?.email ?? ""} />}>
+    <CashShell id={id} name={company.name} readOnly={company.readOnly} right={<UserMenu email={user?.email ?? ""} />}>
       {loaded.ok ? <CashProvider value={{ company, entries: loaded.entries }}>{children}</CashProvider> : (
         <div role="alert" className="mx-auto max-w-xl py-16 text-center" data-testid="cash-unavailable">
           <p className="text-lg">{loaded.reason === "update" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : `${d.state.failedTitle(d.cash.tag)} (ref ${loaded.ref})`}</p>

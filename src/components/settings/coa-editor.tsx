@@ -99,7 +99,7 @@ export function CoaEditor() {
         </div>
       ))}
       <p className="text-xs text-mute">Amounts: P&amp;L = last 12 months; balance sheet = latest month. Fixed/variable drives the breakeven and goalseek tools — ask “if sales doubled, would this cost roughly double?” A sub-class (interest or income tax payable, provisions, leases, disposals…) lets the cash flow show what was paid; it never changes the account&apos;s class or any other figure. Change the class and the sub-class in separate saves.</p>
-      <div className="sticky bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
+      <div data-testid="settings-save-bar" className="sticky bottom-[calc(49px+env(safe-area-inset-bottom))] md:bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
         {msg && <span className="me-auto text-sm text-green-d">{msg}</span>}
         {c.readOnly ? <span className="text-sm text-mute">Read-only.</span> : (
           <>

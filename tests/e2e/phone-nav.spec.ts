@@ -23,11 +23,21 @@ test.describe("phone bottom bar", () => {
     test(`from ${start} the More sheet reaches another sector`, async ({ page }) => {
       await page.goto(start);
       await expect(page.getByTestId("bottom-bar")).toBeVisible();
-      await expect(page.getByTestId("bottom-pages")).toBeDisabled();
+      await expect(page.getByTestId("bottom-pages")).toHaveCount(0);
       await page.getByTestId("bottom-more").click();
       await page.getByTestId("more-sector-inventory").click();
       await expect(page).toHaveURL(/\/demo\/inventory/);
-      await expect(page.getByTestId("bottom-pages")).toBeEnabled();
+      await expect(page.getByTestId("bottom-pages")).toBeVisible();
+    });
+  }
+
+  for (const [start, bar] of [["/demo/settings/kpis", "settings-save-bar"], ["/demo/settings/chart-of-accounts", "settings-save-bar"]] as const) {
+    test(`on ${start} the sticky Save bar sits above the bottom bar, not under it`, async ({ page }) => {
+      await page.goto(start);
+      const save = page.getByTestId(bar).first();
+      await expect(save).toBeVisible();
+      const s = (await save.boundingBox())!, b = (await page.getByTestId("bottom-bar").boundingBox())!;
+      expect(s.y + s.height).toBeLessThanOrEqual(b.y + 1);
     });
   }
 

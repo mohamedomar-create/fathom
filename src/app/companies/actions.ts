@@ -7,7 +7,7 @@ import { saveCompanyData } from "@/lib/company/persist";
 import { getUser } from "@/lib/supabase/server";
 import { dbError, safeError } from "@/lib/action-error";
 import { withMode } from "@/lib/company/mode";
-import { withSystem } from "@/lib/company/system";
+import { systemFlow, withSystem } from "@/lib/company/system";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
@@ -39,7 +39,8 @@ const CompanySchema = z.object({
 export async function createCompany(formData: FormData): Promise<{ error: string } | void> {
   const parsed = CompanySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Please check the company details." };
-  const v = parsed.data;
+  // The picker's answer decides the mode and source on the server (the hidden fields only stand in without one).
+  const v = { ...parsed.data, ...(parsed.data.system ? (({ mode, source }) => ({ mode, source }))(systemFlow(parsed.data.system, { live: parsed.data.source === "odoo" })) : {}) };
   const ctx = await editableOrg(v.org_id || null);
   if (!ctx.ok) return { error: ctx.error };
   const { supabase, user, orgId } = ctx;
@@ -60,7 +61,7 @@ export async function createDemoCompany(): Promise<{ error: string } | void> {
   const { data, error } = await supabase.from("companies").insert({
     org_id: orgId, name: `${demo.name} (demo)`, currency: demo.settings.currency, fy_start_month: demo.settings.fyStartMonth,
     tax_rate: demo.settings.taxRate, source: "demo", created_by: user.id,
-    kpi_config: { total_revenue: { target: 950000 }, gpm: { target: 40, alert_active: true, alert_threshold: 46 }, profit_ratio: { target: 15 } },
+    kpi_config: { profile: { system: "odoo" }, total_revenue: { target: 950000 }, gpm: { target: 40, alert_active: true, alert_threshold: 46 }, profit_ratio: { target: 15 } },
   }).select("id").single();
   if (error) return { error: dbError(error, "createDemoCompany") };
   try {

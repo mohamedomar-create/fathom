@@ -44,8 +44,8 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
           </div>
         ) : step === "odoo" ? (
           <div className="grid gap-3 sm:grid-cols-2">
-            <button onClick={() => choose("odoo")} data-testid="odoo-files" className={card}><div className="font-medium">{t.odooHow.files[0]}</div><div className="mt-1 text-xs text-mute">{t.odooHow.files[1]}</div></button>
-            <button onClick={() => choose("odoo", true)} data-testid="odoo-live" className={card}><div className="font-medium">{t.odooHow.live[0]}</div><div className="mt-1 text-xs text-mute">{t.odooHow.live[1]}</div></button>
+            <button disabled={pending} onClick={() => choose("odoo")} data-testid="odoo-files" className={card}><div className="font-medium">{t.odooHow.files[0]}</div><div className="mt-1 text-xs text-mute">{t.odooHow.files[1]}</div></button>
+            <button disabled={pending} onClick={() => choose("odoo", true)} data-testid="odoo-live" className={card}><div className="font-medium">{t.odooHow.live[0]}</div><div className="mt-1 text-xs text-mute">{t.odooHow.live[1]}</div></button>
             <div className="sm:col-span-2"><button type="button" onClick={() => setStep("pick")} className="rounded px-4 py-2 text-mute hover:bg-band">{t.back}</button></div>
           </div>
         ) : step === "notsure" ? (
@@ -53,7 +53,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
             {(["notebook", "odoo", "software", "accountant"] as const).map((k) => {
               const s = suggestSystem(k);
               return (
-                <button key={k} onClick={() => (s === "odoo" ? setStep("odoo") : choose(s))} data-testid={`keep-${k}`} className={card}>
+                <button key={k} disabled={pending} onClick={() => (s === "odoo" ? setStep("odoo") : choose(s))} data-testid={`keep-${k}`} className={card}>
                   <div className="font-medium">{t.keep[k]}</div>
                   <div className="mt-1 text-xs text-mute">{t.keep.suggest} {t.tiles[s === "cash" ? "simple" : s][0]}</div>
                 </button>

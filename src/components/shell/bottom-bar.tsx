@@ -55,8 +55,8 @@ export function BottomBar() {
       <Link prefetch={false} href={href("expenses") + q} className={tabCls("expenses")} aria-current={on === "expenses" ? "page" : undefined} data-testid="sector-expenses">
         <Receipt className="h-5 w-5" strokeWidth={1.7} />{d.sectors.expenses}
       </Link>
-      <Sheet title={inSector ? `${d.sectors[sector.key]}: ${d.bottom.sectionPages}` : d.bottom.sectionPages}
-        trigger={<button type="button" className={tabCls("pages")} disabled={!inSector} data-testid="bottom-pages"><LayoutList className="h-5 w-5" strokeWidth={1.7} />{d.bottom.pages}</button>}>
+      {inSector && <Sheet title={inSector ? `${d.sectors[sector.key]}: ${d.bottom.sectionPages}` : d.bottom.sectionPages}
+        trigger={<button type="button" className={tabCls("pages")} data-testid="bottom-pages"><LayoutList className="h-5 w-5" strokeWidth={1.7} />{d.bottom.pages}</button>}>
         {navGroups(sector).map((g) => (
           <div key={g.key ?? "all"} className="mb-2">
             {g.key && <div className="label px-3 pb-1 pt-2">{d.navGroups[g.key]}</div>}
@@ -72,7 +72,7 @@ export function BottomBar() {
             })}
           </div>
         ))}
-      </Sheet>
+      </Sheet>}
       <Sheet title={d.bottom.everything}
         trigger={<button type="button" className={tabCls("more")} data-testid="bottom-more"><Menu className="h-5 w-5" strokeWidth={1.7} />{d.bottom.more}</button>}>
         {SECTORS.map((s) => {

@@ -9,6 +9,10 @@ describe("the company's accounting system", () => {
     expect(systemOf({ profile: { mode: "simple" } }, "upload")).toBe("cash");
     expect(systemOf({ profile: { system: "other" } }, "upload")).toBe("other");
   });
+  it("a cash-book answer on a company back on the full system is ignored, so the picker asks again", () => {
+    expect(systemOf({ profile: { system: "cash", mode: "full" } }, "upload")).toBeNull();
+    expect(systemOf({ profile: { system: "cash" } }, "odoo")).toBe("odoo");
+  });
   it("is kept on the profile with every other setting", () => {
     const k = withSystem({ profile: { vatRate: 0.14 }, targets: { a: 1 } }, "odoo");
     expect(k).toEqual({ profile: { vatRate: 0.14, system: "odoo" }, targets: { a: 1 } });

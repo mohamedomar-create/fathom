@@ -42,7 +42,7 @@ export function WizardNav({ back, onBack, next, onNext, disabled, busy, nextTest
 }) {
   const cls = "inline-flex items-center gap-2 rounded-md bg-brand-d px-6 py-3 text-[15px] font-medium text-white shadow-sm disabled:opacity-40";
   return (
-    <div className="sticky bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center gap-3 border-t border-line bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0" data-testid="wiz-nav">
+    <div className="sticky bottom-[calc(49px+env(safe-area-inset-bottom))] md:bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center gap-3 border-t border-line bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0" data-testid="wiz-nav">
       {onBack && <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-3 py-2.5 text-[15px] text-mute hover:bg-band" data-testid="wiz-back"><ArrowLeft className="flip-rtl h-4 w-4" />{back ?? "Back"}</button>}
       {hint && <span className="ms-auto text-[13px] text-mute">{hint}</span>}
       {next && (href

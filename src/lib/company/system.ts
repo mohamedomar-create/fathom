@@ -16,7 +16,8 @@ const profileOf = (k: unknown) => ((k ?? {}) as Record<string, Record<string, un
 export function systemOf(kpiConfig: unknown, source: string | null | undefined): AcctSystem | null {
   const p = profileOf(kpiConfig);
   if (p.mode === "simple") return "cash";
-  if (p.system === "odoo" || p.system === "other" || p.system === "cash") return p.system;
+  // A cash-book answer only counts while the company is on the cash book; back on the full system the picker asks again.
+  if (p.system === "odoo" || p.system === "other") return p.system;
   if (source === "odoo") return "odoo";
   return null;
 }

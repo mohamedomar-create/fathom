@@ -97,7 +97,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
         </table>
       </div>
       <p className="mt-2 text-xs text-mute">* A result below target is favourable for this KPI.</p>
-      <div className="sticky bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
+      <div data-testid="settings-save-bar" className="sticky bottom-[calc(49px+env(safe-area-inset-bottom))] md:bottom-0 mt-4 flex items-center justify-end gap-3 border-t border-line bg-white/95 py-3 backdrop-blur">
         {msg && <span className={cn("me-auto text-sm", msg.ok ? "text-green-d" : "text-red")}>{msg.text}</span>}
         {c.readOnly ? <span className="text-sm text-mute">{c.basePath === "/demo" ? "The demo company is read-only." : "You have view-only access."}</span> : (
           <>
