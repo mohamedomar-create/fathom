@@ -23,6 +23,7 @@ import { loadInventory } from "@/lib/company/inventory-load";
 import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
 import { unknownState } from "@/lib/company/loaded";
 import { DependencyNote } from "@/components/shell/module-state";
+import { getDict } from "@/lib/i18n/server";
 
 /** The stock checks need the stock and expense summaries: they arrive after the rest of the page. */
 async function StockSection({ id }: { id: string }) {
@@ -38,6 +39,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
   const { id } = await params;
   const { imported } = await searchParams;
   const { supabase } = await getUser();
+  const t = (await getDict()).dat.pages;
   // The current version is known from two small reads, so the stored accounts and the company's figures load together.
   const { dataVersion } = await loadCompanyMeta(id);
   const [bundle, current, { data: imports }, { data: salesFiles }, { data: expenseFiles }, { data: profiles }, { data: paymentFiles }, { data: agedFiles }] = await Promise.all([
@@ -85,7 +87,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
     const list = (sources[k] ??= []);
     if (!list.some((s) => s.importId === imp)) {
       const r = imp ? byId.get(imp) : undefined;
-      list.push({ importId: imp, file: r ? r.filename ?? (r.kind === "odoo" ? "Odoo sync" : "Upload") : "Earlier import", at: r?.created_at ?? null, by: r?.created_by ? people.get(r.created_by) ?? null : null });
+      list.push({ importId: imp, file: r ? r.filename ?? (r.kind === "odoo" ? t.odooSync : t.upload) : t.earlier, at: r?.created_at ?? null, by: r?.created_by ? people.get(r.created_by) ?? null : null });
     }
   }
 
@@ -119,8 +121,8 @@ export default async function DataChecksPage({ params, searchParams }: { params:
 
   return (
     <div>
-      <h2 className="mb-1 text-xl font-light">Checks and history</h2>
-      <p className="mb-6 text-mute">Which months are loaded, where each one came from, and whether the accounting checks pass.</p>
+      <h2 className="mb-1 text-xl font-light">{t.checksTitle}</h2>
+      <p className="mb-6 text-mute">{t.checksSub}</p>
       {imported === "1" && <ImportReadiness />}
       <DataHealth
         companyId={id} readOnly={bundle.readOnly} justImported={imported === "1"}
@@ -129,11 +131,11 @@ export default async function DataChecksPage({ params, searchParams }: { params:
       />
       {comparison && (
         <section className="mt-10" data-testid="compare-books">
-          <h2 className="mb-1 text-lg font-medium">Compared with {comparison.name}</h2>
-          <p className="mb-3 text-sm text-mute">{comparison.months.length ? `${comparison.months.length} months both companies hold, class by class. ${comparison.diffs.length ? `${comparison.diffs.length} difference${comparison.diffs.length > 1 ? "s" : ""} above 1 EGP, largest first.` : "Every class agrees within 1 EGP."}` : "The two companies hold no month in common yet."}</p>
+          <h2 className="mb-1 text-lg font-medium">{t.compared(comparison.name)}</h2>
+          <p className="mb-3 text-sm text-mute">{comparison.months.length ? t.comparedSub(comparison.months.length, comparison.diffs.length) : t.noCommon}</p>
           {comparison.diffs.length > 0 && (
             <table className="w-full text-sm">
-              <thead><tr className="text-left text-xs text-mute"><th className="py-1">Month</th><th>Class</th><th className="text-right">Here</th><th className="text-right">{comparison.name}</th><th className="text-right">Difference</th></tr></thead>
+              <thead><tr className="text-left text-xs text-mute"><th className="py-1">{t.month}</th><th>{t.cls}</th><th className="text-right">{t.here}</th><th className="text-right">{comparison.name}</th><th className="text-right">{t.difference}</th></tr></thead>
               <tbody>{comparison.diffs.slice(0, 40).map((d) => (
                 <tr key={`${d.period}|${d.cls}`} className="border-t border-line"><td className="py-1">{d.period}</td><td>{CLASS_LABEL[d.cls as ClassKey] ?? d.cls}</td><td className="text-right tabular-nums">{Math.round(d.here).toLocaleString("en-GB")}</td><td className="text-right tabular-nums">{Math.round(d.there).toLocaleString("en-GB")}</td><td className="text-right tabular-nums">{Math.round(d.diff).toLocaleString("en-GB")}</td></tr>
               ))}</tbody>
@@ -142,12 +144,12 @@ export default async function DataChecksPage({ params, searchParams }: { params:
         </section>
       )}
       <section className="mt-10">
-        <h2 className="mb-3 text-lg font-medium">Sales and expenses files</h2>
+        <h2 className="mb-3 text-lg font-medium">{t.lineFiles}</h2>
         <LineUploads rows={lineUploads} companyId={id} readOnly={bundle.readOnly} />
       </section>
       <section className="mt-10">
-        <h2 className="mb-1 text-lg font-medium">Your Odoo export layouts</h2>
-        <p className="mb-3 text-sm text-mute">Every company’s Odoo exports its own columns. Each export’s layout is remembered on its first upload; an upload whose columns change stops until you confirm how it was read.</p>
+        <h2 className="mb-1 text-lg font-medium">{t.layouts}</h2>
+        <p className="mb-3 text-sm text-mute">{t.layoutsSub}</p>
         <ExportLayouts rows={layouts} />
       </section>
       <section className="mt-10"><ImportJobs companyId={id} /></section>

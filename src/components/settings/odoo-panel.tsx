@@ -7,10 +7,11 @@ import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
 import { mlabel } from "@/lib/engine";
+import { useT } from "@/lib/i18n/use-t";
+import type { Lang } from "@/lib/i18n";
 
 /** History "everything since the books start": the sync never reads months before it. */
 const ALL_MONTHS = 240;
-const monthLabel = (day: string) => mlabel(day.slice(0, 7));
 
 export interface OdooConn {
   url: string; db: string; login: string; odoo_company_id: number | null; odoo_company_name: string | null; include_branches: boolean;
@@ -20,12 +21,15 @@ export interface OdooConn {
 export interface OdooNightly { nightly: boolean; last_run_at: string | null; last_ok: boolean | null; last_error: string | null; next_run_at: string | null }
 export interface OdooLogRow { id: number; action: string; ok: boolean; detail: string | null; rows_read: number | null; at: string; who: string }
 
-const ACTION: Record<string, string> = { test: "Test", save: "Saved", key_changed: "Key changed", key_cleared: "Key cleared", sync: "Sync", disconnect: "Disconnected", refused: "Refused" };
-const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+const locale = (lang: Lang) => (lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB");
+const fmtTime = (iso: string, lang: Lang = "en") => new Date(iso).toLocaleString(locale(lang), { dateStyle: "medium", timeStyle: "short" });
 const daysTo = (day: string) => Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.now()) / 86_400_000);
 
 export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0, keyOld = false, nightly = null }: { nightly?: OdooNightly | null; companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number; keyOld?: boolean }) {
   const router = useRouter();
+  const T = useT();
+  const t = T.d.dat.odoo;
+  const monthLabel = (day: string) => (T.lang === "ar" ? T.ml(day.slice(0, 7)) : mlabel(day.slice(0, 7)));
   const [url, setUrl] = useState(connection?.url ?? "");
   const [db, setDb] = useState(connection?.db ?? "");
   const [login, setLogin] = useState(connection?.login ?? "");
@@ -46,7 +50,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const run = (s: typeof step, f: () => Promise<void>) => { setStep(s); setMsg(null); start(async () => { await f(); setStep("idle"); }); };
   const rekey = () => run("save", async () => {
     const r = await rekeyOdoo(companyId);
-    setMsg(r.ok ? { tone: "ok", text: "The API key is now encrypted with the server's current key." } : { tone: "bad", text: r.error });
+    setMsg(r.ok ? { tone: "ok", text: t.rekeyed } : { tone: "bad", text: r.error });
     if (r.ok) router.refresh();
   });
   const test = () => run("test", async () => {
@@ -56,30 +60,30 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     if (!company || !r.data.companies.some((c) => c.id === company)) setCompany(r.data.companies[0]?.id ?? null);
     const p = r.data;
     const safe = p.rights === "read" && p.user.companies.length === 1;
-    setMsg({ tone: "ok", text: `Connected to Odoo ${p.version} as "${p.user.name}". ${safe ? "Read-only ✓ · one company ✓. " : ""}${admin ? "Choose the company, then save." : "An admin saves the connection."}` });
+    setMsg({ tone: "ok", text: t.connected(p.version, p.user.name, safe, admin) });
   });
   const save = () => run("save", async () => {
     const name = probe?.companies.find((c) => c.id === company)?.name ?? connection?.odoo_company_name ?? "";
     const r = await saveOdoo({ companyId, url, db, login, apiKey, odooCompanyId: company!, odooCompanyName: name, includeBranches: branches, months, version: probe?.version, keyExpiresOn: expires || null });
     if (!r.ok) { setMsg({ tone: "bad", text: r.error }); return; }
-    setMsg({ tone: "ok", text: "Connection saved. Run a sync to load the data." });
+    setMsg({ tone: "ok", text: t.saved });
     setApiKey("");
     router.refresh();
   });
   const copy = () => {
     const name = others.find((o) => o.id === from)?.name ?? "";
-    if (!confirm(`Copy the account classes and the books start of "${name}" to this company? Classes you set here yourself are kept.`)) return;
+    if (!confirm(t.copyQ(name))) return;
     run("save", async () => {
       const r = await copyCompanySettings(companyId, from);
-      setMsg(r.ok ? { tone: "ok", text: `Copied ${r.classes} account class${r.classes === 1 ? "" : "es"}${r.profile ? " and the books start" : ""} from "${name}". Sync again to apply them.` } : { tone: "bad", text: r.error });
+      setMsg(r.ok ? { tone: "ok", text: t.copied(r.classes, !!r.profile, name) } : { tone: "bad", text: r.error });
       router.refresh();
     });
   };
   const disconnect = () => {
-    if (!confirm("Remove the Odoo connection and its stored key? Synced data stays; syncing stops until the connection is saved again.")) return;
+    if (!confirm(t.disconnectQ)) return;
     run("save", async () => {
       const r = await disconnectOdoo(companyId);
-      setMsg(r.ok ? { tone: "ok", text: "Disconnected. The stored key was deleted. Also delete the API key in Odoo (Account Security) if it is no longer needed." } : { tone: "bad", text: r.error });
+      setMsg(r.ok ? { tone: "ok", text: t.disconnected } : { tone: "bad", text: r.error });
       router.refresh();
     });
   };
@@ -90,50 +94,50 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
     for (let i = 0; i < 2000; i++) {
       const r = await syncOdooDetail(companyId, at);
       if (!r.ok) return r.error;
-      setProgress(`${r.data.label}: ${r.data.done.toLocaleString("en-GB")} of ${r.data.total.toLocaleString("en-GB")}`);
+      setProgress(t.progress(r.data.label, r.data.done.toLocaleString("en-GB"), r.data.total.toLocaleString("en-GB")));
       if (!r.data.next) return null;
       at = r.data.next;
     }
-    return "The detail sync took too many steps.";
+    return t.tooMany;
   };
   const stop = () => run("save", async () => {
     const r = await stopOdooSync(companyId);
-    setMsg(r.ok ? { tone: "ok", text: "Sync stopped. What it already saved stays; press Sync now to run it again." } : { tone: "bad", text: r.error });
+    setMsg(r.ok ? { tone: "ok", text: t.stopped } : { tone: "bad", text: r.error });
     router.refresh();
   });
   const syncDetail = () => run("sync", async () => {
     const err = await detail();
     setProgress(null);
-    setMsg(err ? { tone: "bad", text: err } : { tone: "ok", text: "Journal lines, sales lines, stock moves, stock valuation and stock on hand synced from Odoo." });
+    setMsg(err ? { tone: "bad", text: err } : { tone: "ok", text: t.detailDone });
     router.refresh();
   });
   const sync = () => {
-    if (hasData && !confirm("Syncing replaces the company's current financial data with the data from Odoo. Continue?")) return;
+    if (hasData && !confirm(t.replaceQ)) return;
     run("sync", async () => {
-      setProgress("Balances…");
+      setProgress(t.balances);
       const r = await syncOdooNow(companyId);
       if (!r.ok) { setProgress(null); setMsg({ tone: "bad", text: r.error }); router.refresh(); return; }
       const d = r.data;
       const err = await detail(true);
       setProgress(null);
-      setMsg({ tone: err ? "bad" : "ok", text: `Synced ${d.months} months and ${d.accounts} accounts from Odoo ${d.version}.${err ? ` Detail (journal lines, sales, stock): ${err}` : " Journal lines, sales lines and stock records synced too."}`, detail: [`Method: ${d.method}`, `Trial balance check: ${d.tb === 0 ? "balanced" : d.tb}`, ...(d.unmapped.length ? [`Not mapped: ${d.unmapped.slice(0, 6).join(", ")}`] : []), ...(d.offBalance?.length ? [`Typed off-balance in Odoo but holding entries (kept; confirm in Chart of accounts): ${d.offBalance.slice(0, 6).join(", ")}`] : []), ...(d.detail ? [d.detail] : [])] });
+      setMsg({ tone: err ? "bad" : "ok", text: t.synced(d.months, d.accounts, d.version, err), detail: [t.method(d.method), t.tbCheck(d.tb), ...(d.unmapped.length ? [t.notMapped(d.unmapped.slice(0, 6).join(", "))] : []), ...(d.offBalance?.length ? [t.offBalance(d.offBalance.slice(0, 6).join(", "))] : []), ...(d.detail ? [d.detail] : [])] });
       router.refresh();
     });
   };
 
   const field = "w-full rounded border border-line px-3 py-2 outline-none focus:border-brand";
   const left = connection?.key_expires_on ? daysTo(connection.key_expires_on) : null;
-  if (!ready) return <p className="rounded bg-amber/15 px-4 py-3 text-sm" data-testid="odoo-not-ready">The Odoo connection is closed until the site owner applies the database security update for it (migration 0025).</p>;
+  if (!ready) return <p className="rounded bg-amber/15 px-4 py-3 text-sm" data-testid="odoo-not-ready">{t.notReady}</p>;
   return (
     <div className="grid gap-8 lg:grid-cols-[1fr_300px]">
       <div>
         {left !== null && left <= 14 && (
-          <div className="mb-4 rounded bg-amber/15 px-4 py-2.5 text-sm" data-testid="odoo-key-expiry">{left < 0 ? "The Odoo API key has expired." : `The Odoo API key expires in ${left} day${left === 1 ? "" : "s"}.`} Make a new one in Odoo and {admin ? "save it here" : "ask an admin to save it"}.</div>
+          <div className="mb-4 rounded bg-amber/15 px-4 py-2.5 text-sm" data-testid="odoo-key-expiry">{left < 0 ? t.expired : t.expiresIn(left)}{t.makeNew(admin)}</div>
         )}
         {keyOld && admin && (
           <div className="mb-4 flex flex-wrap items-center gap-3 rounded bg-amber/15 px-4 py-2.5 text-sm" data-testid="odoo-key-old">
-            <span className="min-w-0 flex-1">The saved API key is still encrypted with an older server key. Re-encrypt it so the old key can be removed from the server.</span>
-            <button onClick={rekey} disabled={pending} className="rounded border border-brand-d px-3 py-1.5 text-brand-d disabled:opacity-60" data-testid="odoo-rekey">Re-encrypt the key</button>
+            <span className="min-w-0 flex-1">{t.keyOld}</span>
+            <button onClick={rekey} disabled={pending} className="rounded border border-brand-d px-3 py-1.5 text-brand-d disabled:opacity-60" data-testid="odoo-rekey">{t.rekey}</button>
           </div>
         )}
         {saved && (
@@ -141,63 +145,63 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
             <PlugZap className="h-5 w-5 text-brand-d" />
             <div className="min-w-0 flex-1">
               <div className="font-medium">{connection!.odoo_company_name} · {connection!.url.replace("https://", "")}</div>
-              <div className="text-xs text-mute">{connection!.last_sync_at ? `Last synced ${new Date(connection!.last_sync_at).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}` : "Not synced yet"} · {connection!.months_history === ALL_MONTHS ? "since the books start" : `${connection!.months_history} months`}{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
+              <div className="text-xs text-mute">{connection!.last_sync_at ? t.lastSynced(new Date(connection!.last_sync_at).toLocaleString(locale(T.lang), { dateStyle: "medium", timeStyle: "short" })) : t.notSynced} · {connection!.months_history === ALL_MONTHS ? t.sinceStart : t.months(connection!.months_history)}{connection!.version ? ` · Odoo ${connection!.version}` : ""}</div>
             </div>
             <button onClick={sync} disabled={pending} className="flex items-center gap-1.5 rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-60" data-testid="odoo-sync">
-              {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? (progress ?? "Syncing…") : "Sync now"}
+              {step === "sync" ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}{step === "sync" ? (progress ?? t.syncing) : t.syncNow}
             </button>
-            {connection?.status === "syncing" && !pending && <button onClick={stop} className="rounded border border-red px-3 py-2 text-sm text-red" data-testid="odoo-stop">Stop sync</button>}
-            <button onClick={syncDetail} disabled={pending} className="rounded border border-brand-d px-3 py-2 text-sm text-brand-d disabled:opacity-60" data-testid="odoo-sync-detail">Sync detail only</button>
-            {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />Disconnect</button>}
+            {connection?.status === "syncing" && !pending && <button onClick={stop} className="rounded border border-red px-3 py-2 text-sm text-red" data-testid="odoo-stop">{t.stop}</button>}
+            <button onClick={syncDetail} disabled={pending} className="rounded border border-brand-d px-3 py-2 text-sm text-brand-d disabled:opacity-60" data-testid="odoo-sync-detail">{t.detailOnly}</button>
+            {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />{t.disconnect}</button>}
           </div>
         )}
         {saved && <NightlyToggle companyId={companyId} job={nightly} />}
         {others.length > 0 && (
           <div className={cn("mb-5 rounded-md border px-4 py-3 text-sm", mapCount === 0 ? "border-amber bg-amber/10" : "border-line")} data-testid="odoo-copy-settings">
-            <div className="font-medium">Start from another company of the same books</div>
-            <p className="mt-0.5 text-xs text-mute">{mapCount === 0 ? "This company has learned no account classes yet, so Odoo's own account types are used. " : ""}Copy every account&apos;s class and the books start from a company you already set up (e.g. from uploads), so both read the books the same way.</p>
+            <div className="font-medium">{t.copyTitle}</div>
+            <p className="mt-0.5 text-xs text-mute">{mapCount === 0 ? t.noClasses : ""}{t.copyText}</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <select aria-label="Copy settings from" className="rounded border border-line px-2 py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="odoo-copy-from">
+              <select aria-label={t.copyFrom} className="rounded border border-line px-2 py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="odoo-copy-from">
                 {others.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
-              <button onClick={copy} disabled={pending || !from} className="rounded border border-brand-d px-3 py-1.5 font-medium text-brand-d disabled:opacity-50" data-testid="odoo-copy">Copy settings</button>
+              <button onClick={copy} disabled={pending || !from} className="rounded border border-brand-d px-3 py-1.5 font-medium text-brand-d disabled:opacity-50" data-testid="odoo-copy">{t.copyBtn}</button>
             </div>
           </div>
         )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="sm:col-span-2"><span className="label mb-1 block">Odoo URL</span><input className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://yourcompany.odoo.com" /></label>
-          <label><span className="label mb-1 block">Database</span><input className={field} value={db} onChange={(e) => setDb(e.target.value)} placeholder="yourcompany" /></label>
-          <label><span className="label mb-1 block">Login (email)</span><input className={field} value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" /></label>
-          <label className="sm:col-span-2"><span className="label mb-1 block">API key</span><input className={field} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={saved ? "•••••••• (saved — leave blank to keep)" : "Paste the API key"} autoComplete="new-password" /></label>
+          <label className="sm:col-span-2"><span className="label mb-1 block">{t.url}</span><input className={field} value={url} onChange={(e) => setUrl(e.target.value)} placeholder={t.urlPh} /></label>
+          <label><span className="label mb-1 block">{t.db}</span><input className={field} value={db} onChange={(e) => setDb(e.target.value)} placeholder={t.dbPh} /></label>
+          <label><span className="label mb-1 block">{t.login}</span><input className={field} value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="off" /></label>
+          <label className="sm:col-span-2"><span className="label mb-1 block">{t.key}</span><input className={field} type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={saved ? t.keySaved : t.keyPaste} autoComplete="new-password" /></label>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button onClick={test} disabled={pending || !url || !db || !login} className="flex items-center gap-1.5 rounded border border-brand-d px-4 py-2 font-medium text-brand-d disabled:opacity-50">
-            {step === "test" && <Loader2 className="h-4 w-4 animate-spin" />}Test connection
+            {step === "test" && <Loader2 className="h-4 w-4 animate-spin" />}{t.test}
           </button>
         </div>
         {probe && (
           <div className={cn("mt-5 flex gap-2 rounded px-3 py-2.5 text-sm", probe.rights === "read" ? "bg-green-bg text-green-d" : "bg-amber/15")} data-testid="odoo-rights">
             {probe.rights === "read" ? <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" /> : <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" />}
-            <div>Odoo user <b>{probe.user.name}</b> · {probe.rights === "read" ? "cannot create, change or delete accounting records" : probe.rights === "write" ? `can change ${probe.canChange.join(", ")} (allowed; iReport only reads, keep the key private)` : "rights not confirmed by Odoo (allowed; iReport only reads)"} · sees {probe.user.companies.length} compan{probe.user.companies.length === 1 ? "y" : "ies"}</div>
+            <div>{t.user} <b>{probe.user.name}</b> · {probe.rights === "read" ? t.readOnly : probe.rights === "write" ? t.canChange(probe.canChange.join(", ")) : t.notConfirmed} · {t.sees(probe.user.companies.length)}</div>
           </div>
         )}
         {admin && (probe || saved) && (
           <div className="mt-6 grid gap-4 rounded-md border border-line p-4 sm:grid-cols-3">
-            <label className="sm:col-span-3"><span className="label mb-1 block">Odoo company</span>
+            <label className="sm:col-span-3"><span className="label mb-1 block">{t.company}</span>
               <select className={field} value={company ?? ""} onChange={(e) => setCompany(Number(e.target.value))}>
                 {(probe?.companies ?? (connection?.odoo_company_id ? [{ id: connection.odoo_company_id, name: connection.odoo_company_name ?? "" }] : [])).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </label>
-            <label><span className="label mb-1 block">History</span>
+            <label><span className="label mb-1 block">{t.history}</span>
               <select className={field} value={months} onChange={(e) => setMonths(Number(e.target.value))}>
-                {booksStart && <option value={ALL_MONTHS}>Everything since the books start ({monthLabel(booksStart)})</option>}
-                {[13, 25, 37, 49].map((m) => <option key={m} value={m}>{m - 1} months + current</option>)}
+                {booksStart && <option value={ALL_MONTHS}>{t.everything(monthLabel(booksStart))}</option>}
+                {[13, 25, 37, 49].map((m) => <option key={m} value={m}>{t.monthsPlus(m - 1)}</option>)}
               </select>
             </label>
-            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={branches} onChange={(e) => setBranches(e.target.checked)} /> Include branches (child companies)</label>
-            <label><span className="label mb-1 block">API key expires on (optional)</span><input type="date" className={field} value={expires} onChange={(e) => setExpires(e.target.value)} data-testid="odoo-expires" /></label>
+            <label className="flex items-end gap-2 pb-2 text-sm"><input type="checkbox" checked={branches} onChange={(e) => setBranches(e.target.checked)} /> {t.branches}</label>
+            <label><span className="label mb-1 block">{t.expires}</span><input type="date" className={field} value={expires} onChange={(e) => setExpires(e.target.value)} data-testid="odoo-expires" /></label>
             <div className="sm:col-span-3">
-              <button onClick={save} disabled={pending || !company} data-testid="odoo-save" className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? "Saving…" : "Save connection"}</button>
+              <button onClick={save} disabled={pending || !company} data-testid="odoo-save" className="rounded bg-brand-d px-4 py-2 font-medium text-white disabled:opacity-50">{step === "save" ? t.saving : t.save}</button>
             </div>
           </div>
         )}
@@ -209,14 +213,14 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
         )}
         {log.length > 0 && (
           <div className="mt-8" data-testid="odoo-log">
-            <div className="label mb-2">Odoo connection log (last {log.length}, cannot be edited)</div>
+            <div className="label mb-2">{t.log(log.length)}</div>
             <table className="w-full text-xs">
               <tbody>{log.map((l) => (
                 <tr key={l.id} className="border-t border-line align-top">
-                  <td className="whitespace-nowrap py-1.5 pe-3 text-mute">{fmtTime(l.at)}</td>
-                  <td className={cn("whitespace-nowrap py-1.5 pe-3 font-medium", l.ok ? "" : "text-red")}>{ACTION[l.action] ?? l.action}{l.ok ? "" : " ✗"}</td>
+                  <td className="whitespace-nowrap py-1.5 pe-3 text-mute">{fmtTime(l.at, T.lang)}</td>
+                  <td className={cn("whitespace-nowrap py-1.5 pe-3 font-medium", l.ok ? "" : "text-red")}>{t.action[l.action] ?? l.action}{l.ok ? "" : " ✗"}</td>
                   <td className="py-1.5 pe-3">{l.who}</td>
-                  <td className="py-1.5 text-mute">{l.detail}{l.rows_read ? ` · ${l.rows_read.toLocaleString("en-GB")} rows` : ""}</td>
+                  <td className="py-1.5 text-mute">{l.detail}{l.rows_read ? t.rows(l.rows_read.toLocaleString("en-GB")) : ""}</td>
                 </tr>
               ))}</tbody>
             </table>
@@ -224,16 +228,16 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
         )}
       </div>
       <aside className="rounded-lg bg-band p-4 text-[13px]">
-        <div className="label mb-2">How to connect</div>
+        <div className="label mb-2">{t.howTitle}</div>
         <ol className="list-decimal space-y-2 ps-4">
-          <li>Any Odoo user with API access works. Safest: a separate user, e.g. <b>iReport Reader</b>, with Accounting <b>Read-only</b> access and only your company in <b>Allowed companies</b>.</li>
-          <li>Sign in as that user: <b>avatar → My Profile → Account Security → New API Key</b>. Give it an end date (e.g. 90 days). Copy the key.</li>
-          <li>The database name is shown on the Odoo login page or under <b>Settings → Developer tools → About</b>.</li>
-          <li>Test: iReport shows what the user may do in Odoo. Any user with API access can connect; iReport only ever reads. A read-only user is still the safest choice.</li>
+          <li>{t.how1[0]}<b>iReport Reader</b>{t.how1[1]}<b>{t.how1[2]}</b>{t.how1[3]}<b>{t.how1[4]}</b>{t.how1[5]}</li>
+          <li>{t.how2[0]}<b>{t.how2[1]}</b>{t.how2[2]}</li>
+          <li>{t.how3[0]}<b>{t.how3[1]}</b>{t.how3[2]}</li>
+          <li>{t.how4}</li>
         </ol>
-        <p className="mt-3 text-mute">Odoo Online (SaaS) allows the external API on the <b>Custom</b> plan; Odoo.sh and self-hosted Odoo 13–18 work out of the box. The server must be reachable on the internet.</p>
-        <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">Odoo external API docs <ExternalLink className="h-3 w-3" /></a>
-        <p className="mt-3 text-xs text-mute">Only reading requests are ever sent, for accounting records only. The API key is encrypted (AES-256), can&apos;t be read back by anyone, and is only decrypted on the server during a test or sync. Only an admin can save or remove the connection; every action is logged. To stop access at once, delete the key in Odoo or press Disconnect.</p>
+        <p className="mt-3 text-mute">{t.saas[0]}<b>Custom</b>{t.saas[1]}</p>
+        <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">{t.docs} <ExternalLink className="h-3 w-3" /></a>
+        <p className="mt-3 text-xs text-mute">{t.security}</p>
       </aside>
     </div>
   );
@@ -242,6 +246,8 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
 /** Nightly sync on the server (0046): runs as the editor who turns it on; shows the last run and any reason it stopped. */
 function NightlyToggle({ companyId, job }: { companyId: string; job: OdooNightly | null }) {
   const router = useRouter();
+  const T = useT();
+  const t = T.d.dat.odoo;
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const on = !!job?.nightly;
@@ -254,12 +260,12 @@ function NightlyToggle({ companyId, job }: { companyId: string; job: OdooNightly
     <div className="mb-5 rounded-md border border-line px-4 py-3 text-sm" data-testid="odoo-nightly">
       <label className="flex items-center gap-2 font-medium">
         <input type="checkbox" checked={on} onChange={toggle} disabled={pending} data-testid="odoo-nightly-toggle" />
-        Sync every night (between about 02:30 and 04:30 Cairo time)
+        {t.nightly}
       </label>
-      <p className="mt-0.5 text-xs text-mute">The server runs the same sync as Sync now, with your editor rights. If you stop being an editor of this company, it switches itself off.</p>
+      <p className="mt-0.5 text-xs text-mute">{t.nightlySub}</p>
       {job?.last_run_at && (
         <p className={cn("mt-1 text-xs", job.last_ok ? "text-green-d" : "text-red")} data-testid="odoo-nightly-last">
-          Last night run {fmtTime(job.last_run_at)}: {job.last_ok ? "done" : `failed${job.last_error ? ` (${job.last_error})` : ""}`}
+          {t.lastNight(fmtTime(job.last_run_at, T.lang), !!job.last_ok, job.last_error)}
         </p>
       )}
       {!on && !job?.last_run_at && job?.last_error && <p className="mt-1 text-xs text-red" data-testid="odoo-nightly-last">{job.last_error}</p>}

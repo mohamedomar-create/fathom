@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { useT } from "@/lib/i18n/use-t";
 
 export interface RadarAxis { label: string; completion: number; accuracy: number | null }
 
@@ -12,6 +13,7 @@ const COMPLETE = "#009b95", ACCURATE = "#eb6834";
  */
 export function RadarChart({ axes, size = 260, testId, compact = false }: { axes: RadarAxis[]; size?: number; testId?: string; compact?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
+  const t = useT().d.dat.ready;
   const n = Math.max(3, axes.length);
   // Labels sit outside the shape: extra width on both sides keeps long ones ("Balance sheets") whole.
   const pad = compact ? 14 : 30, side = compact ? 0 : 70;
@@ -23,7 +25,7 @@ export function RadarChart({ axes, size = 260, testId, compact = false }: { axes
   const comp = axes.map((a) => a.completion), acc = axes.map((a) => a.accuracy ?? a.completion);
   return (
     <div dir="ltr" className="relative inline-block" data-testid={testId}>
-      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="max-w-full" role="img" aria-label={`Data completion and accuracy: ${axes.map((a) => `${a.label} ${a.completion}% complete${a.accuracy !== null ? `, ${a.accuracy}% accurate` : ""}`).join("; ")}`}>
+      <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} className="max-w-full" role="img" aria-label={`${t.radarPrefix}${axes.map((a) => t.radarAxis(a.label, a.completion, a.accuracy)).join(t.radarSep)}`}>
         {[25, 50, 75, 100].map((r) => <polygon key={r} points={poly(axes.map(() => r))} fill="none" stroke="#e6e6e1" strokeWidth={1} />)}
         {axes.map((_, i) => { const [x, y] = pt(i, 100); return <line key={i} x1={cx} y1={cy} x2={x} y2={y} stroke="#e6e6e1" />; })}
         <polygon points={poly(comp)} fill={COMPLETE} fillOpacity={0.16} stroke={COMPLETE} strokeWidth={2} strokeLinejoin="round" />
@@ -50,8 +52,8 @@ export function RadarChart({ axes, size = 260, testId, compact = false }: { axes
       {hover !== null && axes[hover] && (
         <div role="tooltip" className="pointer-events-none absolute left-1/2 top-1/2 z-10 min-w-40 -translate-x-1/2 -translate-y-1/2 rounded-md border border-line bg-white/95 px-3 py-2 text-xs shadow-lg">
           <div className="mb-1 font-semibold">{axes[hover].label}</div>
-          <div className="flex justify-between gap-4"><span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: COMPLETE }} />Complete</span><b className="num">{axes[hover].completion}%</b></div>
-          <div className="flex justify-between gap-4"><span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: ACCURATE }} />Accurate</span><b className="num">{axes[hover].accuracy === null ? "–" : `${axes[hover].accuracy}%`}</b></div>
+          <div className="flex justify-between gap-4"><span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: COMPLETE }} />{t.complete}</span><b className="num">{axes[hover].completion}%</b></div>
+          <div className="flex justify-between gap-4"><span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: ACCURATE }} />{t.accurate}</span><b className="num">{axes[hover].accuracy === null ? "–" : `${axes[hover].accuracy}%`}</b></div>
         </div>
       )}
     </div>
@@ -59,10 +61,11 @@ export function RadarChart({ axes, size = 260, testId, compact = false }: { axes
 }
 
 export function RadarLegend() {
+  const t = useT().d.dat.ready;
   return (
     <div className="flex flex-wrap gap-4 text-xs">
-      <span className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COMPLETE }} />Data complete</span>
-      <span className="flex items-center gap-1.5"><i className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: ACCURATE }} />Data accurate</span>
+      <span className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: COMPLETE }} />{t.dataComplete}</span>
+      <span className="flex items-center gap-1.5"><i className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: ACCURATE }} />{t.dataAccurate}</span>
     </div>
   );
 }

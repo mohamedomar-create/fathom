@@ -4,6 +4,7 @@ import { loadCompanyMeta } from "@/lib/company/meta";
 import { UploadWizard } from "@/components/settings/upload-wizard";
 import { loadAccountMap } from "@/lib/company/account-map";
 import { loadDataFacts } from "@/lib/company/data-facts";
+import { getDict } from "@/lib/i18n/server";
 
 export default async function DataUploadPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ step?: string }> }) {
   const { id } = await params;
@@ -11,6 +12,7 @@ export default async function DataUploadPage({ params, searchParams }: { params:
   const { supabase } = await getUser();
   // The role and current version only (the figures themselves are not shown here); everything else in one round.
   const { role, dataVersion } = await loadCompanyMeta(id);
+  const t = (await getDict()).dat.pages;
   const [{ data: c }, { data: imports }, { data: batches }, { data: expBatches }, facts, accountMap, { data: profiles }] = await Promise.all([
     supabase.from("companies").select("currency, fy_start_month, data_version, last_synced_at, source, kpi_config").eq("id", id).single(),
     supabase.from("imports").select("id, kind, report").eq("company_id", id).eq("kind", "upload").eq("action", "import").order("created_at", { ascending: false }).limit(1),
@@ -32,9 +34,9 @@ export default async function DataUploadPage({ params, searchParams }: { params:
   const setupStep = steps.find((x) => x === step);
   return (
     <div>
-      <p className="mb-5 text-mute">Nothing is saved until you press Save. Undo an upload under Checks &amp; history.</p>
+      <p className="mb-5 text-mute">{t.uploadNote}</p>
       {role === "viewer" ? (
-        <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">You have view-only access to this company, so you cannot import data. Ask an admin of the organisation for editor access.</p>
+        <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">{t.uploadViewOnly}</p>
       ) : c && <UploadWizard key={step ?? "any"} companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={setupStep} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} ledgerLoaded={facts.ledger} />}
     </div>
   );

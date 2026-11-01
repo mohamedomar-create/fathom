@@ -12,10 +12,11 @@ import { readiness } from "@/lib/company/readiness";
 import { runChecks } from "@/lib/company/checks";
 import { dataMapRows } from "@/lib/company/data-map";
 import { ReadinessView } from "@/components/setup/readiness-overview";
+import { getLang } from "@/lib/i18n/server";
 
 export default async function DataReadinessPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [c, sales, expenses, inventory, payments] = await Promise.all([loadCompanyBundle(id), loadSales(id), loadExpenses(id), loadInventory(id), loadPayments(id)]);
+  const [c, sales, expenses, inventory, payments, lang] = await Promise.all([loadCompanyBundle(id), loadSales(id), loadExpenses(id), loadInventory(id), loadPayments(id), getLang()]);
   // Worked out here: the page gets each sector's readiness and the data map, not the summaries behind them.
   // The same module states as the Data steps (status.ts): unread is unknown, pending is still adding up; neither is "missing".
   const m = moduleStates(moduleLoads(sales, expenses, payments, inventory));
@@ -25,8 +26,8 @@ export default async function DataReadinessPage({ params }: { params: Promise<{ 
   const all = readiness({
     months: c.months, unit: c.unit, checks: runChecks({ accounts: c.accounts, months: c.months, unit: c.unit }), fyStart: c.settings.fyStartMonth,
     sales: sales.data, expenses: expenses.data, inventory: inventory?.wire ? fromWire(inventory.wire) : null, accounts: c.accounts, locationTypes: c.inventorySettings?.locationTypes,
-    assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero, payments: payments.data, unread, pending, basis: c.booksBasis,
+    assumptions: c.assumptions, forecast: c.forecast, booksFromZero: c.booksFromZero, payments: payments.data, unread, pending, basis: c.booksBasis, lang,
   });
-  return <ReadinessView all={all} rows={dataMapRows(c.months, sales.data, expenses.data)} />;
+  return <ReadinessView all={all} rows={dataMapRows(c.months, sales.data, expenses.data, lang)} />;
 }
 export const maxDuration = 60;
