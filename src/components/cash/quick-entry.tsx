@@ -45,6 +45,8 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
   const chips = useMemo(() => topCategories(entries, way, s.category), [entries, way, s.category]);
   // Until the person picks one, the learned category is the choice.
   const category = picked ?? s.category;
+  // The kind "Work it out" will save, from the category as chosen now.
+  const autoKind = resolveEntry(s, { category: picked, kind: null }, { direction: way, party, note }).kind;
   const typed = typedAmount(amount);
 
   const reset = () => { setAmount(""); setDirection(null); setPicked(null); setOther(false); setParty(""); setNote(""); setPaid(""); setKind(""); setDay(company.today); };
@@ -58,7 +60,7 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
   const save = () => {
     if (!typed || typed <= 0) return setMsg({ ok: false, text: t.quickNoAmount });
     if (!direction) return setMsg({ ok: false, text: t.quickPickWay });
-    const chosen = resolveEntry(s, { category: picked, kind: kind && kindsFor(direction).includes(kind) ? kind : null });
+    const chosen = resolveEntry(s, { category: picked, kind: kind && kindsFor(direction).includes(kind) ? kind : null }, { direction, party, note });
     start(async () => {
       const r = await entryAdd(company.id, {
         day, direction, amount: typed, category: chosen.category, party, note, kind: chosen.kind,
@@ -133,7 +135,7 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
               <select className={field} value={paid} onChange={(e) => setPaid(e.target.value as typeof paid)} data-testid="quick-paid"><option value="">{t.blank}</option><option value="yes">{t.yes}</option><option value="no">{t.no}</option></select></label>
             <label className="col-span-2"><span className="label mb-1 block">{t.kind}</span>
               <select className={field} value={kind && kindsFor(way).includes(kind) ? kind : ""} onChange={(e) => setKind(e.target.value as Kind | "")} data-testid="quick-kind">
-                <option value="">{`${t.kindAuto} (${KIND_LABEL[s.kind][lang]})`}</option>{kindsFor(way).map((k) => <option key={k} value={k}>{KIND_LABEL[k][lang]}</option>)}</select></label>
+                <option value="">{`${t.kindAuto} (${KIND_LABEL[autoKind][lang]})`}</option>{kindsFor(way).map((k) => <option key={k} value={k}>{KIND_LABEL[k][lang]}</option>)}</select></label>
           </div>}
 
           {msg && <p role={msg.ok ? "status" : "alert"} className={cn("mt-3 text-sm", msg.ok ? "text-green-d" : "text-red")} data-testid="quick-msg">{msg.text}</p>}

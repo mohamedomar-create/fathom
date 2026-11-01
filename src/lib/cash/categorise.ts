@@ -31,9 +31,18 @@ export function suggest(rules: CategoryRule[], e: { direction: "in" | "out"; par
   return { category: "", kind, from: kind === (e.direction === "in" ? "sale" : "expense") ? "none" : "words" };
 }
 
-/** What is saved: the person's own category and kind when they chose one (null: no choice made), else the suggestion. */
-export function resolveEntry(s: Suggestion, choice: { category: string | null; kind: Kind | null }): { category: string; kind: Kind } {
-  return { category: choice.category === null ? s.category : choice.category.trim(), kind: choice.kind ?? s.kind };
+/**
+ * What is saved: the person's own category and kind when they chose one (null: no choice made), else the suggestion.
+ * A chosen category other than the suggested one never keeps the suggestion's kind: the kind is worked out again from
+ * the category and the entry's words (a "Drawings" chip is drawings, not an expense; "Sales" for a customer whose rule
+ * said owner's money is a sale).
+ */
+export function resolveEntry(s: Suggestion, choice: { category: string | null; kind: Kind | null },
+  e: { direction: "in" | "out"; party: string; note: string }): { category: string; kind: Kind } {
+  const category = choice.category === null ? s.category : choice.category.trim();
+  if (choice.kind) return { category, kind: choice.kind };
+  const same = matchKey(category) === matchKey(s.category);
+  return { category, kind: same ? s.kind : detectKind(e.direction, `${category} ${e.party} ${e.note}`) };
 }
 
 /** The categories most used for a direction (ties: the most recent), spelled as last typed; a suggestion goes first. */

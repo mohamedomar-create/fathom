@@ -31,6 +31,11 @@ grant all on e to authenticated;
 
 select pg_temp.check('the database is at version 48', public.schema_version()::text, '48');
 
+-- Names are tidied exactly as the app's matchKey does (tests/unit/cash-categorise.test.ts holds the same samples).
+select pg_temp.check('Arabic is spelled one way, as the app spells it',
+  private.cash_match('شركة النور') || '|' || private.cash_match('مؤسسة') || '|' || private.cash_match('الأصول الثابتـة') || '|' || private.cash_match('شيئ إى آک ی') || '|' || private.cash_match('  NILE   Cafe '),
+  'شركه النور|موسسه|الاصول الثابته|شيي اي اك ي|nile cafe');
+
 select pg_temp.login('ccr-a@x.test');
 select pg_temp.check('no direct writes to the rules', pg_temp.err($$insert into public.cash_category_rules (company_id, direction, match_on, match, category, kind) values ((select co from ids), 'in', 'party', 'x', 'y', 'sale')$$), '42501');
 

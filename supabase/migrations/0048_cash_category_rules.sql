@@ -30,7 +30,7 @@ grant select on public.cash_category_rules to authenticated;
 -- How a name or description is compared: Arabic spelled one way (as the app's normAr), lower case, single spaces.
 create or replace function private.cash_match(p text) returns text language sql immutable set search_path = '' as $$
   select left(btrim(regexp_replace(lower(translate(regexp_replace(coalesce(p, ''), '[ؐ-ًؚ-ٰٟـ]', '', 'g'),
-    'أإآٱىةؤئکی', 'ااااييهويكي')), '\s+', ' ', 'g')), 200)
+    'أإآٱىةؤئکی', 'اااايهويكي')), '\s+', ' ', 'g')), 200)
 $$;
 
 -- Remembers an entry's category for its name and its description. At most 5,000 rules per company: the least recently

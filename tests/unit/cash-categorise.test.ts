@@ -11,6 +11,12 @@ describe("matchKey", () => {
     expect(matchKey("  NILE   Cafe ")).toBe("nile cafe");
     expect(matchKey("مؤسسة الأمل")).toBe(matchKey("موسسه الامل"));
   });
+  it("spells Arabic exactly as the database's cash_match does (the same samples are checked in SQL)", () => {
+    expect(matchKey("شركة النور")).toBe("شركه النور");
+    expect(matchKey("مؤسسة")).toBe("موسسه");
+    expect(matchKey("الأصول الثابتـة")).toBe("الاصول الثابته");
+    expect(matchKey("شيئ إى آک ی")).toBe("شيي اي اك ي");
+  });
 });
 
 describe("suggest", () => {
@@ -43,14 +49,29 @@ describe("suggest", () => {
 
 describe("resolveEntry", () => {
   const s = { category: "Drinks", kind: "sale" as const, from: "party" as const };
+  const ctx = { direction: "in" as const, party: "Nile Cafe", note: "" };
   it("a person's choice wins over the suggestion", () => {
-    expect(resolveEntry(s, { category: "Coffee", kind: "collection" })).toEqual({ category: "Coffee", kind: "collection" });
+    expect(resolveEntry(s, { category: "Coffee", kind: "collection" }, ctx)).toEqual({ category: "Coffee", kind: "collection" });
   });
   it("with no choice, the suggestion is used", () => {
-    expect(resolveEntry(s, { category: null, kind: null })).toEqual({ category: "Drinks", kind: "sale" });
+    expect(resolveEntry(s, { category: null, kind: null }, ctx)).toEqual({ category: "Drinks", kind: "sale" });
   });
   it("choosing no category is a choice too", () => {
-    expect(resolveEntry(s, { category: "", kind: null })).toEqual({ category: "", kind: "sale" });
+    expect(resolveEntry(s, { category: "", kind: null }, ctx)).toEqual({ category: "", kind: "sale" });
+  });
+  it("another category than the rule's: the kind is worked out again, never the rule's kind", () => {
+    const owner = { category: "Owner money", kind: "capital" as const, from: "party" as const };
+    expect(resolveEntry(owner, { category: "Sales", kind: null }, { direction: "in", party: "Ahmed", note: "" })).toEqual({ category: "Sales", kind: "sale" });
+  });
+  it("the chosen category's own words decide the kind", () => {
+    const none = { category: "", kind: "expense" as const, from: "none" as const };
+    expect(resolveEntry(none, { category: "Drawings", kind: null }, { direction: "out", party: "", note: "" }).kind).toBe("drawings");
+    expect(resolveEntry(none, { category: "مسحوبات", kind: null }, { direction: "out", party: "", note: "" }).kind).toBe("drawings");
+    expect(resolveEntry(none, { category: "Purchases", kind: null }, { direction: "out", party: "", note: "" }).kind).toBe("purchase");
+  });
+  it("the rule's own category, picked as a chip, keeps the rule's kind", () => {
+    const owner = { category: "Owner money", kind: "capital" as const, from: "party" as const };
+    expect(resolveEntry(owner, { category: "owner money", kind: null }, { direction: "in", party: "Ahmed", note: "" }).kind).toBe("capital");
   });
 });
 
