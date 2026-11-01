@@ -78,8 +78,8 @@ function Empty() {
       <h2 className="mb-2 text-2xl font-light">{t.empty}</h2>
       <p className="mb-5 text-mute">{t.emptyText}</p>
       {!company.readOnly && <div className="flex flex-wrap justify-center gap-3">
-        <Link prefetch={false} href={`/cash/${company.id}/upload`} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white" data-testid="cash-go-upload">{t.upload}</Link>
-        <Link prefetch={false} href={`/cash/${company.id}/entries`} className="rounded border border-brand-d px-5 py-2.5 font-medium text-brand-d">{t.addEntry}</Link>
+        <Link prefetch={false} href={`${company.base}/upload`} className="rounded bg-brand-d px-5 py-2.5 font-medium text-white" data-testid="cash-go-upload">{t.upload}</Link>
+        <Link prefetch={false} href={`${company.base}/entries`} className="rounded border border-brand-d px-5 py-2.5 font-medium text-brand-d">{t.addEntry}</Link>
       </div>}
     </div>
   );
@@ -207,7 +207,7 @@ export function CashAhead() {
       <div className="mb-6 grid grid-cols-2 gap-6 lg:grid-cols-3">
         <Tile label={t.cashToday} fig={f.cash} show={(v) => money(v, cur)} neg={(v) => v < 0} k="cash" testId="ahead-cash" />
       </div>
-      {!f.cash.ok && !company.readOnly && <p className="mb-6 text-sm"><Link prefetch={false} href={`/cash/${company.id}/settings`} className="text-brand-d underline" data-testid="ahead-add-opening">{t.needs.opening_cash}</Link></p>}
+      {!f.cash.ok && !company.readOnly && <p className="mb-6 text-sm"><Link prefetch={false} href={`${company.base}/settings`} className="text-brand-d underline" data-testid="ahead-add-opening">{t.needs.opening_cash}</Link></p>}
       {f.assumedPaid > 0 && <p className="mb-6 rounded bg-band px-4 py-2 text-[13px]" data-testid="ahead-assumed">{t.assumed(f.assumedPaid)}</p>}
       <div className="grid gap-10 lg:grid-cols-2">
         <div>

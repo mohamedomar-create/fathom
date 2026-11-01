@@ -17,6 +17,8 @@ export interface CashCompany {
   today: string;
   /** Remembered column choices, by heading. */
   columns: Record<string, CashField | "">;
+  /** Where the cash book's pages live: /cash/[id], or /demo/cash for the public demo. */
+  base: string;
 }
 export type StoredEntry = Entry & { id: number; note: string; source: "file" | "app" | "copied"; upload: string | null; kind: Kind; edited: boolean };
 export type CashUpload = Pick<CashUploadRow, "id" | "filename" | "months" | "mode" | "rows" | "skipped" | "created_at">;
@@ -35,7 +37,7 @@ export const loadCashCompany = cache(async (id: string): Promise<CashCompany> =>
   const profile = ((meta.kpiConfig as { profile?: Record<string, unknown> } | null)?.profile ?? {}) as { cashColumns?: Record<string, CashField | ""> };
   return {
     id, name: c.name, currency: c.currency, role: meta.role, readOnly: meta.role === "viewer", simple: modeOf(meta.kpiConfig) === "simple",
-    openingCash: openingCashOf(meta.kpiConfig), today: today(timeZoneOf(meta.kpiConfig)), columns: profile.cashColumns ?? {},
+    openingCash: openingCashOf(meta.kpiConfig), today: today(timeZoneOf(meta.kpiConfig)), columns: profile.cashColumns ?? {}, base: `/cash/${id}`,
   };
 });
 

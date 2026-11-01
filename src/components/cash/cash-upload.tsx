@@ -120,7 +120,7 @@ export function CashUpload({ uploads }: { uploads: Upload[] }) {
         </div>
         {busy && <p role="status" className="mb-4 text-sm" data-testid="cash-busy">{busy}</p>}
         {error && <p role="alert" className="mb-4 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="cash-upload-error">{error}</p>}
-        {done && <p role="status" className="mb-4 rounded bg-green-bg px-4 py-2 text-sm text-green-d" data-testid="cash-saved">{done} <Link prefetch={false} href={`/cash/${company.id}`} className="underline">{t.see}</Link></p>}
+        {done && <p role="status" className="mb-4 rounded bg-green-bg px-4 py-2 text-sm text-green-d" data-testid="cash-saved">{done} <Link prefetch={false} href={`${company.base}`} className="underline">{t.see}</Link></p>}
         {book && <div className="space-y-6">
           {!book.sheets.length && <p className="rounded bg-amber/10 px-4 py-2 text-sm" data-testid="cash-none">{t.noneRead}</p>}
           {book.ignored.length > 0 && <p className="text-sm text-mute">{t.notCash(book.ignored.join(", "))}</p>}

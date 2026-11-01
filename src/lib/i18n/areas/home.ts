@@ -14,6 +14,10 @@ export const home = area(
     exploreDemo: "Explore the demo company",
     tryFile: "Try it with your own file",
     tryNote: "The file test runs in your browser — nothing is uploaded.",
+    doors: "Which one is you?",
+    doorCash: ["I keep a simple cash book", "Money in and money out, on paper or in a sheet. See your cash, your best months and what is coming."],
+    doorBooks: ["I use an accounting system", "Odoo, QuickBooks, Xero or Excel statements. Full statements, KPIs, sales, expenses, stock and bank readiness."],
+    seeDemo: "See the demo",
     everything: "Everything a monthly review needs",
     everythingText: "One engine, checked line by line against a reference model: the balance sheet must balance and net cash flow must equal the change in cash less debt, every month.",
     features: [
@@ -120,6 +124,10 @@ export const home = area(
     exploreDemo: "استكشف الشركة التجريبية",
     tryFile: "جرّبه بملفك",
     tryNote: "تجربة الملف تعمل في متصفحك — لا يُرفع أي شيء.",
+    doors: "أيّهما أنت؟",
+    doorCash: ["أحتفظ بدفتر نقدية بسيط", "الداخل والخارج، على الورق أو في ملف. اعرف نقديتك وأفضل أشهرك وما هو قادم."],
+    doorBooks: ["أستخدم نظامًا محاسبيًا", "أودو أو كويك بوكس أو زيرو أو قوائم Excel. قوائم مالية كاملة ومؤشرات ومبيعات ومصروفات ومخزون وجاهزية للبنوك."],
+    seeDemo: "شاهد العرض التجريبي",
     everything: "كل ما تحتاجه المراجعة الشهرية",
     everythingText: "محرك واحد مُراجع سطرًا بسطر مقابل نموذج مرجعي: يجب أن تتوازن الميزانية وأن يساوي صافي التدفق النقدي التغير في النقدية ناقص الديون، كل شهر.",
     features: [

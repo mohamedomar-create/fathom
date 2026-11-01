@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
-import { ArrowRight, Database, FileDown, Gauge, Landmark, LineChart, Scale, ShieldCheck, Sparkles, Telescope, Waves } from "lucide-react";
+import { ArrowRight, Building2, Receipt, Database, FileDown, Gauge, Landmark, LineChart, Scale, ShieldCheck, Sparkles, Telescope, Waves } from "lucide-react";
 import { Logo } from "@/components/shell/logo";
 import { SiteFooter } from "@/components/shell/site-footer";
 import { AccountDeletedNotice } from "./account-deleted-notice";
@@ -29,9 +29,26 @@ export default async function Home() {
           <div className="mb-4 inline-flex items-center gap-2 rounded-full bg-brand-bg px-3 py-1 text-xs font-medium text-brand-d"><Database className="h-3.5 w-3.5" />{d.badge}</div>
           <h1 className="text-[44px] font-light leading-[1.08] tracking-tight sm:text-[56px]">{d.heroA}<br /><span className="font-medium text-brand-d">{d.heroB}</span></h1>
           <p className="mt-5 max-w-lg text-lg text-mute">{d.heroText}</p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Link href="/demo/summary" className="inline-flex items-center gap-2 rounded bg-brand-d px-5 py-3 font-medium text-white hover:brightness-110" data-testid="cta-demo">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4" /></Link>
-            <Link href="/demo/data" className="inline-flex items-center gap-2 rounded border border-line px-5 py-3 font-medium hover:bg-band">{d.tryFile}</Link>
+          <div className="mt-8" data-testid="doors">
+            <div className="label mb-2">{d.doors}</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Link href="/demo/cash" className="group rounded-xl border border-line p-4 transition hover:border-brand hover:shadow-sm" data-testid="door-cash">
+                <Receipt className="mb-2 h-6 w-6 text-brand-d" strokeWidth={1.6} />
+                <div className="font-medium">{d.doorCash[0]}</div>
+                <p className="mt-1 text-sm text-mute">{d.doorCash[1]}</p>
+                <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-d">{d.seeDemo} <ArrowRight className="flip-rtl h-4 w-4" /></span>
+              </Link>
+              <Link href="/demo/summary" className="group rounded-xl border border-line p-4 transition hover:border-brand hover:shadow-sm" data-testid="cta-demo">
+                <Building2 className="mb-2 h-6 w-6 text-brand-d" strokeWidth={1.6} />
+                <div className="font-medium">{d.doorBooks[0]}</div>
+                <p className="mt-1 text-sm text-mute">{d.doorBooks[1]}</p>
+                <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-d">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4" /></span>
+              </Link>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+              <Link href="/login?mode=signup" className="rounded bg-brand-d px-4 py-2 font-medium text-white hover:brightness-110" data-testid="door-signup">{d.getStarted}</Link>
+              <Link href="/demo/data" className="text-brand-d underline">{d.tryFile}</Link>
+            </div>
           </div>
           <p className="mt-3 text-xs text-mute">{d.tryNote}</p>
         </div>

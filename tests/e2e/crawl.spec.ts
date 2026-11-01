@@ -4,7 +4,7 @@ import { brokenLinks, expectClean, inspect, internalLinks, type PageIssues } fro
 /** Every page a visitor can reach without an account, in every period view, on desktop and phone. */
 const ANALYSIS = ["summary", "analysis/kpis", "analysis/explorer", "analysis/profitability", "analysis/cashflow", "analysis/growth", "analysis/trend", "analysis/goalseek", "analysis/forecast", "analysis/financials", "banking", "analysis/real-profit", "sales", "sales/products", "sales/customers", "sales/trend", "expenses", "expenses/accounts", "expenses/suppliers", "expenses/trend", "inventory", "inventory/products", "inventory/movements", "inventory/valuation"];
 const SETTINGS = ["data", "settings/profile", "data/upload", "data/checks", "data/readiness", "settings/chart-of-accounts", "settings/kpis", "settings/targets", "settings/alerts"];
-const PUBLIC = ["/", "/login", "/login?mode=signup", "/privacy", "/terms", "/auth/reset"];
+const PUBLIC = ["/", "/login", "/login?mode=signup", "/privacy", "/terms", "/auth/reset", "/demo/cash", "/demo/cash/in", "/demo/cash/out", "/demo/cash/cash", "/demo/cash/entries"];
 
 test("public pages and every demo page open cleanly", async ({ page }) => {
   test.setTimeout(240_000);
