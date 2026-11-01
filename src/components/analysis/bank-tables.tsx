@@ -37,7 +37,7 @@ export function TrendTable({ trend, cur, small }: { trend: YearTrend; cur: strin
 
 const STRESS_BAND = {
   pass: "bg-green-bg text-green-d",
-  tight: "bg-amber/20 text-[#9a6b00]",
+  tight: "bg-amber/20 text-[#7d5600]",
   fail: "bg-red-bg text-red",
   na: "bg-band text-mute",
 } as const;

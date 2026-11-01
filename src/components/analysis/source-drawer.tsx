@@ -73,7 +73,7 @@ export function SourceDrawer({ line, onClose }: { line: SourceLine | null; onClo
             {line.statement === "BS" ? t.closing(T.ml(line.periods[line.periods.length - 1])) : line.periods.length === 1 ? T.ml(line.periods[0]) : `${T.ml(line.periods[0])} – ${T.ml(line.periods[line.periods.length - 1])}`}
             {" · "}{t.accounts(rows.length)} · {t.total} <b className="text-ink">{money(total, cur)}</b>
           </p>
-          <div className="overflow-x-auto">
+          <div tabIndex={0} className="overflow-x-auto">
             <table className="tbl text-[13px]">
               <thead><tr><th className="!text-start">{t.account}</th><th className="!text-start">{t.cls}</th><th>{t.amount}</th><th className="!text-start">{t.importedFrom}</th></tr></thead>
               <tbody>

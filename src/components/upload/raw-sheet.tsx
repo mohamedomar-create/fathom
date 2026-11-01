@@ -50,7 +50,7 @@ export function RawSheets({ sheets, focus, onRow }: { sheets: RawSheetData[]; fo
   return (
     <>
       {sheets.length > 1 && (
-        <div className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
+        <div tabIndex={0} className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
           {sheets.map((s) => (
             <button key={s.name} role="tab" aria-selected={s.name === sheet.name} onClick={() => setActive(s.name)} data-testid={`raw-tab-${s.name}`}
               className={cn("shrink-0 rounded-t border border-b-0 px-2.5 py-1 text-xs", s.name === sheet.name ? "border-line bg-white font-medium" : "border-transparent text-mute")}>

@@ -5,7 +5,7 @@ export function StatusIcon({ ok, size = "sm" }: { ok: boolean | null; size?: "sm
   if (ok === null) return <span className="text-mute">–</span>;
   const s = size === "lg" ? "h-8 w-8" : "h-[18px] w-[18px]";
   return (
-    <span className={cn("inline-flex items-center justify-center rounded-sm text-white", s, ok ? "bg-green" : "bg-red")} aria-label={ok ? "On track" : "Off track"}>
+    <span role="img" className={cn("inline-flex items-center justify-center rounded-sm text-white", s, ok ? "bg-green" : "bg-red")} aria-label={ok ? "On track" : "Off track"}>
       {ok ? <Check className="h-3/4 w-3/4" strokeWidth={3} /> : <X className="h-3/4 w-3/4" strokeWidth={3} />}
     </span>
   );

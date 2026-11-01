@@ -95,7 +95,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
         </div>
         <div>
           <h2 className="mb-3 text-xl font-light">{t.howH}</h2>
-          <div className="overflow-x-auto">
+          <div tabIndex={0} className="overflow-x-auto">
             <table className="w-full text-[13px]" data-testid="eu-months">
               <thead><tr className="label text-start"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.byOrder}</th><th className="text-end">{t.byContact}</th><th className="text-end">{t.byShipping}</th><th className="text-end">{t.byStatement}</th><th className="text-end">{t.byRegister}</th><th className="text-end">{t.unmapped}</th></tr></thead>
               <tbody>
@@ -114,7 +114,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
       </div>
 
       <h2 className="mb-3 mt-10 text-xl font-light">{t.allH}</h2>
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-[13px]" data-testid="eu-table">
           <thead><tr className="label"><th className="py-1 text-start">{t.hospital}</th>{hasEarlier && <th className="text-end">{t.earlier}</th>}{years.map((y) => <th key={y} className="text-end">{y}</th>)}<th className="text-end">{t.total2}</th><th className="text-end">{t.share}</th><th className="text-start ps-4">{t.topCategory}</th><th className="text-start ps-4">{t.region}</th></tr></thead>
           <tbody>

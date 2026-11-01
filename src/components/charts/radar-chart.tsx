@@ -37,7 +37,7 @@ export function RadarChart({ axes, size = 260, testId, compact = false }: { axes
           const [x, y] = pt(i, 112);
           const anchor = Math.abs(x - cx) < 6 ? "middle" : x > cx ? "start" : "end";
           return (
-            <text key={i} x={x} y={y + 4} textAnchor={anchor} fontSize={11} fill={hover === i ? "#222" : "#76766f"} fontWeight={hover === i ? 600 : 400}>{a.label}</text>
+            <text key={i} x={x} y={y + 4} textAnchor={anchor} fontSize={11} fill={hover === i ? "#222" : "#66665f"} fontWeight={hover === i ? 600 : 400}>{a.label}</text>
           );
         })}
         {/* Hit areas: one wedge per axis. */}

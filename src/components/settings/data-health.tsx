@@ -29,7 +29,7 @@ export interface HistoryRow {
 
 type Status = "ok" | "warn" | "block" | "accepted" | "missing" | "none";
 const STATUS: Record<Status, { label: string; cls: string }> = {
-  ok: { label: "Checks pass", cls: "bg-green text-white" },
+  ok: { label: "Checks pass", cls: "bg-green-d text-white" },
   warn: { label: "Warning", cls: "bg-amber text-ink" },
   accepted: { label: "Accepted issue", cls: "bg-[#c9a0dc] text-ink" },
   block: { label: "Check failed", cls: "bg-red text-white" },
@@ -90,7 +90,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
             {layerSummary(real).map((l) => (
               <div key={l.layer} className="rounded-md border border-line px-3 py-2.5" data-testid={`layer-${l.layer}`}>
                 <div className="text-[13px] font-medium">{l.label}</div>
-                <div className={cn("mt-1 text-sm", l.open ? "text-red" : l.warn ? "text-[#9a6b00]" : "text-green-d")}>
+                <div className={cn("mt-1 text-sm", l.open ? "text-red" : l.warn ? "text-[#7d5600]" : "text-green-d")}>
                   {l.open ? `${l.open} open` : l.warn ? `${l.warn} to answer` : "All clear"}{l.accepted ? ` · ${l.accepted} accepted` : ""}
                 </div>
               </div>
@@ -105,7 +105,7 @@ export function DataHealth({ companyId, readOnly, justImported, coverage, checks
         <section>
           <h2 className="mb-1 text-lg font-medium">Months</h2>
           <p className="mb-3 text-sm text-mute">Click a month to see where its figures came from and which checks apply.</p>
-          <div className="-mx-1 overflow-x-auto px-1" data-testid="health-calendar">
+          <div tabIndex={0} className="-mx-1 overflow-x-auto px-1" data-testid="health-calendar">
             <table className="border-separate border-spacing-[3px] text-[11px]">
               <thead><tr><th /><th />{MONTHS.map((m) => <th key={m} className="min-w-10 text-center font-normal text-mute">{m}</th>)}</tr></thead>
               <tbody>
@@ -199,7 +199,7 @@ function History_({ rows, companyId, readOnly }: { rows: HistoryRow[]; companyId
   };
   if (!rows.length) return <p className="text-sm text-mute">No imports yet.</p>;
   return (
-    <div className="overflow-x-auto">
+    <div tabIndex={0} className="overflow-x-auto">
       {err && <p className="mb-2 rounded bg-red-bg px-3 py-2 text-sm text-red">{err}</p>}
       {note && <p className="mb-2 rounded bg-band px-3 py-2 text-sm" data-testid="restore-notice">{note}</p>}
       <table className="tbl text-[13px]" data-testid="history">

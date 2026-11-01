@@ -27,7 +27,7 @@ function SwitchPreview({ companyId, currency }: { companyId: string; currency: s
   return (
     <div className="mt-3 space-y-1.5 text-sm" data-testid="cash-to-full-preview">
       <p>{t.previewCopy(months(p.sales.copy), months(p.expenses.copy))}</p>
-      {skip.length > 0 && <p className="text-[#9a6b00]" data-testid="cash-to-full-skip">{t.previewSkip(months(skip))}</p>}
+      {skip.length > 0 && <p className="text-[#7d5600]" data-testid="cash-to-full-skip">{t.previewSkip(months(skip))}</p>}
       {p.held.length > 0 && <p data-testid="cash-to-full-held">{t.previewHeld(p.held.map((h) => `${KIND_LABEL[h.kind as Kind]?.[lang] ?? h.kind} ${money(Number(h.amount), currency)}`).join(", "))}</p>}
     </div>
   );

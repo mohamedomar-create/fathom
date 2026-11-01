@@ -24,7 +24,7 @@ export function CashShell({ id, name, right, children, base: baseIn, demo = fals
         <span className="rounded bg-bar-2 px-2 py-0.5 text-[11px] uppercase tracking-wider" data-testid="cash-tag">{t.tag}</span>
         <div className="ms-auto flex items-center gap-2">{demo && <span className="rounded bg-amber/90 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-bar" data-testid="cash-demo-badge">{d.shell.demoCompany}</span>}<LangSwitch compact />{right}</div>
       </header>
-      <nav className="hidden gap-1 overflow-x-auto border-b border-line bg-white px-3 sm:flex sm:px-8 no-print" data-testid="cash-nav">
+      <nav tabIndex={0} className="hidden gap-1 overflow-x-auto border-b border-line bg-white px-3 sm:flex sm:px-8 no-print" data-testid="cash-nav">
         {TABS.filter((k) => !demo || (k !== "upload" && k !== "settings")).map((k) => {
           const href = k ? `${base}/${k}` : base;
           const on = k ? path.startsWith(href) : path === base;

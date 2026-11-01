@@ -63,7 +63,7 @@ export function CashflowPage() {
             { name: t.financing, values: monthly.rows.map((r) => r.cff), color: C.s[2] },
           ]} />
           <div className="mt-6"><LineChart testId="cash-balance" cur={cur} height={220} labels={monthly.rows.map((r) => T.ms(r.period))} series={[{ name: t.cashAtEnd, values: monthly.rows.map((r) => r.cash), color: C.s[0], fill: true }]} /></div>
-          <div className="mt-6 overflow-x-auto">
+          <div tabIndex={0} className="mt-6 overflow-x-auto">
             <table className="tbl text-[13px]" data-testid="cash-monthly-table">
               <thead><tr><th>{t.month}</th><th>{t.operating}</th><th>{t.investing}</th><th>{t.financing}</th>{monthly.rows.some((r) => r.unreconciled) && <th>{t.unexplainedCol}</th>}<th>{t.dcash}</th><th>{t.cashEnd}</th></tr></thead>
               <tbody>

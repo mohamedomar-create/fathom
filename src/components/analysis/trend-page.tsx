@@ -72,9 +72,9 @@ export function TrendPage() {
           <button key={y} onClick={() => setYear(y)} className={cn("rounded px-2.5 py-0.5", y === year ? "bg-brand-bg font-semibold text-brand-d" : "hover:bg-band")}>{y === "All" ? t.all : y}</button>
         ))}
       </div>
-      {note && <p className="mb-2 text-xs text-[#9a6b00]">{note}</p>}
+      {note && <p className="mb-2 text-xs text-[#7d5600]">{note}</p>}
       <div data-testid="trend-chart"><LineChart labels={rows.map((m) => T.ms(m.period))} series={series} unit={unit} cur={cur} height={340} /></div>
-      <div className="-mx-4 mt-6 overflow-x-auto px-4">
+      <div tabIndex={0} className="-mx-4 mt-6 overflow-x-auto px-4">
         <table className="tbl text-[12.5px]">
           <thead><tr><th>{t.metric}</th>{rows.map((m) => <th key={m.period}>{T.ms(m.period)}</th>)}</tr></thead>
           <tbody>

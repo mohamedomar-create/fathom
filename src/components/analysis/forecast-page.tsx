@@ -199,7 +199,7 @@ export function ForecastPage() {
             <button key={k} type="button" onClick={() => setTab(k)} className={cn("flex-1 whitespace-nowrap rounded px-3 py-1", tab === k ? "bg-white font-semibold shadow-sm" : "text-mute")} data-testid={`fc-tab-${k}`}>{t.tabs[k]}</button>
           ))}
         </div>
-        <div className="overflow-x-auto"><ForecastTable months={f.months} tab={tab} cur={cur} t={t} /></div>
+        <div tabIndex={0} className="overflow-x-auto"><ForecastTable months={f.months} tab={tab} cur={cur} t={t} /></div>
       </section>
 
       {f.notes.length > 0 && (

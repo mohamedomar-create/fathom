@@ -8,7 +8,7 @@ import { preflightInWorker } from "@/lib/imports/worker-client";
 import { toCsv, toXlsx, type Decisions, type IssueCode, type PreflightIssue, type PreflightModule, type PreflightReport, type PreflightRun, type SheetDecision, type SheetReport, type SheetStatus } from "@/lib/preflight";
 
 export const STATUS_LABEL: Record<SheetStatus, string> = { ready: "Ready", ready_after_fixes: "Ready after fixes", cannot_import: "Cannot import yet" };
-const STATUS_TONE: Record<SheetStatus, string> = { ready: "bg-green-bg text-green-d", ready_after_fixes: "bg-amber/20 text-[#9a6b00]", cannot_import: "bg-red-bg text-red" };
+const STATUS_TONE: Record<SheetStatus, string> = { ready: "bg-green-bg text-green-d", ready_after_fixes: "bg-amber/20 text-[#7d5600]", cannot_import: "bg-red-bg text-red" };
 const show = (c: Cell) => (c === null || c === undefined ? "" : c instanceof Date ? c.toISOString().slice(0, 10) : String(c));
 
 export function StatusChip({ status }: { status: SheetStatus }) {
@@ -157,7 +157,7 @@ function Group({ title, tone, items, render }: { title: string; tone: "ok" | "wa
   const Icon = tone === "ok" ? CheckCircle2 : tone === "warn" ? AlertTriangle : XCircle;
   return (
     <div>
-      <p className={cn("mb-1 flex items-center gap-1 font-medium", tone === "ok" ? "text-green-d" : tone === "warn" ? "text-[#9a6b00]" : "text-red")}><Icon className="h-4 w-4" />{title}</p>
+      <p className={cn("mb-1 flex items-center gap-1 font-medium", tone === "ok" ? "text-green-d" : tone === "warn" ? "text-[#7d5600]" : "text-red")}><Icon className="h-4 w-4" />{title}</p>
       <ul className="space-y-2">{items.map((i, k) => <li key={k} data-testid="preflight-issue" data-code={i.code}><IssueLine i={i} bare />{render?.(i)}</li>)}</ul>
     </div>
   );
@@ -252,7 +252,7 @@ function BeforeAfter({ before, after }: { before: Cell[][]; after: Cell[][] }) {
   const table = (rows: Cell[][], title: string) => (
     <div className="min-w-0 flex-1">
       <p className="label mb-1">{title}</p>
-      <div className="overflow-x-auto rounded border border-line">
+      <div tabIndex={0} className="overflow-x-auto rounded border border-line">
         <table className="text-[12px]"><tbody>{rows.map((r, i) => <tr key={i} className="border-t border-line first:border-0">{(r ?? []).slice(0, 12).map((c, j) => <td key={j} className="max-w-40 truncate whitespace-nowrap px-1.5 py-0.5">{show(c)}</td>)}</tr>)}</tbody></table>
       </div>
     </div>

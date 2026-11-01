@@ -57,7 +57,7 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
               {l.scaleFrom && l.kind !== "skipped" && <div className="mt-1 text-xs text-mute">Units taken from “{l.scaleFrom}”.</div>}
               {l.dates && l.kind !== "skipped" && (
                 <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs" data-testid="date-order">
-                  <span className={cn(!l.dates.sample && !ov.dateOrder ? "text-[#9a6b00]" : "text-mute")}>
+                  <span className={cn(!l.dates.sample && !ov.dateOrder ? "text-[#7d5600]" : "text-mute")}>
                     Dates read {l.dates.order === "mdy" ? "month first (01/31/2026)" : "day first (31/01/2026)"}
                     {ov.dateOrder ? ", as you chose" : l.dates.sample ? `, proved by “${l.dates.sample}”` : ": every date could be either, so check this"}
                   </span>
@@ -66,7 +66,7 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
                   </select>
                 </div>
               )}
-              {l.asOf && l.kind !== "skipped" && <div className="mt-1 text-xs text-[#9a6b00]">Figures stop on {fmtDay(l.asOf)}: the last month is a part month.</div>}
+              {l.asOf && l.kind !== "skipped" && <div className="mt-1 text-xs text-[#7d5600]">Figures stop on {fmtDay(l.asOf)}: the last month is a part month.</div>}
               {l.columns.length > 0 && l.kind !== "skipped" && l.role !== "check" && (
                 <div className="mt-2 grid gap-1.5 [grid-template-columns:repeat(auto-fill,minmax(230px,1fr))]">
                   {l.columns.map((c) => (
@@ -76,7 +76,7 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
                         <span className="min-w-0 flex-1 truncate" title={c.header}>{c.header || `Column ${c.col + 1}`}</span>
                         <input type="month" value={c.period ?? ""} onChange={(e) => e.target.value && setCol(l.sheet, c.col, e.target.value)} className="w-[132px] rounded border border-line px-1 text-[12px]" aria-label={`Month for ${c.header}`} />
                       </div>
-                      {(!c.used || c.months > 1) && <div className={cn("mt-0.5 text-[11.5px]", c.used ? "text-[#9a6b00]" : "text-mute")}>{!c.used ? `Left out: ${c.reason ?? ""}` : `Covers ${c.months} months up to ${c.period ? mlabel(c.period) : "?"}`}</div>}
+                      {(!c.used || c.months > 1) && <div className={cn("mt-0.5 text-[11.5px]", c.used ? "text-[#7d5600]" : "text-mute")}>{!c.used ? `Left out: ${c.reason ?? ""}` : `Covers ${c.months} months up to ${c.period ? mlabel(c.period) : "?"}`}</div>}
                     </div>
                   ))}
                 </div>

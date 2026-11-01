@@ -24,7 +24,7 @@ export function DataNav() {
     <div className="mb-6">
       <h1 className="mb-1 text-3xl font-light">{d.title}</h1>
       <p className="mb-4 text-mute">{d.sub}</p>
-      <div className="flex gap-1 overflow-x-auto border-b border-line" data-testid="data-nav">
+      <div tabIndex={0} className="flex gap-1 overflow-x-auto border-b border-line" data-testid="data-nav">
         {tabs.map((t) => (
           <Link prefetch={false} key={t.key} href={t.href} aria-current={t.active ? "page" : undefined} data-testid={`data-tab-${t.key}`}
             className={cn("-mb-px shrink-0 border-b-2 px-4 py-2 text-sm", t.active ? "border-brand-d font-semibold" : "border-transparent text-mute hover:text-ink")}>{d.tabs[t.key]}</Link>

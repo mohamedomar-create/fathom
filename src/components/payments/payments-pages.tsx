@@ -257,7 +257,7 @@ export function AgeingPage({ side }: { side: Side }) {
       </div>
       {v.findings.length > 0 && <ul className="mb-6 list-disc ps-5 text-[13px]" data-testid="side-findings">{v.findings.map((f) => <li key={f.id}>{f.message}</li>)}</ul>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find a partner" className="mb-3 w-full max-w-sm rounded border border-line px-3 py-2" data-testid="partner-search" />
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-[13px]" data-testid="ageing-table">
           <thead><tr className="border-b border-line text-mute"><th className="py-2 text-start">Partner</th>{v.buckets.map((b) => <th key={b} className="num">{b}</th>)}<th className="num">Total</th></tr></thead>
           <tbody>

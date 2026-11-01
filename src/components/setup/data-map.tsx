@@ -15,7 +15,7 @@ export function DataMap({ months, sales, expenses, rows: given }: { months?: Mon
       <h2 className="mb-1 text-xl font-light">Where your data goes</h2>
       <p className="mb-3 text-[13px] text-mute">One upload feeds every part it can.</p>
       {!rows.length ? <p className="text-sm text-mute">Nothing loaded yet. Start with step 2.</p> : (
-        <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="tbl min-w-[640px] table-fixed text-[12.5px]">
             <thead><tr><th className="w-[190px] !text-start">What is loaded</th>{SECTORS.map((s) => <th key={s.key} className="!text-start">{s.label}</th>)}</tr></thead>
             <tbody>

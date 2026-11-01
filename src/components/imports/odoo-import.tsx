@@ -265,7 +265,7 @@ function SampleCard({ s, busy, onColumn, onExport }: { s: FileSample; busy: bool
           </details>
           {s.columns.fields.find((f) => f.field === "id")?.col === null && (s.export === "stock.valuation.layer" || s.export === "stock.move.line") && <p className="mt-2 text-[12.5px] text-mute">No Odoo ID column: records are matched by their contents.</p>}
           {cols.length > 0 && (
-            <div className="mt-3 overflow-x-auto">
+            <div tabIndex={0} className="mt-3 overflow-x-auto">
               <table className="tbl min-w-[640px] text-[12.5px]" data-testid="import-preview">
                 <thead><tr>{cols.map((c) => <th key={c} className="!text-start">{c}</th>)}</tr></thead>
                 <tbody>{s.preview.map((r, k) => <tr key={k}>{cols.map((c) => <td key={c} className="!text-start">{r[c]}</td>)}</tr>)}</tbody>

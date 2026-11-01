@@ -84,7 +84,7 @@ function Reconciliation({ s, cur }: { s: ExpensesView; cur: string }) {
   }
   return (
     <div className="mb-8 rounded bg-amber/10 px-4 py-2.5 text-[13px]" data-testid="expenses-unreconciled">
-      <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{t.unreconciled(s.unreconciled.length)}</div>
+      <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />{t.unreconciled(s.unreconciled.length)}</div>
       <ul className="ms-6 mt-1 list-disc">
         {s.unreconciled.slice(0, 6).map((u) => <li key={u.period}>{t.unreconciledLine(T.ml(u.period), money(u.lines, cur), money(u.costs, cur), money(u.diff, cur))}</li>)}
       </ul>

@@ -36,7 +36,7 @@ export function InventoryProducts() {
         ))}
       </div>
       <p className="mb-2 text-xs text-mute" data-testid="inv-abc-basis">ABC: {s.abcBasis}</p>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[860px]" data-testid="inv-products">
           <thead>
             <tr>
@@ -49,7 +49,7 @@ export function InventoryProducts() {
               <tr key={p.code || p.product} className="row" data-testid="inv-product-row">
                 <td className="max-w-[280px] truncate !text-start" title={p.product}>
                   {p.code && <span className="me-1.5 text-mute">[{p.code}]</span>}{p.product}
-                  {p.flag && <span className={cn("ms-2 rounded px-1.5 text-[10.5px] font-semibold", p.flag === "dead" ? "bg-red-bg text-red" : "bg-amber/15 text-[#9a6b00]")}>{p.flag === "dead" ? t.flagDead : t.flagSlow}</span>}
+                  {p.flag && <span className={cn("ms-2 rounded px-1.5 text-[10.5px] font-semibold", p.flag === "dead" ? "bg-red-bg text-red" : "bg-amber/15 text-[#7d5600]")}>{p.flag === "dead" ? t.flagDead : t.flagSlow}</span>}
                 </td>
                 <td className="max-w-[180px] truncate !text-start text-mute" title={p.category}>{p.category || "–"}</td>
                 <td className="!text-start">{p.abc ? <span data-testid={`abc-${p.abc}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", p.abc === "A" ? "bg-brand-bg text-brand-d" : "bg-band text-mute")}>{p.abc}</span> : <span className="text-mute" title="No cost of sales in the 12 months">–</span>}</td>

@@ -1017,7 +1017,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {(ingestErr || issues.length > 0) && (
           <div className="max-w-5xl space-y-1.5 text-[13px]">
             {ingestErr && <div className="rounded bg-red-bg px-3 py-2 text-red">{ingestErr}</div>}
-            {issues.slice(0, 12).map((i) => <div key={i.id} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{i.message}</div>)}
+            {issues.slice(0, 12).map((i) => <div key={i.id} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />{i.message}</div>)}
           </div>
         )}
         <p className="mt-4 max-w-3xl text-[14px] text-mute">Files that work: a General Ledger, Trial Balance or P&amp;L export; a sales or bills list; a cash book; a bank statement; or our templates.</p>
@@ -1114,7 +1114,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         {controlCount > 0 && !fileChecks.some((c) => c.id === "control_total") && <p className="flex items-center gap-2 text-[13px] text-green-d" data-testid="controls-ok"><CheckCircle2 className="h-4 w-4" />Matches the totals in the file ({controlCount} checked).</p>}
         {(res.issues.warnings.length > 0 || res.issues.flips.length > 0 || res.issues.notes.length > 0) && (
           <div className="space-y-1.5 text-[13px]">
-            {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />{w}</div>)}
+            {res.issues.warnings.map((w) => <div key={w} className="flex gap-2 rounded bg-amber/15 px-3 py-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />{w}</div>)}
             {[...res.issues.flips, ...res.issues.notes].map((w) => <div key={w} className="flex gap-2 rounded bg-band px-3 py-2"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-green-d" />{w}</div>)}
           </div>
         )}

@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 import type { ReportInput } from "@/lib/report/types";
 
 const BAND: Record<Band, [string, string]> = {
-  strong: ["Strong", "text-green-d"], watch: ["Watch", "text-[#9a6b00]"], weak: ["Weak", "text-red"], info: ["–", "text-mute"],
+  strong: ["Strong", "text-green-d"], watch: ["Watch", "text-[#7d5600]"], weak: ["Weak", "text-red"], info: ["–", "text-mute"],
 };
 
 function useBank(input: ReportInput) {

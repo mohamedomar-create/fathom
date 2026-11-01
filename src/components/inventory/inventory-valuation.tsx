@@ -40,7 +40,7 @@ export function InventoryValuation() {
       <TieTable tieouts={s.tieouts} cur={cur} />
       <h3 className="mb-2 mt-10 text-lg font-normal">{t.layersTitle}</h3>
       {s.hasValue ? (
-        <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="tbl min-w-[760px]" data-testid="inv-layers">
             <thead><tr><th className="!text-start">{t.month}</th>{shown.map(([k, label]) => <th key={k}>{label}</th>)}</tr></thead>
             <tbody>
@@ -60,7 +60,7 @@ export function InventoryValuation() {
       ) : <p className="text-mute" data-testid="inv-layers-empty">{t.noValuation}</p>}
       {prices.length > 0 && <>
         <h3 className="mb-2 mt-10 text-lg font-normal">{t.priceTitle}</h3>
-        <div className="-mx-4 overflow-x-auto sm:mx-0">
+        <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="tbl min-w-[560px]" data-testid="inv-unit-cost">
             <thead><tr><th className="!text-start">{t.product}</th><th>{t.firstCost}</th><th>{t.lastCost}</th><th>{t.change}</th><th className="!text-start">{t.twelveMonths}</th></tr></thead>
             <tbody>
@@ -73,7 +73,7 @@ export function InventoryValuation() {
                     <td className="num">{money(a, cur)}</td>
                     <td className="num">{money(z, cur)}</td>
                     <td><Delta value={a ? ((z - a) / a) * 100 : null} good={z <= a} /></td>
-                    <td className="!text-start"><Sparkline values={pts} w={110} h={22} color="#7a7a72" />{x.odd.length > 0 && <div className="mt-1 text-[11px] text-[#9a6b00]" data-testid="check-receipt">{t.checkReceipt(x.odd.map((p) => T.ms(p)).join(", "))}</div>}</td>
+                    <td className="!text-start"><Sparkline values={pts} w={110} h={22} color="#7a7a72" />{x.odd.length > 0 && <div className="mt-1 text-[11px] text-[#7d5600]" data-testid="check-receipt">{t.checkReceipt(x.odd.map((p) => T.ms(p)).join(", "))}</div>}</td>
                   </tr>
                 );
               })}

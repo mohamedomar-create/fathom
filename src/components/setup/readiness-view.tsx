@@ -45,14 +45,14 @@ export function useReadiness(sales?: SalesData | null, expenses?: ExpensesData |
 }
 
 function Icon({ s }: { s: ReadinessItem["status"] }) {
-  return s === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green-d" /> : s === "partial" ? <AlertTriangle className="h-4 w-4 shrink-0 text-[#9a6b00]" /> : <CircleDashed className="h-4 w-4 shrink-0 text-red" />;
+  return s === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-green-d" /> : s === "partial" ? <AlertTriangle className="h-4 w-4 shrink-0 text-[#7d5600]" /> : <CircleDashed className="h-4 w-4 shrink-0 text-red" />;
 }
 
 function Score({ label, v, testId }: { label: string; v: number | null; testId?: string }) {
   return (
     <div data-testid={testId}>
       <div className="label">{label}</div>
-      <div className={cn("num text-2xl", v === null ? "text-mute" : v >= 90 ? "text-green-d" : v >= 60 ? "text-[#9a6b00]" : "text-red")} title={v === null ? "Nothing loaded here can be checked yet" : undefined}>{v === null ? "–" : `${v}%`}</div>
+      <div className={cn("num text-2xl", v === null ? "text-mute" : v >= 90 ? "text-green-d" : v >= 60 ? "text-[#7d5600]" : "text-red")} title={v === null ? "Nothing loaded here can be checked yet" : undefined}>{v === null ? "–" : `${v}%`}</div>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 /** Text that must never reach a reader: a broken calculation or a template slip. */
@@ -94,4 +95,12 @@ export async function brokenLinks(request: APIRequestContext, links: string[]): 
 export function expectClean(all: PageIssues[]) {
   const bad = all.filter((p) => p.issues.length);
   expect(bad.map((p) => `${p.url}\n  - ${p.issues.join("\n  - ")}`).join("\n")).toBe("");
+}
+
+/** WCAG 2.2 AA violations on a page (axe-core), one line each. */
+export async function axeViolations(page: Page, url: string): Promise<string[]> {
+  await page.goto(url);
+  await page.waitForLoadState("networkidle").catch(() => {});
+  const r = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();
+  return r.violations.map((v) => `${url} ${v.id} (${v.impact}): ${v.nodes.length}× e.g. ${v.nodes[0]?.target.join(" ")}`);
 }

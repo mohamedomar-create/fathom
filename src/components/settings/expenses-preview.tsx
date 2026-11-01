@@ -32,7 +32,7 @@ export function ExpensesPreview({ read, currency, overrides, onChange }: { read:
           <div className="mb-2 text-sm"><b className="font-semibold">{l.sheet}</b> · {l.lines.toLocaleString("en-US")} lines · {money(l.total, currency)}</div>
           {l.flipped && <p className="mb-2 text-[12.5px] text-mute" data-testid="flip-note">The amounts were negative (Odoo shows bills that way), so they were turned into costs.</p>}
           {l.taxIncluded && (
-            <p className="mb-2 flex items-start gap-2 rounded bg-[#fff6e0] px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid="expense-tax-warning">
+            <p className="mb-2 flex items-start gap-2 rounded bg-[#fff6e0] px-3 py-2 text-[12.5px] text-[#7d5600]" data-testid="expense-tax-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Only a total with VAT was found, so costs will read about 14% high. Pick the amount before tax below if the file has it.
             </p>
           )}

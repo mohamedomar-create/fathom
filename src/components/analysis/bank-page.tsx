@@ -17,7 +17,7 @@ import { ReadinessCard } from "@/components/setup/readiness-view";
 
 const BAND: Record<Band, string> = {
   strong: "bg-green-bg text-green-d",
-  watch: "bg-amber/20 text-[#9a6b00]",
+  watch: "bg-amber/20 text-[#7d5600]",
   weak: "bg-red-bg text-red",
   info: "bg-band text-mute",
 };
@@ -87,14 +87,14 @@ export function BankPage() {
 
       <H2>{t.threeYear}</H2>
       <p className="mb-4 text-sm text-mute">{t.threeYearText}</p>
-      <div className="overflow-x-auto"><TrendTable trend={trend} cur={cur} /></div>
+      <div tabIndex={0} className="overflow-x-auto"><TrendTable trend={trend} cur={cur} /></div>
       {trend.years.length < 3 && <p className="mt-2 text-sm text-mute" data-testid="trend-note">{t.onlyYears(trend.years.length)}<Link href={`${c.basePath}/data`} className="text-brand-d underline">{t.uploadEarlier}</Link>{t.toShow}</p>}
       {trend.years.length > 1 && <p className="mt-2 text-xs text-mute">{t.earlierEstimated}</p>}
 
       <H2>{t.stress}</H2>
       <p className="mb-2 text-sm text-mute">{t.stressText}</p>
       <p className="mb-4 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="breaking-points">{breakingPoints(stress, t)}</p>
-      <div className="overflow-x-auto"><StressTable stress={stress} cur={cur} /></div>
+      <div tabIndex={0} className="overflow-x-auto"><StressTable stress={stress} cur={cur} /></div>
       {stress.notes.map((n) => <p key={n} className="mt-2 text-xs text-mute">{n}</p>)}
 
       <H2>{t.checks}</H2>
@@ -108,7 +108,7 @@ export function BankPage() {
               {res.ratios.filter((x) => x.group === g).map((x) => (
                 <details key={x.key} className="group" data-testid={`ratio-${x.key}`}>
                   <summary className="grid cursor-pointer list-none grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-1 py-2.5 hover:bg-band sm:grid-cols-[1fr_140px_190px_70px_16px]">
-                    <span>{x.name}{x.estimate && <span className="ms-1 text-xs text-[#9a6b00]">{t.estimate}</span>}</span>
+                    <span>{x.name}{x.estimate && <span className="ms-1 text-xs text-[#7d5600]">{t.estimate}</span>}</span>
                     <span className="num text-end font-medium">{formatBankValue(x, cur, lang)}</span>
                     <span className="hidden text-end text-xs text-mute sm:block">{x.guide}</span>
                     <span className="text-end sm:text-start"><BandChip band={x.band} /></span>
@@ -118,7 +118,7 @@ export function BankPage() {
                     <p className="text-xs text-mute sm:hidden">{t.guide}: {x.guide}</p>
                     <p><b className="font-medium">{t.sees}</b> {x.banker}</p>
                     <p><b className="font-medium">{t.todo}</b> {x.advice}</p>
-                    {x.estimate && <p className="text-[#9a6b00]">{x.estimate}</p>}
+                    {x.estimate && <p className="text-[#7d5600]">{x.estimate}</p>}
                     <p className="text-xs text-mute">{x.formula}</p>
                   </div>
                 </details>

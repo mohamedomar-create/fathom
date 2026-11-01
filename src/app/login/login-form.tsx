@@ -105,7 +105,7 @@ export function LoginForm() {
           <h2 className="max-w-md text-4xl font-light leading-tight">{d.heroTitle}</h2>
           <p className="mt-4 max-w-md text-[#bbb]">{d.heroText(APP_TAGLINE)}</p>
         </div>
-        <Link href="/demo/summary" className="text-sm text-brand hover:underline">{d.exploreDemo}</Link>
+        <Link href="/demo/summary" className="text-sm text-[#5cc7c9] hover:underline">{d.exploreDemo}</Link>
       </div>
       <div className="relative flex items-center justify-center p-6">
         <LangSwitch className="absolute end-4 top-4 text-sm text-mute hover:bg-band" />

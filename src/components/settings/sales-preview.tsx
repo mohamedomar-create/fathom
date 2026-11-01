@@ -37,7 +37,7 @@ export function SalesPreview({ read, currency, overrides, onChange }: { read: Sa
         <section key={l.sheet} className="rounded-md border border-line p-3">
           <div className="mb-2 text-sm"><b className="font-semibold">{l.sheet}</b> · read as a {l.kind === "pivot" ? `pivot of ${l.rowsAre === "customer" ? "customers" : l.rowsAre === "category" ? "categories" : "products"} by month` : "list of invoice lines"} · {l.lines.toLocaleString("en-US")} lines · {money(l.total, currency)}</div>
           {l.taxIncluded && (
-            <p className="mb-2 flex items-start gap-2 rounded bg-[#fff6e0] px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid="tax-warning">
+            <p className="mb-2 flex items-start gap-2 rounded bg-[#fff6e0] px-3 py-2 text-[12.5px] text-[#7d5600]" data-testid="tax-warning">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />Only a total including tax was found, so sales will read about 14% high (VAT). Export the &quot;Untaxed Total&quot; column from Odoo if you can, or pick it below.
             </p>
           )}

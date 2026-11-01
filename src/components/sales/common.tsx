@@ -112,7 +112,7 @@ export function SalesTable({ rows, cur, nameLabel, compareLabel, max = 25, abc, 
   const showMargin = rows.some((r) => r.margin !== null);
   const showQty = rows.some((r) => r.qty !== null);
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl min-w-[640px]" data-testid={testId}>
         <thead>
           <tr>

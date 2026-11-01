@@ -112,7 +112,7 @@ export function InsightsTable({ companies }: { companies: DashCompany[] }) {
         </Popover>
         <span className="ms-auto text-sm text-mute">{t.companies(companies.length)}</span>
       </div>
-      <div className="-mx-4 overflow-x-auto px-4">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
         <table className="w-full min-w-[900px] border-collapse text-[13px]" data-testid="insights-table">
           <thead>
             <tr className="border-b border-ink">

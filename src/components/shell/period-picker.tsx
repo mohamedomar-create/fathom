@@ -38,7 +38,7 @@ export function PeriodPicker({ mode = "for", allowTypes = true, own }: { mode?: 
       )}{" "}
       {d.period.of} <PeriodPopover label={sel.type === "month" ? monthLabel(sel.end, lang) : label} type={allowTypes ? sel.type : "month"} periods={periods} own={own} />
       {c.asOf && sel.end && windowFor(sel, fy).periods.includes(c.asOf.slice(0, 7)) && (
-        <span className="ms-2 rounded bg-amber/20 px-1.5 py-0.5 text-xs text-[#9a6b00]" title={d.period.partTitle} data-testid="part-month">{d.period.part(Number(c.asOf.slice(8)), monthNames(lang)[Number(c.asOf.slice(5, 7))])}</span>
+        <span className="ms-2 rounded bg-amber/20 px-1.5 py-0.5 text-xs text-[#7d5600]" title={d.period.partTitle} data-testid="part-month">{d.period.part(Number(c.asOf.slice(8)), monthNames(lang)[Number(c.asOf.slice(5, 7))])}</span>
       )}
     </div>
   );

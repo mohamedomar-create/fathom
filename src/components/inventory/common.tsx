@@ -117,7 +117,7 @@ export function TieChip({ status, inside = false }: { status: TieOut["status"]; 
   const t = useT().d.inv;
   const note = status === "off" && inside;
   return (
-    <span data-testid={note ? "tie-odoo" : `tie-${status}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", status === "ok" ? "bg-green-bg text-green-d" : note ? "bg-amber/15 text-[#9a6b00]" : status === "off" ? "bg-red-bg text-red" : "bg-band text-mute")}>
+    <span data-testid={note ? "tie-odoo" : `tie-${status}`} className={cn("rounded px-1.5 py-0.5 text-[11px] font-semibold", status === "ok" ? "bg-green-bg text-green-d" : note ? "bg-amber/15 text-[#7d5600]" : status === "off" ? "bg-red-bg text-red" : "bg-band text-mute")}>
       {status === "ok" ? t.ok : note ? t.odooCheck : status === "off" ? t.off : t.noLedgerChip}
     </span>
   );
@@ -129,7 +129,7 @@ export function TieTable({ tieouts, cur }: { tieouts: TieOut[]; cur: string }) {
   const t = T.d.inv;
   const f = (x: TieOut, v: number | null) => (v === null ? "–" : isUnitCheck(x.key) ? v.toLocaleString("en-US", { maximumFractionDigits: 2 }) : money(v, cur));
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl min-w-[720px]" data-testid="inv-tieout-table">
         <thead><tr><th className="!text-start">{t.month}</th><th className="!text-start">{t.check}</th><th>{t.inventory}</th><th>{t.accounts}</th><th>{t.difference}</th><th className="!text-start">{t.status}</th></tr></thead>
         <tbody>

@@ -99,7 +99,7 @@ export function FinancialsPage() {
         </div>
       </PageHeader>
       {view === "pl" && (
-        <div className="-mx-4 overflow-x-auto px-4">
+        <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
           <table className="tbl min-w-[720px]" data-testid="pl-table">
             <thead><tr><th>{t.pl}</th><th>{T.pl(a.view.window.short)}</th><th>{compLabel}</th><th>{t.variancePct}</th><th>{t.commonSize}</th><th>{t.ytd}</th></tr></thead>
             <tbody>
@@ -120,7 +120,7 @@ export function FinancialsPage() {
         </div>
       )}
       {view === "bs" && (
-        <div className="-mx-4 overflow-x-auto px-4">
+        <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
           <div className="mb-2 flex items-center justify-between">
             <span />
             {!balanced(B.imbalance) && <span className="text-sm text-red" data-testid="oob">{t.outOfBalance(m(B.imbalance))}</span>}
@@ -180,7 +180,7 @@ function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label }: { P: PLCa
   const s2 = comp ? cashFlowStatement(comp.P, comp.B, comp.B0, { showUnreconciled: gap, sub: c1 }) : null;
   const T = useT();
   return (
-    <div className="-mx-4 overflow-x-auto px-4">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
       <table className="tbl min-w-[560px]" data-testid="cf-table">
         <thead><tr><th>{T.d.ana.cf}</th><th>{label}</th><th>{compLabel}</th></tr></thead>
         <tbody>

@@ -24,7 +24,7 @@ export function WorkbookTieout({ tie, currency }: { tie: WorkbookTie; currency: 
           {bad ? `${bad} of your figures do not match` : `${ok} of your figures match what iReport read`}
         </span>
       </div>
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-[13px]">
           <thead className="text-start text-mute">
             <tr><th className="px-4 py-1.5 font-normal">Your figure</th><th className="px-2 py-1.5 font-normal">Where</th><th className="px-2 py-1.5 text-end font-normal">You wrote</th><th className="px-2 py-1.5 text-end font-normal">iReport read</th><th className="px-4 py-1.5 font-normal">Result</th></tr>

@@ -3,7 +3,7 @@
 @theme {
   --font-sans: var(--font-sans), var(--font-ar), "Segoe UI", system-ui, sans-serif;
   --color-ink: #222222;
-  --color-mute: #76766f;
+  --color-mute: #66665f;
   --color-line: #e6e6e1;
   --color-band: #f5f5f3;
   --color-bar: #0d3536;
@@ -16,7 +16,7 @@
   --color-green: #2e9e6a;
   --color-green-d: #237a51;
   --color-green-bg: #e3f3ea;
-  --color-red: #d9343a;
+  --color-red: #b8242a;
   --color-red-bg: #fce7e7;
   --color-amber: #e0a526;
   --color-s1: #2a78d6;

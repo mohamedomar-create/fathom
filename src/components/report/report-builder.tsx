@@ -102,7 +102,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
       <aside className="no-print space-y-5 xl:sticky xl:top-16 xl:h-[calc(100vh-80px)] xl:overflow-auto xl:pe-2">
         <div>
           <label className="label mb-1 block">Report title</label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" />
+          <input value={title} aria-label="Report title" onChange={(e) => setTitle(e.target.value)} className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" />
         </div>
         <div className="grid grid-cols-2 gap-2">
           <label><span className="label mb-1 block">Period</span>
@@ -137,7 +137,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
                 </select>
               </label>
             )}
-            {shareUrl ? <div className="flex items-center gap-2"><input readOnly value={shareUrl} className="min-w-0 flex-1 rounded border border-line bg-band px-2 py-1 text-xs" /><button onClick={() => navigator.clipboard.writeText(shareUrl)} aria-label="Copy link"><Copy className="h-4 w-4 text-mute" /></button></div>
+            {shareUrl ? <div className="flex items-center gap-2"><input readOnly aria-label="Share link" value={shareUrl} className="min-w-0 flex-1 rounded border border-line bg-band px-2 py-1 text-xs" /><button onClick={() => navigator.clipboard.writeText(shareUrl)} aria-label="Copy link"><Copy className="h-4 w-4 text-mute" /></button></div>
               : <p className="text-xs text-mute">Publish to get a read-only link you can send to the client or board.</p>}
             {shareUrl && <p className="mt-1.5 text-xs text-mute">{expiresAt ? `Expires on ${new Date(expiresAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}.` : "Works until you stop sharing."} Shows the report&apos;s period and up to three years before it, nothing older.</p>}
             {shareUrl && frozenAt && (
@@ -161,13 +161,13 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
               const meta = REPORT_SECTIONS.find((x) => x.key === s.key)!;
               const ck = SECTION_COMMENT[s.key];
               return (
-                <div key={s.key} className={cn("rounded border border-line", !s.enabled && "opacity-55")}>
+                <div key={s.key} className={cn("rounded border border-line", !s.enabled && "border-dashed bg-band")}>
                   <div className="flex items-center gap-1.5 px-2 py-1.5 text-sm">
-                    <button onClick={() => setSections((x) => x.map((y) => (y.key === s.key ? { ...y, enabled: !y.enabled } : y)))} aria-label={s.enabled ? `Hide ${meta.label}` : `Show ${meta.label}`}>{s.enabled ? <Eye className="h-4 w-4 text-brand-d" /> : <EyeOff className="h-4 w-4 text-mute" />}</button>
-                    <span className="flex-1">{meta.label}</span>
-                    {ck && <button onClick={() => setEditing(editing === ck ? null : ck)} className={cn("rounded px-1.5 text-xs", comments[ck] ? "bg-brand-bg text-brand-d" : "text-mute hover:bg-band")}>{comments[ck] ? "Comment ✓" : "Comment"}</button>}
-                    <button onClick={() => move(i, -1)} aria-label="Move up" className="text-mute hover:text-ink"><ArrowUp className="h-3.5 w-3.5" /></button>
-                    <button onClick={() => move(i, 1)} aria-label="Move down" className="text-mute hover:text-ink"><ArrowDown className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => setSections((x) => x.map((y) => (y.key === s.key ? { ...y, enabled: !y.enabled } : y)))} aria-label={s.enabled ? `Hide ${meta.label}` : `Show ${meta.label}`} className="flex h-6 w-6 items-center justify-center">{s.enabled ? <Eye className="h-4 w-4 text-brand-d" /> : <EyeOff className="h-4 w-4 text-mute" />}</button>
+                    <span className={cn("flex-1", !s.enabled && "text-mute")}>{meta.label}</span>
+                    {ck && <button onClick={() => setEditing(editing === ck ? null : ck)} className={cn("min-h-6 rounded px-1.5 text-xs", comments[ck] ? "bg-brand-bg text-brand-d" : "text-mute hover:bg-band")}>{comments[ck] ? "Comment ✓" : "Comment"}</button>}
+                    <button onClick={() => move(i, -1)} aria-label="Move up" className="flex h-6 w-6 items-center justify-center text-mute hover:text-ink"><ArrowUp className="h-3.5 w-3.5" /></button>
+                    <button onClick={() => move(i, 1)} aria-label="Move down" className="flex h-6 w-6 items-center justify-center text-mute hover:text-ink"><ArrowDown className="h-3.5 w-3.5" /></button>
                   </div>
                   {ck && editing === ck && (
                     <div className="border-t border-line p-2">
@@ -185,7 +185,7 @@ export function ReportBuilder({ report, org, demo = false }: { report: ReportRec
         </div>
         {msg && <p className={cn("rounded px-3 py-2 text-sm", msg.ok ? "bg-green-bg text-green-d" : "bg-red-bg text-red")}>{msg.text}</p>}
       </aside>
-      <div className="min-w-0 overflow-x-auto bg-[#ecece8] py-6 print:bg-white print:p-0" data-testid="report-preview">
+      <div tabIndex={0} className="min-w-0 overflow-x-auto bg-[#ecece8] py-6 print:bg-white print:p-0" data-testid="report-preview">
         <ReportDocument input={input} />
       </div>
     </div>

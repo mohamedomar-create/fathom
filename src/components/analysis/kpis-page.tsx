@@ -18,7 +18,7 @@ import { useT } from "@/lib/i18n/use-t";
 import { explainKpiIn, kpiFormula } from "@/lib/i18n/kpis";
 
 type Filter = "all" | "on" | "off" | "alerts";
-const IMP_COL = { Critical: "text-red", High: "text-[#C26A1B]", Medium: "text-[#2a78d6]", Low: "text-mute" } as const;
+const IMP_COL = { Critical: "text-red", High: "text-[#a3560f]", Medium: "text-[#1f66b8]", Low: "text-mute" } as const;
 
 export function KpisPage() {
   const c = useCompany();
@@ -53,7 +53,7 @@ export function KpisPage() {
           <Chip count={alerts} label={t.alerts} tone="warn" active={filter === "alerts"} onClick={() => setFilter("alerts")} />
         </div>
       </div>
-      <div className="-mx-4 overflow-x-auto px-4">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
         <table className="tbl" data-testid="kpi-table">
           <thead>
             <tr><th></th><th>{t.result}</th><th className="hidden sm:table-cell">{cmp === "target" ? t.targetWord : t.compared}</th><th></th><th>{t.trend}</th><th className="hidden md:table-cell">{t.importance}</th></tr>

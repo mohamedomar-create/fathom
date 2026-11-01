@@ -45,7 +45,7 @@ export function TbVerify({ companyId, fileName, file, ranges, books, currency, d
           : <p className="mb-4 flex max-w-3xl items-center gap-2 rounded-lg border border-red/40 bg-red-bg px-4 py-3 text-[15px]" data-testid="tb-differs"><AlertTriangle className="h-5 w-5 text-red" />{r.diffs.length} difference{r.diffs.length > 1 ? "s" : ""} with the books. The books are not changed: find each one in Odoo (a late posting, a filter on the export, an account mapped differently).</p>}
       {r.missing.length > 0 && r.months.length > 0 && <p className="mb-4 max-w-3xl text-[13px] text-mute" data-testid="tb-missing">Not in your books yet, so not checked: {r.missing.map(mlabel).join(", ")}.</p>}
       {r.diffs.length > 0 && (
-        <div className="max-w-4xl overflow-x-auto rounded-lg border border-line">
+        <div tabIndex={0} className="max-w-4xl overflow-x-auto rounded-lg border border-line">
           <table className="w-full text-[13px]" data-testid="tb-diffs">
             <thead className="bg-band text-left text-mute"><tr><th className="px-3 py-2">Month</th><th className="px-3 py-2">Account</th><th className="px-3 py-2 text-right">Books</th><th className="px-3 py-2 text-right">This file</th><th className="px-3 py-2 text-right">Difference</th></tr></thead>
             <tbody>

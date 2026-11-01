@@ -30,7 +30,7 @@ export interface DataFacts {
 
 const ICON: Record<StepStatus, React.ReactNode> = {
   verified: <ShieldCheck className="h-5 w-5 text-green-d" />, done: <CheckCircle2 className="h-5 w-5 text-green-d" />,
-  issues: <AlertTriangle className="h-5 w-5 text-[#9a6b00]" />, todo: <CircleDashed className="h-5 w-5 text-mute" />, locked: <Lock className="h-5 w-5 text-mute" />,
+  issues: <AlertTriangle className="h-5 w-5 text-[#7d5600]" />, todo: <CircleDashed className="h-5 w-5 text-mute" />, locked: <Lock className="h-5 w-5 text-mute" />,
   unchecked: <AlertTriangle className="h-5 w-5 text-mute" />, pending: <CircleDashed className="h-5 w-5 animate-pulse text-mute" />,
 };
 /** Steps whose status comes from the sub-ledger checks, which arrive a moment after the page. */

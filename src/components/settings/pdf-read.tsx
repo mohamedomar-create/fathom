@@ -169,7 +169,7 @@ export function PdfRead({ companyId, files, onDone, onCancel }: { companyId: str
       </div>
       <div className="flex flex-wrap gap-2 text-[13px]">
         <span className="rounded bg-band px-3 py-1.5">{tables.length} of {pages.length} page{pages.length === 1 ? "" : "s"} with figures</span>
-        {toCheck ? <span className="flex items-center gap-1.5 rounded bg-amber/15 px-3 py-1.5" data-testid="pdf-flag-count"><AlertTriangle className="h-4 w-4 text-[#9a6b00]" />{toCheck} row{toCheck === 1 ? "" : "s"} to check</span>
+        {toCheck ? <span className="flex items-center gap-1.5 rounded bg-amber/15 px-3 py-1.5" data-testid="pdf-flag-count"><AlertTriangle className="h-4 w-4 text-[#7d5600]" />{toCheck} row{toCheck === 1 ? "" : "s"} to check</span>
           : <span className="flex items-center gap-1.5 rounded bg-green-bg px-3 py-1.5 text-green-d" data-testid="pdf-all-add-up"><CheckCircle2 className="h-4 w-4" />Every total adds up</span>}
         {failed.length > 0 && <span className="rounded bg-red-bg px-3 py-1.5 text-red">{failed.length} page{failed.length === 1 ? "" : "s"} could not be read</span>}
       </div>
@@ -237,7 +237,7 @@ function PageReview({ page, file, flags, onEdit, onRetry }: { page: PdfPage; fil
                       <tr key={i} className={cn(bad ? "bg-red-bg" : fl.length ? "bg-amber/15" : "", row.total && "font-medium")} data-testid={fl.length ? "pdf-flagged-row" : undefined} title={fl.map((f) => f.text).join("\n") || undefined}>
                         <td className={cn(row.heading && "label pt-3")}>
                           {row.code && <span className="me-1 text-mute">{row.code}</span>}{row.label}
-                          {fl.map((f) => <div key={f.text} className={cn("text-[11px]", bad ? "text-red" : "text-[#9a6b00]")}>{f.text}</div>)}
+                          {fl.map((f) => <div key={f.text} className={cn("text-[11px]", bad ? "text-red" : "text-[#7d5600]")}>{f.text}</div>)}
                           {row.unclear && <button onClick={() => onEdit(page, i, (x) => ({ ...x, unclear: false }))} className="text-[11px] text-brand-d underline">Figures are right</button>}
                         </td>
                         {!row.heading && r.columns.map((_, c) => (

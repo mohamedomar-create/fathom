@@ -54,7 +54,7 @@ export function SheetRoles({ guesses, roles, onRole, gives, need, confirmed, onC
                 {role === "cashbook" && (
                   <label className="mt-1 flex items-center gap-1.5"><input type="checkbox" checked={cashSales[g.sheet] !== false} onChange={(e) => onCashSales(g.sheet, e.target.checked)} data-testid="cash-sales" /> Count money in as sales</label>
                 )}
-                {g.notes.map((n) => <div key={n} className="mt-1 flex gap-1.5 text-[12px] text-[#9a6b00]"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{n}</div>)}
+                {g.notes.map((n) => <div key={n} className="mt-1 flex gap-1.5 text-[12px] text-[#7d5600]"><AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />{n}</div>)}
               </div>
             </li>
           );

@@ -204,7 +204,7 @@ function SheetCard({ s, grid, out, opts, onOut, onOpts, onMap, onDownload }: {
           {s.rowLabels.map((r) => <label key={r.label}><input type="checkbox" className="me-1" checked={r.direction === "in"}
             onChange={(e) => onOpts({ flip: { ...opts.flip, [r.label]: e.target.checked ? "in" : "out" } })} />{r.label}: {t.flipRow}</label>)}
         </div>}
-        {s.layout !== "monthly" && <div className="overflow-x-auto">
+        {s.layout !== "monthly" && <div tabIndex={0} className="overflow-x-auto">
           <table className="text-sm"><thead><tr className="text-xs text-mute"><th className="pe-4 text-start font-normal">{t.column}</th><th className="text-start font-normal">{t.readAs}</th></tr></thead>
             <tbody>{s.columns.filter((c) => c.heading).map((c) => (
               <tr key={c.index}><td className="py-1 pe-4"><span className="text-mute">{c.letter}</span> {c.heading}</td><td className="py-1">

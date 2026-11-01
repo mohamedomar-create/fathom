@@ -75,7 +75,7 @@ export function QuadrantMiniMap({ active }: { active: Quadrant }) {
         const on = c === active;
         const bad = c === "STRESS" || c === "DECLINE";
         return (
-          <div key={c} className={`flex h-14 items-center justify-center rounded px-1 text-center ${on ? (bad ? "bg-red text-white" : "bg-green text-white") : "bg-band text-mute"}`}>{T.lang === "ar" ? T.d.ana.quadrants[c][0] : c}</div>
+          <div key={c} className={`flex h-14 items-center justify-center rounded px-1 text-center ${on ? (bad ? "bg-red text-white" : "bg-green-d text-white") : "bg-band text-mute"}`}>{T.lang === "ar" ? T.d.ana.quadrants[c][0] : c}</div>
         );
       })}
     </div>

@@ -52,18 +52,18 @@ export function CashEntries() {
   const fieldCls = "w-full min-w-[84px] rounded border border-line px-1.5 py-1 text-sm";
   const fields = (d: Draft, set: (d: Draft) => void, p: string) => (
     <>
-      <td className="px-1.5 py-1.5"><input type="date" className={fieldCls} value={d.day} onChange={(e) => set({ ...d, day: e.target.value })} data-testid={`${p}-day`} /></td>
-      <td className="px-1.5 py-1.5"><select className={fieldCls} value={d.direction} onChange={(e) => set({ ...d, direction: e.target.value as "in" | "out" })} data-testid={`${p}-direction`}><option value="in">{t.inWord}</option><option value="out">{t.outWord}</option></select></td>
-      <td className="px-1.5 py-1.5"><select className={fieldCls} value={d.kind && kindsFor(d.direction).includes(d.kind) ? d.kind : ""} onChange={(e) => set({ ...d, kind: e.target.value as Draft["kind"] })} data-testid={`${p}-kind`}>
+      <td className="px-1.5 py-1.5"><input type="date" aria-label={t.date} className={fieldCls} value={d.day} onChange={(e) => set({ ...d, day: e.target.value })} data-testid={`${p}-day`} /></td>
+      <td className="px-1.5 py-1.5"><select aria-label={t.direction} className={fieldCls} value={d.direction} onChange={(e) => set({ ...d, direction: e.target.value as "in" | "out" })} data-testid={`${p}-direction`}><option value="in">{t.inWord}</option><option value="out">{t.outWord}</option></select></td>
+      <td className="px-1.5 py-1.5"><select aria-label={t.kind} className={fieldCls} value={d.kind && kindsFor(d.direction).includes(d.kind) ? d.kind : ""} onChange={(e) => set({ ...d, kind: e.target.value as Draft["kind"] })} data-testid={`${p}-kind`}>
         <option value="">{t.kindAuto}</option>{kindsFor(d.direction).map((k) => <option key={k} value={k}>{KIND_LABEL[k][lang]}</option>)}</select></td>
-      <td className="px-1.5 py-1.5"><input inputMode="decimal" className={fieldCls} value={d.amount} onChange={(e) => set({ ...d, amount: e.target.value })} data-testid={`${p}-amount`} /></td>
-      <td className="px-1.5 py-1.5"><input className={fieldCls} value={d.category} onChange={(e) => set({ ...d, category: e.target.value })} data-testid={`${p}-category`} /></td>
-      <td className="px-1.5 py-1.5"><input className={fieldCls} value={d.party} onChange={(e) => set({ ...d, party: e.target.value })} data-testid={`${p}-party`} /></td>
-      <td className="px-1.5 py-1.5"><input className={fieldCls} value={d.note} onChange={(e) => set({ ...d, note: e.target.value })} data-testid={`${p}-note`} /></td>
-      <td className="px-1.5 py-1.5"><select className={fieldCls} value={d.paid} data-testid={`${p}-paid`}
+      <td className="px-1.5 py-1.5"><input inputMode="decimal" aria-label={t.amount} className={fieldCls} value={d.amount} onChange={(e) => set({ ...d, amount: e.target.value })} data-testid={`${p}-amount`} /></td>
+      <td className="px-1.5 py-1.5"><input aria-label={t.category} className={fieldCls} value={d.category} onChange={(e) => set({ ...d, category: e.target.value })} data-testid={`${p}-category`} /></td>
+      <td className="px-1.5 py-1.5"><input aria-label={t.party} className={fieldCls} value={d.party} onChange={(e) => set({ ...d, party: e.target.value })} data-testid={`${p}-party`} /></td>
+      <td className="px-1.5 py-1.5"><input aria-label={t.note} className={fieldCls} value={d.note} onChange={(e) => set({ ...d, note: e.target.value })} data-testid={`${p}-note`} /></td>
+      <td className="px-1.5 py-1.5"><select aria-label={t.paid} className={fieldCls} value={d.paid} data-testid={`${p}-paid`}
         onChange={(e) => { const paid = e.target.value as Draft["paid"]; set({ ...d, paid, paidOn: paid === "yes" ? d.paidOn || company.today : "" }); }}>
         <option value="">{t.blank}</option><option value="yes">{t.yes}</option><option value="no">{t.no}</option></select></td>
-      <td className="px-1.5 py-1.5"><input type="date" className={fieldCls} value={d.paidOn} disabled={d.paid !== "yes"} onChange={(e) => set({ ...d, paidOn: e.target.value })} data-testid={`${p}-paid-on`} /></td>
+      <td className="px-1.5 py-1.5"><input type="date" aria-label={t.paidOn} className={fieldCls} value={d.paidOn} disabled={d.paid !== "yes"} onChange={(e) => set({ ...d, paidOn: e.target.value })} data-testid={`${p}-paid-on`} /></td>
     </>
   );
   return (
@@ -73,7 +73,7 @@ export function CashEntries() {
       {company.readOnly && <p className="mb-4 rounded bg-band px-4 py-2 text-sm" data-testid="entries-view-only">{t.viewOnly}</p>}
       <div className="mb-3 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm">{t.month}
-          <select className="rounded border border-line px-2 py-1" value={shown} onChange={(e) => { setMonth(e.target.value); setPage(0); }} data-testid="entries-month">
+          <select aria-label={t.date} className="rounded border border-line px-2 py-1" value={shown} onChange={(e) => { setMonth(e.target.value); setPage(0); }} data-testid="entries-month">
             <option value="all">{t.allMonths}</option>
             {months.map((m) => <option key={m} value={m}>{T.ml(m)}</option>)}
           </select>
@@ -85,7 +85,7 @@ export function CashEntries() {
         </span>}
       </div>
       {error && <p role="alert" className="mb-3 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="entries-error">{error}</p>}
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.kind, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>
           <tbody>

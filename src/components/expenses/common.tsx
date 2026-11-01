@@ -87,7 +87,7 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
   const ofSales = rows.some((r) => r.ofSales !== null);
   const cmp = compareLabel ? T.d.sales.word[compareLabel] ?? compareLabel : "";
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl min-w-[680px]" data-testid={testId}>
         <thead>
           <tr>
@@ -138,7 +138,7 @@ export function LenderTable({ s, cur, testId = "lender-table" }: { s: ExpensesVi
   const f = s.finance;
   const cmp = s.compareLabel ? T.d.sales.word[s.compareLabel] ?? s.compareLabel : "";
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl min-w-[620px]" data-testid={testId}>
         <thead>
           <tr>

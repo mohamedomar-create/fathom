@@ -157,7 +157,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
             <div className="font-medium">Start from another company of the same books</div>
             <p className="mt-0.5 text-xs text-mute">{mapCount === 0 ? "This company has learned no account classes yet, so Odoo's own account types are used. " : ""}Copy every account&apos;s class and the books start from a company you already set up (e.g. from uploads), so both read the books the same way.</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              <select className="rounded border border-line px-2 py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="odoo-copy-from">
+              <select aria-label="Copy settings from" className="rounded border border-line px-2 py-1.5" value={from} onChange={(e) => setFrom(e.target.value)} data-testid="odoo-copy-from">
                 {others.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
               </select>
               <button onClick={copy} disabled={pending || !from} className="rounded border border-brand-d px-3 py-1.5 font-medium text-brand-d disabled:opacity-50" data-testid="odoo-copy">Copy settings</button>

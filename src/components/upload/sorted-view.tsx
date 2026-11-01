@@ -74,7 +74,7 @@ export function SortedView(p: SortedViewProps) {
         )}
       </div>
       {p.picked?.note && <div className="border-b border-line bg-amber/10 px-3 py-1.5 text-[12.5px]" data-testid="picked-note">{p.picked.note}</div>}
-      <div className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
+      <div tabIndex={0} className="flex gap-1 overflow-x-auto border-b border-line px-2 pt-1.5" role="tablist">
         {tabs.map((t) => (
           <button key={t.k} role="tab" aria-selected={shown === t.k} onClick={() => setTab(t.k)} data-testid={`reading-tab-${t.k}`}
             className={cn("shrink-0 rounded-t border border-b-0 px-2.5 py-1 text-xs", shown === t.k ? "border-line bg-white font-medium" : "border-transparent text-mute")}>
@@ -157,7 +157,7 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, onConfirmLay
   return (
     <li className={cn("px-3 py-2.5", i.severity === "error" ? "" : "text-ink/80")} data-testid={`issue-${i.fix}`} data-severity={i.severity}>
       <div className="flex items-start gap-2">
-        {i.severity === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />}
+        {i.severity === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />}
         <div className="min-w-0 flex-1">
           <div title={i.message} data-testid={main ? "issue-text" : "issue-line"} className={cn(main && "text-[15px] font-medium")}>{plainIssue(i, origin)}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">

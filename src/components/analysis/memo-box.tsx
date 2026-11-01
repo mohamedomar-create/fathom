@@ -62,7 +62,7 @@ export function MemoBox({ section, title, fallback, testId }: { section: "bank" 
         {canAi && <button onClick={draft} disabled={pending} className="ms-auto inline-flex items-center gap-1.5 rounded border border-brand-d px-3 py-1.5 text-xs font-medium text-brand-d disabled:opacity-60" data-testid={`ai-${section}`}>
           {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}{saved ? t.redraft : t.draft}</button>}
       </div>
-      {memo.stale && <p className="mb-3 rounded bg-white px-3 py-2 text-[12.5px] text-[#9a6b00]" data-testid={`${section}-memo-stale`}>{t.stale(section === "bank" ? t.staleBank : t.staleRates)}{canAi ? t.redraftToUpdate : ""}</p>}
+      {memo.stale && <p className="mb-3 rounded bg-white px-3 py-2 text-[12.5px] text-[#7d5600]" data-testid={`${section}-memo-stale`}>{t.stale(section === "bank" ? t.staleBank : t.staleRates)}{canAi ? t.redraftToUpdate : ""}</p>}
       {text ? <MemoText text={text} /> : <p className="text-sm text-mute">{t.nothing}</p>}
       {err && <p className="mt-2 text-sm text-red" role="alert">{err}</p>}
       {!canAi && c.source !== "demo" && !c.aiEnabled && <p className="mt-3 text-xs text-mute">{t.aiOff}</p>}

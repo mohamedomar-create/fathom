@@ -31,7 +31,7 @@ export function ExpensesTrend() {
       <LineChart labels={rows.map((x) => T.ms(x.period))} unit="%" height={220} testId="of-sales-trend"
         series={[{ name: t.costsPct, values: rows.map((x) => x.ofSales), color: C.s[1], fill: true }]} />
       <h2 className="mb-3 mt-10 text-xl font-light">{t.monthByMonth}</h2>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[620px]" data-testid="expenses-month-table">
           <thead><tr><th className="text-start">{t.month}</th><th>{t.plCosts}</th><th>{t.pctSales}</th><th>{t.expenseLines}</th><th>{t.difference}</th></tr></thead>
           <tbody>

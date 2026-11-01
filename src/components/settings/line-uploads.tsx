@@ -25,7 +25,7 @@ export function LineUploads({ rows, companyId, readOnly }: { rows: LineUpload[];
     router.refresh();
   };
   return (
-    <div className="-mx-4 overflow-x-auto sm:mx-0">
+    <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
       <table className="tbl text-[13px]" data-testid="line-uploads">
         <thead><tr><th className="text-start">File</th><th className="text-start">Feeds</th><th className="text-start">Months</th><th className="text-start">When</th>{!readOnly && <th />}</tr></thead>
         <tbody>

@@ -8,7 +8,7 @@ import { cn } from "@/lib/cn";
 export type PreviewCheck = Check & { accepted?: boolean };
 
 const STATE: Record<SliceState, { label: string; cls: string }> = {
-  new: { label: "New", cls: "bg-green text-white" },
+  new: { label: "New", cls: "bg-green-d text-white" },
   overwrite: { label: "Replaced", cls: "bg-amber text-ink" },
   keep: { label: "Kept", cls: "bg-[#dcdcd6] text-ink" },
   remove: { label: "Removed", cls: "bg-red text-white" },
@@ -22,7 +22,7 @@ export function Timeline({ cells, checks }: { cells: TimelineCell[]; checks: Pre
   };
   return (
     <div data-testid="timeline">
-      <div className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div tabIndex={0} className="-mx-1 overflow-x-auto px-1 pb-1">
         <table className="border-separate border-spacing-[3px] text-[11px]">
           <thead><tr><th className="w-24" />{cells.map((c) => <th key={c.period} className="min-w-11 text-center font-normal text-mute">{mshort(c.period)}</th>)}</tr></thead>
           <tbody>
@@ -88,7 +88,7 @@ export function CheckList({ checks, empty = "All checks passed." }: { checks: Pr
         const many = periods.length > 1;
         return (
           <li key={checkKey(c) + c.title} className={cn("flex gap-2 rounded px-3 py-2", blocking ? "bg-red-bg" : c.severity === "info" ? "bg-band" : "bg-amber/15")} data-severity={blocking ? "block" : c.severity}>
-            {blocking ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : c.severity === "info" ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-mute" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#9a6b00]" />}
+            {blocking ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : c.severity === "info" ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-mute" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />}
             <div>
               <b className="font-semibold">{periods.length ? `${periodsLabel(periods, mlabel)}: ` : ""}{c.title}</b>
               {c.accepted && <span className="ms-2 rounded bg-white px-1.5 text-[11px] text-mute">accepted earlier</span>}

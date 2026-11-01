@@ -22,7 +22,7 @@ export function PeopleManager({ orgId, me, ownerId, people, invites }: { orgId: 
     <div className="space-y-8">
       <form className="flex flex-wrap gap-2" onSubmit={(e) => { e.preventDefault(); act(() => invite(orgId, email, role), d.invited(email)); setEmail(""); }}>
         <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="colleague@firm.com" className="min-w-64 flex-1 rounded border border-line px-3 py-2" />
-        <select value={role} onChange={(e) => setR(e.target.value as Role)} className="rounded border border-line px-2"><option value="editor">{d.roles.editor}</option><option value="viewer">{d.roles.viewer}</option><option value="admin">{d.roles.admin}</option></select>
+        <select aria-label={d.role} value={role} onChange={(e) => setR(e.target.value as Role)} className="rounded border border-line px-2"><option value="editor">{d.roles.editor}</option><option value="viewer">{d.roles.viewer}</option><option value="admin">{d.roles.admin}</option></select>
         <button disabled={pending} className="rounded bg-brand-d px-4 py-2 font-medium text-white">{d.invite}</button>
       </form>
       {msg && <p className="text-sm text-green-d">{msg}</p>}
@@ -34,7 +34,7 @@ export function PeopleManager({ orgId, me, ownerId, people, invites }: { orgId: 
               <td>{p.name ?? "–"}{p.user_id === me && <span className="ms-2 text-xs text-mute">{d.you}</span>}
                 {p.user_id === ownerId && <span className="ms-2 rounded bg-brand/15 px-1.5 py-0.5 text-[11px] text-brand-d" data-testid="owner-badge">{a.owner}</span>}</td>
               <td className="text-start">{p.email}</td>
-              <td><select disabled={p.user_id === me || p.user_id === ownerId} value={p.role} onChange={(e) => act(() => setRole(orgId, p.user_id, e.target.value as Role), d.roleUpdated)} className="rounded border border-line px-1.5 py-0.5 uppercase text-xs"><option value="admin">{d.roles.admin}</option><option value="editor">{d.roles.editor}</option><option value="viewer">{d.roles.viewer}</option></select></td>
+              <td><select aria-label={d.role} disabled={p.user_id === me || p.user_id === ownerId} value={p.role} onChange={(e) => act(() => setRole(orgId, p.user_id, e.target.value as Role), d.roleUpdated)} className="rounded border border-line px-1.5 py-0.5 uppercase text-xs"><option value="admin">{d.roles.admin}</option><option value="editor">{d.roles.editor}</option><option value="viewer">{d.roles.viewer}</option></select></td>
               <td className="space-x-3 whitespace-nowrap">
                 {iOwn && p.user_id !== me && p.role === "admin" && (
                   <ConfirmDialog reauth title={a.handOverTitle(p.name ?? p.email)} confirmLabel={a.handOver} testId="hand-over-dialog"

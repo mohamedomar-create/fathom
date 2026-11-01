@@ -56,7 +56,7 @@ export function AssumptionsPanel({ fields, a, setA, saved, title, columns = 3 }:
     <section className="rounded-lg border border-line p-4" data-testid="assumptions">
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-lg font-normal">{title ?? t.title}</h2>
-        {a.example && <span className="rounded bg-amber/20 px-2 py-0.5 text-xs text-[#9a6b00]">{t.example}</span>}
+        {a.example && <span className="rounded bg-amber/20 px-2 py-0.5 text-xs text-[#7d5600]">{t.example}</span>}
       </div>
       <div className={cn("grid gap-4 sm:grid-cols-2", columns === 3 && "lg:grid-cols-3")}>
         {fields.map((k) => {

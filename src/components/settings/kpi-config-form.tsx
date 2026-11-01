@@ -45,7 +45,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
       {mode === "kpis" && <p className="mb-4 text-sm text-mute"><b className="text-ink">{activeCount} active KPIs.</b> Turn KPIs on or off and set how important each one is. Critical KPIs that miss target are called out in the summary.</p>}
       {mode === "targets" && <p className="mb-4 text-sm text-mute">Set a monthly performance target for each active KPI. For quarter and year views, currency targets are compared with the period total.</p>}
       {mode === "alerts" && <p className="mb-4 text-sm text-mute">Turn on alerts and set thresholds. A red dot appears next to the KPI when the threshold is crossed, and it is counted under “Alerts”.</p>}
-      <div className="-mx-4 overflow-x-auto px-4">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
         <table className="tbl text-[13px]">
           <thead>
             <tr>
@@ -71,7 +71,7 @@ export function KpiConfigForm({ mode }: { mode: Mode }) {
                       {mode === "kpis" && (
                         <>
                           <td>
-                            <select disabled={c.readOnly} value={e.importance} onChange={(ev) => set(d.key, { importance: ev.target.value as Importance })} className={cn("rounded-full px-2.5 py-1 text-xs font-medium outline-none", IMP_COL[e.importance])}>
+                            <select aria-label="Importance" disabled={c.readOnly} value={e.importance} onChange={(ev) => set(d.key, { importance: ev.target.value as Importance })} className={cn("rounded-full px-2.5 py-1 text-xs font-medium outline-none", IMP_COL[e.importance])}>
                               {IMP.map((i) => <option key={i}>{i}</option>)}
                             </select>
                           </td>

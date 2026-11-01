@@ -19,7 +19,7 @@ export function SettingsNav() {
   const d = useDict();
   const path = usePathname();
   return (
-    <nav className="mb-6 flex gap-1 overflow-x-auto md:mb-0 md:w-60 md:shrink-0 md:flex-col md:overflow-visible">
+    <nav tabIndex={0} className="mb-6 flex gap-1 overflow-x-auto md:mb-0 md:w-60 md:shrink-0 md:flex-col md:overflow-visible">
       <div className="mb-3 hidden rounded-md bg-band p-3 md:block">
         <div className="truncate font-medium">{c.name}</div>
         <div className="text-xs text-mute">{c.months.length ? d.settingsNav.monthsLoaded(c.months.length) : d.settingsNav.noData}</div>

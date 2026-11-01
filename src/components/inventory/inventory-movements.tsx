@@ -30,7 +30,7 @@ export function InventoryMovements() {
     <>
       <PageHeader title={title} right={<InventoryPicker s={s} />} />
       <h3 className="mb-2 text-lg font-normal">{t.movesTitle}</h3>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[560px]" data-testid="inv-movements">
           <thead><tr><th className="!text-start">{t.movement}</th>{periods.map((p) => <th key={p}>{T.ms(p)}</th>)}{periods.length > 1 && <th>{t.total}</th>}</tr></thead>
           <tbody>
@@ -50,7 +50,7 @@ export function InventoryMovements() {
       <StockAtEnd s={s} ar={T.lang === "ar"} ml={T.ml} />
       <StockHistoryTable s={s} ar={T.lang === "ar"} ms={T.ms} />
       <h3 className="mb-2 mt-10 text-lg font-normal">{t.locationsTitle}</h3>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[480px]" data-testid="inv-locations">
           <thead><tr><th className="!text-start">{t.location}</th><th className="!text-start">{t.countsAs}</th><th>{t.inQ}</th><th>{t.outQ}</th><th>{t.net}</th></tr></thead>
           <tbody>
@@ -92,7 +92,7 @@ function StockAtEnd({ s, ar, ml }: { s: View; ar: boolean; ml: (p: string) => st
   return (
     <section className="mt-10" data-testid="inv-at-end">
       <h3 className="mb-2 text-lg font-normal">{ar ? "الوحدات حسب الموقع" : "Units by location"} {end && <span className="text-sm text-mute">· {ar ? "نهاية" : "end of"} {ml(end)}</span>}</h3>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[420px]">
           <thead><tr><th className="!text-start">{ar ? "الموقع" : "Location"}</th><th className="!text-start">{ar ? "النوع" : "Type"}</th><th>{ar ? "الوحدات" : "Units"}</th></tr></thead>
           <tbody>{s.atEnd.map((x) => <tr key={x.loc} className="row" data-testid="inv-at-end-row"><td className="!text-start">{x.loc}</td><td className="!text-start">{TYPE_WORD[x.type][ar ? 1 : 0]}</td><td className="num">{q(x.units)}</td></tr>)}</tbody>
@@ -112,7 +112,7 @@ function StockHistoryTable({ s, ar, ms }: { s: View; ar: boolean; ms: (p: string
   return (
     <section className="mt-10" data-testid="inv-history">
       <h3 className="mb-2 text-lg font-normal">{ar ? "تاريخ المخزون: وحدات وقيمة في نهاية كل شهر" : "Stock history: units and value at each month end"}</h3>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[720px]">
           <thead><tr><th className="!text-start" />{s.history.map((h) => <th key={h.p}>{ms(h.p)}</th>)}</tr></thead>
           <tbody>
@@ -137,7 +137,7 @@ function RentalSection({ s, ar }: { s: View; ar: boolean }) {
   return (
     <section className="mt-10" data-testid="inv-rental">
       <h3 className="mb-2 text-lg font-normal">{ar ? "التأجير: مؤجر مقابل متاح" : "Rental: on rent vs idle"} <span className="text-sm text-mute" data-testid="inv-rental-util">· {ar ? "نسبة الاستخدام" : "utilisation"} {pct(r.utilisation)}</span></h3>
-      <div className="-mx-4 overflow-x-auto sm:mx-0">
+      <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[560px]">
           <thead><tr><th className="!text-start">{ar ? "الصنف" : "Item"}</th><th>{ar ? "المملوك" : "Owned"}</th><th>{ar ? "مؤجر" : "On rent"}</th><th>{ar ? "متاح" : "Idle"}</th><th>{ar ? "الاستخدام" : "Utilisation"}</th></tr></thead>
           <tbody>{r.items.slice(0, 30).map((x) => <tr key={x.code || x.product} className="row" data-testid="inv-rental-row"><td className="!text-start">{x.product}</td><td className="num">{q(x.fleet)}</td><td className="num">{q(x.onRent)}</td><td className="num">{q(x.idle)}</td><td className="num">{pct(x.utilisation)}{x.over && <span className="ms-1 text-red" title={ar ? "المؤجر أكثر من المملوك: السجلات غير متطابقة" : "More on rent than owned: the records disagree"} data-testid="inv-rental-over">!</span>}</td></tr>)}</tbody>
