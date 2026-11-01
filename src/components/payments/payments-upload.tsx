@@ -12,6 +12,7 @@ import { savePayments } from "@/lib/company/save-payments";
 import { SaveProgress } from "@/components/upload/save-progress";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
 import { useCompany } from "@/lib/company/context";
+import { useT } from "@/lib/i18n/use-t";
 
 const fmt = (v: number) => v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -29,6 +30,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   const [pf, setPf] = useState<{ names: string; grids: Grid[] } | null>(null);
   const [pfRun, setPfRun] = useState<PreflightRun | null>(null);
   const company = useCompany();
+  const T = useT(), w = T.d.wiz.pay, mod = T.d.wiz.w.label.payments;
   const currency = company.settings.currency;
   const input = useRef<HTMLInputElement>(null);
   const nothing = plan && !plan.aged.length && !plan.payments.lines.length;
@@ -36,12 +38,12 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   async function onFiles(fs: File[]) {
     setErr(null);
     if (!fs.length) return;
-    if (fs.some((f) => !/\.(xlsx|xls|csv)$/i.test(f.name))) { setErr("Choose Excel (.xlsx) or CSV files exported from Odoo."); return; }
+    if (fs.some((f) => !/\.(xlsx|xls|csv)$/i.test(f.name))) { setErr(w.chooseExcel); return; }
     setBusy(true);
     try {
       setPfRun(null);
       setPf({ names: fs.map((f) => f.name).join(" + "), grids: await readInWorker(await Promise.all(fs.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))) });
-    } catch (e) { setErr((e as Error).message || "The files could not be read."); }
+    } catch (e) { setErr((e as Error).message || w.cantRead); }
     finally { setBusy(false); }
   }
 
@@ -54,7 +56,7 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
       const leftOut = pf.grids.filter((g) => run.report.sheets.find((s) => s.sheet === g.name)?.issues.some((i) => i.code === "irrelevant"));
       setPlan(await planPaymentsFromGrids([...run.cleaned.forImport, ...leftOut], currency));
       setPf(null);
-    } catch (e) { setErr((e as Error).message || "The files could not be read."); }
+    } catch (e) { setErr((e as Error).message || w.cantRead); }
     finally { setBusy(false); }
   }
 
@@ -70,38 +72,39 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
       }
       const ls = plan.payments.lines;
       if (ls.length) {
-        const res = await savePayments(companyId, "file", ls, plan.payments.periods, plan.payments.sheets.join(", "), (done, of) => setProgress({ what: "Saving payments", done, of }));
+        const res = await savePayments(companyId, "file", ls, plan.payments.periods, plan.payments.sheets.join(", "), (done, of) => setProgress({ what: w.savingPay, done, of }));
         if (!res.ok) throw new Error(res.error);
       }
-      setDone([plan.aged.map((a) => `Aged ${a.report.side === "receivable" ? "Receivable" : "Payable"} as of ${a.report.asOf}`).join(", "), ls.length ? `${ls.length} payments` : ""].filter(Boolean).join(" and "));
-    } catch (e) { setErr((e as Error).message || "Saving failed."); }
+      const parts = [plan.aged.map((a) => w.aged(a.report.side === "receivable", a.report.asOf)).join(", "), ls.length ? w.nPay(ls.length) : ""].filter(Boolean);
+      setDone(parts.length ? parts.reduce((a, b) => T.d.wiz.and(a, b)) : "");
+    } catch (e) { setErr((e as Error).message || w.failed); }
     finally { setBusy(false); setProgress(null); }
   }
 
   if (done) return (
     <div data-testid="done-step">
       <WizardSteps at="done" />
-      <WizardTitle title="Saved" hint={`${done}.`} />
-      <a href={`${basePath}/payments`} className="inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">See my receivables and payments</a>
+      <WizardTitle title={w.saved} hint={`${done}.`} />
+      <a href={`${basePath}/payments`} className="inline-block rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">{w.see}</a>
     </div>
   );
 
   if (!plan && pf) return (
     <div data-testid="payments-preflight" className="max-w-4xl">
       <WizardSteps at="upload" />
-      <WizardTitle title="Check the files" hint="Each sheet is checked against what this import needs before anything is imported." />
-      <Preflight module="payments" moduleLabel="Receivables, payables & payments" grids={pf.grids} fileName={pf.names} stopOnLeftOut={false} allowNone onReady={({ run }) => void afterPreflight(run)} />
+      <WizardTitle title={w.checkFiles} hint={T.d.wiz.w.checkFileHint} />
+      <Preflight module="payments" moduleLabel={mod} grids={pf.grids} fileName={pf.names} stopOnLeftOut={false} allowNone onReady={({ run }) => void afterPreflight(run)} />
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
-      <WizardNav onBack={() => setPf(null)} back="Choose other files" />
+      <WizardNav onBack={() => setPf(null)} back={T.d.wiz.pdf.chooseOther} />
     </div>
   );
 
   if (!plan) return (
     <div data-testid="payments-upload">
       <WizardSteps at="upload" />
-      <WizardTitle title="Upload your files" hint="Odoo's Aged Receivable, Aged Payable, and Customer / Vendor Payments: one file or several together." />
+      <WizardTitle title={w.uploadFiles} hint={w.uploadHint} />
       <button onClick={() => input.current?.click()} disabled={busy} className="flex w-full max-w-2xl flex-col items-center gap-2 rounded-xl border-2 border-dashed border-line p-10 text-mute hover:border-brand" data-testid="dropzone">
-        <Upload className="h-8 w-8" />{busy ? "Reading…" : "Choose files"}
+        <Upload className="h-8 w-8" />{busy ? w.reading : w.choose}
       </button>
       <input ref={input} type="file" multiple accept=".xlsx,.xls,.csv" className="hidden" data-testid="file-input" onChange={(e) => onFiles([...(e.target.files ?? [])])} />
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
@@ -112,43 +115,43 @@ export function PaymentsUpload({ companyId, basePath, onBack }: { companyId: str
   return (
     <div data-testid="payments-check">
       <WizardSteps at="check" />
-      <WizardTitle title="Check what iReport read" hint="Every partner's documents are added up and checked against the report's own totals." />
-      <PreflightSummary run={pfRun} company={company.name} moduleLabel="Receivables, payables & payments" />
+      <WizardTitle title={w.check} hint={w.checkHint} />
+      <PreflightSummary run={pfRun} company={company.name} moduleLabel={mod} />
       <ul className="max-w-4xl space-y-3">
         {plan.aged.map((a) => (
           <li key={a.sheet} className="rounded-lg border border-line p-4" data-testid={`aged-${a.report.side}`}>
-            <p className="flex items-center gap-2 font-medium"><FileSpreadsheet className="h-4 w-4" />Aged {a.report.side === "receivable" ? "Receivable" : "Payable"} as of {a.report.asOf}</p>
-            <p className="text-[14px] text-mute">{a.report.partners.length} partners, {a.report.items.length} open documents, total <span data-testid={`aged-${a.report.side}-total`}>{fmt(a.report.total.total)}</span></p>
+            <p className="flex items-center gap-2 font-medium"><FileSpreadsheet className="h-4 w-4" />{w.aged(a.report.side === "receivable", a.report.asOf)}</p>
+            <p className="text-[14px] text-mute">{w.agedLine(a.report.partners.length, a.report.items.length)}<span data-testid={`aged-${a.report.side}-total`}>{fmt(a.report.total.total)}</span></p>
             {a.report.findings.length > 0 && <ul className="mt-2 list-disc ps-5 text-[14px] text-ink">{a.report.findings.map((f) => <li key={f.id}>{f.message}</li>)}</ul>}
           </li>
         ))}
         {plan.payments.lines.length > 0 && (
           <li className="rounded-lg border border-line p-4" data-testid="payments-read">
-            <p className="flex items-center gap-2 font-medium"><FileSpreadsheet className="h-4 w-4" />Payments, {plan.payments.periods.join(", ")}</p>
+            <p className="flex items-center gap-2 font-medium"><FileSpreadsheet className="h-4 w-4" />{w.payments((T.lang === "en" ? plan.payments.periods : plan.payments.periods.map(T.ml)).join(", "))}</p>
             <p className="text-[14px] text-mute">
-              {plan.payments.lines.filter((l) => l.direction === "in").length} received, <span data-testid="payments-in">{fmt(plan.payments.lines.filter((l) => l.direction === "in").reduce((s, l) => s + l.amount, 0))}</span>;{" "}
-              {plan.payments.lines.filter((l) => l.direction === "out").length} paid, <span data-testid="payments-out">{fmt(-plan.payments.lines.filter((l) => l.direction === "out").reduce((s, l) => s + l.amount, 0))}</span>
+              {w.received(plan.payments.lines.filter((l) => l.direction === "in").length)}<span data-testid="payments-in">{fmt(plan.payments.lines.filter((l) => l.direction === "in").reduce((s, l) => s + l.amount, 0))}</span>;{" "}
+              {w.paid(plan.payments.lines.filter((l) => l.direction === "out").length)}<span data-testid="payments-out">{fmt(-plan.payments.lines.filter((l) => l.direction === "out").reduce((s, l) => s + l.amount, 0))}</span>
             </p>
             {plan.payments.findings.length > 0 && <ul className="mt-2 list-disc ps-5 text-[14px] text-ink">{plan.payments.findings.map((f, i) => <li key={i}>{f.message}</li>)}</ul>}
           </li>
         )}
         {plan.unread.length > 0 && (
           <li className="rounded-lg border-2 border-red p-4" data-testid="payments-unread">
-            <p className="flex items-center gap-2 font-medium text-red"><AlertTriangle className="h-4 w-4" />Not read: nothing from {plan.unread.length > 1 ? "these sheets" : "this sheet"} will be saved</p>
+            <p className="flex items-center gap-2 font-medium text-red"><AlertTriangle className="h-4 w-4" />{w.unread(plan.unread.length > 1)}</p>
             <ul className="mt-1 list-disc ps-5 text-[14px]">{plan.unread.map((u) => <li key={u.sheet}><b>{u.sheet}</b>: {u.why}.</li>)}</ul>
-            <label className="mt-2 flex items-center gap-2 text-[14px]"><input type="checkbox" checked={acceptUnread} onChange={(e) => setAcceptUnread(e.target.checked)} data-testid="accept-unread" />Save without {plan.unread.length > 1 ? "these sheets" : "this sheet"}</label>
+            <label className="mt-2 flex items-center gap-2 text-[14px]"><input type="checkbox" checked={acceptUnread} onChange={(e) => setAcceptUnread(e.target.checked)} data-testid="accept-unread" />{w.saveWithout(plan.unread.length > 1)}</label>
           </li>
         )}
       </ul>
       {(plan.errors.length > 0 || nothing) && (
         <div className="mt-4 max-w-4xl rounded-lg bg-red-bg p-4 text-red" data-testid="payments-errors">
-          <p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" />{nothing ? "No ageing report or payments list in these files." : "Fix these in Odoo and export again:"}</p>
+          <p className="flex items-center gap-2 font-medium"><AlertTriangle className="h-4 w-4" />{nothing ? w.nothing : w.fixInOdoo}</p>
           <ul className="mt-1 list-disc ps-5 text-[14px]">{plan.errors.slice(0, 12).map((e, i) => <li key={i}>{e}</li>)}</ul>
         </div>
       )}
       {err && <p className="mt-4 text-red" data-testid="payments-error">{err}</p>}
       {progress && <SaveProgress what={progress.what} done={progress.done} of={progress.of} />}
-      <WizardNav onBack={() => { setPlan(null); setPf(null); setAcceptUnread(false); }} back="Choose other files" next="Save" onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
+      <WizardNav onBack={() => { setPlan(null); setPf(null); setAcceptUnread(false); }} back={T.d.wiz.pdf.chooseOther} next={T.d.wiz.w.save} onNext={save} busy={busy} disabled={!!nothing || plan.errors.length > 0 || (plan.unread.length > 0 && !acceptUnread)} nextTestId="save-payments" />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { Cell } from "@/lib/ingest/parse";
 import { colLetter, type CellError, type Marks, type RowRole } from "@/lib/ingest/trace";
-import { mlabel } from "@/lib/engine";
+import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/cn";
 import { useWindow } from "./virtual";
 
@@ -41,12 +41,13 @@ const fmt = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date
  * happened to it, unreadable cells outlined in red. Clicking a row shows the line it became on the right.
  */
 export function RawSheets({ sheets, focus, onRow }: { sheets: RawSheetData[]; focus: { sheet: string; rows: number[] } | null; onRow: (sheet: string, row: number) => void }) {
+  const w = useT().d.wiz.raw;
   const [active, setActive] = useState(sheets[0]?.name ?? "");
   const [followed, setFollowed] = useState<object | null>(null);
   // A new focus (a line picked on the right) shows its sheet (adjusting state during render, as React recommends over an effect).
   if (focus && focus !== followed) { setFollowed(focus); if (sheets.some((s) => s.name === focus.sheet)) setActive(focus.sheet); }
   const sheet = sheets.find((s) => s.name === active) ?? sheets[0];
-  if (!sheet) return <p className="p-4 text-sm text-mute">No sheets.</p>;
+  if (!sheet) return <p className="p-4 text-sm text-mute">{w.noSheets}</p>;
   return (
     <>
       {sheets.length > 1 && (
@@ -61,13 +62,14 @@ export function RawSheets({ sheets, focus, onRow }: { sheets: RawSheetData[]; fo
       )}
       <Grid key={sheet.name} s={sheet} focus={focus?.sheet === sheet.name ? focus.rows : null} onRow={(r) => onRow(sheet.name, r)} />
       <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-line px-3 py-2 text-[11px] text-mute" data-testid="raw-legend">
-        {LEGEND.map((r) => <span key={r} className="flex items-center gap-1"><i className={cn("inline-block h-2 w-2 rounded-full", ROLE[r].dot)} />{ROLE[r].label}</span>)}
+        {LEGEND.map((r) => <span key={r} className="flex items-center gap-1"><i className={cn("inline-block h-2 w-2 rounded-full", ROLE[r].dot)} />{w.role[r]}</span>)}
       </div>
     </>
   );
 }
 
 function Grid({ s, focus, onRow }: { s: RawSheetData; focus: number[] | null; onRow: (row: number) => void }) {
+  const T = useT(), rw = T.d.wiz.raw;
   // Trailing empty rows are not drawn; the widest row sets the columns.
   const count = useMemo(() => { let n = s.rows.length; while (n > 0 && !(s.rows[n - 1] ?? []).some((v) => fmt(v) !== "")) n--; return n; }, [s.rows]);
   const width = useMemo(() => { let w = 0; for (let i = 0; i < count; i++) w = Math.max(w, s.rows[i]?.length ?? 0); return Math.min(w, 40); }, [s.rows, count]);
@@ -96,8 +98,8 @@ function Grid({ s, focus, onRow }: { s: RawSheetData; focus: number[] | null; on
             <div className="w-11 shrink-0" />
             {colW.map((w, c) => {
               const h = s.heads?.[c];
-              return <div key={c} style={{ width: w }} className={cn("shrink-0 truncate border-l border-line px-1.5 py-0.5 text-center", out.has(c) ? "bg-[repeating-linear-gradient(45deg,#f1f1ec,#f1f1ec_4px,#fff_4px,#fff_8px)] text-mute" : h ? "bg-brand-bg font-medium text-brand-d" : "")} title={out.has(c) ? "Skipped" : h ? `Read as ${h}` : undefined}>
-                {out.has(c) ? "left out" : h ? (/^\d{4}-\d{2}$/.test(h) ? mlabel(h) : h) : ""}
+              return <div key={c} style={{ width: w }} className={cn("shrink-0 truncate border-l border-line px-1.5 py-0.5 text-center", out.has(c) ? "bg-[repeating-linear-gradient(45deg,#f1f1ec,#f1f1ec_4px,#fff_4px,#fff_8px)] text-mute" : h ? "bg-brand-bg font-medium text-brand-d" : "")} title={out.has(c) ? rw.skipped : h ? rw.readAs(T.lang === "en" || !/^\d{4}-\d{2}$/.test(h) ? h : T.ml(h)) : undefined}>
+                {out.has(c) ? rw.leftOut : h ? (/^\d{4}-\d{2}$/.test(h) ? T.ml(h) : h) : ""}
               </div>;
             })}
           </div>
@@ -109,7 +111,7 @@ function Grid({ s, focus, onRow }: { s: RawSheetData; focus: number[] | null; on
           const role = ROLE[t?.role ?? "unused"];
           const on = fset.has(i);
           return (
-            <div key={i} onClick={() => onRow(i)} title={t ? `${role.label}${t.note ? `: ${t.note}` : ""}` : undefined} data-testid={`raw-row-${i}`} data-role={t?.role ?? "blank"} data-focus={on || undefined}
+            <div key={i} onClick={() => onRow(i)} title={t ? `${rw.role[t.role] ?? role.label}${t.note ? `: ${t.note}` : ""}` : undefined} data-testid={`raw-row-${i}`} data-role={t?.role ?? "blank"} data-focus={on || undefined}
               style={{ top: 44 + i * ROW_H, height: ROW_H, width: total }}
               className={cn("absolute left-0 flex cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", t && role.row, on && "!bg-amber/25 outline outline-1 outline-amber")}>
               <div className="flex w-11 shrink-0 items-center justify-end gap-1 pr-1.5 text-[10.5px] text-mute"><i className={cn("inline-block h-1.5 w-1.5 rounded-full", t ? role.dot : "bg-transparent")} />{i + 1 + o.r}</div>

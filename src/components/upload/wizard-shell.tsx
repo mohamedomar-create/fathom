@@ -1,15 +1,14 @@
 "use client";
 import { ArrowLeft, ArrowRight, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { useDict } from "@/lib/i18n/context";
 
 export type Screen = "what" | "get" | "upload" | "check" | "save" | "done";
-const STEPS: { k: Screen; label: string }[] = [
-  { k: "what", label: "What" }, { k: "get", label: "Get file" }, { k: "upload", label: "Upload" },
-  { k: "check", label: "Check" }, { k: "save", label: "Save" }, { k: "done", label: "Done" },
-];
+const STEPS: { k: Screen }[] = [{ k: "what" }, { k: "get" }, { k: "upload" }, { k: "check" }, { k: "save" }, { k: "done" }];
 
 /** The steps of an upload, the current one in bold and finished ones ticked. */
 export function WizardSteps({ at }: { at: Screen }) {
+  const w = useDict().wiz.shell;
   const i = STEPS.findIndex((s) => s.k === at);
   return (
     <ol className="mb-6 flex flex-wrap items-center gap-x-1.5 gap-y-2 text-[13px]" data-testid="wiz-steps" data-at={at}>
@@ -18,7 +17,7 @@ export function WizardSteps({ at }: { at: Screen }) {
           <span className={cn("flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold", k < i ? "bg-brand-d text-white" : k === i ? "bg-ink text-white" : "bg-band text-mute")}>
             {k < i ? <Check className="h-3.5 w-3.5" /> : k + 1}
           </span>
-          <span className={cn(k === i ? "font-semibold" : "text-mute")}>{s.label}</span>
+          <span className={cn(k === i ? "font-semibold" : "text-mute")}>{w.steps[s.k]}</span>
           {k < STEPS.length - 1 && <span className="mx-0.5 h-px w-4 bg-line sm:w-6" />}
         </li>
       ))}
@@ -40,14 +39,15 @@ export function WizardTitle({ title, hint }: { title: string; hint?: React.React
 export function WizardNav({ back, onBack, next, onNext, disabled, busy, nextTestId = "wiz-next", hint, href }: {
   back?: string; onBack?: () => void; next?: string; onNext?: () => void; disabled?: boolean; busy?: boolean; nextTestId?: string; hint?: React.ReactNode; href?: string;
 }) {
+  const w = useDict().wiz.shell;
   const cls = "inline-flex items-center gap-2 rounded-md bg-brand-d px-6 py-3 text-[15px] font-medium text-white shadow-sm disabled:opacity-40";
   return (
     <div className="sticky bottom-[calc(49px+env(safe-area-inset-bottom))] md:bottom-0 z-20 -mx-4 mt-6 flex flex-wrap items-center gap-3 border-t border-line bg-white/95 px-4 py-3 backdrop-blur sm:mx-0 sm:px-0" data-testid="wiz-nav">
-      {onBack && <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-3 py-2.5 text-[15px] text-mute hover:bg-band" data-testid="wiz-back"><ArrowLeft className="flip-rtl h-4 w-4" />{back ?? "Back"}</button>}
+      {onBack && <button onClick={onBack} className="inline-flex items-center gap-1.5 rounded-md px-3 py-2.5 text-[15px] text-mute hover:bg-band" data-testid="wiz-back"><ArrowLeft className="flip-rtl h-4 w-4" />{back ?? w.back}</button>}
       {hint && <span className="ms-auto text-[13px] text-mute">{hint}</span>}
       {next && (href
         ? <a href={href} className={cn(cls, !hint && "ms-auto")} data-testid={nextTestId}>{next}<ArrowRight className="flip-rtl h-4 w-4" /></a>
-        : <button onClick={onNext} disabled={disabled || busy} className={cn(cls, !hint && "ms-auto")} data-testid={nextTestId}>{busy ? "Working…" : next}{!busy && <ArrowRight className="flip-rtl h-4 w-4" />}</button>)}
+        : <button onClick={onNext} disabled={disabled || busy} className={cn(cls, !hint && "ms-auto")} data-testid={nextTestId}>{busy ? w.working : next}{!busy && <ArrowRight className="flip-rtl h-4 w-4" />}</button>)}
     </div>
   );
 }

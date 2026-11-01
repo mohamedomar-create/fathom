@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Download } from "lucide-react";
-import { mlabel, money, type ClassKey } from "@/lib/engine";
+import { money, type ClassKey } from "@/lib/engine";
 import { CLASS_LABEL, CLASS_OPTIONS } from "@/lib/ingest/classes";
 import { cleanNum } from "@/lib/ingest/parse";
 import { salesMonths, type SortedFinancials, type SortedRow, type UploadIssue } from "@/lib/ingest/sorted";
@@ -11,6 +11,40 @@ import type { ExpenseLine } from "@/lib/ingest/expenses";
 import { isPL } from "@/lib/company/build";
 import { cn } from "@/lib/cn";
 import { useWindow } from "./virtual";
+import { colLetter } from "@/lib/ingest/trace";
+import { useT } from "@/lib/i18n/use-t";
+import type { Dict } from "@/lib/i18n";
+
+type T = ReturnType<typeof useT>;
+/** "row 5, column C" (as the reader writes it) in the chosen language. */
+export const refText = (w: Dict["wiz"], row: number, col?: number, origin?: { r: number; c: number }) =>
+  w.cellAt(row + 1 + (origin?.r ?? 0), col === undefined ? undefined : colLetter(col + (origin?.c ?? 0)));
+/** A class's name in the chosen language. */
+export const classLabel = (t: T, c: ClassKey) => (t.lang === "en" ? CLASS_LABEL[c] : t.d.wiz.cls[c] ?? CLASS_LABEL[c]);
+
+/** plainIssue in the chosen language: English exactly as the reader's helper writes it, Arabic for the fixed shapes. */
+function plainIn(t: T, i: UploadIssue, origin?: { r: number; c: number }): string {
+  if (t.lang === "en") return plainIssue(i, origin);
+  const p = t.d.wiz.sorted.plain, m = i.message;
+  if (i.fix === "cell") {
+    const at = i.row !== undefined ? refText(t.d.wiz, i.row, i.col, origin) : "";
+    if (/no (invoice date|month)/i.test(m)) return p.needsDate(refText(t.d.wiz, i.row!, undefined, origin));
+    if (/not a date/i.test(m)) return p.mustDate(at);
+    if (/not a number/i.test(m)) return p.mustNumber(at);
+    if (i.classCell || /class/i.test(m)) return p.pickType(at);
+    if (/account name/i.test(m)) return p.needsName(at);
+    if (/required/i.test(m)) return p.notEmpty(at);
+    return p.checkBox(at);
+  }
+  if (i.fix === "class") {
+    const n = m.match(/"([^"]{1,60})"/)?.[1] ?? p.thisLine;
+    return i.severity === "error" ? p.pickFor(n) : p.checkFor(n);
+  }
+  if (i.id.startsWith("tax:")) return /sales/.test(m) ? p.taxSales(i.sheet) : p.taxCosts(i.sheet);
+  // Other sentences come from the readers with values from the file: the first one, kept short.
+  const first = m.split(/(?<=\.)\s/)[0];
+  return first.length > 90 ? `${first.slice(0, 87).trimEnd()}…` : first;
+}
 
 export interface Focus { sheet: string; rows: number[] }
 type Tab = "issues" | "pl" | "bs" | "sales" | "expenses" | "out";
@@ -41,14 +75,15 @@ export interface SortedViewProps {
  * lines), the lines left out, and a download of this sorted data as a filled iReport template.
  */
 export function SortedView(p: SortedViewProps) {
+  const w = useT().d.wiz.sorted;
   const errors = p.issues.filter((i) => i.severity === "error"), checks = p.issues.filter((i) => i.severity === "check");
   const tabs: { k: Tab; label: string; n?: number }[] = [
-    ...(errors.length || checks.length ? [{ k: "issues" as Tab, label: errors.length ? "Problems" : "To check", n: errors.length || checks.length }] : []),
-    ...(p.fin && p.fin.plPeriods.length ? [{ k: "pl" as Tab, label: "P&L" }] : []),
-    ...(p.fin && p.fin.bsPeriods.length ? [{ k: "bs" as Tab, label: "Balance sheet" }] : []),
-    ...(p.sales?.length ? [{ k: "sales" as Tab, label: "Sales", n: p.sales.length }] : []),
-    ...(p.expenses?.length ? [{ k: "expenses" as Tab, label: "Expenses", n: p.expenses.length }] : []),
-    ...(p.fin && p.fin.leftOut.length ? [{ k: "out" as Tab, label: "Left out", n: p.fin.leftOut.length }] : []),
+    ...(errors.length || checks.length ? [{ k: "issues" as Tab, label: errors.length ? w.problems : w.toCheck, n: errors.length || checks.length }] : []),
+    ...(p.fin && p.fin.plPeriods.length ? [{ k: "pl" as Tab, label: w.pl }] : []),
+    ...(p.fin && p.fin.bsPeriods.length ? [{ k: "bs" as Tab, label: w.bs }] : []),
+    ...(p.sales?.length ? [{ k: "sales" as Tab, label: w.sales, n: p.sales.length }] : []),
+    ...(p.expenses?.length ? [{ k: "expenses" as Tab, label: w.expenses, n: p.expenses.length }] : []),
+    ...(p.fin && p.fin.leftOut.length ? [{ k: "out" as Tab, label: w.leftOut, n: p.fin.leftOut.length }] : []),
   ];
   const [tab, setTab] = useState<Tab>(errors.length ? "issues" : tabs.find((t) => t.k !== "issues")?.k ?? "issues");
   const shown = tabs.some((t) => t.k === tab) ? tab : tabs[0]?.k ?? "issues";
@@ -66,10 +101,10 @@ export function SortedView(p: SortedViewProps) {
     <>
       <div className={cn("flex flex-wrap items-center gap-2 px-3 py-2.5 text-[15px]", errors.length ? "bg-red-bg text-red" : "bg-green-bg text-green-d")} data-testid="reading-status" data-errors={errors.length}>
         {errors.length ? <AlertTriangle className="h-5 w-5" /> : <CheckCircle2 className="h-5 w-5" />}
-        <b data-testid="error-count">{errors.length ? `${errors.length} problem${errors.length > 1 ? "s" : ""} to fix` : "All good"}</b>
+        <b data-testid="error-count">{errors.length ? w.nProblems(errors.length) : w.allGood}</b>
         {!errors.length && p.onDownload && (
-          <button onClick={p.onDownload} disabled={p.downloading} className="ms-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted" title="The sorted data as iReport's template: upload it next time">
-            <Download className="h-3 w-3" />{p.downloading ? "Preparing…" : "Download clean copy"}
+          <button onClick={p.onDownload} disabled={p.downloading} className="ms-auto inline-flex items-center gap-1 rounded border border-brand-d bg-white px-2 py-0.5 text-xs text-brand-d disabled:opacity-50" data-testid="download-sorted" title={w.dlTitle}>
+            <Download className="h-3 w-3" />{p.downloading ? w.preparing : w.download}
           </button>
         )}
       </div>
@@ -94,13 +129,14 @@ export function SortedView(p: SortedViewProps) {
 }
 
 function ClassSelect({ value, onChange, label, compact }: { value: ClassKey | "" | null; onChange: (c: ClassKey | "") => void; label: string; compact?: boolean }) {
+  const t = useT(), w = t.d.wiz.sorted;
   return (
     <select value={value === null ? "__pick" : value} onChange={(e) => { if (e.target.value !== "__pick") onChange(e.target.value as ClassKey | ""); }} aria-label={label} onClick={(e) => e.stopPropagation()}
       className={cn("max-w-48 rounded border bg-white px-1 py-0.5 text-start", compact ? "text-[11.5px]" : "text-[12.5px]", !value ? "border-red/60" : "border-line")}>
-      {value === null && <option value="__pick" disabled>Pick a type…</option>}
-      <option value="">— Skip —</option>
-      <optgroup label="Profit & Loss">{CLASS_OPTIONS.filter(isPL).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
-      <optgroup label="Balance Sheet">{CLASS_OPTIONS.filter((c) => !isPL(c)).map((c) => <option key={c} value={c}>{CLASS_LABEL[c]}</option>)}</optgroup>
+      {value === null && <option value="__pick" disabled>{w.pick}</option>}
+      <option value="">{w.skip}</option>
+      <optgroup label={w.plGroup}>{CLASS_OPTIONS.filter(isPL).map((c) => <option key={c} value={c}>{classLabel(t, c)}</option>)}</optgroup>
+      <optgroup label={w.bsGroup}>{CLASS_OPTIONS.filter((c) => !isPL(c)).map((c) => <option key={c} value={c}>{classLabel(t, c)}</option>)}</optgroup>
     </select>
   );
 }
@@ -111,6 +147,7 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, onConfirm
     for (const g of [...(fin?.pl ?? []), ...(fin?.bs ?? [])]) for (const r of g.rows) m.set(r.key, r.cls);
     return m;
   }, [fin]);
+  const w = useT().d.wiz.sorted;
   const [at, setAt] = useState(0);
   const [all, setAll] = useState(false);
   const i = Math.min(at, Math.max(0, errors.length - 1));
@@ -120,38 +157,39 @@ function Issues({ errors, checks, onFocus, onClass, onCell, onSkipRow, onConfirm
       {errors.length > 0 && (
         <div className="border-b border-line">
           <div className="flex items-center gap-2 bg-band/70 px-3 py-1.5 text-[13px]">
-            <b data-testid="problem-counter">Problem {i + 1} of {errors.length}</b>
+            <b data-testid="problem-counter">{w.problemOf(i + 1, errors.length)}</b>
             <span className="ms-auto flex gap-1">
-              <button disabled={i === 0} onClick={() => setAt(i - 1)} className="rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" aria-label="Previous problem"><ChevronLeft className="flip-rtl h-3.5 w-3.5" /></button>
-              <button disabled={i >= errors.length - 1} onClick={() => { setAt(i + 1); const n = errors[i + 1]; if (n?.row !== undefined) onFocus({ sheet: n.sheet, rows: [n.row] }, { stay: true }); }} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" data-testid="next-problem">Next problem<ChevronRight className="flip-rtl h-3.5 w-3.5" /></button>
+              <button disabled={i === 0} onClick={() => setAt(i - 1)} className="rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" aria-label={w.prev}><ChevronLeft className="flip-rtl h-3.5 w-3.5" /></button>
+              <button disabled={i >= errors.length - 1} onClick={() => { setAt(i + 1); const n = errors[i + 1]; if (n?.row !== undefined) onFocus({ sheet: n.sheet, rows: [n.row] }, { stay: true }); }} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2 py-0.5 disabled:opacity-40" data-testid="next-problem">{w.next}<ChevronRight className="flip-rtl h-3.5 w-3.5" /></button>
             </span>
           </div>
           <ul>{row(errors[i], true)}</ul>
-          {errors.length > 1 && <button onClick={() => setAll(!all)} className="px-3 pb-2 text-xs text-brand-d underline" data-testid="see-all">{all ? "Hide the list" : `See all ${errors.length} problems`}</button>}
+          {errors.length > 1 && <button onClick={() => setAll(!all)} className="px-3 pb-2 text-xs text-brand-d underline" data-testid="see-all">{all ? w.hideList : w.seeAll(errors.length)}</button>}
           {all && <ul className="divide-y divide-line border-t border-line">{errors.map((x) => row(x))}</ul>}
         </div>
       )}
       {checks.length > 0 && (
         <details open={!errors.length} className="px-3 py-2" data-testid="checks">
-          <summary className="cursor-pointer text-[13px] text-mute">Things to check ({checks.length}). These don&apos;t stop you.</summary>
+          <summary className="cursor-pointer text-[13px] text-mute">{w.checks(checks.length)}</summary>
           <ul className="-mx-3 mt-1 divide-y divide-line">{checks.map((x) => row(x))}</ul>
         </details>
       )}
-      {!errors.length && !checks.length && <p className="px-3 py-6 text-center text-mute">Nothing to fix.</p>}
+      {!errors.length && !checks.length && <p className="px-3 py-6 text-center text-mute">{w.nothing}</p>}
     </div>
   );
 }
 
 function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, onConfirmLayout, cls, main }: { i: UploadIssue; origin?: { r: number; c: number }; cls: ClassKey | null; main?: boolean } & Pick<SortedViewProps, "onFocus" | "onClass" | "onCell" | "onSkipRow" | "onConfirmLayout">) {
+  const tr = useT(), w = tr.d.wiz.sorted;
   const [v, setV] = useState(i.text ?? "");
   const [bad, setBad] = useState<string | null>(null);
   const isDate = /not a date|no invoice date|no month/.test(i.message);
   const apply = () => {
     const t = v.trim();
-    if (isDate) { if (!t) { setBad("Type the date, e.g. 15/01/2026."); return; } onCell(i.sheet, i.row!, i.col!, t); return; }
+    if (isDate) { if (!t) { setBad(w.typeDate); return; } onCell(i.sheet, i.row!, i.col!, t); return; }
     if (!t) { onCell(i.sheet, i.row!, i.col!, null); return; }
     const n = cleanNum(t);
-    if (n === null || /[a-z]/i.test(t.replace(/^(egp|usd|eur)\s*/i, ""))) { setBad(`"${t}" is still not a number. Type digits, e.g. 5000.`); return; }
+    if (n === null || /[a-z]/i.test(t.replace(/^(egp|usd|eur)\s*/i, ""))) { setBad(w.notNumber(t)); return; }
     onCell(i.sheet, i.row!, i.col!, n);
   };
   return (
@@ -159,23 +197,23 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, onConfirmLay
       <div className="flex items-start gap-2">
         {i.severity === "error" ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />}
         <div className="min-w-0 flex-1">
-          <div title={i.message} data-testid={main ? "issue-text" : "issue-line"} className={cn(main && "text-[15px] font-medium")}>{plainIssue(i, origin)}</div>
+          <div title={i.message} data-testid={main ? "issue-text" : "issue-line"} className={cn(main && "text-[15px] font-medium")}>{plainIn(tr, i, origin)}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            {i.row !== undefined && <button onClick={() => onFocus({ sheet: i.sheet, rows: [i.row!] })} className="text-xs text-brand-d underline" data-testid="show-in-file">Show in my file</button>}
+            {i.row !== undefined && <button onClick={() => onFocus({ sheet: i.sheet, rows: [i.row!] })} className="text-xs text-brand-d underline" data-testid="show-in-file">{w.showInFile}</button>}
             {i.fix === "cell" && i.classCell && (
-              <ClassSelect value={null} label="Class for this row" compact onChange={(c) => c && onCell(i.sheet, i.row!, i.col!, CLASS_LABEL[c])} />
+              <ClassSelect value={null} label={w.classRow} compact onChange={(c) => c && onCell(i.sheet, i.row!, i.col!, CLASS_LABEL[c])} />
             )}
             {i.fix === "cell" && !i.classCell && (
               <form onSubmit={(e) => { e.preventDefault(); apply(); }} className="flex items-center gap-1.5">
-                <input value={v} onChange={(e) => { setV(e.target.value); setBad(null); }} aria-label="Correct value" data-testid="fix-input"
+                <input value={v} onChange={(e) => { setV(e.target.value); setBad(null); }} aria-label={w.correct} data-testid="fix-input"
                   placeholder={isDate ? "15/01/2026" : "5000"} className="w-36 rounded border border-line px-2 py-1 text-[14px]" />
-                <button type="submit" className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="fix-apply">Fix</button>
+                <button type="submit" className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="fix-apply">{w.fix}</button>
               </form>
             )}
-            {i.fix === "cell" && <button onClick={() => onSkipRow(i.sheet, i.row!)} className="text-xs text-mute underline" data-testid="fix-skip">Skip this row</button>}
-            {i.fix === "class" && i.key && <ClassSelect value={cls} label={`Class for ${i.message.slice(0, 40)}`} compact onChange={(c) => onClass(i.key!, c)} />}
-            {i.fix === "layout" && i.severity === "error" && i.key && onConfirmLayout && <button onClick={() => onConfirmLayout(i.key!)} className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="layout-confirm">The columns are read right</button>}
-            {i.fix === "settings" && i.severity === "error" && <span className="text-xs text-mute">Open &quot;More options&quot; below, or upload a fixed file.</span>}
+            {i.fix === "cell" && <button onClick={() => onSkipRow(i.sheet, i.row!)} className="text-xs text-mute underline" data-testid="fix-skip">{w.skipRow}</button>}
+            {i.fix === "class" && i.key && <ClassSelect value={cls} label={w.classFor(i.message.slice(0, 40))} compact onChange={(c) => onClass(i.key!, c)} />}
+            {i.fix === "layout" && i.severity === "error" && i.key && onConfirmLayout && <button onClick={() => onConfirmLayout(i.key!)} className="rounded bg-brand-d px-3 py-1 text-[13px] text-white" data-testid="layout-confirm">{w.columnsRight}</button>}
+            {i.fix === "settings" && i.severity === "error" && <span className="text-xs text-mute">{w.openMore}</span>}
           </div>
           {bad && <div className="mt-1 text-xs text-red">{bad}</div>}
         </div>
@@ -185,6 +223,7 @@ function IssueRow({ i, origin, onFocus, onClass, onCell, onSkipRow, onConfirmLay
 }
 
 function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: SortedFinancials; pl: boolean; currency: string; picked?: string; onFocus: (f: Focus | null) => void; onClass: (key: string, cls: ClassKey | "") => void }) {
+  const T = useT(), w = T.d.wiz.sorted;
   const ps = pl ? fin.plPeriods : fin.bsPeriods;
   const groups = pl ? fin.pl : fin.bs, totals = pl ? fin.plTotals : fin.bsTotals;
   const order = CLASS_OPTIONS.filter((k) => isPL(k) === pl);
@@ -196,8 +235,8 @@ function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: Sorte
     <table className="w-max min-w-full border-collapse text-[12.5px]" data-testid={`sorted-${pl ? "pl" : "bs"}`}>
       <thead className="sticky top-0 z-10 bg-white">
         <tr className="border-b border-line text-[11.5px] text-mute">
-          <th className="sticky start-0 z-10 bg-white px-2 py-1.5 text-start font-medium">Account and class</th>
-          {ps.map((p) => <th key={p} className="px-2 py-1.5 text-end font-medium">{p === opening ? `Opening (end ${mlabel(p)})` : mlabel(p)}</th>)}
+          <th className="sticky start-0 z-10 bg-white px-2 py-1.5 text-start font-medium">{w.acctClass}</th>
+          {ps.map((p) => <th key={p} className="px-2 py-1.5 text-end font-medium">{p === opening ? w.openingEnd(T.ml(p)) : T.ml(p)}</th>)}
         </tr>
       </thead>
       <tbody>
@@ -205,12 +244,12 @@ function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: Sorte
           const g = groups.find((x) => x.cls === cls);
           return [
             g && (
-              <tr key={`g-${cls}`} className="bg-band/70"><td className="sticky start-0 bg-band px-2 py-1 font-medium" colSpan={1}>{g.label}</td>{ps.map((p) => <td key={p} className="px-2 py-1 text-end font-medium tabular-nums">{amt(g.total[p])}</td>)}</tr>
+              <tr key={`g-${cls}`} className="bg-band/70"><td className="sticky start-0 bg-band px-2 py-1 font-medium" colSpan={1}>{T.lang === "en" ? g.label : T.d.wiz.cls[g.cls] ?? g.label}</td>{ps.map((p) => <td key={p} className="px-2 py-1 text-end font-medium tabular-nums">{amt(g.total[p])}</td>)}</tr>
             ),
             ...(g?.rows ?? []).map((r) => <AccountRow key={r.key} r={r} ps={ps} amt={amt} on={picked === r.key} rowRef={picked === r.key ? pickedRef : undefined} onFocus={onFocus} onClass={onClass} />),
             ...totals.filter((t) => t.after === cls).map((t) => (
               <tr key={`t-${t.label}`} className={cn("border-y border-line", t.strong && "font-semibold")} data-testid={`total-${t.label.split(" ")[0].toLowerCase()}`}>
-                <td className="sticky start-0 bg-white px-2 py-1">{t.label}</td>
+                <td className="sticky start-0 bg-white px-2 py-1">{T.tl(t.label)}</td>
                 {ps.map((p) => <td key={p} className={cn("px-2 py-1 text-end tabular-nums", t.zero && Math.abs(t.values[p] ?? 0) >= 1 && "bg-red-bg text-red")}>{t.zero ? (Math.abs(t.values[p] ?? 0) < 1 ? "0" : money(t.values[p], currency)) : amt(t.values[p])}</td>)}
               </tr>
             )),
@@ -222,14 +261,15 @@ function Statement({ fin, pl, currency, picked, onFocus, onClass }: { fin: Sorte
 }
 
 function AccountRow({ r, ps, amt, on, rowRef, onFocus, onClass }: { r: SortedRow; ps: string[]; amt: (v?: number) => string; on: boolean; rowRef?: React.Ref<HTMLTableRowElement>; onFocus: (f: Focus | null) => void; onClass: (key: string, cls: ClassKey | "") => void }) {
+  const w = useT().d.wiz.sorted;
   return (
     <tr ref={rowRef} onClick={() => onFocus(r.src.rows.length ? { sheet: r.src.sheet, rows: r.src.rows.slice(0, 2000) } : null)} data-testid={`sorted-row`} data-key={r.key} data-status={r.status}
       className={cn("cursor-pointer border-b border-line/60 hover:bg-amber/10", r.status === "error" && "bg-red-bg/60", on && "!bg-amber/25")}>
       <td className="sticky start-0 bg-inherit px-2 py-1">
         <div className="flex items-center gap-2 bg-inherit">
-          <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", r.status === "error" ? "bg-red" : r.status === "check" ? "bg-amber" : "bg-green")} title={r.status === "check" ? `Check the class: ${r.why}` : r.why} />
+          <span className={cn("inline-block h-1.5 w-1.5 shrink-0 rounded-full", r.status === "error" ? "bg-red" : r.status === "check" ? "bg-amber" : "bg-green")} title={r.status === "check" ? w.checkClass(r.why) : r.why} />
           <span className="max-w-56 truncate" title={r.name}>{r.code && <span className="me-1 text-[11px] text-mute">{r.code}</span>}{r.name}</span>
-          {!r.system && <ClassSelect value={r.cls} label={`Class for ${r.name}`} compact onChange={(c) => onClass(r.key, c)} />}
+          {!r.system && <ClassSelect value={r.cls} label={w.classFor(r.name)} compact onChange={(c) => onClass(r.key, c)} />}
         </div>
       </td>
       {ps.map((p) => <td key={p} className="px-2 py-1 text-end tabular-nums">{amt(r.values[p])}</td>)}
@@ -238,9 +278,10 @@ function AccountRow({ r, ps, amt, on, rowRef, onFocus, onClass }: { r: SortedRow
 }
 
 function LeftOutList({ fin, currency, picked, onFocus, onClass }: { fin: SortedFinancials; currency: string; picked?: string; onFocus: (f: Focus | null) => void; onClass: (key: string, cls: ClassKey | "") => void }) {
+  const w = useT().d.wiz.sorted;
   return (
     <ul className="divide-y divide-line text-[12.5px]" data-testid="left-out">
-      <li className="bg-band px-3 py-1.5 text-xs text-mute">Read from the file but not imported. Totals are left out because iReport works them out itself; give a line a class to include it.</li>
+      <li className="bg-band px-3 py-1.5 text-xs text-mute">{w.leftOutNote}</li>
       {fin.leftOut.map((o) => {
         const last = Object.keys(o.values).sort().pop();
         return (
@@ -248,7 +289,7 @@ function LeftOutList({ fin, currency, picked, onFocus, onClass }: { fin: SortedF
             <span className="min-w-0 flex-1 truncate">{o.label}</span>
             <span className="text-[11.5px] text-mute">{o.why}</span>
             {last && <span className="tabular-nums text-mute">{money(o.values[last], currency)}</span>}
-            {!/total|parent|check/.test(o.why) && <ClassSelect value="" label={`Class for ${o.label}`} compact onChange={(c) => onClass(o.key, c)} />}
+            {!/total|parent|check/.test(o.why) && <ClassSelect value="" label={w.classFor(o.label)} compact onChange={(c) => onClass(o.key, c)} />}
           </li>
         );
       })}
@@ -258,6 +299,7 @@ function LeftOutList({ fin, currency, picked, onFocus, onClass }: { fin: SortedF
 
 const SROW = 28;
 function SalesTable({ lines, currency, picked, onFocus }: { lines: SalesLine[]; currency: string; picked: SortedViewProps["picked"]; onFocus: (f: Focus | null) => void }) {
+  const T = useT(), w = T.d.wiz.sorted;
   const { ref, start, end, scrollTo } = useWindow(lines.length, SROW);
   const idx = picked?.row !== undefined ? lines.findIndex((l) => l.src?.sheet === picked.sheet && l.src?.row === picked.row) : -1;
   useEffect(() => { if (idx >= 0) scrollTo(idx, 30); }, [idx, scrollTo]);
@@ -267,20 +309,20 @@ function SalesTable({ lines, currency, picked, onFocus }: { lines: SalesLine[]; 
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line bg-band/60 px-3 py-1.5 text-[11.5px]" data-testid="sales-months">
-        {months.map((m) => <span key={m.period}><b>{mlabel(m.period)}</b> {money(m.amount, currency, true)}</span>)}
-        <span className="ms-auto font-medium" data-testid="sorted-sales-total">Total {money(total, currency)}</span>
+        {months.map((m) => <span key={m.period}><b>{T.ml(m.period)}</b> {money(m.amount, currency, true)}</span>)}
+        <span className="ms-auto font-medium" data-testid="sorted-sales-total">{w.total} {money(total, currency)}</span>
       </div>
       <div ref={ref} className="relative flex-1 overflow-auto" data-testid="sorted-sales">
         <div style={{ height: lines.length * SROW + 30, minWidth: 900 }} className="relative text-[12px]">
           <div className={cn(cols, "sticky top-0 z-10 h-[30px] items-center border-b border-line bg-white text-[11px] font-medium text-mute")}>
-            {["Date", "Invoice", "Customer", "Product", "Category", "Salesperson", "Qty", "Amount", "Cost"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i >= 6 && "text-end")}>{h}</div>)}
+            {w.salesCols.map((h, i) => <div key={h} className={cn("truncate px-1.5", i >= 6 && "text-end")}>{h}</div>)}
           </div>
           {lines.slice(start, end).map((l, k) => {
             const i = start + k;
             return (
               <div key={i} onClick={() => l.src && onFocus({ sheet: l.src.sheet, rows: [l.src.row] })} style={{ top: 30 + i * SROW, height: SROW }} data-testid="sales-row"
                 className={cn(cols, "absolute start-0 end-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
-                <div className="truncate px-1.5">{l.day ?? mlabel(l.period)}</div>
+                <div className="truncate px-1.5">{l.day ?? T.ml(l.period)}</div>
                 <div className="truncate px-1.5">{l.doc}</div>
                 <div className="truncate px-1.5" title={l.customer}>{l.customer}</div>
                 <div className="truncate px-1.5" title={l.product}>{l.product}</div>
@@ -299,6 +341,7 @@ function SalesTable({ lines, currency, picked, onFocus }: { lines: SalesLine[]; 
 }
 
 function ExpensesTable({ lines, currency, picked, onFocus }: { lines: ExpenseLine[]; currency: string; picked: SortedViewProps["picked"]; onFocus: (f: Focus | null) => void }) {
+  const T = useT(), w = T.d.wiz.sorted;
   const { ref, start, end, scrollTo } = useWindow(lines.length, SROW);
   const idx = picked?.row !== undefined ? lines.findIndex((l) => l.src?.sheet === picked.sheet && l.src?.row === picked.row) : -1;
   useEffect(() => { if (idx >= 0) scrollTo(idx, 30); }, [idx, scrollTo]);
@@ -308,24 +351,24 @@ function ExpensesTable({ lines, currency, picked, onFocus }: { lines: ExpenseLin
   return (
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap gap-x-4 gap-y-1 border-b border-line bg-band/60 px-3 py-1.5 text-[11.5px]" data-testid="expense-months">
-        {months.map((m) => <span key={m.period}><b>{mlabel(m.period)}</b> {money(m.amount, currency, true)}</span>)}
-        <span className="ms-auto font-medium" data-testid="sorted-expenses-total">Total {money(total, currency)}</span>
+        {months.map((m) => <span key={m.period}><b>{T.ml(m.period)}</b> {money(m.amount, currency, true)}</span>)}
+        <span className="ms-auto font-medium" data-testid="sorted-expenses-total">{w.total} {money(total, currency)}</span>
       </div>
       <div ref={ref} className="relative flex-1 overflow-auto" data-testid="sorted-expenses">
         <div style={{ height: lines.length * SROW + 30, minWidth: 860 }} className="relative text-[12px]">
           <div className={cn(cols, "sticky top-0 z-10 h-[30px] items-center border-b border-line bg-white text-[11px] font-medium text-mute")}>
-            {["Date", "Bill", "Supplier", "Expense type", "Type in iReport", "Description", "Amount"].map((h, i) => <div key={h} className={cn("truncate px-1.5", i === 6 && "text-end")}>{h}</div>)}
+            {w.expCols.map((h, i) => <div key={h} className={cn("truncate px-1.5", i === 6 && "text-end")}>{h}</div>)}
           </div>
           {lines.slice(start, end).map((l, k) => {
             const i = start + k;
             return (
               <div key={i} onClick={() => l.src && onFocus({ sheet: l.src.sheet, rows: [l.src.row] })} style={{ top: 30 + i * SROW, height: SROW }} data-testid="expense-line"
                 className={cn(cols, "absolute start-0 end-0 cursor-pointer items-center border-b border-line/60 hover:bg-amber/10", i === idx && "bg-amber/25")}>
-                <div className="truncate px-1.5">{l.day ?? mlabel(l.period)}</div>
+                <div className="truncate px-1.5">{l.day ?? T.ml(l.period)}</div>
                 <div className="truncate px-1.5">{l.doc}</div>
                 <div className="truncate px-1.5" title={l.supplier}>{l.supplier}</div>
                 <div className="truncate px-1.5" title={l.category}>{l.category}</div>
-                <div className="truncate px-1.5 text-mute">{l.cls ? CLASS_LABEL[l.cls] : "–"}</div>
+                <div className="truncate px-1.5 text-mute">{l.cls ? classLabel(T, l.cls) : "–"}</div>
                 <div className="truncate px-1.5 text-mute" title={l.label}>{l.label}</div>
                 <div className="px-1.5 text-end tabular-nums">{money(l.amount, currency)}</div>
               </div>

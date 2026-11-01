@@ -15,6 +15,7 @@ import { plan } from "./areas/plan";
 import { state } from "./areas/state";
 import { access } from "./areas/access";
 import { setx } from "./areas/setx";
+import { wiz } from "./areas/wiz";
 
 /** The app's words in Arabic (Egyptian business usage, Modern Standard wording). */
 export const ar: Dict = {
@@ -132,4 +133,5 @@ export const ar: Dict = {
   rp: rp.ar,
   plan: plan.ar,
   setx: setx.ar,
+  wiz: wiz.ar,
 };
