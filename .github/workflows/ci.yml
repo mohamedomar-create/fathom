@@ -36,7 +36,7 @@ jobs:
       - run: npm ci
       - name: Postgres binaries
         run: ls /usr/lib/postgresql/*/bin/initdb >/dev/null 2>&1 || (sudo apt-get update && sudo apt-get install -y postgresql)
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .local-supabase/bin
           key: local-supabase-${{ hashFiles('scripts/local-supabase/start.sh') }}
