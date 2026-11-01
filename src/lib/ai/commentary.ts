@@ -3,7 +3,7 @@ import type { Usage } from "./budget";
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
-import { SYSTEM_PROMPT } from "./context";
+import { systemPrompt } from "./context";
 
 export const COMMENTARY_MODEL = "claude-opus-5-5";
 import { COMMENTARY_SECTIONS, type CommentarySection } from "./sections";
@@ -26,8 +26,15 @@ export function asData(v: unknown): unknown {
   return v;
 }
 
+/** The request line before the data: which sections, and in which language. */
+export function commentaryRequest(sections: readonly string[], lang: "en" | "ar" = "en"): string {
+  const ask = `Write commentary for these sections: ${sections.join(", ")}. Return an empty string for any section not in that list.`;
+  return lang === "ar" ? `${ask} Write it in Modern Standard Arabic, keeping every number exactly as shown in the data (Western digits).` : ask;
+}
+
 /** `onUsage` hears what the call used (it is paid for even when the reply is refused or cut off). */
-export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS], onUsage?: (u: Usage) => void): Promise<Partial<Record<CommentarySection, string>>> {
+/** `lang` is the language of the page that asked: Arabic commentary keeps every figure in Western digits, as given. */
+export async function writeCommentary(context: unknown, sections: CommentarySection[] = [...COMMENTARY_SECTIONS], onUsage?: (u: Usage) => void, lang: "en" | "ar" = "en"): Promise<Partial<Record<CommentarySection, string>>> {
   if (!process.env.ANTHROPIC_API_KEY) throw new CommentaryError("AI commentary is not configured: add ANTHROPIC_API_KEY to the server environment.", "not_configured");
   // Stay inside the route's 60s function limit (Vercel Hobby cap).
   const client = new Anthropic({ timeout: 55_000, maxRetries: 0 });
@@ -38,10 +45,10 @@ export async function writeCommentary(context: unknown, sections: CommentarySect
       betas: ["server-side-fallback-2026-07-01"],
       fallbacks: "default",
       output_config: { effort: "medium", format: betaZodOutputFormat(Schema) },
-      system: SYSTEM_PROMPT,
+      system: systemPrompt(lang),
       messages: [{
         role: "user",
-        content: `Write commentary for these sections: ${sections.join(", ")}. Return an empty string for any section not in that list.\n\n<company_data>\n${JSON.stringify(asData(context))}\n</company_data>`,
+        content: `${commentaryRequest(sections, lang)}\n\n<company_data>\n${JSON.stringify(asData(context))}\n</company_data>`,
       }],
     });
     onUsage?.(response.usage);

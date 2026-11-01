@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { dbError } from "@/lib/action-error";
 import { attachment, companySheets, slug, toXlsx, type CompanyExport } from "@/lib/export/company-workbook";
+import { getLang } from "@/lib/i18n/server";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { getUser } from "@/lib/supabase/server";
 
@@ -77,7 +78,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
     expenses,
     odoo: odoo.data ?? null, // viewers cannot read the connection (RLS) and simply get no sheet
   };
-  const file = await toXlsx(companySheets(data));
+  const file = await toXlsx(companySheets(data, await getLang()));
   return new NextResponse(Buffer.from(file), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -1,0 +1,78 @@
+import { area } from "../types";
+
+/** The Payments sector: overview, receivables, payables, and payments in and out. */
+export const pay = area(
+  {
+    title: "Payments", receivables: "Receivables", payables: "Payables", flowsTitle: "Payments in and out",
+    kind: { customers: "Customers", suppliers: "Suppliers", transfer: "Between own accounts", other: "Other" } as Record<string, string>,
+    classPart: { Variable: "Variable", Fixed: "Fixed" } as Record<string, string>,
+    // Bucket headings as Odoo and the demo name them (anything else is shown as exported)
+    bucket: { "At Date": "At Date", "Not due": "Not due", Older: "Older", Total: "Total", "0–30 days": "0–30 days", "Over 90": "Over 90" } as Record<string, string>,
+    // From the cash book
+    cashBuckets: ["0–30 days", "31–60", "61–90", "Over 90"] as string[],
+    fromCash: (d: string) => `From your cash book, at ${d}`, toYou: "Still to be paid to you", byYou: "Still to pay",
+    cashNote: "Entries marked unpaid in your cash book, aged from their date. An Aged Receivable or Payable from your accounting system replaces this.",
+    // Nothing loaded
+    noneTitle: "No receivables or payments yet", noneText: "Upload Odoo's Aged Receivable, Aged Payable and Customer / Vendor Payments.", uploadThem: "Upload them",
+    noListTitle: "No payments list loaded yet",
+    noListText: "Your ageing reports are loaded. Payments in and out come from a separate Odoo export: Accounting → Customers → Payments, and Vendors → Payments. In the list view, tick the top box, then “Select all N records”, then Export.",
+    uploadPayments: "Upload payments",
+    // Tie-outs
+    tieAgeing: (side: string, d: string, v: string) => `${side} at ${d}: ageing ${v}`,
+    noBooks: ", no balance in the books for that month yet: upload the accounts for it.",
+    books: (v: string, acc: string) => `, books ${v} on ${acc}`, agree: ": they agree.", diff: (v: string) => `: a difference of ${v}.`,
+    notInAgeing: (x: string) => `Not in the ageing: ${x}.`, change: "Change the account", choose: "Choose the account", save: "Save", saveFailed: "Saving failed.",
+    debitNote: "Debit balances in each bucket; credits (advances, unmatched payments) are shown apart.",
+    // Overview
+    owe: (v: string, d: string, o: string, p: string) => `Customers owe ${v} at ${d}; ${o} of it is overdue${p}.`,
+    oweSup: (v: string) => `The company owes suppliers ${v}.`, flowsLine: (when: string, r: string, p: string) => `In ${when}, ${r} came in and ${p} went out.`,
+    customersOwe: "Customers owe", netCredits: (v: string) => `net ${v} after credits`, noAgeing: "no ageing", overdue: "Overdue", dso: (n: number) => `${n} days of sales outstanding`,
+    over90: "Over 90 days", owedSuppliers: "Owed to suppliers", netAdvances: (v: string) => `net ${v} after advances`, received: "Received", notLoaded: "not loaded",
+    uploadCustomer: "upload Customer Payments", inProcess: (v: string) => `${v} still in process`, paid: "Paid", uploadVendor: "upload Vendor Payments", net: (v: string) => `net ${v}`,
+    byAge: "Receivables by age", mostOverdue: "Most overdue customers", largestOwed: "Largest suppliers owed",
+    // Ageing pages
+    asOf: "As of ", owedBy: "Owed by customers", notDue: "Not yet due", custCredit: "Customers in credit", supDebit: "Suppliers in debit", partners: (n: number) => `${n} partners`,
+    debtorDays: "Debtor days (ageing)", creditorDays: "Creditor days (ageing)", bsDays: (n: number, differs: boolean) => `balance sheet: ${n}${differs ? " (differs)" : ""}`, netVat: "net of VAT",
+    dueSoon: "Due in 30 days", noNotDue: "the ageing has no not-due column", notYetDue: "not yet due", find: "Find a partner", partner: "Partner", total: "Total", noPartner: "(no partner)",
+    showing: (n: number) => `Showing 300 of ${n}: search to find the others.`,
+    // Flows
+    ledgerBasis: "From your General Ledger: every entry on your bank and cash accounts, named by the other side of its journal entry, so it agrees with the books.",
+    transfers: (v: string) => ` ${v} moved between your own accounts is not counted as money in or out.`,
+    listBasis: "From the payments list exported from Odoo. Upload your General Ledger to see every bank and cash entry, tied to the books.",
+    netTile: "Net", between: "Between own accounts", notInOut: "not money in or out", stillInProcess: "Still in process", notCleared: "cheques and notes not yet cleared",
+    whatItWas: "What it was", kindCol: "Kind", in: "In", out: "Out", byAccount: "By bank and cash account", byJournal: "By journal", byMonth: "By month", month: "Month", byPartner: "By partner",
+  },
+  {
+    title: "المدفوعات", receivables: "المدينون", payables: "الدائنون", flowsTitle: "المقبوضات والمدفوعات",
+    kind: { customers: "العملاء", suppliers: "الموردون", transfer: "بين حساباتك", other: "أخرى" },
+    classPart: { Variable: "متغيرة", Fixed: "ثابتة" },
+    bucket: { "At Date": "غير مستحق", "Not due": "غير مستحق", Older: "أقدم", Total: "الإجمالي", "0–30 days": "0–30 يومًا", "Over 90": "أكثر من 90" },
+    cashBuckets: ["0–30 يومًا", "31–60", "61–90", "أكثر من 90"],
+    fromCash: (d: string) => `من دفتر النقدية، في ${d}`, toYou: "مبالغ لم تُحصّل بعد", byYou: "مبالغ لم تُدفع بعد",
+    cashNote: "قيود عُلّمت غير مسددة في دفتر النقدية، مصنفة حسب عمرها من تاريخها. تقرير أعمار المدينين أو الدائنين من نظامك المحاسبي يحل محل هذا.",
+    noneTitle: "لا توجد أرصدة مدينين أو مدفوعات بعد", noneText: "ارفع من أودو (Odoo) تقرير أعمار المدينين وتقرير أعمار الدائنين ومدفوعات العملاء والموردين.", uploadThem: "ارفعها",
+    noListTitle: "لم تُحمّل قائمة المدفوعات بعد",
+    noListText: "تقارير الأعمار محمّلة. المقبوضات والمدفوعات تأتي من تصدير منفصل من أودو (Odoo): المحاسبة ← العملاء ← المدفوعات، والموردون ← المدفوعات. في عرض القائمة، علّم المربع العلوي، ثم «تحديد كل السجلات»، ثم تصدير.",
+    uploadPayments: "رفع المدفوعات",
+    tieAgeing: (side: string, d: string, v: string) => `${side} في ${d}: تقرير الأعمار ${v}`,
+    noBooks: "، ولا يوجد رصيد في الدفاتر لذلك الشهر بعد: ارفع الحسابات الخاصة به.",
+    books: (v: string, acc: string) => `، والدفاتر ${v} في ${acc}`, agree: ": متطابقان.", diff: (v: string) => `: بفرق ${v}.`,
+    notInAgeing: (x: string) => `غير موجود في تقرير الأعمار: ${x}.`, change: "تغيير الحساب", choose: "اختيار الحساب", save: "حفظ", saveFailed: "تعذّر الحفظ.",
+    debitNote: "الأرصدة المدينة في كل فئة؛ والأرصدة الدائنة (الدفعات المقدمة والمدفوعات غير المطابقة) تظهر منفصلة.",
+    owe: (v: string, d: string, o: string, p: string) => `على العملاء ${v} في ${d}؛ منها ${o} متأخرة السداد${p}.`,
+    oweSup: (v: string) => `على الشركة للموردين ${v}.`, flowsLine: (when: string, r: string, p: string) => `في ${when}، دخل ${r} وخرج ${p}.`,
+    customersOwe: "مستحق على العملاء", netCredits: (v: string) => `الصافي ${v} بعد الأرصدة الدائنة`, noAgeing: "لا يوجد تقرير أعمار", overdue: "متأخر السداد", dso: (n: number) => `${n} يومًا من المبيعات غير المحصلة`,
+    over90: "أكثر من 90 يومًا", owedSuppliers: "مستحق للموردين", netAdvances: (v: string) => `الصافي ${v} بعد الدفعات المقدمة`, received: "المقبوض", notLoaded: "غير محمّل",
+    uploadCustomer: "ارفع مدفوعات العملاء", inProcess: (v: string) => `${v} ما زالت قيد التحصيل`, paid: "المدفوع", uploadVendor: "ارفع مدفوعات الموردين", net: (v: string) => `الصافي ${v}`,
+    byAge: "أرصدة المدينين حسب العمر", mostOverdue: "العملاء الأكثر تأخرًا", largestOwed: "أكبر الموردين المستحق لهم",
+    asOf: "في ", owedBy: "مستحق على العملاء", notDue: "غير مستحق بعد", custCredit: "عملاء بأرصدة دائنة", supDebit: "موردون بأرصدة مدينة", partners: (n: number) => `${n} من الشركاء`,
+    debtorDays: "أيام التحصيل (تقرير الأعمار)", creditorDays: "أيام السداد (تقرير الأعمار)", bsDays: (n: number, differs: boolean) => `من الميزانية: ${n}${differs ? " (مختلف)" : ""}`, netVat: "بعد استبعاد ضريبة القيمة المضافة",
+    dueSoon: "مستحق خلال 30 يومًا", noNotDue: "تقرير الأعمار لا يحتوي عمود غير المستحق", notYetDue: "غير مستحق بعد", find: "ابحث عن شريك", partner: "الشريك", total: "الإجمالي", noPartner: "(بدون شريك)",
+    showing: (n: number) => `يُعرض 300 من ${n}: ابحث للعثور على الباقي.`,
+    ledgerBasis: "من دفتر الأستاذ العام: كل قيد على حسابات البنوك والنقدية، مسمّى بالطرف الآخر من قيد اليومية، فيطابق الدفاتر.",
+    transfers: (v: string) => ` ${v} نُقلت بين حساباتك ولا تُحسب مقبوضات أو مدفوعات.`,
+    listBasis: "من قائمة المدفوعات المصدّرة من أودو (Odoo). ارفع دفتر الأستاذ العام لترى كل قيد بنكي ونقدي مطابقًا للدفاتر.",
+    netTile: "الصافي", between: "بين حساباتك", notInOut: "ليست مقبوضات أو مدفوعات", stillInProcess: "قيد التحصيل", notCleared: "شيكات وأوراق لم تُصرف بعد",
+    whatItWas: "طبيعة الحركة", kindCol: "النوع", in: "داخل", out: "خارج", byAccount: "حسب حساب البنك والنقدية", byJournal: "حسب اليومية", byMonth: "حسب الشهر", month: "الشهر", byPartner: "حسب الشريك",
+  },
+);

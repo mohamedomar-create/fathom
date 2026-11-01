@@ -4,7 +4,8 @@ import { LEGAL } from "@/lib/legal";
 
 /** The privacy policy in Arabic (a translation; the English text governs). */
 export function PrivacyAr() {
-  const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
+  // An email address stays in Latin letters, written left to right.
+  const mail = <a href={`mailto:${LEGAL.email}`} dir="ltr" data-latin-ok="">{LEGAL.email}</a>;
   return (
     <>
       <h2>من نحن</h2>

@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { Unit } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
+import { useT } from "@/lib/i18n/use-t";
 import { useStaticCharts } from "./static";
 import { axisLabel, niceTicks, valueLabel } from "./util";
 
@@ -11,6 +12,7 @@ export interface ColumnSeries { name: string; values: (number | null)[]; color: 
 /** Grouped columns per period on one zero-based axis (values may be negative), with a per-period tooltip. */
 export function ColumnChart({ labels, series, unit = "cur", cur = "$", height = 280, testId }: { labels: string[]; series: ColumnSeries[]; unit?: Unit; cur?: string; height?: number; testId?: string }) {
   const st = useStaticCharts();
+  const T = useT();
   const box = useRef<HTMLDivElement>(null);
   const [w, setW] = useState(900);
   const [hover, setHover] = useState<number | null>(null);
@@ -35,9 +37,9 @@ export function ColumnChart({ labels, series, unit = "cur", cur = "$", height = 
   return (
     <div dir="ltr" ref={box} className="relative" data-testid={testId}>
       <div className="mb-1 flex flex-wrap gap-4 text-xs">
-        {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />{s.name}</span>)}
+        {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-sm" style={{ background: s.color }} />{T.tl(s.name)}</span>)}
       </div>
-      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block max-w-full touch-pan-y" role="img" aria-label={`${series.map((s) => s.name).join(", ")} by month`}
+      <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block max-w-full touch-pan-y" role="img" aria-label={T.d.rep.ch.byMonth(series.map((s) => T.tl(s.name)).join(T.lang === "ar" ? "، " : ", "))}
         onPointerLeave={() => setHover(null)}>
         {ticks.map((t) => (
           <g key={t}>
@@ -65,7 +67,7 @@ export function ColumnChart({ labels, series, unit = "cur", cur = "$", height = 
             <div className="mb-1 font-semibold">{labels[hover]}</div>
             {series.map((s) => (
               <div key={s.name} className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />{s.name}</span>
+                <span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-sm" style={{ background: s.color }} />{T.tl(s.name)}</span>
                 <span className="num font-medium">{valueLabel(s.values[hover], unit, cur)}</span>
               </div>
             ))}

@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { typedAmount } from "@/lib/cash/input";
 import { useT } from "@/lib/i18n/use-t";
+import { useMsg } from "@/lib/i18n/msg";
 
 /** What switching would copy, skip and leave out, read when the dialog opens (panel H09, M28). */
 function SwitchPreview({ companyId, currency }: { companyId: string; currency: string }) {
@@ -20,7 +21,8 @@ function SwitchPreview({ companyId, currency }: { companyId: string; currency: s
   const [p, setP] = useState<FullPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { previewToFull(companyId).then((r) => (r.ok ? setP(r.preview) : setError(r.error))); }, [companyId]);
-  if (error) return <p className="text-sm text-red">{error}</p>;
+  const m = useMsg();
+  if (error) return <p className="text-sm text-red">{m(error)}</p>;
   if (!p) return <p className="text-sm text-mute">{t.previewLoading}</p>;
   const months = (ms: string[]) => (ms.length ? ms.map((m) => T.ml(m)).join(", ") : t.previewNone);
   const skip = [...new Set([...p.sales.skip, ...p.expenses.skip])].sort();
@@ -37,6 +39,7 @@ function SwitchPreview({ companyId, currency }: { companyId: string; currency: s
 export function CashSettings() {
   const { company } = useCash();
   const t = useT().d.cash;
+  const m = useMsg();
   const router = useRouter();
   const [name, setName] = useState(company.name);
   const [currency, setCurrency] = useState(company.currency);
@@ -50,7 +53,7 @@ export function CashSettings() {
     if (amount.trim() !== "" && typed === null) return setMsg({ ok: false, text: t.badAmount });
     const opening = typed === null ? null : { amount: typed, asOf };
     const r = await saveCashSettings(company.id, { name, currency, opening });
-    setMsg(r.ok ? { ok: true, text: t.savedOk } : { ok: false, text: r.error });
+    setMsg(r.ok ? { ok: true, text: t.savedOk } : { ok: false, text: m(r.error) });
     if (r.ok) router.refresh();
   });
   const ro = company.readOnly;

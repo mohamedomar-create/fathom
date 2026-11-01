@@ -38,7 +38,7 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
   );
   return (
     <div dir="ltr" className="relative">
-      <svg ref={ref} viewBox={`0 0 ${w} ${h}`} className="w-full touch-pan-y" onPointerMove={onMove} onPointerLeave={() => setHx(null)} role="img" aria-label="Breakeven chart">
+      <svg ref={ref} viewBox={`0 0 ${w} ${h}`} className="w-full touch-pan-y" onPointerMove={onMove} onPointerLeave={() => setHx(null)} role="img" aria-label={T.d.rep.ch.breakeven}>
         {niceTicks(0, ymax, 6).filter((t) => t <= ymax).map((t) => (
           <g key={t}><line x1={pl} x2={w - pr} y1={Y(t)} y2={Y(t)} className="grid-line" /><text x={pl - 6} y={Y(t) + 4} className="ax" textAnchor="end">{money(t, cur, true)}</text></g>
         ))}
@@ -53,9 +53,9 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
         <circle cx={X(bep)} cy={Y(bep)} r={7} fill="#fff" stroke={K} strokeWidth={3} />
         <circle cx={X(revenue)} cy={Y(revenue)} r={7} fill="#fff" stroke={G} strokeWidth={3} />
         <circle cx={X(revenue)} cy={Y(fixed + vcr * revenue)} r={7} fill="#fff" stroke={R} strokeWidth={3} />
-        {pill(X(xmax * 0.86) - 20, Y(xmax * 0.86) - 26, "REVENUE", G)}
-        {pill(X(xmax * 0.86), Y(fixed + vcr * xmax * 0.86) + 30, "VARIABLE COSTS", R)}
-        {pill(X(xmax * 0.16) + 30, Y(fixed) + 26, "FIXED COSTS", K)}
+        {pill(X(xmax * 0.86) - 20, Y(xmax * 0.86) - 26, T.d.rep.ch.revenue, G)}
+        {pill(X(xmax * 0.86), Y(fixed + vcr * xmax * 0.86) + 30, T.d.rep.ch.variable, R)}
+        {pill(X(xmax * 0.16) + 30, Y(fixed) + 26, T.d.rep.ch.fixed, K)}
         {hx !== null && (
           <g pointerEvents="none">
             <line x1={X(hx)} x2={X(hx)} y1={pt} y2={h - pb} stroke="#bbb" strokeDasharray="3 3" />
@@ -71,8 +71,8 @@ export function BreakevenChart({ revenue, fixed, vcr, bep, cur }: { revenue: num
           return (
             <>
               <div className="mb-1 font-semibold">{T.d.ana.atRevenue(money(hx, cur))}</div>
-              <div className="flex justify-between gap-4"><span className="text-mute">Total costs</span><span className="num">{money(cost, cur)}</span></div>
-              <div className="flex justify-between gap-4"><span className="text-mute">{pr_ >= 0 ? "Profit" : "Loss"}</span><span className={`num font-semibold ${pr_ >= 0 ? "text-green-d" : "text-red"}`}>{money(pr_, cur)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-mute">{T.d.rep.ch.totalCosts}</span><span className="num">{money(cost, cur)}</span></div>
+              <div className="flex justify-between gap-4"><span className="text-mute">{pr_ >= 0 ? T.d.rep.ch.profit : T.d.rep.ch.loss}</span><span className={`num font-semibold ${pr_ >= 0 ? "text-green-d" : "text-red"}`}>{money(pr_, cur)}</span></div>
             </>
           );
         })()}

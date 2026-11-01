@@ -3,6 +3,7 @@ import { useState, useTransition } from "react";
 import { Dialog, DialogContent, DialogTrigger } from "./dialog";
 import { cn } from "@/lib/cn";
 import { useDict } from "@/lib/i18n/context";
+import { useMsg } from "@/lib/i18n/msg";
 import { createClient } from "@/lib/supabase/client";
 import { totpFactor, verifyCode } from "@/lib/auth/mfa";
 
@@ -25,6 +26,7 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
 }) {
   const d = useDict().account;
   const a = useDict().access;
+  const m = useMsg();
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [hasCode, setHasCode] = useState(false);
@@ -84,7 +86,7 @@ export function ConfirmDialog({ trigger, title, children, typeToConfirm, typeLab
               )}
             </div>
           )}
-          {error && <p className="mb-3 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{error}</p>}
+          {error && <p className="mb-3 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{m(error)}</p>}
           <div className="flex justify-end gap-2">
             <button type="button" onClick={() => setOpen(false)} className="rounded border border-line px-4 py-2 text-sm hover:bg-band">{d.cancel}</button>
             <button disabled={!ready || pending} data-testid="confirm-button"

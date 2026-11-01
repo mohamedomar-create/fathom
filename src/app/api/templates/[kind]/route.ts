@@ -3,6 +3,7 @@ import { z } from "zod";
 import { buildTemplate } from "@/lib/templates/build";
 import { TEMPLATE_KINDS, type TemplateKind } from "@/lib/templates/spec";
 import { BS_KEYS, PL_KEYS } from "@/lib/engine";
+import { getLang } from "@/lib/i18n/server";
 
 export const runtime = "nodejs";
 
@@ -23,13 +24,16 @@ export async function GET(req: Request, ctx: { params: Promise<{ kind: string }>
   // The financial year that holds this month, unless one is asked for.
   const year = q.data.year ?? (now.getMonth() + 1 >= q.data.fy ? now.getFullYear() : now.getFullYear() - 1);
   const company = q.data.company?.replace(/[^\p{L}\p{N} .&()-]/gu, "").trim() || undefined;
-  const buf = await buildTemplate(kind as TemplateKind, { year, fyStart: q.data.fy, currency: q.data.currency, company });
+  // Titles and help in the language chosen on this browser; the headings iReport reads back are the same in both.
+  const lang = await getLang();
+  const buf = await buildTemplate(kind as TemplateKind, { year, fyStart: q.data.fy, currency: q.data.currency, company, lang });
   const file = `ireport-${kind}-template${kind === "financials" ? `-${year}` : ""}.xlsx`;
   return new NextResponse(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="${file}"`,
       "Cache-Control": "public, max-age=3600",
+      Vary: "Cookie",
     },
   });
 }
@@ -61,7 +65,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ kind: string }
   const first = (d.pl?.months ?? d.bs!.months)[0];
   const company = d.company?.replace(/[^\p{L}\p{N} .&()-]/gu, "").trim() || undefined;
   const fill = { pl: d.pl as never, bs: d.bs as never };
-  const buf = await buildTemplate("financials", { year: Number(first.slice(0, 4)), fyStart: d.fy, currency: d.currency, company, fill });
+  const buf = await buildTemplate("financials", { year: Number(first.slice(0, 4)), fyStart: d.fy, currency: d.currency, company, fill, lang: await getLang() });
   return new NextResponse(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

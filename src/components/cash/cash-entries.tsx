@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { money } from "@/lib/engine/format";
 import { typedAmount } from "@/lib/cash/input";
 import { useCash } from "@/lib/cash/context";
+import { useMsg } from "@/lib/i18n/msg";
 import type { StoredEntry } from "@/lib/cash/load";
 import { entryAdd, entryDelete, entryUpdate, type EntryInput } from "@/app/cash/[id]/actions";
 import { PageHeader } from "@/components/shell/page-header";
@@ -42,6 +43,7 @@ export function CashEntries() {
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>(blank());
   const [error, setError] = useState<string | null>(null);
+  const m = useMsg();
   const [pending, start] = useTransition();
   const cur = company.currency;
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done?: () => void) => start(async () => {
@@ -84,7 +86,7 @@ export function CashEntries() {
           <button type="button" disabled={from + SHOW >= rows.length} onClick={() => setPage(pageNo + 1)} className="text-brand-d disabled:text-mute" data-testid="entries-older">{t.older}</button>
         </span>}
       </div>
-      {error && <p role="alert" className="mb-3 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="entries-error">{error}</p>}
+      {error && <p role="alert" className="mb-3 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="entries-error">{m(error)}</p>}
       <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.kind, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>

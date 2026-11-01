@@ -17,6 +17,9 @@ import { access } from "./areas/access";
 import { setx } from "./areas/setx";
 import { wiz } from "./areas/wiz";
 import { dat } from "./areas/dat";
+import { rep } from "./areas/rep";
+import { pay } from "./areas/pay";
+import { msg } from "./areas/msg";
 /**
  * The app's words in English. The Arabic dictionary must have every key (TypeScript checks it), so nothing is ever
  * left untranslated. Counts are worded so one phrase fits any number ("Checks failing: 3"), which Arabic needs.
@@ -139,6 +142,9 @@ export const en = {
   setx: setx.en,
   wiz: wiz.en,
   dat: dat.en,
+  rep: rep.en,
+  pay: pay.en,
+  msg: msg.en,
 };
 
 export type Dict = Widen<typeof en>;
