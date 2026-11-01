@@ -117,6 +117,17 @@ Section lengths: "summary" is one headline sentence followed by up to three acti
 
 "realprofit" is 2 to 4 sentences on the "real_profit" block: what the reported profit is really worth after inflation, payment delays and the exchange rate, the biggest cause of the gap, and one action. If inflation is not entered, say what entering it would show. If rates_are_examples is true, say the rates are examples.`;
 
+/** How the rules change when the report is read in Arabic: the language line is replaced; every figure stays as given. */
+const ARABIC_RULES = `- Write in Modern Standard Arabic, the way Egyptian accountants write a management report (for example قائمة الدخل، الميزانية، هامش مجمل الربح، التدفقات النقدية). Write every section in Arabic.
+- Keep every number exactly as it appears in the data, in Western digits (0-9) with the same currency code, separators and signs (for example "EGP 1,066,138", "12.5%", "45 days" becomes "45 يومًا" but the 45 stays). Never convert numbers to Arabic-Indic digits (٠-٩), never spell them out in words and never round or recompute them.
+- Keep product and system names in Latin letters (Odoo, Excel, PDF, EGP, KPI codes), and keep customer, product, account and supplier names exactly as given.
+- Write "Question for management: …" as "سؤال للإدارة: …". In the "bank" memo, write the headings in Arabic, in this order: "أبرز نقاط القوة" (Lead with), "المخاطر وكيفية الرد عليها" (Risks and how to answer them), "ما الذي تطلبه" (What to ask for), "أسئلة متوقعة" (Questions to expect). Keep the "• " bullets.`;
+
+/** The system prompt in the report's language: British English, or Modern Standard Arabic with figures unchanged. */
+export function systemPrompt(lang: "en" | "ar" = "en"): string {
+  return lang === "ar" ? SYSTEM_PROMPT.replace("- Use British English.", ARABIC_RULES) : SYSTEM_PROMPT;
+}
+
 /** Sales and expenses for the same period, in a few lines each, so commentary can name customers, products and suppliers. */
 export function linesContext(months: MonthData[], accounts: ExpenseAccount[], sales: SalesData, expenses: ExpensesData, sel: PeriodSel, fyStart: number, currency: string, asOf?: string | null) {
   const m = (v: number | null | undefined) => (v === null || v === undefined ? "n/a" : money(v, currency));

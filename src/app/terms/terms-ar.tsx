@@ -4,7 +4,8 @@ import { LEGAL } from "@/lib/legal";
 
 /** The terms of use in Arabic (a translation; the English text governs). */
 export function TermsAr() {
-  const mail = <a href={`mailto:${LEGAL.email}`}>{LEGAL.email}</a>;
+  // An email address stays in Latin letters, written left to right.
+  const mail = <a href={`mailto:${LEGAL.email}`} dir="ltr" data-latin-ok="">{LEGAL.email}</a>;
   return (
     <>
       <p className="mt-6">

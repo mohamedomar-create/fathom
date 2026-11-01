@@ -50,11 +50,11 @@ export function LineChart({
     <div dir="ltr" ref={box} className="relative" data-testid={testId}>
       {legend && series.length > 1 && (
         <div className="mb-1 flex flex-wrap gap-4 text-xs">
-          {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{s.name}</span>)}
+          {series.map((s) => <span key={s.name} className="flex items-center gap-1.5"><i className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: s.color }} />{T.tl(s.name)}</span>)}
         </div>
       )}
       <svg ref={ref} viewBox={`0 0 ${w} ${h}`} width={w} height={h} className="block max-w-full touch-pan-y" onPointerMove={onMove} onPointerLeave={() => setHover(null)} role="img"
-        aria-label={series.map((s) => s.name).join(", ") + " chart"}>
+        aria-label={series.map((s) => T.tl(s.name)).join(T.lang === "ar" ? "، " : ", ") + T.d.rep.ch.chart}>
         <defs><clipPath id={clip}><rect x={pl} y={0} width={w - pl - pr} height={h} /></clipPath></defs>
         {ticks.map((t) => (
           <g key={t}>
@@ -113,7 +113,7 @@ export function LineChart({
             <div className="mb-1 font-semibold">{labels[hover]}</div>
             {series.map((s) => (
               <div key={s.name} className="flex items-center justify-between gap-4">
-                <span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />{s.name}</span>
+                <span className="flex items-center gap-1.5 text-mute"><i className="inline-block h-2 w-2 rounded-full" style={{ background: s.color }} />{T.tl(s.name)}</span>
                 <span className="num font-medium">{valueLabel(s.values[hover], unit, cur)}</span>
               </div>
             ))}

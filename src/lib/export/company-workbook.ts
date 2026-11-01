@@ -22,52 +22,55 @@ export interface CompanyExport {
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+const MONTHS_AR = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
 const day = (iso: string | null) => (iso ? iso.slice(0, 10) : null);
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
 const cell = (v: unknown): Cell => (v === undefined ? null : typeof v === "string" || typeof v === "number" || typeof v === "boolean" || v === null ? v : JSON.stringify(v));
 
-export function companySheets(d: CompanyExport): Sheet[] {
+/** lang: sheet names and headings in Arabic for an Arabic page; the figures, codes and names stay as stored. */
+export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet[] {
+  const w = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const c = d.company;
   const company: Cell[][] = [
-    ["Company", c.name], ["Organisation", d.orgName], ["Currency", c.currency], ["Financial year starts", MONTHS[c.fy_start_month - 1] ?? c.fy_start_month],
-    ["Corporate tax rate", c.tax_rate], ["Industry", c.industry], ["Source", c.source], ["Data version", c.data_version],
-    ["Last updated", day(c.last_synced_at)], ["Exported", d.exportedAt],
+    [w("Company", "الشركة"), c.name], [w("Organisation", "المؤسسة"), d.orgName], [w("Currency", "العملة"), c.currency], [w("Financial year starts", "بداية السنة المالية"), (lang === "ar" ? MONTHS_AR : MONTHS)[c.fy_start_month - 1] ?? c.fy_start_month],
+    [w("Corporate tax rate", "نسبة ضريبة الدخل"), c.tax_rate], [w("Industry", "النشاط"), c.industry], [w("Source", "المصدر"), c.source], [w("Data version", "إصدار البيانات"), c.data_version],
+    [w("Last updated", "آخر تحديث"), day(c.last_synced_at)], [w("Exported", "تاريخ التصدير"), d.exportedAt],
   ];
   const kpis = Object.entries(obj(c.kpi_config)).filter(([k]) => !RESERVED_KEYS.includes(k));
   const econ = Object.entries(obj(obj(c.kpi_config)[ECONOMY_KEY])).filter(([, v]) => v !== null && v !== undefined);
-  if (econ.length) { company.push([], ["Economic assumptions"]); for (const [k, v] of econ) company.push([k, cell(v)]); }
+  if (econ.length) { company.push([], [w("Economic assumptions", "الافتراضات الاقتصادية")]); for (const [k, v] of econ) company.push([k, cell(v)]); }
   const fc = Object.entries(obj(obj(c.kpi_config)[FORECAST_KEY])).filter(([, v]) => v !== null && v !== undefined);
-  if (fc.length) { company.push([], ["Forecast drivers"]); for (const [k, v] of fc) company.push([k, cell(v)]); }
+  if (fc.length) { company.push([], [w("Forecast drivers", "محركات التوقعات")]); for (const [k, v] of fc) company.push([k, cell(v)]); }
   if (kpis.length) {
-    company.push([], ["KPI", "Active", "Importance", "Target", "Alert on", "Alert threshold"]);
+    company.push([], [w("KPI", "المؤشر"), w("Active", "مفعّل"), w("Importance", "الأهمية"), w("Target", "المستهدف"), w("Alert on", "التنبيه مفعّل"), w("Alert threshold", "حد التنبيه")]);
     for (const [k, v] of kpis) { const o = obj(v); company.push([k, cell(o.active), cell(o.importance), cell(o.target), cell(o.alert_active), cell(o.alert_threshold)]); }
   }
   const ctx = Object.entries(obj(c.ai_context)).filter(([, v]) => v !== "" && v != null);
-  if (ctx.length) { company.push([], ["AI business context"]); for (const [k, v] of ctx) company.push([k, cell(v)]); }
+  if (ctx.length) { company.push([], [w("AI business context", "سياق النشاط للذكاء الاصطناعي")]); for (const [k, v] of ctx) company.push([k, cell(v)]); }
   const notes = Object.entries(obj(c.notes));
-  if (notes.length) { company.push([], ["Notes"]); for (const [k, v] of notes) company.push([k, cell(v)]); }
+  if (notes.length) { company.push([], [w("Notes", "ملاحظات")]); for (const [k, v] of notes) company.push([k, cell(v)]); }
 
   const periods = [...new Set(d.accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
-  const accounts: Cell[][] = [["Code", "Account", "Statement", "Class", ...periods], ...d.accounts.map((a) => [a.code, a.name, a.statement, a.class, ...periods.map((p) => a.amounts[p] ?? null)])];
+  const accounts: Cell[][] = [[w("Code", "الكود"), w("Account", "الحساب"), w("Statement", "القائمة"), w("Class", "التصنيف"), ...periods], ...d.accounts.map((a) => [a.code, a.name, a.statement, a.class, ...periods.map((p) => a.amounts[p] ?? null)])];
 
   const sheets: Sheet[] = [
-    { name: "Company", rows: company },
-    { name: "Accounts", rows: accounts },
-    { name: "Imports", rows: [["Date", "Action", "Kind", "File", "Status", "Data version"], ...d.imports.map((i) => [i.created_at, i.action, i.kind, i.filename, i.status, i.data_version])] },
-    { name: "Commentary", rows: [["Period", "Section", "Written by", "Updated", "Text"], ...d.commentary.map((m) => [m.period_key, m.section, m.source === "ai" ? "AI" : "User", m.updated_at, m.body])] },
-    { name: "Reports", rows: [["Title", "Period type", "Period end", "Status", "Shared link", "Link expires", "Published", "Created"], ...d.reports.map((r) => [r.title, r.period_type, r.period_end, r.status, r.shared ? "yes" : "no", day(r.expires_at), day(r.published_at), day(r.created_at)])] },
+    { name: w("Company", "الشركة"), rows: company },
+    { name: w("Accounts", "الحسابات"), rows: accounts },
+    { name: w("Imports", "عمليات الاستيراد"), rows: [[w("Date", "التاريخ"), w("Action", "الإجراء"), w("Kind", "النوع"), w("File", "الملف"), w("Status", "الحالة"), w("Data version", "إصدار البيانات")], ...d.imports.map((i) => [i.created_at, i.action, i.kind, i.filename, i.status, i.data_version])] },
+    { name: w("Commentary", "التعليقات"), rows: [[w("Period", "الفترة"), w("Section", "القسم"), w("Written by", "كتبه"), w("Updated", "آخر تحديث"), w("Text", "النص")], ...d.commentary.map((m) => [m.period_key, m.section, m.source === "ai" ? w("AI", "الذكاء الاصطناعي") : w("User", "المستخدم"), m.updated_at, m.body])] },
+    { name: w("Reports", "التقارير"), rows: [[w("Title", "العنوان"), w("Period type", "نوع الفترة"), w("Period end", "نهاية الفترة"), w("Status", "الحالة"), w("Shared link", "رابط مشاركة"), w("Link expires", "انتهاء الرابط"), w("Published", "تاريخ النشر"), w("Created", "تاريخ الإنشاء")], ...d.reports.map((r) => [r.title, r.period_type, r.period_end, r.status, r.shared ? w("yes", "نعم") : w("no", "لا"), day(r.expires_at), day(r.published_at), day(r.created_at)])] },
   ];
   if (d.expenses?.length) {
-    sheets.push({ name: "Expense lines", rows: [["Date", "Month", "Bill", "Series", "Supplier", "Account", "Class", "Category", "Description", "Amount", "Source"],
-      ...d.expenses.map((l) => [l.day, l.period, l.doc, l.series, l.supplier, l.account, l.cls, l.category, l.label, Number(l.amount), l.source === "file" ? "Expenses file" : "General Ledger"])] });
+    sheets.push({ name: w("Expense lines", "بنود المصروفات"), rows: [[w("Date", "التاريخ"), w("Month", "الشهر"), w("Bill", "الفاتورة"), w("Series", "السلسلة"), w("Supplier", "المورد"), w("Account", "الحساب"), w("Class", "التصنيف"), w("Category", "الفئة"), w("Description", "البيان"), w("Amount", "المبلغ"), w("Source", "المصدر")],
+      ...d.expenses.map((l) => [l.day, l.period, l.doc, l.series, l.supplier, l.account, l.cls, l.category, l.label, Number(l.amount), l.source === "file" ? w("Expenses file", "ملف المصروفات") : w("General Ledger", "دفتر الأستاذ العام")])] });
   }
   if (d.sales?.length) {
-    sheets.push({ name: "Sales lines", rows: [["Date", "Month", "Invoice", "Series", "Customer", "Product", "Category", "Salesperson", "Quantity", "Amount", "Cost", "Source"],
-      ...d.sales.map((l) => [l.day, l.period, l.doc, l.series, l.customer, l.product, l.category, l.salesperson, l.qty === null ? null : Number(l.qty), Number(l.amount), l.cost === null ? null : Number(l.cost), l.source === "file" ? "Sales file" : "General Ledger"])] });
+    sheets.push({ name: w("Sales lines", "بنود المبيعات"), rows: [[w("Date", "التاريخ"), w("Month", "الشهر"), w("Invoice", "الفاتورة"), w("Series", "السلسلة"), w("Customer", "العميل"), w("Product", "المنتج"), w("Category", "الفئة"), w("Salesperson", "مندوب المبيعات"), w("Quantity", "الكمية"), w("Amount", "المبلغ"), w("Cost", "التكلفة"), w("Source", "المصدر")],
+      ...d.sales.map((l) => [l.day, l.period, l.doc, l.series, l.customer, l.product, l.category, l.salesperson, l.qty === null ? null : Number(l.qty), Number(l.amount), l.cost === null ? null : Number(l.cost), l.source === "file" ? w("Sales file", "ملف المبيعات") : w("General Ledger", "دفتر الأستاذ العام")])] });
   }
   if (d.odoo) {
     const o = d.odoo;
-    sheets.push({ name: "Odoo connection", rows: [["Address", o.url], ["Database", o.db], ["Login", o.login], ["Odoo company", o.odoo_company_name], ["Months of history", o.months_history], ["Status", o.status], ["Last sync", o.last_sync_at], ["API key", "not exported"]] });
+    sheets.push({ name: w("Odoo connection", "الاتصال بأودو"), rows: [[w("Address", "العنوان"), o.url], [w("Database", "قاعدة البيانات"), o.db], [w("Login", "اسم الدخول"), o.login], [w("Odoo company", "الشركة في أودو"), o.odoo_company_name], [w("Months of history", "أشهر التاريخ"), o.months_history], [w("Status", "الحالة"), o.status], [w("Last sync", "آخر مزامنة"), o.last_sync_at], [w("API key", "مفتاح API"), w("not exported", "لا يُصدَّر")]] });
   }
   return sheets;
 }

@@ -4,12 +4,14 @@ import { useState } from "react";
 import { CAT_COL, type KpiCategory } from "@/lib/engine";
 import { ChartTip } from "./tooltip";
 import { useStaticCharts } from "./static";
+import { useT } from "@/lib/i18n/use-t";
 
 export interface ArcItem { key: string; category: KpiCategory; name: string; ok: boolean; detail: string }
 
 /** Semicircular KPI Explorer: one rotated tile per KPI with a result, grouped by category. */
 export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; pctOn: number; period: string; onSelect?: (key: string) => void }) {
   const st = useStaticCharts();
+  const T = useT();
   const w = 1000, h = 560, cx = w / 2, cy = h - 50, R = 280;
   const [hover, setHover] = useState<number | null>(null);
   const n = items.length;
@@ -22,7 +24,7 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
   const pos = (i: number, r: number) => [cx + r * Math.cos(ang(i)), cy - r * Math.sin(ang(i))] as const;
   return (
     <div dir="ltr" className="relative">
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="KPI Explorer arc">
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label={T.d.rep.ch.arc}>
         <path d={`M${cx - R - 34},${cy} A${R + 34},${R + 34} 0 0 1 ${cx + R + 34},${cy}`} fill="none" stroke="#F1F1EF" strokeWidth={44} />
         {groups.map((g) => {
           const a0 = ang(g.from) + Math.PI / Math.max(n, 1) / 2 - 0.01, a1 = ang(g.to) - Math.PI / Math.max(n, 1) / 2 + 0.01;
@@ -32,7 +34,7 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
           return (
             <g key={g.cat}>
               <path d={`M${cx + r * Math.cos(a0)},${cy - r * Math.sin(a0)} A${r},${r} 0 0 1 ${cx + r * Math.cos(a1)},${cy - r * Math.sin(a1)}`} fill="none" stroke={CAT_COL[g.cat as KpiCategory]} strokeWidth={4} strokeLinecap="round" opacity={0.75} />
-              {g.to - g.from >= 2 && <text x={lx} y={ly} textAnchor="middle" fontSize={10} letterSpacing=".06em" fill="#999" transform={`rotate(${90 - (am * 180) / Math.PI},${lx},${ly})`}>{g.cat.toUpperCase()}</text>}
+              {g.to - g.from >= 2 && <text x={lx} y={ly} textAnchor="middle" fontSize={10} letterSpacing=".06em" fill="#999" transform={`rotate(${90 - (am * 180) / Math.PI},${lx},${ly})`}>{T.lang === "ar" ? T.tl(g.cat) : g.cat.toUpperCase()}</text>}
             </g>
           );
         })}
@@ -57,10 +59,10 @@ export function KpiArc({ items, pctOn, period, onSelect }: { items: ArcItem[]; p
         })}
         <text x={cx} y={cy - 56} textAnchor="middle" fontSize={56} fontWeight={300}>{Math.round(pctOn)}%</text>
         <text x={cx} y={cy - 20} textAnchor="middle" fontSize={20} fontWeight={600}>{period}</text>
-        <text x={cx} y={cy + 4} textAnchor="middle" className="ax">on track</text>
+        <text x={cx} y={cy + 4} textAnchor="middle" className="ax">{T.d.rep.ch.onTrack}</text>
       </svg>
       <div className="mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-[11px] text-mute">
-        {groups.map((g) => <span key={g.cat} className="flex items-center gap-1.5"><i className="inline-block h-1 w-4 rounded" style={{ background: CAT_COL[g.cat as KpiCategory] }} />{g.cat}</span>)}
+        {groups.map((g) => <span key={g.cat} className="flex items-center gap-1.5"><i className="inline-block h-1 w-4 rounded" style={{ background: CAT_COL[g.cat as KpiCategory] }} />{T.tl(g.cat)}</span>)}
       </div>
       <ChartTip show={hover !== null} x={hover !== null ? (pos(hover, R)[0] / w) * 100 : 0} y={hover !== null ? (pos(hover, R)[1] / h) * 100 : 0}>
         {hover !== null && (<><div className="font-semibold">{items[hover].name}</div><div className="text-mute">{items[hover].detail}</div></>)}

@@ -11,6 +11,7 @@ import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
 import { BUSY, limits } from "@/lib/rate-limit";
 import { aiBudgetOk, OVER_BUDGET, recordAiUsage, type Usage } from "@/lib/ai/budget";
+import { getLang } from "@/lib/i18n/server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -19,6 +20,8 @@ const Body = z.object({
   type: z.enum(["month", "quarter", "year"]),
   end: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
   sections: z.array(z.enum(COMMENTARY_SECTIONS)).min(1).optional(),
+  /** The language of the page that asked; without it, the language chosen on this browser. */
+  lang: z.enum(["en", "ar"]).optional(),
 });
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -55,7 +58,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       // Customers, products and suppliers from the same data, so the commentary can name them.
       ...linesContext(bundle.months, bundle.accounts, sales, expenses, sel, bundle.settings.fyStartMonth, bundle.settings.currency, bundle.asOf),
     };
-    const out = await writeCommentary(context, parsed.data.sections, (u) => { used = u; });
+    const lang = parsed.data.lang ?? (await getLang());
+    const out = await writeCommentary(context, parsed.data.sections, (u) => { used = u; }, lang);
     const periodKey = `${parsed.data.type}:${parsed.data.end}`;
     const rows = Object.entries(out).map(([section, body]) => ({ company_id: id, period_key: periodKey, section, body: section === "bank" || section === "realprofit" ? stampMemo(body!, section, bundle.assumptions ?? {}) : body!, source: "ai", updated_by: user.id, updated_at: new Date().toISOString() }));
     if (rows.length) {

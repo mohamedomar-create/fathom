@@ -3,12 +3,16 @@ import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { COSTS_DEFINITION } from "@/lib/engine/expenses";
 import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
 import type { FinancialsFill, FillRow } from "./fill";
+import { monthLabel } from "@/lib/i18n";
 
 const TEAL = "FF0B6E70", BAND = "FFF5F5F3", INPUT = "FFFFFBEA", MUTE = "FF76766F";
 const NUM = '#,##0.00;[Red]-#,##0.00';
 
 /** fill: the template comes back filled with figures already read and sorted by iReport (financials only). */
-export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string; fill?: FinancialsFill }
+export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string; fill?: FinancialsFill; /** Titles, help headings and cell messages in Arabic; the headings iReport reads back stay as they are. */ lang?: "en" | "ar" }
+
+/** The English, or the Arabic when the template is asked for in Arabic. */
+const L = (o: { lang?: "en" | "ar" }, en: string, ar: string) => (o.lang === "ar" ? ar : en);
 
 /** The workbook for one kind of template, as an .xlsx buffer. */
 export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Promise<Buffer> {
@@ -57,7 +61,7 @@ function readMe(wb: ExcelJS.Workbook, heading: string, lines: [string, string][]
 function financials(wb: ExcelJS.Workbook, o: TemplateOptions) {
   const { opening, months } = templateMonths(o.year, o.fyStart);
   const fy = `${mlabel(months[0])} – ${mlabel(months[11])}`;
-  readMe(wb, `iReport · Monthly financials template${o.company ? ` · ${o.company}` : ""}`, [
+  readMe(wb, `iReport · ${L(o, "Monthly financials template", "قالب القوائم المالية الشهرية")}${o.company ? ` · ${o.company}` : ""}`, [
     ["Fill in one column per month, upload the file, and iReport reads every figure exactly as you entered it.", "املأ عمودًا لكل شهر، ثم ارفع الملف، وسيقرأ iReport كل رقم كما أدخلته تمامًا."],
     ["HOW TO FILL IT", "طريقة الملء"],
     [`1. Sheet "P&L": for each account, enter the month's total for every month (${fy}). Not year-to-date: just that month.`, "١. ورقة P&L: أدخل إجمالي كل شهر لكل حساب (وليس الرصيد التراكمي)."],
@@ -80,15 +84,17 @@ function financials(wb: ExcelJS.Workbook, o: TemplateOptions) {
   const plRange = `Classes!$A$2:$A$${1 + PL_KEYS.length}`, bsRange = `Classes!$A$${2 + PL_KEYS.length}:$A$${1 + PL_KEYS.length + BS_KEYS.length}`;
   const f = o.fill;
   if (f) {
-    if (f.pl) sheet(wb, "P&L", MARK.pl, "Profit and loss: the month's total for each account", `Filled by iReport from your upload. Amounts in ${o.currency}. Costs positive.`, f.pl.months, f.pl.rows, plRange);
-    if (f.bs) sheet(wb, "Balance Sheet", MARK.bs, "Balance sheet: each account's balance at the end of the month", `Filled by iReport from your upload. Amounts in ${o.currency}.`, f.bs.months, f.bs.rows, bsRange);
+    if (f.pl) sheet(wb, "P&L", MARK.pl, L(o, PL_TITLE, "قائمة الدخل: إجمالي الشهر لكل حساب"), L(o, `Filled by iReport from your upload. Amounts in ${o.currency}. Costs positive.`, `ملأه iReport من ملفك المرفوع. المبالغ بعملة ${o.currency}. التكاليف بالموجب.`), f.pl.months, f.pl.rows, plRange, o);
+    if (f.bs) sheet(wb, "Balance Sheet", MARK.bs, L(o, BS_TITLE, "الميزانية: رصيد كل حساب في نهاية الشهر"), L(o, `Filled by iReport from your upload. Amounts in ${o.currency}.`, `ملأه iReport من ملفك المرفوع. المبالغ بعملة ${o.currency}.`), f.bs.months, f.bs.rows, bsRange, o);
     return;
   }
-  sheet(wb, "P&L", MARK.pl, "Profit and loss: the month's total for each account", `One column per month. Amounts in ${o.currency}. Costs positive.`, months, PL_ROWS, plRange);
-  sheet(wb, "Balance Sheet", MARK.bs, "Balance sheet: each account's balance at the end of the month", `The first month column is the opening balance (end of ${mlabel(opening)}). Amounts in ${o.currency}.`, [opening, ...months], BS_ROWS, bsRange);
+  sheet(wb, "P&L", MARK.pl, L(o, PL_TITLE, "قائمة الدخل: إجمالي الشهر لكل حساب"), L(o, `One column per month. Amounts in ${o.currency}. Costs positive.`, `عمود لكل شهر. المبالغ بعملة ${o.currency}. التكاليف بالموجب.`), months, PL_ROWS, plRange, o);
+  sheet(wb, "Balance Sheet", MARK.bs, L(o, BS_TITLE, "الميزانية: رصيد كل حساب في نهاية الشهر"), L(o, `The first month column is the opening balance (end of ${mlabel(opening)}). Amounts in ${o.currency}.`, `أول عمود شهري هو الرصيد الافتتاحي (نهاية ${monthLabel(opening, "ar")}). المبالغ بعملة ${o.currency}.`), [opening, ...months], BS_ROWS, bsRange, o);
 }
 
-function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, sub: string, months: string[], rows: [string, ClassKey][] | FillRow[], range: string) {
+const PL_TITLE = "Profit and loss: the month's total for each account", BS_TITLE = "Balance sheet: each account's balance at the end of the month";
+
+function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, sub: string, months: string[], rows: [string, ClassKey][] | FillRow[], range: string, o: { lang?: "en" | "ar" }) {
   const ws = wb.addWorksheet(name, { views: [{ state: "frozen", xSplit: 3, ySplit: 5 }] });
   title(ws, mark, text, sub);
   ws.getColumn(1).width = 12; ws.getColumn(2).width = 40; ws.getColumn(3).width = 34;
@@ -106,19 +112,19 @@ function sheet(wb: ExcelJS.Workbook, name: string, mark: string, text: string, s
       r.getCell(2).value = row.name; r.getCell(3).value = classChoice(row.cls);
       months.forEach((p, c) => { const v = row.values[p]; if (v) r.getCell(4 + c).value = Math.round(v * 100) / 100; });
     }
-    r.getCell(3).dataValidation = { type: "list", allowBlank: true, formulae: [range], showErrorMessage: true, errorTitle: "Choose a class", error: "Pick the iReport class from the list (see the Classes sheet)." };
+    r.getCell(3).dataValidation = { type: "list", allowBlank: true, formulae: [range], showErrorMessage: true, errorTitle: L(o, "Choose a class", "اختر تصنيفًا"), error: L(o, "Pick the iReport class from the list (see the Classes sheet).", "اختر تصنيف iReport من القائمة (راجع ورقة Classes).") };
     for (let c = 0; c < months.length; c++) {
       const cell = r.getCell(4 + c);
       cell.numFmt = NUM;
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: INPUT } };
-      cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, errorTitle: "Numbers only", error: "Enter the amount as a number, without text or currency signs." };
+      cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, errorTitle: L(o, "Numbers only", "أرقام فقط"), error: L(o, "Enter the amount as a number, without text or currency signs.", "أدخل المبلغ رقمًا، دون نص أو رموز عملة.") };
     }
     if (i % 2) for (const c of [1, 2, 3]) r.getCell(c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BAND } };
   }
 }
 
 function sales(wb: ExcelJS.Workbook, o: TemplateOptions) {
-  readMe(wb, `iReport · Sales template${o.company ? ` · ${o.company}` : ""}`, [
+  readMe(wb, `iReport · ${L(o, "Sales template", "قالب المبيعات")}${o.company ? ` · ${o.company}` : ""}`, [
     ["One row per invoice line. iReport adds them up by month, customer, product and category.", "صف لكل بند فاتورة. يجمعها iReport حسب الشهر والعميل والمنتج والفئة."],
     ["HOW TO FILL IT", "طريقة الملء"],
     ['1. Sheet "Sales": fill one row per invoice line, starting in row 5. Required columns are marked *.', "١. ورقة Sales: صف لكل بند فاتورة بدءًا من الصف الخامس. الأعمدة المطلوبة عليها *."],
@@ -133,7 +139,7 @@ function sales(wb: ExcelJS.Workbook, o: TemplateOptions) {
     ...SALES_COLS.map((c) => [`${c.head}${c.required ? " *" : ""}: ${c.help}`, ""] as [string, string]),
   ]);
   const ws = wb.addWorksheet("Sales", { views: [{ state: "frozen", ySplit: 4 }] });
-  title(ws, MARK.sales, "Sales: one row per invoice line", `Amounts in ${o.currency}, before VAT. * = required.`);
+  title(ws, MARK.sales, L(o, "Sales: one row per invoice line", "المبيعات: صف لكل بند فاتورة"), L(o, `Amounts in ${o.currency}, before VAT. * = required.`, `المبالغ بعملة ${o.currency} قبل ضريبة القيمة المضافة. * = مطلوب.`));
   const h = ws.getRow(4);
   SALES_COLS.forEach((c, i) => { h.getCell(i + 1).value = `${c.head}${c.required ? " *" : ""}`; ws.getColumn(i + 1).width = c.key === "product" || c.key === "customer" ? 32 : c.key === "amount" ? 22 : 16; });
   header(h);
@@ -141,14 +147,14 @@ function sales(wb: ExcelJS.Workbook, o: TemplateOptions) {
     const r = ws.getRow(5 + i);
     SALES_COLS.forEach((c, j) => {
       const cell = r.getCell(j + 1);
-      if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
-      if (c.key === "qty" || c.key === "amount" || c.key === "cost") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
+      if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: L(o, "Enter a date, e.g. 15/01/2026.", "أدخل تاريخًا، مثل 15/01/2026.") }; }
+      if (c.key === "qty" || c.key === "amount" || c.key === "cost") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: L(o, "Numbers only.", "أرقام فقط.") }; }
     });
   }
 }
 
 function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
-  readMe(wb, `iReport · Expenses template${o.company ? ` · ${o.company}` : ""}`, [
+  readMe(wb, `iReport · ${L(o, "Expenses template", "قالب المصروفات")}${o.company ? ` · ${o.company}` : ""}`, [
     ["One row per bill or payment. iReport adds them up by month, supplier and expense type.", "صف لكل فاتورة أو مصروف. يجمعها iReport حسب الشهر والمورد ونوع المصروف."],
     ["HOW TO FILL IT", "طريقة الملء"],
     ['1. Sheet "Expenses": fill one row per bill, starting in row 5. Required columns are marked *.', "١. ورقة Expenses: صف لكل فاتورة بدءًا من الصف الخامس. الأعمدة المطلوبة عليها *."],
@@ -164,7 +170,7 @@ function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
     ...EXPENSE_COLS.map((c) => [`${c.head}${c.required ? " *" : ""}: ${c.help}`, ""] as [string, string]),
   ]);
   const ws = wb.addWorksheet("Expenses", { views: [{ state: "frozen", ySplit: 4 }] });
-  title(ws, MARK.expenses, "Expenses: one row per bill or payment", `Amounts in ${o.currency}, before VAT. * = required.`);
+  title(ws, MARK.expenses, L(o, "Expenses: one row per bill or payment", "المصروفات: صف لكل فاتورة أو دفعة"), L(o, `Amounts in ${o.currency}, before VAT. * = required.`, `المبالغ بعملة ${o.currency} قبل ضريبة القيمة المضافة. * = مطلوب.`));
   const h = ws.getRow(4);
   EXPENSE_COLS.forEach((c, i) => { h.getCell(i + 1).value = `${c.head}${c.required ? " *" : ""}`; ws.getColumn(i + 1).width = c.key === "supplier" || c.key === "description" ? 32 : c.key === "type" ? 26 : c.key === "amount" ? 22 : 16; });
   header(h);
@@ -172,15 +178,15 @@ function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
     const r = ws.getRow(5 + i);
     EXPENSE_COLS.forEach((c, j) => {
       const cell = r.getCell(j + 1);
-      if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: "Enter a date, e.g. 15/01/2026." }; }
-      if (c.key === "amount") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: "Numbers only." }; }
+      if (c.key === "date") { cell.numFmt = "dd/mm/yyyy"; cell.dataValidation = { type: "date", operator: "between", allowBlank: true, formulae: [new Date(2000, 0, 1), new Date(2100, 0, 1)], showErrorMessage: true, error: L(o, "Enter a date, e.g. 15/01/2026.", "أدخل تاريخًا، مثل 15/01/2026.") }; }
+      if (c.key === "amount") { cell.numFmt = NUM; cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [-1e15, 1e15], showErrorMessage: true, error: L(o, "Numbers only.", "أرقام فقط.") }; }
     });
   }
 }
 
 /** Opening balances: every account's balance the day before the books start, as debit or credit. */
 function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
-  readMe(wb, `iReport · Opening balances template${o.company ? ` · ${o.company}` : ""}`, [
+  readMe(wb, `iReport · ${L(o, "Opening balances template", "قالب الأرصدة الافتتاحية")}${o.company ? ` · ${o.company}` : ""}`, [
     ["Your balance sheet the day before your books start in iReport (for example 30/06/2021 when the books start on 1/7/2021).", "الميزانية في اليوم السابق لبداية الدفاتر في iReport (مثلًا ٣٠/٦/٢٠٢١ إذا بدأت الدفاتر في ١/٧/٢٠٢١)."],
     ["HOW TO FILL IT", "طريقة الملء"],
     ['1. Sheet "Opening balances": one row per account, starting in row 5: code, name, and the balance as Debit or Credit.', "١. ورقة Opening balances: صف لكل حساب بدءًا من الصف الخامس: الكود والاسم والرصيد مدين أو دائن."],
@@ -191,7 +197,7 @@ function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
   const ws = wb.addWorksheet("Opening balances", { views: [{ state: "frozen", ySplit: 4 }] });
   ws.getCell("A1").value = "Opening balances";
   ws.getCell("A1").font = { size: 14, bold: true, color: { argb: TEAL } };
-  ws.getCell("A2").value = `The balance of every account the day before your books start. Amounts in ${o.currency}. Total debit = total credit.`;
+  ws.getCell("A2").value = L(o, `The balance of every account the day before your books start. Amounts in ${o.currency}. Total debit = total credit.`, `رصيد كل حساب في اليوم السابق لبداية دفاترك. المبالغ بعملة ${o.currency}. إجمالي المدين = إجمالي الدائن.`);
   ws.getCell("A2").font = { size: 10, color: { argb: MUTE } };
   const h = ws.getRow(4);
   ["Code", "Account", "Debit", "Credit"].forEach((t, i) => { h.getCell(i + 1).value = t; ws.getColumn(i + 1).width = i === 1 ? 40 : 18; });
@@ -199,6 +205,6 @@ function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
   for (let i = 0; i < 1000; i++) for (const c of [3, 4]) {
     const cell = ws.getRow(5 + i).getCell(c);
     cell.numFmt = NUM;
-    cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [0, 1e15], showErrorMessage: true, error: "A positive number: put credits in the Credit column." };
+    cell.dataValidation = { type: "decimal", operator: "between", allowBlank: true, formulae: [0, 1e15], showErrorMessage: true, error: L(o, "A positive number: put credits in the Credit column.", "رقم موجب: ضع المبالغ الدائنة في عمود الدائن.") };
   }
 }

@@ -50,7 +50,8 @@ export const auth = area(
   },
   {
     heroTitle: "اعرف ما تقوله أرقام Odoo فعلًا.",
-    heroText: (tagline: string) => `${tagline}. المؤشرات مقابل المستهدفات، نقطة التعادل، شلال التدفق النقدي، النمو وتحقيق الهدف — في دقائق، بدون جداول.`,
+    // The tagline is the English brand line: Arabic says it in Arabic instead.
+    heroText: () => `تحليلات بمستوى المستشارين الماليين لحسابات أودو (Odoo). المؤشرات مقابل المستهدفات، نقطة التعادل، شلال التدفق النقدي، النمو وتحقيق الهدف — في دقائق، بدون جداول.`,
     exploreDemo: "استكشف الشركة التجريبية ←",
     titleSignin: "تسجيل الدخول إلى حسابك",
     titleSignup: "أنشئ حسابك المجاني",

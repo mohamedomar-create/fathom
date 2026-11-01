@@ -32,7 +32,7 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
   const now = quadrantOf(last.x, last.y, x0, y0);
   return (
     <div dir="ltr" className="relative">
-      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label="Growth quadrant">
+      <svg viewBox={`0 0 ${w} ${h}`} className="w-full" role="img" aria-label={T.d.rep.ch.quadrant}>
         <rect x={pl} y={pt} width={w - pl - pr} height={h - pt - pb} fill="#FAFAF9" stroke="#EEE" />
         <line x1={X(x0)} x2={X(x0)} y1={pt} y2={h - pb} stroke="#CCC" />
         <line y1={Y(y0)} y2={Y(y0)} x1={pl} x2={w - pr} stroke="#CCC" />
@@ -47,8 +47,8 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
         ))}
         {points.map((p, i) => <circle key={`hit${i}`} cx={X(p.x)} cy={Y(p.y)} r={14} fill="transparent" onPointerEnter={() => setHover(i)} onPointerLeave={() => setHover(null)} />)}
         <text x={X(last.x)} y={Y(last.y) - 16} textAnchor="middle" className="ax" fontWeight={600}>{last.label}</text>
-        <text x={(pl + w - pr) / 2} y={h - 10} textAnchor="middle" className="axt">TOTAL OPERATING INVESTMENT</text>
-        <text transform={`translate(18,${(pt + h - pb) / 2}) rotate(-90)`} textAnchor="middle" className="axt">EARNINGS BEFORE INTEREST &amp; TAX</text>
+        <text x={(pl + w - pr) / 2} y={h - 10} textAnchor="middle" className="axt">{T.d.rep.ch.toi}</text>
+        <text transform={`translate(18,${(pt + h - pb) / 2}) rotate(-90)`} textAnchor="middle" className="axt">{T.d.rep.ch.ebitAxis}</text>
         {niceTicks(xlo, xhi, 4).filter((t) => t >= xlo && t <= xhi).map((t) => <text key={t} x={X(t)} y={h - pb + 17} textAnchor="middle" className="ax">{money(t, cur, true)}</text>)}
         {niceTicks(ylo, yhi, 4).filter((t) => t >= ylo && t <= yhi).map((t) => <text key={t} x={pl - 6} y={Y(t) + 4} textAnchor="end" className="ax">{money(t, cur, true)}</text>)}
       </svg>
@@ -56,9 +56,9 @@ export function GrowthQuadrant({ points, cur }: { points: GrowthPoint[]; cur: st
         {hover !== null && (
           <>
             <div className="mb-1 font-semibold">{points[hover].label}</div>
-            <div className="flex justify-between gap-4"><span className="text-mute">EBIT</span><span className="num">{money(points[hover].y, cur)}</span></div>
-            <div className="flex justify-between gap-4"><span className="text-mute">Operating investment</span><span className="num">{money(points[hover].x, cur)}</span></div>
-            {hover > 0 && <div className="mt-1 text-[11px] tracking-wide text-mute">{quadrantOf(points[hover].x, points[hover].y, x0, y0)}</div>}
+            <div className="flex justify-between gap-4"><span className="text-mute">{T.d.rep.ch.ebit}</span><span className="num">{money(points[hover].y, cur)}</span></div>
+            <div className="flex justify-between gap-4"><span className="text-mute">{T.d.rep.ch.opInv}</span><span className="num">{money(points[hover].x, cur)}</span></div>
+            {hover > 0 && <div className="mt-1 text-[11px] tracking-wide text-mute">{qn(quadrantOf(points[hover].x, points[hover].y, x0, y0))}</div>}
           </>
         )}
       </ChartTip>

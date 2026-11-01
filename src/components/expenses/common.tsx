@@ -111,7 +111,7 @@ export function ExpenseTable({ rows, cur, nameLabel, compareLabel, max = 25, gro
                 {r.isNew && <span className="ms-2 rounded bg-brand-bg px-1.5 text-[10.5px] font-semibold text-brand-d">{t.isNew}</span>}
                 {kind === "accounts" && r.recurring === false && r.amount > 0 && <span className="ms-2 rounded bg-band px-1.5 text-[10.5px] text-mute" title={t.oneOffTitle}>{t.oneOff}</span>}
               </td>
-              {group && <td className="max-w-[180px] truncate text-start text-mute" title={r.group}>{r.group ? T.tl(r.group) : r.group}</td>}
+              {group && <td className="max-w-[180px] truncate text-start text-mute" title={r.group ? T.tl(r.group) : r.group}>{r.group ? T.tl(r.group) : r.group}</td>}
               <td className={cn("num", r.amount < 0 && "text-green-d")}>{money(r.amount, cur)}</td>
               <td className="num">{pct(r.share, 1)}</td>
               {ofSales && <td className="num text-mute">{r.ofSales === null ? "–" : pct(r.ofSales, 1)}</td>}
