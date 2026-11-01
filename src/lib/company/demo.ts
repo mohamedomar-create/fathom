@@ -1,6 +1,7 @@
 import sample from "../../../reference/sample.json";
 import type { ClassKey, MonthData } from "@/lib/engine";
 import type { AccountLine, CompanyBundle } from "./types";
+import { DEMO_NOTE } from "./demo-note";
 
 /** Chart of accounts used to spread the demo company's class totals into realistic GL accounts. */
 const DEMO_COA: Partial<Record<ClassKey, [string, string, number][]>> = {
@@ -65,7 +66,7 @@ export function demoCompany(): CompanyBundle {
     readOnly: true,
     lastUpdated: "2026-10-02T09:00:00Z",
     orgName: "Demo Advisory",
-    notes: ["Demo company built from synthetic numbers that follow the app's own formulas."],
+    notes: [DEMO_NOTE],
     // Illustrative rates for the demo only; real companies enter their own (CAPMAS inflation, CBE exchange rates).
     assumptions: { inflation: 20, fxStart: 49, fxEnd: 48.5, importShare: 40, assetAge: 3, rate: 24, tenor: 5, example: true },
   };

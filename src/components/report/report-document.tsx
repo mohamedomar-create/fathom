@@ -22,6 +22,7 @@ import { ReportBank, ReportBankOutlook, ReportRealProfit } from "./report-bank";
 import { ReportForecast } from "./report-forecast";
 import { useT } from "@/lib/i18n/use-t";
 import { dirOf, htmlLang, monthNames } from "@/lib/i18n";
+import { DEMO_NOTE } from "@/lib/company/demo-note";
 
 type TT = ReturnType<typeof useT>;
 
@@ -355,7 +356,7 @@ function Basis({ input, a, cur, T }: { input: ReportInput; a: Analysis; cur: str
     <div className="space-y-5 text-[12.5px]">
       <table className="tbl"><tbody>{checks.map(([n, ok, d]) => <tr key={n}><td>{n}</td><td className={ok ? "text-green-d" : "text-red"}>{ok ? "✓" : "✕"}</td><td className="text-mute">{d}</td></tr>)}</tbody></table>
       <div><div className="label mb-1">{t.notes}</div><ul className="list-disc space-y-1 ps-5">
-        {(input.notes.length ? input.notes : [t.noAdjust]).map((n) => <li key={n}>{n}</li>)}
+        {(input.notes.length ? input.notes : [t.noAdjust]).map((n) => <li key={n}>{n === DEMO_NOTE ? t.demoNote : n}</li>)}
         {accepted.map((x) => <li key={x.title + x.period}>{t.known(x.period ? `${T.ml(x.period)}, ` : "", x.title.toLowerCase(), x.reason)}</li>)}
         {defaults && <li>{t.defaults}</li>}
       </ul></div>

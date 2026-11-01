@@ -38,6 +38,7 @@ export const rep = area(
       rounding: "difference within rounding", reconciles: "reconciles", noOpening: "no opening balance sheet", match: "match", complete: "complete",
       someMissing: "some months missing", someMissingPeriod: "some months in the period are missing", months: (n: number) => `${n} months`,
       notes: "Notes", noAdjust: "No special adjustments were made to the source data.",
+      demoNote: "Demo company built from synthetic numbers that follow the app's own formulas.",
       known: (period: string, title: string, reason: string) => `Imported with a known issue (${period}${title}): ${reason}`,
       defaults: "KPI targets are the standard defaults; set company-specific targets for sharper on/off-track scoring.",
       // Bank pages
@@ -161,6 +162,7 @@ export const rep = area(
       rounding: "الفرق في حدود التقريب", reconciles: "متطابق", noOpening: "لا توجد ميزانية افتتاحية", match: "متطابقة", complete: "مكتملة",
       someMissing: "بعض الأشهر ناقصة", someMissingPeriod: "بعض أشهر الفترة ناقصة", months: (n: number) => `${n} شهرًا`,
       notes: "ملاحظات", noAdjust: "لم تُجرَ أي تسويات خاصة على بيانات المصدر.",
+      demoNote: "شركة تجريبية مبنية على أرقام افتراضية تتبع معادلات التطبيق نفسه.",
       known: (period: string, title: string, reason: string) => `استُورد مع مشكلة معروفة (${period}${title}): ${reason}`,
       defaults: "مستهدفات المؤشرات هي القيم الافتراضية القياسية؛ حدد مستهدفات خاصة بالشركة لتقييم أدق لما هو على المسار وخارجه.",
       guideMore: (x: number) => `الحد الإرشادي ${x}x أو أكثر`, guideLess: (x: number) => `الحد الإرشادي ${x}x أو أقل`, roomToBorrow: "القدرة على الاقتراض", noRate: "لم يُحدد سعر الفائدة",
