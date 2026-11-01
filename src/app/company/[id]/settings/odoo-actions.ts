@@ -1,7 +1,7 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { decrypt, encrypt, reencrypt, usesOldKey } from "@/lib/crypto";
+import { encrypt, reencrypt, usesOldKey } from "@/lib/crypto";
 import { loadAccountMap } from "@/lib/company/account-map";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
 import { withClosedMonths } from "@/lib/company/import-plan";
@@ -9,14 +9,13 @@ import { closedThroughOf } from "@/lib/company/close-server";
 import { openLines } from "@/lib/company/close";
 import { closedRange } from "@/lib/company/line-stage";
 import { runChecks } from "@/lib/company/checks";
-import { majorVersion, OdooClient, odooDisabled } from "@/lib/odoo/client";
+import { odooDisabled } from "@/lib/odoo/client";
 import { countLedger, countPart, firstStockDay, layersPage, ledgerPage, movesPage, onHand, PAGE, readLocations, salesPage } from "@/lib/odoo/detail";
 import type { ClassKey } from "@/lib/engine";
-import { trust, Version } from "@/lib/odoo/schema";
 import { mergeLocationTypes, type LocationTypes } from "@/lib/ingest/inventory";
 import { INVENTORY_KEY } from "@/lib/company/config-keys";
 import { atLeast, connectionVerdict, continuesChain, STALE_MS, unbalancedSync, type Role } from "@/lib/odoo/policy";
-import { assertPublicOdooUrl, pinnedFetch, resolvePublicOdoo } from "@/lib/odoo/net";
+import { assertPublicOdooUrl } from "@/lib/odoo/net";
 import { limited } from "@/lib/rate-limit";
 import { DbError, safeError } from "@/lib/action-error";
 import { booksStartOf } from "@/lib/company/time-zone";
@@ -27,6 +26,7 @@ import { sinceOf } from "@/lib/odoo/since";
 import { clearLedger } from "@/lib/company/ledger-lines";
 import { stageAdd, stageBegin, stageFinish, type StageKind } from "@/lib/company/line-stage";
 import { getUser } from "@/lib/supabase/server";
+import { bindingOf, connect, openKey, probeVersion } from "@/lib/odoo/connect";
 import type { Json } from "@/lib/supabase/database.types";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
@@ -75,9 +75,6 @@ async function audit(supabase: Supa, companyId: string, action: "test" | "sync" 
   if (error) console.error(JSON.stringify({ level: "error", context: "odoo_audit", code: error.code, message: error.message }));
 }
 
-/** What a key is bound to when encrypted: a copy moved to another company, server, database or login can't be decrypted. */
-const bindingOf = (companyId: string, url: string, db: string, login: string) => `odoo\n${companyId}\n${url}\n${db}\n${login}`;
-
 /** The stored (encrypted) key, read through the database function that checks the caller edits this company. */
 async function storedKey(supabase: Supa, companyId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("odoo_secret", { p_company: companyId });
@@ -98,17 +95,7 @@ async function reusableKey(supabase: Supa, companyId: string, url: string, db: s
   return enc;
 }
 
-/** The saved key in plain text, only for the company, address, database and login it was saved for. */
-const openKey = (enc: string, companyId: string, url: string, db: string, login: string) => {
-  try { return decrypt(enc, bindingOf(companyId, url, db, login)); }
-  catch (e) { throw new Error(/again/.test((e as Error).message) ? (e as Error).message : "Enter the API key again: the saved key doesn't belong to this connection."); }
-};
 
-/** A client that talks only to the address that passed the public-internet check. */
-async function connect(rawUrl: string, db: string, login: string, key: string, deadline = Infinity) {
-  const target = await resolvePublicOdoo(rawUrl);
-  return { url: target.url, client: new OdooClient(target.url, db, login, key, pinnedFetch(target), 25_000, deadline) };
-}
 
 
 /** Releases a claim left by a sync that was cut off, and says so in the log. */
@@ -117,6 +104,20 @@ async function takeOverStale(supabase: Supa, companyId: string) {
   if (data?.status !== "syncing" || (data.sync_started_at && Date.now() - Date.parse(data.sync_started_at) < STALE_MS)) return;
   await supabase.from("odoo_connections").update({ status: "error", sync_started_at: null, last_error: "The last sync was cut off before it finished." }).eq("company_id", companyId);
   await audit(supabase, companyId, "sync", false, "the last sync was cut off before it finished; its lock was released");
+}
+
+/** Turns the nightly sync on or off (an editor; the night run then acts with that person's rights, re-checked each time). */
+export async function setOdooNightly(companyId: string, on: boolean): Promise<Result<true>> {
+  if (!z.string().uuid().safeParse(companyId).success || typeof on !== "boolean") return { ok: false, error: "That value isn't valid." };
+  let ctx: Awaited<ReturnType<typeof guard>>;
+  try { ctx = await guard(companyId, "editor"); } catch (e) { return fail(e); }
+  const { error } = await ctx.supabase.rpc("odoo_nightly_set", { p_company: companyId, p_on: on });
+  if (error) {
+    if (missingFn(error)) return { ok: false, error: "Nightly sync needs the latest database update (migration 0046). Ask the site owner to run it." };
+    return error.code === "P0001" ? { ok: false, error: error.message } : fail(new DbError(error));
+  }
+  revalidatePath(`/company/${companyId}/data/odoo`);
+  return { ok: true, data: true };
 }
 
 /** Stops a running sync at once: its lock is released (what it already saved stays). */
@@ -494,8 +495,3 @@ export async function syncOdooDetail(companyId: string, input?: DetailStepInput)
   }
 }
 
-/** Odoo's major version, checked. */
-async function probeVersion(client: OdooClient): Promise<number> {
-  const v = trust(Version, await client.version(), "version");
-  return majorVersion(v.server_version_info, v.server_version);
-}

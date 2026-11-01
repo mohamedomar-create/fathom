@@ -2,7 +2,7 @@
 import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, ShieldAlert, Unplug, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { disconnectOdoo, rekeyOdoo, saveOdoo, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
+import { disconnectOdoo, rekeyOdoo, saveOdoo, setOdooNightly, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
 import { copyCompanySettings } from "@/app/company/[id]/settings/actions";
 import type { OdooProbe } from "@/lib/odoo/sync";
 import { cn } from "@/lib/cn";
@@ -17,13 +17,14 @@ export interface OdooConn {
   months_history: number; version: string | null; status: string; last_error: string | null; last_sync_at: string | null;
   has_key?: boolean; key_expires_on?: string | null;
 }
+export interface OdooNightly { nightly: boolean; last_run_at: string | null; last_ok: boolean | null; last_error: string | null; next_run_at: string | null }
 export interface OdooLogRow { id: number; action: string; ok: boolean; detail: string | null; rows_read: number | null; at: string; who: string }
 
 const ACTION: Record<string, string> = { test: "Test", save: "Saved", key_changed: "Key changed", key_cleared: "Key cleared", sync: "Sync", disconnect: "Disconnected", refused: "Refused" };
 const fmtTime = (iso: string) => new Date(iso).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
 const daysTo = (day: string) => Math.ceil((Date.parse(`${day}T00:00:00Z`) - Date.now()) / 86_400_000);
 
-export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0, keyOld = false }: { companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number; keyOld?: boolean }) {
+export function OdooPanel({ companyId, connection, hasData, booksStart = null, role = "editor", log = [], ready = true, others = [], mapCount = 0, keyOld = false, nightly = null }: { nightly?: OdooNightly | null; companyId: string; connection: OdooConn | null; hasData: boolean; booksStart?: string | null; role?: "admin" | "editor"; log?: OdooLogRow[]; ready?: boolean; others?: { id: string; name: string }[]; mapCount?: number; keyOld?: boolean }) {
   const router = useRouter();
   const [url, setUrl] = useState(connection?.url ?? "");
   const [db, setDb] = useState(connection?.db ?? "");
@@ -150,6 +151,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
             {admin && <button onClick={disconnect} disabled={pending} className="flex items-center gap-1.5 rounded border border-line px-3 py-2 text-mute hover:text-red disabled:opacity-60" data-testid="odoo-disconnect"><Unplug className="h-4 w-4" />Disconnect</button>}
           </div>
         )}
+        {saved && <NightlyToggle companyId={companyId} job={nightly} />}
         {others.length > 0 && (
           <div className={cn("mb-5 rounded-md border px-4 py-3 text-sm", mapCount === 0 ? "border-amber bg-amber/10" : "border-line")} data-testid="odoo-copy-settings">
             <div className="font-medium">Start from another company of the same books</div>
@@ -233,6 +235,35 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
         <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">Odoo external API docs <ExternalLink className="h-3 w-3" /></a>
         <p className="mt-3 text-xs text-mute">Only reading requests are ever sent, for accounting records only. The API key is encrypted (AES-256), can&apos;t be read back by anyone, and is only decrypted on the server during a test or sync. Only an admin can save or remove the connection; every action is logged. To stop access at once, delete the key in Odoo or press Disconnect.</p>
       </aside>
+    </div>
+  );
+}
+
+/** Nightly sync on the server (0046): runs as the editor who turns it on; shows the last run and any reason it stopped. */
+function NightlyToggle({ companyId, job }: { companyId: string; job: OdooNightly | null }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [err, setErr] = useState<string | null>(null);
+  const on = !!job?.nightly;
+  const toggle = () => start(async () => {
+    setErr(null);
+    const r = await setOdooNightly(companyId, !on);
+    if (!r.ok) setErr(r.error); else router.refresh();
+  });
+  return (
+    <div className="mb-5 rounded-md border border-line px-4 py-3 text-sm" data-testid="odoo-nightly">
+      <label className="flex items-center gap-2 font-medium">
+        <input type="checkbox" checked={on} onChange={toggle} disabled={pending} data-testid="odoo-nightly-toggle" />
+        Sync every night (around 02:30 Cairo time)
+      </label>
+      <p className="mt-0.5 text-xs text-mute">The server runs the same sync as Sync now, with your editor rights. If you stop being an editor of this company, it switches itself off.</p>
+      {job?.last_run_at && (
+        <p className={cn("mt-1 text-xs", job.last_ok ? "text-green-d" : "text-red")} data-testid="odoo-nightly-last">
+          Last night run {fmtTime(job.last_run_at)}: {job.last_ok ? "done" : `failed${job.last_error ? ` (${job.last_error})` : ""}`}
+        </p>
+      )}
+      {!on && !job?.last_run_at && job?.last_error && <p className="mt-1 text-xs text-red" data-testid="odoo-nightly-last">{job.last_error}</p>}
+      {err && <p className="mt-1 text-xs text-red" role="alert">{err}</p>}
     </div>
   );
 }

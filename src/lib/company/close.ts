@@ -28,3 +28,20 @@ export function closeCandidates(months: string[], closedThrough: string | null |
 export function problemsToClose<C extends { severity: string; period?: string; accepted?: boolean }>(checks: C[], closedThrough: string | null | undefined, month: string): C[] {
   return checks.filter((c) => c.severity === "block" && !c.accepted && !!c.period && !isClosed(c.period, closedThrough) && c.period <= month);
 }
+
+/**
+ * The months a save may replace, leaving out closed ones: "Replace all" in a company with closed months replaces every
+ * open month up to a year past the file's last month (or today). `now` is the current month ("YYYY-MM").
+ */
+export function closedRangeFor(closedThrough: string | null | undefined, periods: string[], all: boolean, now: string): { periods: string[]; all: boolean; closed: string[] } {
+  const ps = [...new Set(periods)].sort();
+  if (!closedThrough) return { periods: ps, all, closed: [] };
+  const open = openPeriods(ps, closedThrough);
+  const closed = ps.filter((x) => !open.includes(x));
+  if (!all) return { periods: open, all: false, closed };
+  const add = (m: string, n: number) => { const d = new Date(Date.UTC(+m.slice(0, 4), +m.slice(5, 7) - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+  const last = [ps[ps.length - 1] ?? closedThrough, add(now, 12)].sort().pop()!;
+  const range: string[] = [];
+  for (let m = add(closedThrough, 1); m <= last && range.length < 600; m = add(m, 1)) range.push(m);
+  return { periods: range, all: false, closed };
+}

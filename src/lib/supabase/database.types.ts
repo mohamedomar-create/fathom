@@ -30,6 +30,7 @@ export type OdooConnectionRow = {
   include_branches: boolean; months_history: number; version: string | null; status: string; last_error: string | null; last_sync_at: string | null; updated_at: string;
   has_key: boolean; key_expires_on: string | null; sync_started_at: string | null; created_at: string;
 }
+export type OdooSyncJobRow = { company_id: string; nightly: boolean; requested_by: string | null; status: "idle" | "running"; started_at: string | null; heartbeat_at: string | null; next_run_at: string | null; last_run_at: string | null; last_ok: boolean | null; last_error: string | null; attempts: number; updated_at: string }
 export type OdooAuditRow = { id: number; company_id: string; user_id: string | null; action: string; ok: boolean; detail: string | null; rows_read: number | null; at: string }
 export type CommentaryRow = { company_id: string; period_key: string; section: string; body: string; source: string; updated_by: string | null; updated_at: string }
 export type ReportRow = {
@@ -78,6 +79,7 @@ export type Database = {
       imports: Table<ImportRow, "company_id" | "kind">;
       odoo_connections: Table<OdooConnectionRow, "company_id" | "url" | "db" | "login" | "api_key_enc">;
       odoo_audit: Table<OdooAuditRow, "company_id" | "action" | "ok">;
+      odoo_sync_jobs: Table<OdooSyncJobRow, "company_id">;
       commentary: Table<CommentaryRow, "company_id" | "period_key" | "section" | "body">;
       reports: Table<ReportRow, "company_id" | "period_end">;
       company_data_audit: Table<CompanyDataAuditRow, "org_id" | "company_id" | "action" | "scope">;
@@ -145,6 +147,7 @@ export type Database = {
       summary_state: { Args: { p_company: string; p_kind: string; p_have?: number | null }; Returns: Json };
       odoo_audit_log: { Args: { p_company: string; p_action: string; p_ok: boolean; p_detail?: string | null; p_rows?: number | null }; Returns: undefined };
       odoo_claim_sync: { Args: { p_company: string }; Returns: boolean };
+      odoo_nightly_set: { Args: { p_company: string; p_on: boolean }; Returns: undefined };
       odoo_save: { Args: { p_company: string; p_url: string; p_db: string; p_login: string; p_key_enc: string | null; p_odoo_company_id: number; p_odoo_company_name: string; p_include_branches: boolean; p_months: number; p_version: string; p_key_expires_on: string | null }; Returns: undefined };
       leave_organisation: { Args: { p_org: string }; Returns: undefined };
       delete_organisation: { Args: { p_org: string; p_name: string }; Returns: undefined };

@@ -3,9 +3,10 @@ import "server-only";
 import type { ClassKey } from "@/lib/engine";
 import type { Json } from "@/lib/supabase/database.types";
 import type { createClient } from "@/lib/supabase/server";
-import { isPL, toNatural, toRaw } from "./build";
 import { loadBalances } from "./balances";
-import type { SourceRef, VersionAccount } from "./import-plan";
+import type { VersionAccount } from "./import-plan";
+import { versionFrom, versionPayload } from "./version-payload";
+export { versionFrom, versionPayload };
 
 type Supa = Awaited<ReturnType<typeof createClient>>;
 
@@ -31,19 +32,7 @@ export async function loadVersion(supabase: Supa, companyId: string, version: nu
     .select("id, code, name, class, odoo_id, odoo_type, confidence, mapped_by, refs, sort_order")
     .eq("company_id", companyId).eq("version", version).order("sort_order");
   if (error) throw new DbError(error);
-  const byId = new Map((accts ?? []).map((a) => [a.id, {
-    code: a.code, name: a.name, cls: a.class as ClassKey, amounts: {} as Record<string, number>, sources: {} as Record<string, string | null>,
-    refs: (a.refs ?? {}) as Record<string, SourceRef>, odoo_id: a.odoo_id, odoo_type: a.odoo_type, confidence: a.confidence,
-    mapped_by: a.mapped_by as VersionAccount["mapped_by"],
-  } satisfies VersionAccount]));
-  const bal = await loadBalances(supabase, companyId, version);
-  for (const b of bal) {
-    const a = byId.get(b.account_id);
-    if (!a) continue;
-    a.amounts[b.period] = toNatural(a.cls, Number(b.amount));
-    a.sources[b.period] = b.import_id;
-  }
-  return [...byId.values()];
+  return versionFrom(accts ?? [], await loadBalances(supabase, companyId, version));
 }
 
 /** Write a complete new data version (the merged snapshot) and prune versions beyond the undo history. */
@@ -51,16 +40,7 @@ export async function saveCompanyData(
   supabase: Supa, companyId: string, accounts: (AccountInput | VersionAccount)[],
   meta: { kind: "upload" | "odoo" | "demo"; filename?: string | null; report?: Json }, notes?: string[],
 ): Promise<{ version: number; importId: string }> {
-  const payload = accounts.map((a) => {
-    const v = a as VersionAccount;
-    return {
-      code: a.code, name: a.name, statement: isPL(a.cls) ? "PL" : "BS", class: a.cls,
-      odoo_id: a.odoo_id ?? null, odoo_type: a.odoo_type ?? null, confidence: a.confidence ?? null, mapped_by: a.mapped_by ?? "auto",
-      amounts: Object.fromEntries(Object.entries(a.amounts).filter(([, x]) => x).map(([p, x]) => [p, Math.round(toRaw(a.cls, x) * 100) / 100])),
-      sources: v.sources ?? {},
-      refs: v.refs ?? {},
-    };
-  });
+  const payload = versionPayload(accounts);
   const { data, error } = await supabase.rpc("save_company_version", {
     p_company: companyId, p_accounts: payload as unknown as Json,
     p_import: { kind: meta.kind, filename: meta.filename ?? null, report: meta.report ?? {} } as Json,

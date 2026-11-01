@@ -2,8 +2,7 @@ import "server-only";
 import type { getUser } from "@/lib/supabase/server";
 import type { Json } from "@/lib/supabase/database.types";
 import { dbError } from "@/lib/action-error";
-import { addMonths } from "@/lib/engine";
-import { openPeriods } from "./close";
+import { closedRangeFor } from "./close";
 import { closedThroughOf } from "./close-server";
 
 type Db = Awaited<ReturnType<typeof getUser>>["supabase"];
@@ -33,16 +32,7 @@ export const allClosed = (closed: string[]) => `Every month in this upload is cl
  * up to a year past the file's last month (the database refuses a change to a closed month whatever the path).
  */
 export async function closedRange(supabase: Db, companyId: string, periods: string[], all: boolean): Promise<{ periods: string[]; all: boolean; closed: string[] }> {
-  const ps = [...new Set(periods)].sort();
-  const closedThrough = await closedThroughOf(supabase, companyId);
-  if (!closedThrough) return { periods: ps, all, closed: [] };
-  const open = openPeriods(ps, closedThrough);
-  const closed = ps.filter((x) => !open.includes(x));
-  if (!all) return { periods: open, all: false, closed };
-  const last = [ps[ps.length - 1] ?? closedThrough, addMonths(new Date().toISOString().slice(0, 7), 12)].sort().pop()!;
-  const range: string[] = [];
-  for (let m = addMonths(closedThrough, 1); m <= last && range.length < 600; m = addMonths(m, 1)) range.push(m);
-  return { periods: range, all: false, closed };
+  return closedRangeFor(await closedThroughOf(supabase, companyId), periods, all, new Date().toISOString().slice(0, 7));
 }
 
 export async function stageAdd(supabase: Db, stage: string, lines: unknown[]): Promise<{ ok: true; saved: number } | { ok: false; error: string }> {
