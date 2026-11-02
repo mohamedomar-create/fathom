@@ -66,4 +66,6 @@ export interface CompanySettings {
   targets?: Record<string, number | null | undefined>;
   importance?: Record<string, Importance>;
   activeKpis?: string[];
+  /** Highlighted statements: flag thresholds and colour marks (defaults when absent). */
+  highlights?: import("./statement-rows").Highlights;
 }

@@ -12,39 +12,15 @@ import { MissingData, Notes } from "./common";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
 import { useT } from "@/lib/i18n/use-t";
 import { balanced } from "@/lib/tolerance";
+import { accountMarkKey, BS_LINES, PL_LINES, type Mark } from "@/lib/engine/statement-rows";
+import { ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
+import { setStatementMark } from "@/app/company/[id]/analysis/highlight-actions";
 
 type View = "pl" | "bs" | "cf";
-type Cmp = "prior" | "ly";
+type Cmp = "prior" | "ly" | "budget";
 
-const PL_ROWS: { l: string; k: keyof PLCalc; tot?: boolean; cost?: boolean; classes?: ClassKey[]; ifAdjusted?: boolean }[] = [
-  { l: "Revenue", k: "revenue", classes: ["revenue"] },
-  { l: "Cost of Sales", k: "cos", cost: true, classes: ["cos_variable", "cos_fixed", "cos_depreciation"] },
-  { l: "Gross Profit", k: "gross_profit", tot: true },
-  { l: "Expenses", k: "expenses", cost: true, classes: ["exp_variable", "exp_fixed", "exp_depreciation"] },
-  { l: "Operating Profit", k: "operating_profit", tot: true },
-  { l: "Other Income", k: "other_income", classes: ["other_income"] },
-  { l: "Other Expenses", k: "other_expenses", cost: true, classes: ["other_expenses"] },
-  { l: "Earnings Before Interest & Tax", k: "ebit", tot: true },
-  { l: "Interest Income", k: "interest_income", classes: ["interest_income"] },
-  { l: "Interest Expenses", k: "interest_expenses", cost: true, classes: ["interest_expenses"] },
-  { l: "Earnings Before Tax", k: "ebt", tot: true },
-  { l: "Tax Expenses", k: "tax_expenses", cost: true, classes: ["tax_expenses"] },
-  { l: "Earnings After Tax", k: "eat", tot: true, ifAdjusted: true },
-  { l: "Adjustments (prior-period and one-off items)", k: "adjustments", cost: true, classes: ["adjustments"], ifAdjusted: true },
-  { l: "Net Income", k: "net_income", tot: true },
-];
-type BsRow = { l: string; k?: keyof BSCalc; typ: 0 | 1 | 2 };
-const BS_ROWS: BsRow[] = [
-  { l: "ASSETS", typ: 2 }, { l: "Cash & Equivalents", k: "cash", typ: 0 }, { l: "Accounts Receivable", k: "ar", typ: 0 }, { l: "Inventory", k: "inventory", typ: 0 },
-  { l: "Work In Progress", k: "wip", typ: 0 }, { l: "Other Current Assets", k: "other_ca", typ: 0 }, { l: "Total Current Assets", k: "tca", typ: 1 },
-  { l: "Fixed Assets", k: "fixed_assets", typ: 0 }, { l: "Intangible Assets", k: "intangibles", typ: 0 }, { l: "Investments / Other NCA", k: "investments", typ: 0 },
-  { l: "Total Non-Current Assets", k: "tnca", typ: 1 }, { l: "Total Assets", k: "ta", typ: 1 },
-  { l: "LIABILITIES", typ: 2 }, { l: "Short Term Debt", k: "std", typ: 0 }, { l: "Accounts Payable", k: "ap", typ: 0 }, { l: "Tax Liability", k: "tax_liab", typ: 0 },
-  { l: "Other Current Liabilities", k: "other_cl", typ: 0 }, { l: "Total Current Liabilities", k: "tcl", typ: 1 }, { l: "Long Term Debt", k: "ltd", typ: 0 },
-  { l: "Other Non-Current Liabilities", k: "other_ncl", typ: 0 }, { l: "Total Non-Current Liabilities", k: "tncl", typ: 1 }, { l: "Total Liabilities", k: "tl", typ: 1 },
-  { l: "EQUITY", typ: 2 }, { l: "Retained Earnings", k: "retained_earnings", typ: 0 }, { l: "Other Equity", k: "other_equity", typ: 0 }, { l: "Total Equity", k: "te", typ: 1 },
-  { l: "Total Liabilities & Equity", k: "tle", typ: 1 },
-];
+const PL_ROWS = PL_LINES;
+const BS_ROWS = BS_LINES;
 
 export function FinancialsPage() {
   const c = useCompany();
@@ -53,39 +29,49 @@ export function FinancialsPage() {
   const comments = useComments();
   const [view, setView] = useState<View>("pl");
   const [layout, setLayout] = useState<"summary" | "detailed">("summary");
-  const [cmp, setCmp] = useState<Cmp>("prior");
+  const [cmp, setCmp] = useState<Cmp>("ly");
+  const [flagsOnly, setFlagsOnly] = useState(false);
+  const [marks, setMarks] = useState<Record<string, Mark>>(c.settings.highlights?.lines ?? {});
   const [src, setSrc] = useState<SourceLine | null>(null);
   const T = useT();
   const t = T.d.ana;
   if (!a) return null;
+  const cur = c.settings.currency;
+  const m = (v: number) => money(v, cur);
   const trace = (key: string, label: string, statement: "PL" | "BS", v: number) => (
     <button type="button" onClick={() => setSrc({ key, label, statement, periods: a.view.window.periods })} className="decoration-dotted underline-offset-4 hover:underline" title={t.traceTitle} data-testid={`trace-${key}`}>{m(v)}</button>
   );
-  const cur = c.settings.currency;
-  const m = (v: number) => money(v, cur);
-  const comp = cmp === "prior" ? a.view.prior : a.view.ly;
-  const compLabel = comp ? T.pl(comp.label) : cmp === "prior" ? t.prior : t.lastYear;
+    // Same period last year by default; when last year isn't loaded, the previous period, and the page says so.
+  const lyMissing = cmp === "ly" && !a.view.ly;
+  const useCmp: "prior" | "ly" = cmp === "ly" && !lyMissing ? "ly" : "prior";
+  const comp = useCmp === "prior" ? a.view.prior : a.view.ly;
+  const compLabel = comp ? T.pl(comp.label) : useCmp === "prior" ? t.prior : t.lastYear;
+  const h = c.settings.highlights;
+  const fmt = fmtIn(cur);
+  const canMark = !c.readOnly && c.source !== "demo";
+  const saveMark = async (key: string, mk: Mark | null) => {
+    const r = await setStatementMark(c.id, key, mk);
+    if (r.ok) setMarks((x) => { const n = { ...x }; if (mk) n[key] = mk; else delete n[key]; return n; });
+    return r;
+  };
+  const markOf = (key: string) => marks[key] ?? null;
+  const nameCell = (statement: "PL" | "BS", key: string, label: string, cur0: number, cmp0: number | null | undefined, indent = false) => {
+    const why = flagReason(statement, key, cur0, cmp0, h, fmt, T);
+    return { why, td: <td className={indent ? "ps-6" : undefined}>{label}<Flag reason={why} /><MarkButton markKey={key} mark={markOf(key)} canEdit={canMark} onSave={saveMark} label={label} /></td> };
+  };
   const { P, B, B0 } = a.view;
   const periods = a.view.window.periods;
   const compPeriods = (() => {
-    const shift = cmp === "ly" ? 12 : a.view.sel.type === "month" ? 1 : a.view.sel.type === "quarter" ? 3 : 12;
+    const shift = useCmp === "ly" ? 12 : a.view.sel.type === "month" ? 1 : a.view.sel.type === "quarter" ? 3 : 12;
     return periods.map((p) => { const [y, mo] = p.split("-").map(Number); const i = y * 12 + mo - 1 - shift; return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`; });
   })();
   const hasDetail = c.accounts.length > 0;
   const accts = (classes: ClassKey[] | undefined, isBS: boolean) => !classes || layout !== "detailed" ? [] : c.accounts.filter((x) => classes.includes(x.cls)).map((x) => ({
-    id: x.id, name: `${x.code} ${x.name}`,
+    id: x.id, key: accountMarkKey(x), name: `${x.code} ${x.name}`,
     cur: isBS ? x.amounts[a.view.window.end] ?? 0 : periods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
     // A part month: the comparison's last month counts the same days, as in the total row above.
     cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p, i) => s + (x.amounts[p] ?? 0) * (comp && i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0),
   })).filter((x) => x.cur || x.cmp);
-  // Balance-sheet movements are neither good nor bad in themselves, so they are not coloured.
-  const varCell = (x: number, y: number | undefined, cost: boolean | "neutral" = false) => {
-    if (!y) return <td className="text-mute">–</td>;
-    const v = ((x - y) / Math.abs(y)) * 100;
-    if (cost === "neutral") return <td>{pct(v)}</td>;
-    const good = cost ? v <= 0 : v >= 0;
-    return <td className={good ? "text-green-d" : "text-red"}>{pct(v)}</td>;
-  };
   const ytd = a.view.ytd;
   const fyCompMonths = c.months.filter((x) => compPeriods.includes(x.period));
   const compP = comp?.P ?? (fyCompMonths.length ? plCalc(sumPL(fyCompMonths.map((x) => x.pl))) : null);
@@ -95,7 +81,12 @@ export function FinancialsPage() {
         <div className="sent">
           {t.view} <SentenceSelect testId="fin-view" value={view} onChange={setView} options={[{ value: "pl", label: t.pl }, { value: "bs", label: t.bs }, { value: "cf", label: t.cf }]} />
           {" "}{t.showingWord} <SentenceSelect value={layout} onChange={setLayout} options={[{ value: "summary", label: t.summary }, { value: "detailed", label: t.detailed, disabled: !hasDetail, hint: hasDetail ? t.accountLines : t.needsAccounts }]} />
-          {" "}{t.financialsCompared} <SentenceSelect value={cmp} onChange={setCmp} options={[{ value: "prior", label: a.view.sel.type === "month" ? t.cmpLastMonth : t.cmpPrior }, { value: "ly", label: a.view.sel.type === "month" ? t.cmpSameMonthLY : t.cmpSamePeriodLY }]} />
+          {" "}{t.financialsCompared} <SentenceSelect testId="fin-compare" value={cmp} onChange={setCmp} options={[{ value: "ly", label: a.view.sel.type === "month" ? t.cmpSameMonthLY : t.cmpSamePeriodLY }, { value: "prior", label: a.view.sel.type === "month" ? t.cmpLastMonth : t.cmpPrior }, { value: "budget", label: T.d.hl.budget, disabled: true, hint: T.d.hl.budgetSoon }]} />
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-mute">
+          {lyMissing && <span data-testid="ly-missing">{T.d.hl.lyMissing}</span>}
+          <span>{T.d.hl.legend}</span>
+          <label className="inline-flex min-h-6 items-center gap-1.5"><input type="checkbox" className="h-6 w-6" checked={flagsOnly} onChange={(e) => setFlagsOnly(e.target.checked)} data-testid="flags-only" /> {T.d.hl.flagsOnly}</label>
         </div>
       </PageHeader>
       {view === "pl" && (
@@ -103,16 +94,22 @@ export function FinancialsPage() {
           <table className="tbl min-w-[720px]" data-testid="pl-table">
             <thead><tr><th>{t.pl}</th><th>{T.pl(a.view.window.short)}</th><th>{compLabel}</th><th>{t.variancePct}</th><th>{t.commonSize}</th><th>{t.ytd}</th></tr></thead>
             <tbody>
-              {PL_ROWS.filter((r) => !r.ifAdjusted || P.adjustments || compP?.adjustments).map((r) => [
-                <tr key={r.k} className={cn("row", r.tot && "tot")}>
-                  <td>{T.tl(r.l)}</td><td>{trace(r.k, T.tl(r.l), "PL", P[r.k] as number)}</td><td>{compP ? m(compP[r.k] as number) : "–"}</td>{varCell(P[r.k] as number, compP?.[r.k] as number | undefined, r.cost)}
-                  <td>{P.revenue ? <><MiniPie p={((P[r.k] as number) / P.revenue) * 100} /> {pct(((P[r.k] as number) / P.revenue) * 100, 0)}</> : "–"}</td>
-                  <td>{m(ytd[r.k] as number)}</td>
-                </tr>,
-                ...accts(r.classes, false).map((x) => (
-                  <tr key={x.id} className="row text-[12.5px] text-mute"><td className="ps-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td>{varCell(x.cur, x.cmp, r.cost)}<td>{P.revenue ? pct((x.cur / P.revenue) * 100, 0) : "–"}</td><td /></tr>
-                )),
-              ])}
+              {PL_ROWS.filter((r) => !r.ifAdjusted || P.adjustments || compP?.adjustments).map((r) => {
+                const v = P[r.k] as number, v0 = compP ? (compP[r.k] as number) : undefined;
+                const nc = nameCell("PL", r.k, T.tl(r.l), v, v0);
+                const lines = accts(r.classes, false).map((x) => ({ x, nc: nameCell("PL", x.key, x.name, x.cur, x.cmp, true) })).filter((y) => !flagsOnly || y.nc.why);
+                if (flagsOnly && !nc.why && !lines.length) return null;
+                return [
+                  <tr key={r.k} className={rowCls(r.k, { mark: markOf(r.k), flagged: !!nc.why })} data-line={r.k}>
+                    {nc.td}<td>{trace(r.k, T.tl(r.l), "PL", v)}</td><td>{compP ? m(v0!) : "–"}</td><ChangeCell statement="PL" k={r.k} cur={v} cmp={v0} kind="pct" fmt={fmt} />
+                    <td>{P.revenue ? <><MiniPie p={(v / P.revenue) * 100} /> {pct((v / P.revenue) * 100, 0)}</> : "–"}</td>
+                    <td>{m(ytd[r.k] as number)}</td>
+                  </tr>,
+                  ...lines.map(({ x, nc: a1 }) => (
+                    <tr key={x.id} className={cn("row text-[12.5px] text-mute", markOf(x.key) && `mk-${markOf(x.key)!.color}`, a1.why && "flagged")} data-line={x.key}>{a1.td}<td>{m(x.cur)}</td><td>{m(x.cmp)}</td><ChangeCell statement="PL" k={r.k} cur={x.cur} cmp={x.cmp} kind="pct" fmt={fmt} /><td>{P.revenue ? pct((x.cur / P.revenue) * 100, 0) : "–"}</td><td /></tr>
+                  )),
+                ];
+              })}
             </tbody>
           </table>
           {bankAsInterest.length > 0 && <p className="mt-2 text-xs text-mute" data-testid="bank-charges-note">{t.bankChargesNote(bankAsInterest.join(", "))}</p>}
@@ -134,12 +131,14 @@ export function FinancialsPage() {
                 const cb = comp?.B ?? null;
                 const v = B[k] as number, v0 = cb ? (cb[k] as number) : undefined;
                 if (r.typ === 0 && !v && !v0) return null;
-                const dv = v0 === undefined ? null : v - v0;
                 const classes = r.typ === 0 ? [k as ClassKey] : undefined;
+                const nc = nameCell("BS", k, T.tl(r.l), v, v0);
+                const lines = accts(classes, true).map((x) => ({ x, nc: nameCell("BS", x.key, x.name, x.cur, x.cmp, true) })).filter((y) => !flagsOnly || y.nc.why);
+                if (flagsOnly && !nc.why && !lines.length) return null;
                 return [
-                  <tr key={r.l} className={cn("row", r.typ === 1 && "tot")}>
-                    <td>{T.tl(r.l)}</td><td>{trace(k, T.tl(r.l), "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
-                    <td className={dv === null ? "text-mute" : ""}>{dv === null ? "–" : m(dv)}</td>{varCell(v, v0, "neutral")}
+                  <tr key={r.l} className={rowCls(k, { mark: markOf(k), flagged: !!nc.why })} data-line={k}>
+                    {nc.td}<td>{trace(k, T.tl(r.l), "BS", v)}</td><td>{v0 === undefined ? "–" : m(v0)}</td>
+                    <ChangeCell statement="BS" k={k} cur={v} cmp={v0} kind="money" fmt={fmt} /><ChangeCell statement="BS" k={k} cur={v} cmp={v0} kind="pct" fmt={fmt} />
                     <td>{B.ta ? <><MiniPie p={(v / B.ta) * 100} /> {pct((v / B.ta) * 100, 0)}</> : "–"}</td>
                   </tr>,
                   ...(k === "retained_earnings" && v && a.view.bsAt === a.view.window.end ? (() => {
@@ -148,8 +147,8 @@ export function FinancialsPage() {
                       <tr key={l as string} className="row text-[12.5px] text-mute" data-testid="re-split"><td className="ps-6">{l}</td><td>{m(x as number)}</td><td /><td /><td /><td /><td /></tr>
                     ));
                   })() : []),
-                  ...accts(classes, true).map((x) => (
-                    <tr key={x.id} className="row text-[12.5px] text-mute"><td className="ps-6">{x.name}</td><td>{m(x.cur)}</td><td>{m(x.cmp)}</td><td>{m(x.cur - x.cmp)}</td>{varCell(x.cur, x.cmp, "neutral")}<td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
+                  ...lines.map(({ x, nc: a1 }) => (
+                    <tr key={x.id} className={cn("row text-[12.5px] text-mute", markOf(x.key) && `mk-${markOf(x.key)!.color}`, a1.why && "flagged")} data-line={x.key}>{a1.td}<td>{m(x.cur)}</td><td>{m(x.cmp)}</td><ChangeCell statement="BS" k={k} cur={x.cur} cmp={x.cmp} kind="money" fmt={fmt} /><ChangeCell statement="BS" k={k} cur={x.cur} cmp={x.cmp} kind="pct" fmt={fmt} /><td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
                   )),
                 ];
               })}
@@ -186,7 +185,7 @@ function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label }: { P: PLCa
         <tbody>
           {s.lines.map((l, i) => l.heading
             ? <tr key={l.label} className="cat"><td colSpan={3}>{T.tl(l.label)}</td></tr>
-            : <tr key={l.label + i} className={cn("row", l.total && "tot")}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
+            : <tr key={l.label + i} className={cn("row", l.total && "tot", l.total && (/^(Change in Cash|Closing Balance)/.test(l.label) ? "grand" : "sub"))}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
         </tbody>
       </table>
       {s.estimated.length > 0 && (

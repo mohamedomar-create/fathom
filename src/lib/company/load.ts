@@ -55,12 +55,13 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
     for (const [k, v] of Object.entries(cfg)) if (!RESERVED_KEYS.includes(k) && v.active) active.push(k);
   }
   return {
-    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), ...(vatRateOf(c.kpi_config) !== undefined ? { vatRate: vatRateOf(c.kpi_config) } : {}), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined },
+    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), ...(vatRateOf(c.kpi_config) !== undefined ? { vatRate: vatRateOf(c.kpi_config) } : {}), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined, highlights: highlightsOf(c.kpi_config as Record<string, unknown> | null) },
     alerts,
   };
 }
 
 import { currentAsOf, KPI_DEFS } from "@/lib/engine";
+import { highlightsOf } from "@/lib/engine/statement-rows";
 import { loadBalances } from "./balances";
 import { runChecks } from "./checks";
 import { openChecks } from "./status";

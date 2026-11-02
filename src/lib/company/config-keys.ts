@@ -7,4 +7,6 @@ export const FORECAST_KEY = "forecast";
 export const INVENTORY_KEY = "inventory";
 /** Company profile settings kept with the KPI settings: the time zone. */
 export const PROFILE_KEY = "profile";
-export const RESERVED_KEYS: string[] = [ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, PROFILE_KEY];
+/** Highlighted statements: thresholds for flagged lines and editors' colour marks (0050). */
+export const HIGHLIGHTS_KEY = "highlights";
+export const RESERVED_KEYS: string[] = [ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, PROFILE_KEY, HIGHLIGHTS_KEY];

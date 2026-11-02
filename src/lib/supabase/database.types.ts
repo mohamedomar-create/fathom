@@ -126,6 +126,7 @@ export type Database = {
       restore_organisation: { Args: { p_org: string }; Returns: undefined };
       get_published_report: { Args: { p_token: string }; Returns: Json };
       close_month: { Args: { p_company: string; p_month: string }; Returns: string };
+      set_statement_mark: { Args: { p_company: string; p_key: string; p_mark: Json | null }; Returns: Json };
       update_company_settings: { Args: { p_company: string; p_patch: Json; p_replace_kpis?: boolean }; Returns: Json };
       reopen_month: { Args: { p_company: string; p_month: string }; Returns: string };
       freeze_report: { Args: { p_report: string }; Returns: string };

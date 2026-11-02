@@ -9,6 +9,7 @@ import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
+import { hl } from "./areas/hl";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -131,6 +132,7 @@ export const ar: Dict = {
   exp: exp.ar,
   inv: inv.ar,
   cash: cash.ar,
+  hl: hl.ar,
   bank: bank.ar,
   state: state.ar,
   access: access.ar,

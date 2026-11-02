@@ -1,4 +1,5 @@
-import { ECONOMY_KEY, FORECAST_KEY, RESERVED_KEYS } from "@/lib/company/config-keys";
+import { ECONOMY_KEY, FORECAST_KEY, HIGHLIGHTS_KEY, RESERVED_KEYS } from "@/lib/company/config-keys";
+import { accountMarkKey, highlightsOf } from "@/lib/engine/statement-rows";
 
 /**
  * Everything stored for one company, as plain sheets (arrays of rows) and then an .xlsx file.
@@ -31,6 +32,7 @@ const cell = (v: unknown): Cell => (v === undefined ? null : typeof v === "strin
 export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet[] {
   const w = (en: string, ar: string) => (lang === "ar" ? ar : en);
   const c = d.company;
+  const acctKeys = new Set(d.accounts.map((a) => accountMarkKey(a)));
   const company: Cell[][] = [
     [w("Company", "الشركة"), c.name], [w("Organisation", "المؤسسة"), d.orgName], [w("Currency", "العملة"), c.currency], [w("Financial year starts", "بداية السنة المالية"), (lang === "ar" ? MONTHS_AR : MONTHS)[c.fy_start_month - 1] ?? c.fy_start_month],
     [w("Corporate tax rate", "نسبة ضريبة الدخل"), c.tax_rate], [w("Industry", "النشاط"), c.industry], [w("Source", "المصدر"), c.source], [w("Data version", "إصدار البيانات"), c.data_version],
@@ -47,11 +49,21 @@ export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet
   }
   const ctx = Object.entries(obj(c.ai_context)).filter(([, v]) => v !== "" && v != null);
   if (ctx.length) { company.push([], [w("AI business context", "سياق النشاط للذكاء الاصطناعي")]); for (const [k, v] of ctx) company.push([k, cell(v)]); }
+  // Highlighted statements: when a line is flagged, and every colour mark editors set on statement lines.
+  const hl = highlightsOf(obj(c.kpi_config));
+  const lineMarks = Object.entries(hl.lines).filter(([k]) => !k.startsWith("#") && !acctKeys.has(k));
+  if (HIGHLIGHTS_KEY in obj(c.kpi_config)) {
+    company.push([], [w("Highlights", "التمييز")], [w("Flag a move of at least (%)", "تمييز تغيّر لا يقل عن (%)"), hl.pct], [w("And at least", "وبما لا يقل عن"), hl.amount]);
+    if (lineMarks.length) { company.push([w("Line", "البند"), w("Mark", "اللون"), w("Note", "ملاحظة")]); for (const [k, m] of lineMarks) company.push([k, m.color, m.note ?? null]); }
+  }
   const notes = Object.entries(obj(c.notes));
   if (notes.length) { company.push([], [w("Notes", "ملاحظات")]); for (const [k, v] of notes) company.push([k, cell(v)]); }
 
   const periods = [...new Set(d.accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
-  const accounts: Cell[][] = [[w("Code", "الكود"), w("Account", "الحساب"), w("Statement", "القائمة"), w("Class", "التصنيف"), ...periods], ...d.accounts.map((a) => [a.code, a.name, a.statement, a.class, ...periods.map((p) => a.amounts[p] ?? null)])];
+  const markOf = (a: { code: string | null; name: string }) => hl.lines[accountMarkKey(a)] ?? null;
+  const anyAcctMark = d.accounts.some((a) => markOf(a));
+  const accounts: Cell[][] = [[w("Code", "الكود"), w("Account", "الحساب"), w("Statement", "القائمة"), w("Class", "التصنيف"), ...(anyAcctMark ? [w("Mark", "اللون"), w("Mark note", "ملاحظة التمييز")] : []), ...periods],
+    ...d.accounts.map((a) => [a.code, a.name, a.statement, a.class, ...(anyAcctMark ? [markOf(a)?.color ?? null, markOf(a)?.note ?? null] : []), ...periods.map((p) => a.amounts[p] ?? null)])];
 
   const sheets: Sheet[] = [
     { name: w("Company", "الشركة"), rows: company },

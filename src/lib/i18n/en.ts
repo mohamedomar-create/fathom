@@ -9,6 +9,7 @@ import { eu } from "./areas/eu";
 import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
+import { hl } from "./areas/hl";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -134,6 +135,7 @@ export const en = {
   exp: exp.en,
   inv: inv.en,
   cash: cash.en,
+  hl: hl.en,
   bank: bank.en,
   state: state.en,
   access: access.en,

@@ -1,9 +1,11 @@
 "use client";
+import { BS_LINES, PL_LINES, type Highlights } from "@/lib/engine/statement-rows";
+import { ChangeCell, Flag, flagReason, MarkButton, rowCls } from "@/components/analysis/statement-ui";
 import { balanced } from "@/lib/tolerance";
 import { Fragment, useMemo } from "react";
 import {
   analyze, bsCalc, CAT_COL, CAT_ORDER, formatTrend, goalFor, goalseekTable, GOAL_KPIS, LEVERS, mlabel, money, mshort, pct, plCalc, quadrantOf, QUADRANT_TEXT,
-  type Analysis, type Finding, type PLCalc, type BSCalc,
+  type Analysis, type Finding,
 } from "@/lib/engine";
 import { BreakevenChart } from "@/components/charts/breakeven-chart";
 import { CashWaterfall } from "@/components/charts/waterfall";
@@ -81,8 +83,8 @@ export function ReportDocument({ input }: { input: ReportInput }) {
       <CashWaterfall rows={a.W.rows} cur={cur} />
       <p className="mt-2 text-[10px] text-mute"><b>{t.ncfAlso}</b>{t.ncfCalc(money(a.W.dcash, cur), money(a.W.ddebt, cur))}</p>
     </> : <p className="text-mute">{t.needsOpeningPeriod}</p>}{comment("cashflow")}</>,
-    pl: () => <>{head(T.d.rep.secs.pl)}<PLTable a={a} cur={cur} T={T} />{comment("pl")}</>,
-    bs: () => <>{head(T.d.rep.secs.bs)}<BSTable a={a} cur={cur} T={T} />{comment("bs")}</>,
+    pl: () => <>{head(T.d.rep.secs.pl)}<PLTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("pl")}</>,
+    bs: () => <>{head(T.d.rep.secs.bs)}<BSTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("bs")}</>,
     cf: () => <>{head(T.d.rep.secs.cf)}{a.CF ? <table className="tbl text-[11.5px]"><tbody>
       {a.CF.lines.map((l, i) => l.heading ? <tr key={i} className="cat"><td colSpan={2}>{T.tl(l.label)}</td></tr> : <tr key={i} className={cn(l.total && "tot")}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td></tr>)}
     </tbody></table> : <p className="text-mute">{t.needsOpening}</p>}</>,
@@ -232,20 +234,23 @@ function Profitability({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
   );
 }
 
-function PLTable({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
+/** The report's statements: the same lines, shading, better/worse cells, flags and colour marks as the Financials page. */
+function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highlights }) {
   const t = T.d.rep.doc;
   const { P, prior, ytd } = a.view;
-  const rows: [string, keyof PLCalc, boolean, boolean][] = [["Revenue", "revenue", false, false], ["Cost of Sales", "cos", false, true], ["Gross Profit", "gross_profit", true, false], ["Expenses", "expenses", false, true], ["Operating Profit", "operating_profit", true, false], ["Other Income", "other_income", false, false], ["Other Expenses", "other_expenses", false, true], ["Earnings Before Interest & Tax", "ebit", true, false], ["Interest Income", "interest_income", false, false], ["Interest Expenses", "interest_expenses", false, true], ["Earnings Before Tax", "ebt", true, false], ["Tax Expenses", "tax_expenses", false, true], ["Net Income", "net_income", true, false]];
+  const fmt = (v: number) => money(v, cur);
+  const rows = PL_LINES.filter((r) => !r.ifAdjusted || P.adjustments || prior?.P.adjustments);
   return (
     <table className="tbl text-[11.5px]">
       <thead><tr><th>{T.tl("Profit & Loss")}</th><th>{T.pl(a.view.window.short)}</th><th>{prior ? T.pl(prior.label) : t.priorCol}</th><th>{T.d.ana.variancePct}</th><th>{t.commonSize}</th><th>{T.d.ana.ytd}</th></tr></thead>
-      <tbody>{rows.map(([l, k, tot, cost]) => {
+      <tbody>{rows.map(({ l, k }) => {
         const v = P[k] as number, p = prior ? (prior.P[k] as number) : null;
-        const varPct = p ? ((v - p) / Math.abs(p)) * 100 : null;
+        const why = flagReason("PL", k, v, p, h, fmt, T);
+        const mark = h?.lines[k] ?? null;
         return (
-          <tr key={k} className={cn(tot && "tot")}>
-            <td>{T.tl(l)}</td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
-            <td className={varPct === null ? "text-mute" : (cost ? varPct <= 0 : varPct >= 0) ? "text-green-d" : "text-red"}>{varPct === null ? "–" : pct(varPct)}</td>
+          <tr key={k} className={rowCls(k, { base: "", mark, flagged: !!why })} data-line={k}>
+            <td>{T.tl(l)}<Flag reason={why} /><MarkButton markKey={k} mark={mark} canEdit={false} onSave={noSave} label={T.tl(l)} /></td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
+            <ChangeCell statement="PL" k={k} cur={v} cmp={p} kind="pct" fmt={fmt} />
             <td>{P.revenue ? <><MiniPie p={(v / P.revenue) * 100} /> {pct((v / P.revenue) * 100, 0)}</> : "–"}</td>
             <td>{money(ytd[k] as number, cur)}</td>
           </tr>
@@ -255,24 +260,26 @@ function PLTable({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
   );
 }
 
-function BSTable({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
+function BSTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highlights }) {
   const t = T.d.rep.doc;
   const { B, prior } = a.view;
   const C = prior?.B ?? null;
-  const rows: [string, keyof BSCalc | null, 0 | 1 | 2][] = [["ASSETS", null, 2], ["Cash & Equivalents", "cash", 0], ["Accounts Receivable", "ar", 0], ["Inventory", "inventory", 0], ["Work In Progress", "wip", 0], ["Other Current Assets", "other_ca", 0], ["Total Current Assets", "tca", 1], ["Fixed Assets", "fixed_assets", 0], ["Intangible Assets", "intangibles", 0], ["Investments / Other NCA", "investments", 0], ["Total Assets", "ta", 1], ["LIABILITIES", null, 2], ["Short Term Debt", "std", 0], ["Accounts Payable", "ap", 0], ["Tax Liability", "tax_liab", 0], ["Other Current Liabilities", "other_cl", 0], ["Total Current Liabilities", "tcl", 1], ["Long Term Debt", "ltd", 0], ["Other Non-Current Liabilities", "other_ncl", 0], ["Total Liabilities", "tl", 1], ["EQUITY", null, 2], ["Retained Earnings", "retained_earnings", 0], ["Other Equity", "other_equity", 0], ["Total Equity", "te", 1], ["Total Liabilities & Equity", "tle", 1]];
+  const fmt = (v: number) => money(v, cur);
   return (
     <>
       {!balanced(B.imbalance) && <p className="mb-2 text-end text-[12px] text-red">{T.d.ana.outOfBalance(money(B.imbalance, cur))}</p>}
       <table className="tbl text-[11.5px]">
         <thead><tr><th>{T.tl("Balance Sheet")}</th><th>{T.ml(a.view.window.end)}</th><th>{C ? T.pl(prior!.label) : t.priorCol}</th><th>{t.variance}</th><th>{t.commonSize}</th></tr></thead>
-        <tbody>{rows.map(([l, k, t]) => {
-          if (t === 2) return <tr key={l} className="cat"><td colSpan={5}>{T.tl(l)}</td></tr>;
-          const v = B[k!] as number, p = C ? (C[k!] as number) : null;
-          if (t === 0 && !v && !p) return null;
+        <tbody>{BS_LINES.map(({ l, k, typ }) => {
+          if (typ === 2 || !k) return <tr key={l} className="cat"><td colSpan={5}>{T.tl(l)}</td></tr>;
+          const v = B[k] as number, p = C ? (C[k] as number) : null;
+          if (typ === 0 && !v && !p) return null;
+          const why = flagReason("BS", k, v, p, h, fmt, T);
+          const mark = h?.lines[k] ?? null;
           return (
-            <tr key={l} className={cn(t === 1 && "tot")}>
-              <td>{T.tl(l)}</td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
-              <td className={p === null ? "text-mute" : v - p >= 0 ? "text-green-d" : "text-red"}>{p === null ? "–" : money(v - p, cur)}</td>
+            <tr key={l} className={rowCls(k, { base: "", mark, flagged: !!why })} data-line={k}>
+              <td>{T.tl(l)}<Flag reason={why} /><MarkButton markKey={k} mark={mark} canEdit={false} onSave={noSave} label={T.tl(l)} /></td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
+              <ChangeCell statement="BS" k={k} cur={v} cmp={p} kind="money" fmt={fmt} />
               <td>{B.ta ? pct((v / B.ta) * 100, 0) : "–"}</td>
             </tr>
           );
@@ -281,6 +288,7 @@ function BSTable({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
     </>
   );
 }
+const noSave = async () => ({ ok: false });
 
 function Trend({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
   const t = T.d.rep.doc;
