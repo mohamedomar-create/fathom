@@ -1,9 +1,8 @@
 "use client";
 import { createContext, useContext } from "react";
 import type { CashCompany, StoredEntry } from "./load";
-import type { CategoryRule } from "./categorise";
 
-export interface CashValue { company: CashCompany; entries: StoredEntry[]; /** Learned categories (0048), most recently used first. */ rules?: CategoryRule[] }
+export interface CashValue { company: CashCompany; entries: StoredEntry[] }
 const Ctx = createContext<CashValue | null>(null);
 
 /** The business and its entries, loaded once by the cash book's layout. */

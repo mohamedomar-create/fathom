@@ -29,7 +29,7 @@ grant select on ids to authenticated;
 create temp table e (n text primary key, id bigint);
 grant all on e to authenticated;
 
-select pg_temp.check('the database is at version 48', public.schema_version()::text, '48');
+select pg_temp.check('the database is at version 48 or later', (public.schema_version() >= 48)::text, 'true');
 
 -- Names are tidied exactly as the app's matchKey does (tests/unit/cash-categorise.test.ts holds the same samples).
 select pg_temp.check('Arabic is spelled one way, as the app spells it',

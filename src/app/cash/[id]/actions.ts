@@ -10,10 +10,13 @@ import { patchSettings } from "@/lib/company/settings-patch";
 import { saveCashBasisBooks } from "@/lib/cash/to-books";
 import { fullSwitchRefusal } from "@/lib/cash/books";
 import type { Json } from "@/lib/supabase/database.types";
-import { ALL_KINDS } from "@/lib/cash/kinds";
+import { ALL_KINDS, type Kind } from "@/lib/cash/kinds";
+import type { CategoryRule, LearnedRule } from "@/lib/cash/categorise";
 import { isClosed, openPeriods } from "@/lib/company/close";
 import { closedThroughOf } from "@/lib/company/close-server";
 
+/** Learned categories shown per page in Settings. */
+const RULES_PAGE = 50;
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const Id = z.string().uuid();
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -30,7 +33,7 @@ const FIELDS = ["date", "in", "out", "amount", "qty", "price", "balance", "type"
 const said = (e: { code?: string; message: string }, ctx: string) =>
   e.code === "22023" && e.message.length < 200 ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + "." : e.code === "PGRST202" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : dbError(e, ctx);
 const refresh = (id: string) => revalidatePath(`/cash/${id}`, "layout");
-async function editor(scope: "sales" | "cash_entry" = "sales") {
+async function editor(scope: "sales" | "cash_entry" | "cash_suggest" = "sales") {
   const { supabase, user } = await getUser();
   if (!user) return { error: "Please sign in again." as const };
   if (await limited(supabase, scope, user.id)) return { error: TOO_MANY };
@@ -118,6 +121,38 @@ export async function entryDelete(companyId: string, id: number): Promise<Result
   if (error) return { ok: false, error: said(error, "entryDelete") };
   refresh(companyId);
   return { ok: true };
+}
+
+/** The learned category for an entry, found on the server among every rule the business has (0049). */
+export async function suggestCategory(companyId: string, input: { direction: "in" | "out"; party: string; note: string }): Promise<Result<{ rule: LearnedRule | null }>> {
+  const v = z.object({ companyId: Id, direction: z.enum(["in", "out"]), party: z.string().max(200), note: z.string().max(300) }).safeParse({ companyId, ...input });
+  if (!v.success) return { ok: false, error: "That entry isn't valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  if (await limited(supabase, "cash_suggest", user.id)) return { ok: false, error: TOO_MANY };
+  const { data, error } = await supabase.rpc("cash_suggest", { p_company: v.data.companyId, p_direction: v.data.direction, p_party: v.data.party, p_note: v.data.note });
+  if (error) return { ok: false, error: said(error, "suggestCategory") };
+  const r = data as { category?: string; kind?: string; from?: string } | null;
+  const ok = r && r.category && (ALL_KINDS as string[]).includes(String(r.kind)) && (r.from === "party" || r.from === "note");
+  return { ok: true, rule: ok ? { category: r.category!, kind: r.kind as Kind, from: r.from as LearnedRule["from"] } : null };
+}
+
+/** One page of the learned categories for Settings, searched by name, description or category, with the total. */
+export async function rulesPage(companyId: string, search: string, offset: number): Promise<Result<{ total: number; rules: CategoryRule[] }>> {
+  const v = z.object({ companyId: Id, search: z.string().max(200), offset: z.number().int().min(0) }).safeParse({ companyId, search, offset });
+  if (!v.success) return { ok: false, error: "That search isn't valid." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const { data, error } = await supabase.rpc("cash_rules_page", { p_company: v.data.companyId, p_search: v.data.search, p_offset: v.data.offset, p_limit: RULES_PAGE });
+  if (error) return { ok: false, error: said(error, "rulesPage") };
+  const p = (data ?? {}) as { total?: number; rules?: Record<string, unknown>[] };
+  return {
+    ok: true, total: Number(p.total ?? 0),
+    rules: (p.rules ?? []).filter((r) => (ALL_KINDS as string[]).includes(String(r.kind))).map((r) => ({
+      id: Number(r.id), direction: r.direction === "out" ? "out" : "in", matchOn: r.matchOn === "note" ? "note" : "party", match: String(r.match ?? ""),
+      category: String(r.category ?? ""), kind: r.kind as Kind, uses: Number(r.uses ?? 1), lastUsed: String(r.lastUsed ?? ""),
+    })),
+  };
 }
 
 /** Forgets one learned category (editors). */

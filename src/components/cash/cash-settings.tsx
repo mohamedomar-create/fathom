@@ -2,7 +2,11 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCash } from "@/lib/cash/context";
-import { clearCashBook, previewToFull, ruleDelete, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
+import { clearCashBook, previewToFull, ruleDelete, rulesPage, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
+import type { CategoryRule } from "@/lib/cash/categorise";
+
+/** As cash_rules_page is asked for (actions.ts RULES_PAGE). */
+const RULES_PER_PAGE = 50;
 import { KIND_LABEL, type Kind } from "@/lib/cash/kinds";
 import { money } from "@/lib/engine/format";
 import { useLang } from "@/lib/i18n/context";
@@ -37,32 +41,56 @@ function SwitchPreview({ companyId, currency }: { companyId: string; currency: s
 
 /** The categories the cash book learned from saved entries (0048); an editor can forget one. */
 function LearnedRules() {
-  const { company, rules = [] } = useCash();
+  const { company } = useCash();
   const t = useT().d.cash;
   const m = useMsg();
-  const router = useRouter();
+  const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [page, setPage] = useState<{ total: number; rules: CategoryRule[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  const [tick, setTick] = useState(0);
+  // Every rule the business has, a page at a time, read from the server (searched while typing, after a short pause).
+  useEffect(() => {
+    let live = true;
+    const h = setTimeout(() => {
+      rulesPage(company.id, search, offset).then((r) => { if (!live) return; if (r.ok) { setPage({ total: r.total, rules: r.rules }); setError(null); } else setError(r.error); });
+    }, search ? 300 : 0);
+    return () => { live = false; clearTimeout(h); };
+  }, [company.id, search, offset, tick]);
+  const per = RULES_PER_PAGE;
   return (
     <section className="rounded-md border border-line p-4" data-testid="cash-rules">
       <h2 className="text-lg font-normal">{t.rulesTitle}</h2>
       <p className="mb-3 text-sm text-mute">{t.rulesText}</p>
+      <label className="mb-3 block"><span className="sr-only">{t.rulesSearch}</span>
+        <input type="search" className="w-full rounded border border-line px-3 py-2 text-sm" placeholder={t.rulesSearch} value={search}
+          onChange={(e) => { setSearch(e.target.value); setOffset(0); }} data-testid="cash-rules-search" /></label>
       {error && <p role="alert" className="mb-2 text-sm text-red">{m(error)}</p>}
-      {rules.length === 0 ? <p className="text-sm text-mute" data-testid="cash-rules-none">{t.rulesNone}</p> : (
-        <ul className="divide-y divide-line text-sm">
-          {rules.slice(0, 200).map((r) => (
-            <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5" data-testid="cash-rule">
-              <span className={r.direction === "in" ? "text-green-d" : "text-red"}>{r.direction === "in" ? t.inWord : t.outWord}</span>
-              <span className="text-mute">{t.ruleOn[r.matchOn]}:</span>
-              <span className="font-medium">{r.match}</span>
-              <span aria-hidden>→</span>
-              <span data-testid="cash-rule-category">{r.category}</span>
-              <span className="text-xs text-mute">{t.ruleUses(r.uses)}</span>
-              {!company.readOnly && <button type="button" disabled={pending} className="ms-auto text-red hover:underline disabled:opacity-50" data-testid="cash-rule-forget"
-                onClick={() => start(async () => { setError(null); const x = await ruleDelete(company.id, r.id); if (!x.ok) setError(x.error); else router.refresh(); })}>{t.ruleForget}</button>}
-            </li>
-          ))}
-        </ul>
+      {page && page.total === 0 ? <p className="text-sm text-mute" data-testid="cash-rules-none">{search ? t.rulesNoMatch : t.rulesNone}</p> : page && (
+        <>
+          <ul className="divide-y divide-line text-sm">
+            {page.rules.map((r) => (
+              <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5" data-testid="cash-rule">
+                <span className={r.direction === "in" ? "text-green-d" : "text-red"}>{r.direction === "in" ? t.inWord : t.outWord}</span>
+                <span className="text-mute">{t.ruleOn[r.matchOn]}:</span>
+                <span className="font-medium">{r.match}</span>
+                <span aria-hidden>→</span>
+                <span data-testid="cash-rule-category">{r.category}</span>
+                <span className="text-xs text-mute">{t.ruleUses(r.uses)}</span>
+                {!company.readOnly && <button type="button" disabled={pending} className="ms-auto min-h-6 text-red hover:underline disabled:opacity-50" data-testid="cash-rule-forget"
+                  onClick={() => start(async () => { setError(null); const x = await ruleDelete(company.id, r.id); if (!x.ok) setError(x.error); else setTick((n) => n + 1); })}>{t.ruleForget}</button>}
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
+            <span className="text-mute" data-testid="cash-rules-count">{t.rulesShown(page.total ? offset + 1 : 0, Math.min(offset + per, page.total), page.total)}</span>
+            {page.total > per && <span className="ms-auto flex gap-3">
+              <button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - per))} className="min-h-6 text-brand-d disabled:text-mute" data-testid="cash-rules-newer">{t.newer}</button>
+              <button type="button" disabled={offset + per >= page.total} onClick={() => setOffset(offset + per)} className="min-h-6 text-brand-d disabled:text-mute" data-testid="cash-rules-older">{t.older}</button>
+            </span>}
+          </div>
+        </>
       )}
     </section>
   );

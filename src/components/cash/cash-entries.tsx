@@ -13,9 +13,10 @@ import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/cn";
 import { useLang } from "@/lib/i18n/context";
 import { detectKind, KIND_LABEL, kindsFor, type Kind } from "@/lib/cash/kinds";
-import { suggest, topCategories } from "@/lib/cash/categorise";
+import { topCategories } from "@/lib/cash/categorise";
+import { useSuggestion } from "@/lib/cash/use-suggestion";
 
-// autoCat: the category was filled in from what the cash book learned, so it follows the name and description until typed over.
+// autoCat false: the person typed the category themselves; until then it follows what the cash book learned for the name and description.
 type Draft = { day: string; direction: "in" | "out"; amount: string; category: string; party: string; note: string; paid: "" | "yes" | "no"; paidOn: string; kind: "" | Kind; autoCat?: boolean };
 const blank = (day = ""): Draft => ({ day, direction: "in", amount: "", category: "", party: "", note: "", paid: "", paidOn: "", kind: "" });
 const draftOf = (e: StoredEntry): Draft => ({ day: e.day, direction: e.direction, amount: String(e.amount), category: e.category, party: e.party, note: e.note, paid: e.paid === true ? "yes" : e.paid === false ? "no" : "", paidOn: e.paidOn ?? "", kind: e.kind });
@@ -29,7 +30,7 @@ const SHOW = 300;
 
 /** Every entry, newest first: add one, change one, remove one (editors). */
 export function CashEntries() {
-  const { company, entries, rules = [] } = useCash();
+  const { company, entries } = useCash();
   const T = useT();
   const t = T.d.cash;
   const router = useRouter();
@@ -41,13 +42,11 @@ export function CashEntries() {
   const rows = entries.filter((e) => shown === "all" || e.day.startsWith(shown)).sort((a, b) => b.day.localeCompare(a.day) || b.id - a.id);
   const pageNo = Math.min(page, Math.max(0, Math.ceil(rows.length / SHOW) - 1));
   const from = pageNo * SHOW;
-  const [adding, setAddingRaw] = useState<Draft>(() => blank(company.today));
-  // The add row offers the learned category for its name and description (an untouched or empty category only).
-  const setAdding = (d: Draft) => {
-    if (d.category && !d.autoCat) return setAddingRaw(d);
-    const s = suggest(rules, { direction: d.direction, party: d.party, note: d.note });
-    setAddingRaw({ ...d, category: s.category || (d.autoCat ? "" : d.category), autoCat: !!s.category });
-  };
+  const [adding, setAdding] = useState<Draft>(() => blank(company.today));
+  // The add row offers the learned category for its name and description, found on the server, until the person types
+  // in the category themselves (autoCat false: theirs from then on, even when they clear it).
+  const learned = useSuggestion(company.id, adding.direction, adding.party, adding.note);
+  const addingShown: Draft = adding.autoCat === false ? adding : { ...adding, category: learned?.category ?? "" };
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>(blank());
   const [error, setError] = useState<string | null>(null);
@@ -101,8 +100,8 @@ export function CashEntries() {
           <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.kind, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>
           <tbody>
             {!company.readOnly && <tr className="border-b border-line bg-band/50" data-testid="entries-add-row">
-              {fields(adding, setAdding, "add")}
-              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={() => run(() => entryAdd(company.id, inputOf(adding)), () => setAddingRaw(blank(company.today)))} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
+              {fields(addingShown, setAdding, "add")}
+              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={() => run(() => entryAdd(company.id, inputOf(addingShown)), () => setAdding(blank(company.today)))} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
             </tr>}
             {rows.slice(from, from + SHOW).map((e) => editing === e.id ? (
               <tr key={e.id} className="border-b border-line" data-testid="entries-edit-row">

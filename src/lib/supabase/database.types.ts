@@ -40,7 +40,7 @@ export type ReportRow = {
 export type SalesLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null; sale_order: string | null; end_user: string | null; map_method: "order" | "contact" | "shipping" | null; note: string | null }
 export type ExpenseLineRow = { id: number; company_id: string; batch_id: string; source: "ledger" | "file"; day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number }
 export type ExpenseBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
-export type CashCategoryRuleRow = { id: number; company_id: string; direction: "in" | "out"; match_on: "party" | "note"; match: string; category: string; kind: string; uses: number; last_used: string; created_by: string | null }
+export type CashCategoryRuleRow = { id: number; company_id: string; direction: "in" | "out"; match_on: "party" | "note"; match: string; category: string; kind: string; uses: number; last_used: string; created_by: string | null; first_word?: string }
 export type CashUploadRow = { id: string; company_id: string; filename: string; months: string[]; mode: "add" | "replace_months"; status: "open" | "done"; rows: number; skipped: number; created_by: string | null; created_at: string }
 export type SalesBatchRow = { id: string; company_id: string; source: "ledger" | "file"; filename: string | null; periods: string[]; report: Json; created_by: string | null; created_at: string }
 export type PaymentBatchRow = { id: string; company_id: string; filename: string | null; periods: string[]; report: Json; source: "file" | "ledger"; created_by: string | null; created_at: string }
@@ -179,6 +179,8 @@ export type Database = {
       cash_entry_delete: { Args: { p_id: number }; Returns: undefined };
       cash_entries_clear: { Args: { p_company: string }; Returns: number };
       cash_rule_delete: { Args: { p_id: number }; Returns: undefined };
+      cash_suggest: { Args: { p_company: string; p_direction: string; p_party: string; p_note: string }; Returns: Json };
+      cash_rules_page: { Args: { p_company: string; p_search?: string; p_offset?: number; p_limit?: number }; Returns: Json };
       cash_to_full: { Args: { p_company: string }; Returns: Json };
       cash_from_full: { Args: { p_company: string }; Returns: number };
       add_line: { Args: { p_company: string; p_kind: string; p_line: Json }; Returns: number };

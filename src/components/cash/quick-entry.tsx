@@ -5,9 +5,10 @@ import * as D from "@radix-ui/react-dialog";
 import { Delete, X } from "lucide-react";
 import { useCash } from "@/lib/cash/context";
 import { typedAmount } from "@/lib/cash/input";
-import { resolveEntry, suggest, topCategories } from "@/lib/cash/categorise";
+import { resolveEntry, suggestFrom, topCategories } from "@/lib/cash/categorise";
+import { useSuggestion } from "@/lib/cash/use-suggestion";
 import { KIND_LABEL, kindsFor, type Kind } from "@/lib/cash/kinds";
-import { entryAdd } from "@/app/cash/[id]/actions";
+import { entryAdd, suggestCategory } from "@/app/cash/[id]/actions";
 import { moneyExact } from "@/lib/engine/format";
 import { useT } from "@/lib/i18n/use-t";
 import { useDict, useLang } from "@/lib/i18n/context";
@@ -21,7 +22,7 @@ const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "back"] as 
  * kind are suggested from what the cash book learned (the person's choice wins); "More details" holds the rest.
  */
 export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
-  const { company, entries, rules = [] } = useCash();
+  const { company, entries } = useCash();
   const t = useT().d.cash;
   const d = useDict();
   const lang = useLang();
@@ -41,7 +42,9 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
   const [pending, start] = useTransition();
 
   const way = direction ?? "in";
-  const s = useMemo(() => suggest(rules, { direction: way, party, note }), [rules, way, party, note]);
+  // The learned rule for the name and description, found on the server among every rule the business has.
+  const learned = useSuggestion(company.id, way, party, note);
+  const s = useMemo(() => suggestFrom(learned, { direction: way, party, note }), [learned, way, party, note]);
   const chips = useMemo(() => topCategories(entries, way, s.category), [entries, way, s.category]);
   // Until the person picks one, the learned category is the choice.
   const category = picked ?? s.category;
@@ -60,8 +63,16 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
   const save = () => {
     if (!typed || typed <= 0) return setMsg({ ok: false, text: t.quickNoAmount });
     if (!direction) return setMsg({ ok: false, text: t.quickPickWay });
-    const chosen = resolveEntry(s, { category: picked, kind: kind && kindsFor(direction).includes(kind) ? kind : null }, { direction, party, note });
+    const ctx = { direction, party, note };
+    const choice = { category: picked, kind: kind && kindsFor(direction).includes(kind) ? kind : null };
     start(async () => {
+      // Saved before the suggestion caught up with the typing: ask now, so a learned category is never missed.
+      let now = s;
+      if (picked === null && (party.trim() || note.trim())) {
+        const q = await suggestCategory(company.id, ctx);
+        now = suggestFrom(q.ok ? q.rule : null, ctx);
+      }
+      const chosen = resolveEntry(now, choice, ctx);
       const r = await entryAdd(company.id, {
         day, direction, amount: typed, category: chosen.category, party, note, kind: chosen.kind,
         paid: paid === "yes" ? true : paid === "no" ? false : null, paidOn: paid === "yes" ? day : null,

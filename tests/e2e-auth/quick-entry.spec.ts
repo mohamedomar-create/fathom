@@ -1,10 +1,12 @@
 // Phase 4c: on a phone, an entry in three taps (amount, in or out, Save) saved on today's date; a category chosen for a
 // customer is learned and offered for that customer next time; the learned rule is listed in Settings and can be forgotten.
+import { execFileSync } from "node:child_process";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { newEmail, requireLocalStack, signUp } from "./helpers";
 
 requireLocalStack();
+const DB = process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres";
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 async function pad(page: Page, digits: string) {
@@ -88,4 +90,29 @@ test("three taps on a phone save today's entry; the category learned for a custo
   await expect(rule).toContainText("used 2×");
   await rule.getByTestId("cash-rule-forget").click();
   await expect(page.getByTestId("cash-rules-none")).toBeVisible({ timeout: 15_000 });
+
+  // A business with thousands of customers: 3,000 learned names, every one kept, listed 50 at a time with the total,
+  // found by search beyond the first page, suggested for an old customer, and forgotten.
+  execFileSync("psql", [DB, "-q", "-c", `insert into public.cash_category_rules (company_id, direction, match_on, match, category, kind, last_used)
+    select '${id}', 'in', 'party', 'customer ' || g, 'Wholesale ' || (g % 7), 'sale', now() - make_interval(mins => g) from generate_series(1, 3000) g`]);
+  await page.reload();
+  await expect(page.getByTestId("cash-rule")).toHaveCount(50, { timeout: 15_000 });
+  await expect(page.getByTestId("cash-rules-count")).toHaveText("1–50 of 3,000");
+  await page.getByTestId("cash-rules-older").click();
+  await expect(page.getByTestId("cash-rules-count")).toHaveText("51–100 of 3,000");
+  await page.getByTestId("cash-rules-search").fill("customer 2999");
+  await expect(page.getByTestId("cash-rule")).toHaveCount(1, { timeout: 15_000 });
+  await expect(page.getByTestId("cash-rule")).toContainText("Wholesale 3");
+
+  // The oldest customer still gets their category in quick entry.
+  await page.getByTestId("cash-bottom-add").click();
+  await pad(page, "40");
+  await page.getByTestId("quick-in").click();
+  await page.getByTestId("quick-more").click();
+  await page.getByTestId("quick-party").fill("Customer 2999");
+  await expect(page.getByTestId("quick-chip").filter({ hasText: "Wholesale 3" })).toHaveAttribute("aria-pressed", "true", { timeout: 10_000 });
+  await page.keyboard.press("Escape");
+
+  await page.getByTestId("cash-rule").getByTestId("cash-rule-forget").click();
+  await expect(page.getByTestId("cash-rules-none")).toContainText("No learned category matches", { timeout: 15_000 });
 });

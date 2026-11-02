@@ -1,7 +1,7 @@
 import { normAr } from "@/lib/ingest/parse";
-import { detectKind, type Kind } from "./kinds";
+import { detectKind, kindsFor, type Kind } from "./kinds";
 
-/** A category the cash book learned from a saved entry (0048): for a customer/supplier, or for a description. */
+/** A category the cash book learned from a saved entry (0048), as Settings lists it: for a customer/supplier, or for a description. */
 export interface CategoryRule {
   id: number; direction: "in" | "out"; matchOn: "party" | "note"; match: string; category: string; kind: Kind; uses: number; lastUsed: string;
 }
@@ -10,25 +10,38 @@ export interface Suggestion { category: string; kind: Kind; from: "party" | "not
 /** How names and descriptions are compared: as the database's private.cash_match (Arabic spelled one way, case, spaces). */
 export const matchKey = (s: string) => normAr(s.replace(/[ؐ-ًؚ-ٰٟـ]/g, "")).toLowerCase().replace(/\s+/g, " ").trim().slice(0, 200);
 
+/** What the server found for an entry (0049 cash_suggest): the learned category, its kind, and whether it came from the name or the description. */
+export interface LearnedRule { category: string; kind: Kind; from: "party" | "note" }
+export interface SuggestInput { direction: "in" | "out"; party: string; note: string }
+
 /**
- * The category and kind to offer for an entry: the customer/supplier's own rule first, then a learned description found
- * in this one (whole words, the longest, then the most used), then the keyword rules for the kind alone.
+ * The category and kind to offer: the learned rule the server found (the customer/supplier's own first, then the
+ * longest learned description in this one), else the keyword rules for the kind alone.
  */
-export function suggest(rules: CategoryRule[], e: { direction: "in" | "out"; party: string; note: string }): Suggestion {
-  const mine = rules.filter((r) => r.direction === e.direction);
-  const party = matchKey(e.party);
-  if (party) {
-    const r = mine.find((x) => x.matchOn === "party" && matchKey(x.match) === party);
-    if (r) return { category: r.category, kind: r.kind, from: "party" };
-  }
-  const note = ` ${matchKey(e.note)} `;
-  if (note.trim()) {
-    const hit = mine.filter((x) => x.matchOn === "note" && matchKey(x.match) && note.includes(` ${matchKey(x.match)} `))
-      .sort((a, b) => matchKey(b.match).length - matchKey(a.match).length || b.uses - a.uses)[0];
-    if (hit) return { category: hit.category, kind: hit.kind, from: "note" };
-  }
+export function suggestFrom(rule: LearnedRule | null, e: SuggestInput): Suggestion {
+  if (rule && rule.category && kindsFor(e.direction).includes(rule.kind)) return { category: rule.category, kind: rule.kind, from: rule.from };
   const kind = detectKind(e.direction, `${e.party} ${e.note}`);
   return { category: "", kind, from: kind === (e.direction === "in" ? "sale" : "expense") ? "none" : "words" };
+}
+
+/**
+ * Asks the server for a learned rule while someone types: once, 300 ms after the typing stops, and only the newest
+ * answer is kept (a late answer to an older question is dropped). Nothing typed, or a failed question, gives no rule.
+ */
+export function createSuggester(fetcher: (i: SuggestInput) => Promise<LearnedRule | null>, onResult: (r: LearnedRule | null) => void, delayMs = 300) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let seq = 0;
+  return {
+    ask(i: SuggestInput) {
+      const mine = ++seq;
+      if (timer) clearTimeout(timer);
+      if (!i.party.trim() && !i.note.trim()) { onResult(null); return; }
+      timer = setTimeout(() => {
+        fetcher(i).then((r) => { if (mine === seq) onResult(r); }, () => { if (mine === seq) onResult(null); });
+      }, delayMs);
+    },
+    stop() { seq++; if (timer) clearTimeout(timer); },
+  };
 }
 
 /**

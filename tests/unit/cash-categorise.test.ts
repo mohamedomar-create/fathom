@@ -1,10 +1,7 @@
 // Phase 4c: the cash book suggests a category from what it learned (customer/supplier first, then words in the
 // description), then from keywords; a person's own choice always wins.
-import { describe, expect, it } from "vitest";
-import { matchKey, resolveEntry, suggest, topCategories, type CategoryRule } from "@/lib/cash/categorise";
-
-const rule = (r: Partial<CategoryRule> & Pick<CategoryRule, "matchOn" | "match" | "category">): CategoryRule =>
-  ({ id: 1, direction: "in", kind: "sale", uses: 1, lastUsed: "2026-03-01T00:00:00Z", ...r });
+import { describe, expect, it, vi } from "vitest";
+import { createSuggester, matchKey, resolveEntry, suggestFrom, topCategories } from "@/lib/cash/categorise";
 
 describe("matchKey", () => {
   it("tidies names the way the database does: case, spaces and Arabic spellings", () => {
@@ -19,31 +16,70 @@ describe("matchKey", () => {
   });
 });
 
-describe("suggest", () => {
-  const rules = [
-    rule({ id: 1, matchOn: "party", match: "nile cafe", category: "Drinks" }),
-    rule({ id: 2, matchOn: "note", match: "tea", category: "Snacks", uses: 9 }),
-    rule({ id: 3, matchOn: "note", match: "electricity bill", category: "Utilities", direction: "out", kind: "expense" }),
-    rule({ id: 4, matchOn: "note", match: "bill", category: "Other", direction: "out", kind: "expense", uses: 20 }),
-    rule({ id: 5, matchOn: "party", match: "nile cafe", category: "Refunds", direction: "out", kind: "expense" }),
-  ];
-  it("the customer's own rule comes first, before words in the description", () => {
-    expect(suggest(rules, { direction: "in", party: "Nile  CAFE", note: "tea" })).toEqual({ category: "Drinks", kind: "sale", from: "party" });
+describe("suggestFrom", () => {
+  it("a learned rule from the server comes first, with where it came from", () => {
+    expect(suggestFrom({ category: "Drinks", kind: "sale", from: "party" }, { direction: "in", party: "Nile Cafe", note: "fridge" }))
+      .toEqual({ category: "Drinks", kind: "sale", from: "party" });
+    expect(suggestFrom({ category: "Utilities", kind: "expense", from: "note" }, { direction: "out", party: "", note: "electricity bill" }).from).toBe("note");
   });
-  it("money out from the same name uses its own rule", () => {
-    expect(suggest(rules, { direction: "out", party: "nile cafe", note: "" }).category).toBe("Refunds");
-  });
-  it("then a learned description found in the new one, as whole words, the longest first", () => {
-    expect(suggest(rules, { direction: "in", party: "", note: "Tea for staff" })).toEqual({ category: "Snacks", kind: "sale", from: "note" });
-    expect(suggest(rules, { direction: "out", party: "", note: "March electricity bill" })).toEqual({ category: "Utilities", kind: "expense", from: "note" });
-    expect(suggest(rules, { direction: "in", party: "", note: "steak" }).from).not.toBe("note");
+  it("a rule whose kind does not fit the direction is not used", () => {
+    expect(suggestFrom({ category: "Drinks", kind: "sale", from: "party" }, { direction: "out", party: "Nile Cafe", note: "" }).category).toBe("");
   });
   it("then the keyword rules for the kind, with no category", () => {
-    expect(suggest(rules, { direction: "out", party: "", note: "fridge" })).toEqual({ category: "", kind: "asset", from: "words" });
-    expect(suggest([], { direction: "in", party: "", note: "loan from bank" })).toEqual({ category: "", kind: "loan", from: "words" });
+    expect(suggestFrom(null, { direction: "out", party: "", note: "fridge" })).toEqual({ category: "", kind: "asset", from: "words" });
+    expect(suggestFrom(null, { direction: "in", party: "", note: "loan from bank" })).toEqual({ category: "", kind: "loan", from: "words" });
   });
   it("nothing known: a plain sale or expense", () => {
-    expect(suggest([], { direction: "out", party: "", note: "" })).toEqual({ category: "", kind: "expense", from: "none" });
+    expect(suggestFrom(null, { direction: "out", party: "", note: "" })).toEqual({ category: "", kind: "expense", from: "none" });
+  });
+});
+
+describe("createSuggester (asking the server while someone types)", () => {
+  const input = (party: string) => ({ direction: "in" as const, party, note: "" });
+  it("asks once, 300 ms after typing stops, with only the latest words", async () => {
+    vi.useFakeTimers();
+    const asked: string[] = [];
+    const got: (string | null)[] = [];
+    const s = createSuggester(async (i) => { asked.push(i.party); return { category: i.party.toUpperCase(), kind: "sale", from: "party" }; }, (r) => got.push(r?.category ?? null));
+    s.ask(input("n")); s.ask(input("ni")); s.ask(input("nile"));
+    await vi.advanceTimersByTimeAsync(299);
+    expect(asked).toEqual([]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(asked).toEqual(["nile"]);
+    expect(got).toEqual(["NILE"]);
+    vi.useRealTimers();
+  });
+  it("a late answer to an older question never replaces the newer one", async () => {
+    vi.useFakeTimers();
+    const got: (string | null)[] = [];
+    const slow: Record<string, number> = { old: 1000, new: 10 };
+    const s = createSuggester((i) => new Promise((ok) => setTimeout(() => ok({ category: i.party, kind: "sale", from: "party" }), slow[i.party])), (r) => got.push(r?.category ?? null));
+    s.ask(input("old"));
+    await vi.advanceTimersByTimeAsync(300);
+    s.ask(input("new"));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(got).toEqual(["new"]);
+    vi.useRealTimers();
+  });
+  it("nothing typed: no question, no rule", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn();
+    const got: unknown[] = [];
+    const s = createSuggester(fetcher, (r) => got.push(r));
+    s.ask(input("  "));
+    await vi.advanceTimersByTimeAsync(400);
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(got).toEqual([null]);
+    vi.useRealTimers();
+  });
+  it("a failed question leaves no rule rather than an error", async () => {
+    vi.useFakeTimers();
+    const got: unknown[] = [];
+    const s = createSuggester(async () => { throw new Error("offline"); }, (r) => got.push(r));
+    s.ask(input("nile"));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(got).toEqual([null]);
+    vi.useRealTimers();
   });
 });
 
