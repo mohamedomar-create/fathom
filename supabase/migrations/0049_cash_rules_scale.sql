@@ -9,8 +9,8 @@ create extension if not exists pg_trgm with schema extensions;
 -- Names and descriptions are compared as the app's matchKey: Arabic spelled one way, lower case, and any kind of
 -- space (including the non-breaking spaces ERP exports carry) as one space.
 create or replace function private.cash_match(p text) returns text language sql immutable set search_path = '' as $$
-  select left(btrim(regexp_replace(lower(translate(regexp_replace(coalesce(p, ''), '[ؐ-ًؚ-ٰٟـ]', '', 'g'),
-    'أإآٱىةؤئکی', 'اااايهويكي')), '[\s   -     　﻿]+', ' ', 'g')), 200)
+  select left(btrim(regexp_replace(lower(translate(regexp_replace(coalesce(p, ''), '[\u0610-\u061A\u064B-\u065F\u0670\u0640]', '', 'g'),
+    'أإآٱىةؤئکی', 'اااايهويكي')), '[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+', ' ', 'g')), 200)
 $$;
 
 -- The category as searched, and trigram indexes so Settings finds a rule among hundreds of thousands at once.
