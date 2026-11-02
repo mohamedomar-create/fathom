@@ -52,6 +52,8 @@ select pg_temp.check('never part of a word', coalesce(public.cash_suggest((selec
 select pg_temp.check('money in never takes a money-out rule', coalesce(public.cash_suggest((select co from ids), 'in', 'شركة النور', '')::text, 'none'), 'none');
 select pg_temp.check('the name comes before the description', (public.cash_suggest((select co from ids), 'out', 'شركة النور', 'tea') ->> 'category'), 'Supplies');
 select pg_temp.check('nothing known: nothing suggested', coalesce(public.cash_suggest((select co from ids), 'in', 'Somebody New', 'first visit')::text, 'none'), 'none');
+select pg_temp.check('a non-breaking space from an ERP export is a space', (public.cash_suggest((select co from ids), 'in', E'Customer\u00a07', '') ->> 'category'), 'Wholesale');
+select pg_temp.check('a learned description in the middle of a long one', (public.cash_suggest((select co from ids), 'out', '', 'paid in cash on the 3rd for the march electricity bill of the warehouse and the office building next door') ->> 'category'), 'Power');
 
 -- Settings: every rule, paged and searched, with the total.
 select pg_temp.check('the page says how many there are and shows 50', (select (p ->> 'total') || ' ' || jsonb_array_length(p -> 'rules') from (select public.cash_rules_page((select co from ids), '', 0, 50) p) x), '6004 50');
@@ -77,7 +79,7 @@ select pg_temp.check('signed-out visitors cannot list rules', has_function_privi
 insert into public.cash_category_rules (company_id, direction, match_on, match, category, kind)
 select (select co from ids), 'out', 'note', 'service ' || g || ' contract', 'Services', 'expense' from generate_series(1, 44000) g;
 analyze public.cash_category_rules;
-select pg_temp.check('the description index is there', (select count(*)::text from pg_indexes where tablename = 'cash_category_rules' and indexdef like '%first_word%'), '1');
+select pg_temp.check('names and categories have search indexes', (select count(*)::text from pg_indexes where tablename = 'cash_category_rules' and indexdef like '%gin_trgm_ops%'), '2');
 select pg_temp.login('crs-a@x.test');
 create temp table t0 (t timestamptz);
 grant all on t0 to authenticated;
@@ -85,6 +87,23 @@ insert into t0 values (clock_timestamp());
 select count(public.cash_suggest((select co from ids), 'out', 'Nobody ' || g, 'payment for service ' || g || ' contract this month')) from generate_series(1, 40) g;
 select pg_temp.check('forty suggestions over 50,000 rules take under two seconds', (extract(epoch from clock_timestamp() - (select t from t0)) < 2)::text, 'true');
 select pg_temp.check('and they find the right rule', (public.cash_suggest((select co from ids), 'out', '', 'payment for service 31337 contract') ->> 'match'), 'service 31337 contract');
+reset role;
+-- ERP-style descriptions: 60,000 that all start with the same word stay as fast.
+insert into public.cash_category_rules (company_id, direction, match_on, match, category, kind)
+select (select co from ids), 'out', 'note', 'invoice inv/2026/' || g || ' paid', 'Suppliers', 'expense' from generate_series(1, 60000) g;
+analyze public.cash_category_rules;
+select pg_temp.login('crs-a@x.test');
+update t0 set t = clock_timestamp();
+select count(public.cash_suggest((select co from ids), 'out', '', 'invoice inv/2026/' || g || ' paid by transfer')) from generate_series(1, 40) g;
+select pg_temp.check('forty suggestions among 60,000 look-alike invoices take under one second', (extract(epoch from clock_timestamp() - (select t from t0)) < 1)::text, 'true');
+select pg_temp.check('and find the exact invoice', (public.cash_suggest((select co from ids), 'out', '', 'invoice inv/2026/51234 paid by transfer') ->> 'match'), 'invoice inv/2026/51234 paid');
+-- Settings search over 110,000 rules: quick, even when nothing matches; the total stops counting at 10,000.
+update t0 set t = clock_timestamp();
+select count(public.cash_rules_page((select co from ids), s, 0, 50)) from unnest(array['zzzz nothing', 'wholesale', 'inv/2026/777', 'شركة', 'customer 42']) s;
+select pg_temp.check('five searches over 110,000 rules take under one second', (extract(epoch from clock_timestamp() - (select t from t0)) < 1)::text, 'true');
+select pg_temp.check('a large total says there are more', (select (p ->> 'total') || ' ' || (p ->> 'more') from (select public.cash_rules_page((select co from ids), 'invoice', 0, 50) p) x), '10000 true');
+select pg_temp.check('a small total is exact', (select (p ->> 'total') || ' ' || (p ->> 'more') from (select public.cash_rules_page((select co from ids), 'utilities', 0, 50) p) x), '1 false');
+select pg_temp.check('a search with % or _ means those characters', (select p ->> 'total' from (select public.cash_rules_page((select co from ids), '%', 0, 50) p) x), '0');
 reset role;
 
 delete from public.companies where id = (select co from ids);

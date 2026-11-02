@@ -82,6 +82,13 @@ test("three taps on a phone save today's entry; the category learned for a custo
   await expect(page.getByTestId("add-day")).toHaveValue(today);
   await page.getByTestId("add-party").fill("Nile Cafe");
   await expect(page.getByTestId("add-category")).toHaveValue("Drinks");
+  // Another name, saved at once: the previous customer's category is never carried over to it.
+  await page.getByTestId("add-amount").fill("15");
+  await page.getByTestId("add-party").fill("Walk-in buyer");
+  await page.getByTestId("entries-add").click();
+  const walkIn = page.getByTestId("entries-row").filter({ hasText: "Walk-in buyer" });
+  await expect(walkIn).toHaveCount(1, { timeout: 15_000 });
+  await expect(walkIn).not.toContainText("Drinks");
 
   // The learned rule is listed and can be forgotten.
   await page.goto(`/cash/${id}/settings`);

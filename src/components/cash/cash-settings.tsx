@@ -3,10 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useCash } from "@/lib/cash/context";
 import { clearCashBook, previewToFull, ruleDelete, rulesPage, saveCashSettings, switchToFull, type FullPreview } from "@/app/cash/[id]/actions";
-import type { CategoryRule } from "@/lib/cash/categorise";
-
-/** As cash_rules_page is asked for (actions.ts RULES_PAGE). */
-const RULES_PER_PAGE = 50;
+import { RULES_PAGE, type CategoryRule } from "@/lib/cash/categorise";
 import { KIND_LABEL, type Kind } from "@/lib/cash/kinds";
 import { money } from "@/lib/engine/format";
 import { useLang } from "@/lib/i18n/context";
@@ -46,7 +43,8 @@ function LearnedRules() {
   const m = useMsg();
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [page, setPage] = useState<{ total: number; rules: CategoryRule[] } | null>(null);
+  const [page, setPage] = useState<{ total: number; more: boolean; rules: CategoryRule[] } | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [tick, setTick] = useState(0);
@@ -54,11 +52,19 @@ function LearnedRules() {
   useEffect(() => {
     let live = true;
     const h = setTimeout(() => {
-      rulesPage(company.id, search, offset).then((r) => { if (!live) return; if (r.ok) { setPage({ total: r.total, rules: r.rules }); setError(null); } else setError(r.error); });
+      setLoading(true);
+      rulesPage(company.id, search, offset).then((r) => {
+        if (!live) return;
+        setLoading(false);
+        if (!r.ok) return setError(r.error);
+        // After a Forget the last page can be empty: step back to the last page that has rules.
+        if (!r.rules.length && offset > 0) return setOffset(Math.max(0, Math.floor((r.total - 1) / RULES_PAGE) * RULES_PAGE));
+        setPage({ total: r.total, more: r.more, rules: r.rules }); setError(null);
+      });
     }, search ? 300 : 0);
     return () => { live = false; clearTimeout(h); };
   }, [company.id, search, offset, tick]);
-  const per = RULES_PER_PAGE;
+  const per = RULES_PAGE;
   return (
     <section className="rounded-md border border-line p-4" data-testid="cash-rules">
       <h2 className="text-lg font-normal">{t.rulesTitle}</h2>
@@ -69,7 +75,7 @@ function LearnedRules() {
       {error && <p role="alert" className="mb-2 text-sm text-red">{m(error)}</p>}
       {page && page.total === 0 ? <p className="text-sm text-mute" data-testid="cash-rules-none">{search ? t.rulesNoMatch : t.rulesNone}</p> : page && (
         <>
-          <ul className="divide-y divide-line text-sm">
+          <ul className={`divide-y divide-line text-sm ${loading ? "opacity-60" : ""}`} aria-busy={loading}>
             {page.rules.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-1.5" data-testid="cash-rule">
                 <span className={r.direction === "in" ? "text-green-d" : "text-red"}>{r.direction === "in" ? t.inWord : t.outWord}</span>
@@ -84,10 +90,10 @@ function LearnedRules() {
             ))}
           </ul>
           <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-            <span className="text-mute" data-testid="cash-rules-count">{t.rulesShown(page.total ? offset + 1 : 0, Math.min(offset + per, page.total), page.total)}</span>
+            <span className="text-mute" data-testid="cash-rules-count">{t.rulesShown(page.total ? offset + 1 : 0, Math.min(offset + per, page.total), page.total, page.more)}</span>
             {page.total > per && <span className="ms-auto flex gap-3">
               <button type="button" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - per))} className="min-h-6 text-brand-d disabled:text-mute" data-testid="cash-rules-newer">{t.newer}</button>
-              <button type="button" disabled={offset + per >= page.total} onClick={() => setOffset(offset + per)} className="min-h-6 text-brand-d disabled:text-mute" data-testid="cash-rules-older">{t.older}</button>
+              <button type="button" disabled={offset + per >= page.total && !page.more} onClick={() => setOffset(offset + per)} className="min-h-6 text-brand-d disabled:text-mute" data-testid="cash-rules-older">{t.older}</button>
             </span>}
           </div>
         </>

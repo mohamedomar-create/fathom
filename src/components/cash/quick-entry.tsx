@@ -8,7 +8,7 @@ import { typedAmount } from "@/lib/cash/input";
 import { resolveEntry, suggestFrom, topCategories } from "@/lib/cash/categorise";
 import { useSuggestion } from "@/lib/cash/use-suggestion";
 import { KIND_LABEL, kindsFor, type Kind } from "@/lib/cash/kinds";
-import { entryAdd, suggestCategory } from "@/app/cash/[id]/actions";
+import { entryAdd } from "@/app/cash/[id]/actions";
 import { moneyExact } from "@/lib/engine/format";
 import { useT } from "@/lib/i18n/use-t";
 import { useDict, useLang } from "@/lib/i18n/context";
@@ -43,7 +43,8 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
 
   const way = direction ?? "in";
   // The learned rule for the name and description, found on the server among every rule the business has.
-  const learned = useSuggestion(company.id, way, party, note);
+  const sug = useSuggestion(company.id, { direction: way, party, note }, entries.length);
+  const learned = sug.rule;
   const s = useMemo(() => suggestFrom(learned, { direction: way, party, note }), [learned, way, party, note]);
   const chips = useMemo(() => topCategories(entries, way, s.category), [entries, way, s.category]);
   // Until the person picks one, the learned category is the choice.
@@ -66,11 +67,11 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
     const ctx = { direction, party, note };
     const choice = { category: picked, kind: kind && kindsFor(direction).includes(kind) ? kind : null };
     start(async () => {
-      // Saved before the suggestion caught up with the typing: ask now, so a learned category is never missed.
+      // Saved before the suggestion caught up with the typing: ask now, so a learned category is never missed. If the
+      // server cannot answer, nothing is saved: an entry is never quietly left without the category it should have.
       let now = s;
-      if (picked === null && (party.trim() || note.trim())) {
-        const q = await suggestCategory(company.id, ctx);
-        now = suggestFrom(q.ok ? q.rule : null, ctx);
+      if (picked === null && !sug.ready) {
+        try { now = suggestFrom(await sug.check(ctx), ctx); } catch { return setMsg({ ok: false, text: t.quickNoCheck }); }
       }
       const chosen = resolveEntry(now, choice, ctx);
       const r = await entryAdd(company.id, {

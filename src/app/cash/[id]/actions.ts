@@ -11,12 +11,10 @@ import { saveCashBasisBooks } from "@/lib/cash/to-books";
 import { fullSwitchRefusal } from "@/lib/cash/books";
 import type { Json } from "@/lib/supabase/database.types";
 import { ALL_KINDS, type Kind } from "@/lib/cash/kinds";
-import type { CategoryRule, LearnedRule } from "@/lib/cash/categorise";
+import { RULES_PAGE, type CategoryRule, type LearnedRule } from "@/lib/cash/categorise";
 import { isClosed, openPeriods } from "@/lib/company/close";
 import { closedThroughOf } from "@/lib/company/close-server";
 
-/** Learned categories shown per page in Settings. */
-const RULES_PAGE = 50;
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const Id = z.string().uuid();
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
@@ -138,16 +136,17 @@ export async function suggestCategory(companyId: string, input: { direction: "in
 }
 
 /** One page of the learned categories for Settings, searched by name, description or category, with the total. */
-export async function rulesPage(companyId: string, search: string, offset: number): Promise<Result<{ total: number; rules: CategoryRule[] }>> {
+export async function rulesPage(companyId: string, search: string, offset: number): Promise<Result<{ total: number; more: boolean; rules: CategoryRule[] }>> {
   const v = z.object({ companyId: Id, search: z.string().max(200), offset: z.number().int().min(0) }).safeParse({ companyId, search, offset });
   if (!v.success) return { ok: false, error: "That search isn't valid." };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
+  if (await limited(supabase, "cash_rules", user.id)) return { ok: false, error: TOO_MANY };
   const { data, error } = await supabase.rpc("cash_rules_page", { p_company: v.data.companyId, p_search: v.data.search, p_offset: v.data.offset, p_limit: RULES_PAGE });
   if (error) return { ok: false, error: said(error, "rulesPage") };
-  const p = (data ?? {}) as { total?: number; rules?: Record<string, unknown>[] };
+  const p = (data ?? {}) as { total?: number; more?: boolean; rules?: Record<string, unknown>[] };
   return {
-    ok: true, total: Number(p.total ?? 0),
+    ok: true, total: Number(p.total ?? 0), more: p.more === true,
     rules: (p.rules ?? []).filter((r) => (ALL_KINDS as string[]).includes(String(r.kind))).map((r) => ({
       id: Number(r.id), direction: r.direction === "out" ? "out" : "in", matchOn: r.matchOn === "note" ? "note" : "party", match: String(r.match ?? ""),
       category: String(r.category ?? ""), kind: r.kind as Kind, uses: Number(r.uses ?? 1), lastUsed: String(r.lastUsed ?? ""),

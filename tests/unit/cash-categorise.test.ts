@@ -1,7 +1,7 @@
 // Phase 4c: the cash book suggests a category from what it learned (customer/supplier first, then words in the
 // description), then from keywords; a person's own choice always wins.
 import { describe, expect, it, vi } from "vitest";
-import { createSuggester, matchKey, resolveEntry, suggestFrom, topCategories } from "@/lib/cash/categorise";
+import { createSuggester, matchKey, resolveEntry, suggestFrom, suggestKey, topCategories } from "@/lib/cash/categorise";
 
 describe("matchKey", () => {
   it("tidies names the way the database does: case, spaces and Arabic spellings", () => {
@@ -79,6 +79,42 @@ describe("createSuggester (asking the server while someone types)", () => {
     s.ask(input("nile"));
     await vi.advanceTimersByTimeAsync(300);
     expect(got).toEqual([null]);
+    vi.useRealTimers();
+  });
+});
+
+describe("suggestKey (which question an answer belongs to)", () => {
+  it("the same words typed differently are the same question; another name, way or company is not", () => {
+    const k = suggestKey("c1", { direction: "in", party: "  Nile   CAFE", note: "" });
+    expect(suggestKey("c1", { direction: "in", party: "nile cafe", note: " " })).toBe(k);
+    expect(suggestKey("c1", { direction: "out", party: "nile cafe", note: "" })).not.toBe(k);
+    expect(suggestKey("c1", { direction: "in", party: "bob", note: "" })).not.toBe(k);
+    expect(suggestKey("c2", { direction: "in", party: "nile cafe", note: "" })).not.toBe(k);
+  });
+});
+
+describe("createSuggester: answers carry their question, and unchanged words are not asked again", () => {
+  const input = (party: string) => ({ direction: "in" as const, party, note: "" });
+  it("each answer says which words it answers", async () => {
+    vi.useFakeTimers();
+    const got: string[] = [];
+    const s = createSuggester(async () => null, (_r, key) => got.push(key), 300, "c1");
+    s.ask(input("Nile Cafe"));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(got).toEqual([suggestKey("c1", input("nile cafe"))]);
+    vi.useRealTimers();
+  });
+  it("the same words again (case, spaces) are answered without asking the server", async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(async () => ({ category: "Drinks", kind: "sale" as const, from: "party" as const }));
+    const got: (string | null)[] = [];
+    const s = createSuggester(fetcher, (r) => got.push(r?.category ?? null), 300, "c1");
+    s.ask(input("Nile Cafe"));
+    await vi.advanceTimersByTimeAsync(300);
+    s.ask(input("nile  cafe "));
+    await vi.advanceTimersByTimeAsync(300);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(got).toEqual(["Drinks", "Drinks"]);
     vi.useRealTimers();
   });
 });

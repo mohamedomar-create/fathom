@@ -5,6 +5,8 @@ import { detectKind, kindsFor, type Kind } from "./kinds";
 export interface CategoryRule {
   id: number; direction: "in" | "out"; matchOn: "party" | "note"; match: string; category: string; kind: Kind; uses: number; lastUsed: string;
 }
+/** Learned categories shown per page in Settings (cash_rules_page allows at most 100). */
+export const RULES_PAGE = 50;
 export interface Suggestion { category: string; kind: Kind; from: "party" | "note" | "words" | "none" }
 
 /** How names and descriptions are compared: as the database's private.cash_match (Arabic spelled one way, case, spaces). */
@@ -24,20 +26,32 @@ export function suggestFrom(rule: LearnedRule | null, e: SuggestInput): Suggesti
   return { category: "", kind, from: kind === (e.direction === "in" ? "sale" : "expense") ? "none" : "words" };
 }
 
+/** Which question an answer belongs to: the company, the way, and the name and description as the database compares them. */
+export const suggestKey = (company: string, i: SuggestInput) => `${company}|${i.direction}|${matchKey(i.party)}|${matchKey(i.note)}`;
+
 /**
- * Asks the server for a learned rule while someone types: once, 300 ms after the typing stops, and only the newest
- * answer is kept (a late answer to an older question is dropped). Nothing typed, or a failed question, gives no rule.
+ * Asks the server for a learned rule while someone types: once, 300 ms after the typing stops, keeping only the
+ * newest answer (a late answer to an older question is dropped). Words already answered are not asked again. Each
+ * answer comes with the question it answers, so a page never uses an answer for words that have since changed.
+ * Nothing typed gives no rule; a failed question gives no rule and is not remembered.
  */
-export function createSuggester(fetcher: (i: SuggestInput) => Promise<LearnedRule | null>, onResult: (r: LearnedRule | null) => void, delayMs = 300) {
+export function createSuggester(fetcher: (i: SuggestInput) => Promise<LearnedRule | null>, onResult: (r: LearnedRule | null, key: string) => void, delayMs = 300, company = "") {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let seq = 0;
+  const known = new Map<string, LearnedRule | null>();
   return {
     ask(i: SuggestInput) {
       const mine = ++seq;
+      const key = suggestKey(company, i);
       if (timer) clearTimeout(timer);
-      if (!i.party.trim() && !i.note.trim()) { onResult(null); return; }
+      if (!i.party.trim() && !i.note.trim()) { onResult(null, key); return; }
+      if (known.has(key)) { onResult(known.get(key)!, key); return; }
       timer = setTimeout(() => {
-        fetcher(i).then((r) => { if (mine === seq) onResult(r); }, () => { if (mine === seq) onResult(null); });
+        fetcher(i).then((r) => {
+          if (known.size > 500) known.clear();
+          known.set(key, r);
+          if (mine === seq) onResult(r, key);
+        }, () => { if (mine === seq) onResult(null, key); });
       }, delayMs);
     },
     stop() { seq++; if (timer) clearTimeout(timer); },

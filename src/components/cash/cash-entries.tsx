@@ -44,9 +44,18 @@ export function CashEntries() {
   const from = pageNo * SHOW;
   const [adding, setAdding] = useState<Draft>(() => blank(company.today));
   // The add row offers the learned category for its name and description, found on the server, until the person types
-  // in the category themselves (autoCat false: theirs from then on, even when they clear it).
-  const learned = useSuggestion(company.id, adding.direction, adding.party, adding.note);
-  const addingShown: Draft = adding.autoCat === false ? adding : { ...adding, category: learned?.category ?? "" };
+  // in the category themselves (autoCat false: theirs from then on, even when they clear it). Only an answer for exactly
+  // the words now in the row is shown or saved.
+  const sug = useSuggestion(company.id, { direction: adding.direction, party: adding.party, note: adding.note }, entries.length);
+  const addingShown: Draft = adding.autoCat === false ? adding : { ...adding, category: sug.rule?.category ?? "" };
+  const add = () => run(async () => {
+    let d = addingShown;
+    if (adding.autoCat !== false && !sug.ready) {
+      try { d = { ...adding, category: (await sug.check({ direction: adding.direction, party: adding.party, note: adding.note }))?.category ?? "" }; }
+      catch { return { ok: false as const, error: t.quickNoCheck }; }
+    }
+    return entryAdd(company.id, inputOf(d));
+  }, () => setAdding(blank(company.today)));
   const [editing, setEditing] = useState<number | null>(null);
   const [draft, setDraft] = useState<Draft>(blank());
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +110,7 @@ export function CashEntries() {
           <tbody>
             {!company.readOnly && <tr className="border-b border-line bg-band/50" data-testid="entries-add-row">
               {fields(addingShown, setAdding, "add")}
-              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={() => run(() => entryAdd(company.id, inputOf(addingShown)), () => setAdding(blank(company.today)))} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
+              <td className="px-1.5 py-1.5 text-end"><button type="button" disabled={pending} onClick={add} className="whitespace-nowrap rounded bg-brand-d px-3 py-1 text-white disabled:opacity-50" data-testid="entries-add">{t.add}</button></td>
             </tr>}
             {rows.slice(from, from + SHOW).map((e) => editing === e.id ? (
               <tr key={e.id} className="border-b border-line" data-testid="entries-edit-row">
