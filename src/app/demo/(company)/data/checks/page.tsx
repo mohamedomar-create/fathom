@@ -17,7 +17,7 @@ export default async function DemoDataHealth() {
     <div>
       <h2 className="mb-1 text-xl font-light">{t.checksTitle}</h2>
       <p className="mb-6 text-mute">{t.checksSub}</p>
-      <DataHealth companyId="demo" readOnly justImported={false} coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}
+      <DataHealth companyId="demo" readOnly justImported={false} coverage={{ range: cov.range, pl: [...cov.pl].sort(), bs: [...cov.bs].sort() }}
         checks={runChecks({ accounts: c.accounts, months: c.months })} accepted={[]} sources={sources} history={[]} />
       <StockChecks inventory={demoInventoryState()} expenses={demoExpenses()} />
     </div>

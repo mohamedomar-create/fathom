@@ -126,7 +126,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
       {imported === "1" && <ImportReadiness />}
       <DataHealth
         companyId={id} readOnly={bundle.readOnly} justImported={imported === "1"}
-        coverage={{ range: cov.range, pl: [...cov.pl], bs: [...cov.bs] }}
+        coverage={{ range: cov.range, pl: [...cov.pl].sort(), bs: [...cov.bs].sort() }}
         checks={checks} accepted={accepted} sources={sources} history={history}
       />
       {comparison && (

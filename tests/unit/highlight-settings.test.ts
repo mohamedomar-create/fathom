@@ -17,6 +17,6 @@ describe("highlight settings", () => {
     expect(settings.highlights).toEqual({ pct: 25, amount: 50000, lines: {} });
   });
   it("need database update 50", () => {
-    expect(REQUIRED_SCHEMA).toBe(50);
+    expect(REQUIRED_SCHEMA).toBeGreaterThanOrEqual(50);
   });
 });

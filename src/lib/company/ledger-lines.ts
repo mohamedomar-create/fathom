@@ -33,6 +33,12 @@ export async function clearLedger(supabase: Supa, companyId: string, periodsIn: 
   if (periods !== "all" && !periods.length) return;
   for (const kind of kinds) {
     const t = TABLES[kind];
+    // Stock postings go in one server-side call (0051): closed months kept, no row-by-row delete through the API.
+    if (kind === "stock") {
+      const { error } = await supabase.rpc("clear_stock_ledger", { p_company: companyId, p_periods: periods === "all" ? null : periods });
+      if (error) throw new DbError(error);
+      continue;
+    }
     if (periods === "all" && closed) {
       const { error } = await supabase.from(t.lines).delete().eq("company_id", companyId).eq("source", "ledger").gt("period", closed);
       if (error) throw new DbError(error);

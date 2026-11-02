@@ -1,5 +1,6 @@
 "use client";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { monthSpan } from "@/lib/month-span";
 import { CheckCircle2, History, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -46,7 +47,7 @@ function useFmt() {
   return {
     T, t: T.d.dat.health, ml,
     fmtDate: (s: string) => new Date(s).toLocaleString(T.lang === "ar" ? "ar-EG-u-nu-latn" : "en-GB", { dateStyle: "medium", timeStyle: "short" }),
-    span: (ps: string[]) => (!ps.length ? "–" : ps.length === 1 ? ml(ps[0]) : `${ml(ps[0])} – ${ml(ps[ps.length - 1])}`),
+    span: (ps: string[]) => monthSpan(ps, ml),
     month: (i: number, lang: Lang) => (lang === "ar" ? monthNames("ar")[i + 1] : MONTHS[i]),
   };
 }

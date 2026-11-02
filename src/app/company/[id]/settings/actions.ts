@@ -11,8 +11,8 @@ import { ClassEnum, ImportSchema, invalidImport, Period, PlanSchema } from "@/li
 import { planImport, statementMoves, type MonthDiff, type Overlap, type TimelineCell, type VersionAccount } from "@/lib/company/import-plan";
 import { isPL } from "@/lib/company/build";
 import { loadVersion, saveCompanyData } from "@/lib/company/persist";
-import { keepLedgerInStep } from "@/lib/company/ledger-lines";
-import { clearedNotice } from "@/lib/company/ledger-tie";
+import { keepLedgerInStep, ledgerTotals } from "@/lib/company/ledger-lines";
+import { clearedNotice, driftNotice, ledgerDrift } from "@/lib/company/ledger-tie";
 import { loadAccountMap, rememberClasses, rememberedEntries } from "@/lib/company/account-map";
 import { settingsToCopy } from "@/lib/company/copy-settings";
 import { rememberKey } from "@/lib/ingest/pipeline";
@@ -95,7 +95,7 @@ export async function previewImport(input: z.input<typeof PlanSchema>): Promise<
   }
 }
 
-export async function commitImport(input: z.input<typeof ImportSchema>): Promise<{ ok: true; version: number } | { ok: false; error: string; blocking?: Check[] }> {
+export async function commitImport(input: z.input<typeof ImportSchema>): Promise<{ ok: true; version: number; drift?: string | null } | { ok: false; error: string; blocking?: Check[] }> {
   const v = ImportSchema.safeParse(input);
   if (!v.success) return { ok: false, error: invalidImport(v.error, input) };
   const { supabase, user } = await getUser();
@@ -136,8 +136,17 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
         if (!r.ok) console.error("commitImport: books start", r.error);
       }
     }
+    // "Update these months" keeps the sales and expense detail an earlier ledger left: where it no longer agrees with the
+    // figures just saved, the person is told by how much. Nothing is deleted.
+    let drift: string | null = null;
+    if (d.mode !== "replace" && d.report.source !== "ledger" && touched.PL.length) {
+      try {
+        const months = new Set(touched.PL);
+        drift = driftNotice(ledgerDrift(await ledgerTotals(supabase, d.companyId), plan.accounts).filter((x) => months.has(x.period)));
+      } catch (e) { console.error("commitImport: detail check", (e as Error).message); }
+    }
     revalidatePath(`/company/${d.companyId}`, "layout");
-    return { ok: true, version };
+    return { ok: true, version, drift };
   } catch (e) {
     return { ok: false, error: safeError(e, "commitImport") };
   }

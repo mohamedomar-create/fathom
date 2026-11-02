@@ -23,15 +23,16 @@ describe("the ledger's stock postings follow the accounts", () => {
   it("clearing ledger months also clears their stock postings", async () => {
     const { supabase, log } = fake();
     await clearLedger(supabase, "co", ["2026-09"]);
-    expect(log).toContain("delete stock_ledger_lines");
-    expect(log).toContain("in stock_ledger_lines period=2026-09");
+    // Stock postings go in one server-side call (0051), never row by row through the API.
+    expect(log).toContain('rpc clear_stock_ledger {"p_company":"co","p_periods":["2026-09"]}');
+    expect(log).not.toContain("delete stock_ledger_lines");
     expect(log).toContain("delete expense_lines");
   });
 
   it("clearing everything also removes every stock-postings upload", async () => {
     const { supabase, log } = fake();
     await clearLedger(supabase, "co", "all");
-    expect(log).toContain("delete stock_ledger_batches");
+    expect(log).toContain('rpc clear_stock_ledger {"p_company":"co","p_periods":null}');
   });
 
   it("the Odoo sync saves stock postings through their own functions", async () => {

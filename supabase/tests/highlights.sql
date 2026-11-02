@@ -29,7 +29,7 @@ create temp table ids as select id co from public.companies where name = 'Highli
 grant select on ids to authenticated, anon;
 create function pg_temp.cfg() returns jsonb language sql as $f$ select kpi_config from public.companies where id = (select co from ids) $f$;
 
-select pg_temp.check('schema version 50', public.schema_version()::text, '50');
+select pg_temp.check('schema version 50 or later', (public.schema_version() >= 50)::text, 'true');
 
 -- ---------------------------------------------------------------- the KPI page's save keeps the highlight settings
 select pg_temp.login('hl-ed@x.test');

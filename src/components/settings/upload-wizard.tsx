@@ -18,7 +18,7 @@ import { TwoBox } from "@/components/upload/two-box";
 import { ChoiceCard, WizardNav, WizardSteps, WizardTitle, type Screen } from "@/components/upload/wizard-shell";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
-import { keepForMode } from "@/lib/company/add-mode";
+import { keepForMode, ledgerClear } from "@/lib/company/add-mode";
 import { ADMIN_ONLY } from "@/lib/company/accept";
 import { FileReading } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
@@ -540,7 +540,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       // theirs, even when this file (a Trial Balance, a P&L) has no lines for them; months before the books start too.
       const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
       const preStart = booksStart && !replaceAll ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
-      const months = replaceAll ? [] : [...new Set([...(mode !== "add" ? touchedPL : []), ...preStart])].sort();
+      // "Update these months" keeps the detail: only a file with its own ledger lines (a General Ledger) replaces them.
+      const { months } = ledgerClear(mode, { fileHasLedger: res.lines.some(hasEntries), touchedPL, preStart });
       const clears = replaceAll || months.length > 0;
       const keep = <T extends { period: string }>(ls: T[]) => keepForMode(ls, mode, addedPL);
       const pay = derived.payments;
@@ -566,7 +567,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       // Stock sheets in this upload are not saved here: they go through the Stock card, which checks every row.
       const stockNote = invParts && (invParts.layers.length || invParts.moves.length || invParts.onhand || invParts.products.length) ? w.stockNote : "";
       const saved = new Set([...(preview?.timeline ?? [])].filter((t) => t.PL === "new" || t.PL === "overwrite" || t.BS === "new" || t.BS === "overwrite").map((t) => t.period));
-      await runPost(steps, 0, `${w.savedMonths(saved.size, payNow.length)}${payNote}${stockNote}`);
+      await runPost(steps, 0, `${w.savedMonths(saved.size, payNow.length)}${payNote}${stockNote}${out.drift ? ` ${out.drift}` : ""}`);
     });
   }
 
