@@ -4,11 +4,11 @@ import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { patchSettings } from "@/lib/company/settings-patch";
 import { HIGHLIGHTS_KEY } from "@/lib/company/config-keys";
-import { MARK_COLORS } from "@/lib/engine/statement-rows";
+import { MARK_COLORS, markKeyOk } from "@/lib/engine/statement-rows";
 import { dbError } from "@/lib/action-error";
 
 const MarkSchema = z.object({ color: z.enum(MARK_COLORS), note: z.string().trim().max(120).optional() }).strict();
-const KeySchema = z.string().min(1).max(200);
+const KeySchema = z.string().refine(markKeyOk);
 
 /** An editor's colour mark on one statement line or account (null clears it). Everyone in the company sees it. */
 export async function setStatementMark(companyId: string, key: string, mark: z.input<typeof MarkSchema> | null): Promise<{ ok: boolean; error?: string }> {

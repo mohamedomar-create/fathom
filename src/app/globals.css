@@ -73,13 +73,14 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 /* Highlighted statements: subtotals lightly shaded, the lines readers look for first more strongly, kept in print. */
 .tbl tr.sub td { background: #f2f7f7; }
 .tbl tr.grand td { background: var(--color-brand-bg); border-bottom: 3px double var(--color-ink); }
-.tbl tr.sub td, .tbl tr.grand td, .tbl td.tone-better, .tbl td.tone-worse, .tbl tr[class*="mk-"] td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-.tbl td.tone-better { background: var(--color-green-bg); color: var(--color-green-d); }
-.tbl td.tone-worse { background: var(--color-red-bg); color: var(--color-red); }
+.tbl tr.sub td, .tbl tr.grand td, .tbl tr td.tone-better, .tbl tr td.tone-worse, .tbl tr[class*="mk-"] td { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 .tbl tr.flagged td:first-child { box-shadow: inset 3px 0 0 #b7791f; }
 [dir="rtl"] .tbl tr.flagged td:first-child { box-shadow: inset -3px 0 0 #b7791f; }
 .tbl tr.mk-yellow td { background: #fff4c2; } .tbl tr.mk-green td { background: #ddf3e2; } .tbl tr.mk-blue td { background: #dceafd; }
 .tbl tr.mk-pink td { background: #fde2ef; } .tbl tr.mk-grey td { background: #ececea; }
+/* After the row shades, and more specific, so a total's or a marked row's change cell keeps its better/worse colour. */
+.tbl tr td.tone-better { background: var(--color-green-bg); color: var(--color-green-d); }
+.tbl tr td.tone-worse { background: var(--color-red-bg); color: var(--color-red); }
 .flag-ic { color: #8a5a00; }
 .mk-dot-yellow { background: #f2c94c; } .mk-dot-green { background: #3fa66b; } .mk-dot-blue { background: #4a7fd6; } .mk-dot-pink { background: #d9608f; } .mk-dot-grey { background: #8a8a85; }
 

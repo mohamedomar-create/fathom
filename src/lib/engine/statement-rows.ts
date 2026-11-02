@@ -41,14 +41,14 @@ export const rowKind = (key: string): RowKind => (GRAND.has(key) ? "grand" : TOT
 export type Tone = "better" | "worse" | "neutral";
 const PL_COST = new Set<string>(PL_LINES.filter((r) => r.cost).map((r) => r.k));
 const BS_UP_BETTER = new Set(["cash", "retained_earnings", "other_equity", "te"]);
-const BS_UP_WORSE = new Set(["std", "ltd", "tl"]);
+const BS_UP_WORSE = new Set(["std", "ltd"]);
 /**
  * Whether a line moved the good way against its comparison. P&L: income and profit up is better, a cost up is worse.
  * Balance sheet: cash and equity up are better, debt up is worse; other balances are neither in themselves.
  * Cash flow: more cash is better.
  */
 export function lineTone(statement: "PL" | "BS" | "CF", key: string, cur: number, cmp: number | null | undefined): Tone {
-  if (cmp === null || cmp === undefined || cur === cmp) return "neutral";
+  if (cmp === null || cmp === undefined || Math.abs(cur - cmp) < 1) return "neutral";
   const up = cur > cmp;
   if (statement === "PL") return PL_COST.has(key) ? (up ? "worse" : "better") : up ? "better" : "worse";
   if (statement === "CF") return up ? "better" : "worse";
@@ -90,10 +90,20 @@ export function markOf(x: unknown): Mark | null {
 export function highlightsOf(cfg: Record<string, unknown> | null | undefined): Highlights {
   const h = (cfg?.[HIGHLIGHTS_KEY] ?? {}) as { pct?: unknown; amount?: unknown; lines?: unknown };
   const num = (v: unknown, d: number, max: number) => (typeof v === "number" && Number.isFinite(v) && v > 0 && v <= max ? v : d);
+  // A plain object (it is sent to the page); keys like "__proto__" are refused, and marks are read with markAt.
   const lines: Record<string, Mark> = {};
-  if (h.lines && typeof h.lines === "object") for (const [k, v] of Object.entries(h.lines)) { const m = markOf(v); if (m) lines[k] = m; }
+  if (h.lines && typeof h.lines === "object") for (const [k, v] of Object.entries(h.lines)) { const m = markOf(v); if (m && markKeyOk(k)) lines[k] = m; }
   return { pct: num(h.pct, DEFAULT_HIGHLIGHTS.pct, 1000), amount: num(h.amount, DEFAULT_HIGHLIGHTS.amount, 1e12), lines };
 }
 
 /** An account's mark key: "#code", or its name in lower case for an account without a code (as the account map). */
-export const accountMarkKey = (a: { code?: string | null; name: string }) => (a.code && a.code.trim() ? `#${a.code.trim()}` : a.name.trim().toLowerCase().slice(0, 200));
+export const accountMarkKey = (a: { code?: string | null; name: string }) => (a.code && a.code.trim() ? `#${a.code.trim()}`.slice(0, 101) : `@${a.name.trim().toLowerCase()}`.slice(0, 200));
+
+/** A mark key: a statement line ("gross_profit"), an account code ("#4110") or an uncoded account's name ("@petty cash"). */
+export const markKeyOk = (k: string) => /^([a-z][a-z_]{0,39}|#[^\s].{0,99}|@[^\s].{0,198})$/s.test(k) && k !== "__proto__" && k !== "constructor";
+
+/** A comparison balance sheet with nothing in it (no balance sheet loaded for that month) is no comparison at all. */
+export const emptyBS = (b: { ta: number; tle: number } | null | undefined) => !b || (b.ta === 0 && b.tle === 0);
+
+/** A line's mark, read only from the company's own keys (never "constructor" or "toString" from the object itself). */
+export const markAt = (lines: Record<string, Mark> | undefined, key: string): Mark | null => (lines && Object.hasOwn(lines, key) ? lines[key] : null);

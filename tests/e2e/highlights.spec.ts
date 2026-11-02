@@ -24,3 +24,25 @@ test("only the lines that need a look can be shown", async ({ page }) => {
   // Every flagged line says why.
   for (const r of await page.getByTestId("pl-table").locator("tbody tr.flagged").all()) await expect(r.getByTestId("line-flag")).toHaveCount(1);
 });
+
+test("totals keep their better/worse colour, and the cash flow shows its changes too", async ({ page }) => {
+  await page.goto("/demo/analysis/financials");
+  const cell = page.getByTestId("pl-table").locator('tr[data-line="net_income"] td[data-tone]');
+  const tone = await cell.getAttribute("data-tone");
+  const bg = await cell.evaluate((e) => getComputedStyle(e).backgroundColor);
+  if (tone === "better") expect(bg).toBe("rgb(227, 243, 234)");
+  if (tone === "worse") expect(bg).toBe("rgb(252, 231, 231)");
+  await page.getByTestId("fin-view").click();
+  await page.getByRole("button", { name: "Cash Flow Statement" }).click();
+  const cf = page.getByTestId("cf-table");
+  await expect(cf).toBeVisible();
+  expect(await cf.locator("td[data-tone]").count()).toBeGreaterThan(0);
+  await expect(cf.locator("tr.grand").first()).toBeVisible();
+});
+
+test("when nothing needs a look, the page says so", async ({ page }) => {
+  await page.goto("/demo/analysis/financials");
+  await page.getByTestId("flags-only").check();
+  const rows = await page.getByTestId("pl-table").locator("tbody tr").count();
+  if (rows === 0) await expect(page.getByTestId("no-flags")).toBeVisible();
+});

@@ -1,5 +1,5 @@
 import { ECONOMY_KEY, FORECAST_KEY, HIGHLIGHTS_KEY, RESERVED_KEYS } from "@/lib/company/config-keys";
-import { accountMarkKey, highlightsOf } from "@/lib/engine/statement-rows";
+import { accountMarkKey, highlightsOf, markAt } from "@/lib/engine/statement-rows";
 
 /**
  * Everything stored for one company, as plain sheets (arrays of rows) and then an .xlsx file.
@@ -51,7 +51,7 @@ export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet
   if (ctx.length) { company.push([], [w("AI business context", "سياق النشاط للذكاء الاصطناعي")]); for (const [k, v] of ctx) company.push([k, cell(v)]); }
   // Highlighted statements: when a line is flagged, and every colour mark editors set on statement lines.
   const hl = highlightsOf(obj(c.kpi_config));
-  const lineMarks = Object.entries(hl.lines).filter(([k]) => !k.startsWith("#") && !acctKeys.has(k));
+  const lineMarks = Object.entries(hl.lines).filter(([k]) => !k.startsWith("#") && !k.startsWith("@") && !acctKeys.has(k));
   if (HIGHLIGHTS_KEY in obj(c.kpi_config)) {
     company.push([], [w("Highlights", "التمييز")], [w("Flag a move of at least (%)", "تمييز تغيّر لا يقل عن (%)"), hl.pct], [w("And at least", "وبما لا يقل عن"), hl.amount]);
     if (lineMarks.length) { company.push([w("Line", "البند"), w("Mark", "اللون"), w("Note", "ملاحظة")]); for (const [k, m] of lineMarks) company.push([k, m.color, m.note ?? null]); }
@@ -60,7 +60,7 @@ export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet
   if (notes.length) { company.push([], [w("Notes", "ملاحظات")]); for (const [k, v] of notes) company.push([k, cell(v)]); }
 
   const periods = [...new Set(d.accounts.flatMap((a) => Object.keys(a.amounts)))].sort();
-  const markOf = (a: { code: string | null; name: string }) => hl.lines[accountMarkKey(a)] ?? null;
+  const markOf = (a: { code: string | null; name: string }) => markAt(hl.lines, accountMarkKey(a));
   const anyAcctMark = d.accounts.some((a) => markOf(a));
   const accounts: Cell[][] = [[w("Code", "الكود"), w("Account", "الحساب"), w("Statement", "القائمة"), w("Class", "التصنيف"), ...(anyAcctMark ? [w("Mark", "اللون"), w("Mark note", "ملاحظة التمييز")] : []), ...periods],
     ...d.accounts.map((a) => [a.code, a.name, a.statement, a.class, ...(anyAcctMark ? [markOf(a)?.color ?? null, markOf(a)?.note ?? null] : []), ...periods.map((p) => a.amounts[p] ?? null)])];

@@ -1,6 +1,6 @@
 // Highlighted statements: which lines are shaded, which way is better, which lines are flagged, and the settings.
 import { describe, expect, it } from "vitest";
-import { BS_LINES, PL_LINES, flagChange, highlightsOf, lineTone, rowKind, wrongSide, DEFAULT_HIGHLIGHTS, MARK_COLORS } from "@/lib/engine/statement-rows";
+import { BS_LINES, PL_LINES, accountMarkKey, emptyBS, markAt, flagChange, highlightsOf, lineTone, markKeyOk, rowKind, wrongSide, DEFAULT_HIGHLIGHTS, MARK_COLORS } from "@/lib/engine/statement-rows";
 
 describe("statement lines", () => {
   it("P&L lines run from revenue to net income, with costs marked", () => {
@@ -83,5 +83,37 @@ describe("highlight settings", () => {
   });
   it("offers five mark colours", () => {
     expect(MARK_COLORS).toEqual(["yellow", "green", "blue", "pink", "grey"]);
+  });
+});
+
+describe("review fixes", () => {
+  it("an account's mark key never collides with a statement line", () => {
+    expect(accountMarkKey({ code: "4110", name: "Sales" })).toBe("#4110");
+    expect(accountMarkKey({ code: "", name: "Inventory" })).toBe("@inventory");
+    expect(markKeyOk("inventory")).toBe(true);
+    expect(markKeyOk("#4110")).toBe(true);
+    expect(markKeyOk("@inventory")).toBe(true);
+    expect(markKeyOk("Inventory")).toBe(false);
+    expect(markKeyOk("__proto__")).toBe(false);
+    expect(markKeyOk("")).toBe(false);
+  });
+  it("a mark keyed __proto__ or constructor never reaches the page as a mark", () => {
+    const h = highlightsOf(JSON.parse('{"highlights": {"lines": {"__proto__": {"color": "yellow"}, "cash": {"color": "blue"}}}}'));
+    expect(Object.keys(h.lines)).toEqual(["cash"]);
+    expect(Object.getPrototypeOf(h.lines)).toBe(Object.prototype); // a plain object, so it can be sent to the page
+    expect(markAt(h.lines, "constructor")).toBeNull();
+    expect(markAt(h.lines, "toString")).toBeNull();
+    expect(markAt(h.lines, "cash")).toEqual({ color: "blue" });
+  });
+  it("only short-term and long-term debt count as debt", () => {
+    expect(lineTone("BS", "tl", 120, 100)).toBe("neutral");
+  });
+  it("a change under one pound is neutral", () => {
+    expect(lineTone("PL", "revenue", 100.4, 100)).toBe("neutral");
+  });
+  it("an empty comparison balance sheet is no comparison", () => {
+    expect(emptyBS({ ta: 0, tle: 0 })).toBe(true);
+    expect(emptyBS({ ta: 10, tle: 10 })).toBe(false);
+    expect(emptyBS(null)).toBe(true);
   });
 });

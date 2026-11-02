@@ -47,6 +47,8 @@ test("an editor marks a statement line; it stays, shows in the report, and a vie
   await expect(page).toHaveURL(/\/reports\/[0-9a-f-]{36}$/);
   await expect(page.locator('[data-section="pl"] tr[data-line="gross_profit"]').first()).toHaveClass(/mk-yellow/, { timeout: 15_000 });
   await expect(page.locator('[data-section="pl"] tr[data-line="net_income"]').first()).toHaveClass(/grand/);
+  // The note is printed under the table, so the PDF explains the colour.
+  await expect(page.locator('[data-section="pl"] [data-testid="statement-notes"]').first()).toContainText("watch margin");
 
   // A viewer sees the mark, with no way to change it.
   const ctx = await browser.newContext();

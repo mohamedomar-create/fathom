@@ -72,4 +72,22 @@ select pg_temp.check('signed-out visitors cannot run it', has_function_privilege
 select pg_temp.check('set_statement_mark is definer with an empty search path', (select prosecdef::text || ' ' || array_to_string(proconfig, ',') from pg_proc where proname = 'set_statement_mark'), 'true search_path=""');
 select pg_temp.check('nothing changed by refused calls', (pg_temp.cfg()->'highlights'->'lines' ? 'cash')::text, 'false');
 
+-- ---------------------------------------------------------------- review fixes
+select pg_temp.login('hl-ed@x.test');
+select pg_temp.check('a mark with no colour is refused', pg_temp.refused($q$select public.set_statement_mark((select co from ids), 'cash', '{"note": "x"}')$q$), 'refused');
+select pg_temp.check('an empty mark is refused', pg_temp.refused($q$select public.set_statement_mark((select co from ids), 'cash', '{}')$q$), 'refused');
+select pg_temp.check('a key that is neither a line, a #code nor an @name is refused', pg_temp.refused($q$select public.set_statement_mark((select co from ids), 'Cash', '{"color": "grey"}')$q$), 'refused');
+select pg_temp.check('__proto__ is refused', pg_temp.refused($q$select public.set_statement_mark((select co from ids), '__proto__', '{"color": "grey"}')$q$), 'refused');
+select public.set_statement_mark((select co from ids), '@petty cash', '{"color": "green", "note": "check custody"}');
+reset role;
+select pg_temp.check('an uncoded account is marked by @name', pg_temp.cfg()->'highlights'->'lines'->'@petty cash'->>'color', 'green');
+
+-- A shared link shows statement-line colours only: no notes, no account marks.
+select pg_temp.check('the shared report keeps line colours', private.public_report(jsonb_build_object('company', jsonb_build_object('kpi_config', pg_temp.cfg())))#>>'{company,kpi_config,highlights,lines,gross_profit,color}', 'yellow');
+select pg_temp.check('the shared report drops notes', (private.public_report(jsonb_build_object('company', jsonb_build_object('kpi_config', pg_temp.cfg())))#>'{company,kpi_config,highlights,lines,gross_profit}' ? 'note')::text, 'false');
+select pg_temp.check('the shared report drops account marks', (private.public_report(jsonb_build_object('company', jsonb_build_object('kpi_config', pg_temp.cfg())))#>'{company,kpi_config,highlights,lines}' ?| array['#4110', '@petty cash'])::text, 'false');
+select pg_temp.check('a report with no highlights is unchanged', private.public_report('{"company": {"kpi_config": {"gpm": 1}}}')::text, '{"company": {"kpi_config": {"gpm": 1}}}');
+select pg_temp.check('the public report passes through it', (position('private.public_report' in pg_get_functiondef('public.get_published_report(text)'::regprocedure)) > 0)::text, 'true');
+select pg_temp.check('signed-out visitors cannot call it directly', has_function_privilege('anon', 'private.public_report(jsonb)', 'execute')::text, 'false');
+
 delete from public.companies where id = (select co from ids);

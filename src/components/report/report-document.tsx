@@ -1,6 +1,7 @@
 "use client";
 import { BS_LINES, PL_LINES, type Highlights } from "@/lib/engine/statement-rows";
-import { ChangeCell, Flag, flagReason, MarkButton, rowCls } from "@/components/analysis/statement-ui";
+import { cfRowCls, ChangeCell, Flag, flagReason, MarkButton, rowCls, StatementNotes } from "@/components/analysis/statement-ui";
+import { emptyBS, markAt } from "@/lib/engine/statement-rows";
 import { balanced } from "@/lib/tolerance";
 import { Fragment, useMemo } from "react";
 import {
@@ -86,7 +87,7 @@ export function ReportDocument({ input }: { input: ReportInput }) {
     pl: () => <>{head(T.d.rep.secs.pl)}<PLTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("pl")}</>,
     bs: () => <>{head(T.d.rep.secs.bs)}<BSTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("bs")}</>,
     cf: () => <>{head(T.d.rep.secs.cf)}{a.CF ? <table className="tbl text-[11.5px]"><tbody>
-      {a.CF.lines.map((l, i) => l.heading ? <tr key={i} className="cat"><td colSpan={2}>{T.tl(l.label)}</td></tr> : <tr key={i} className={cn(l.total && "tot")}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td></tr>)}
+      {a.CF.lines.map((l, i) => l.heading ? <tr key={i} className="cat"><td colSpan={2}>{T.tl(l.label)}</td></tr> : <tr key={i} className={cfRowCls(l.label, l.total).replace("row", "").trim()}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td></tr>)}
     </tbody></table> : <p className="text-mute">{t.needsOpening}</p>}</>,
     trend: () => <>{head(T.d.rep.secs.trend, true)}<Trend a={a} cur={cur} T={T} />{comment("trend")}</>,
     growth: () => <>{head(T.d.rep.secs.growth, true)}<Growth input={input} a={a} cur={cur} T={T} />{comment("growth")}</>,
@@ -240,13 +241,16 @@ function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
   const { P, prior, ytd } = a.view;
   const fmt = (v: number) => money(v, cur);
   const rows = PL_LINES.filter((r) => !r.ifAdjusted || P.adjustments || prior?.P.adjustments);
+  const notes: { label: string; text: string }[] = [];
   return (
+    <>
     <table className="tbl text-[11.5px]">
       <thead><tr><th>{T.tl("Profit & Loss")}</th><th>{T.pl(a.view.window.short)}</th><th>{prior ? T.pl(prior.label) : t.priorCol}</th><th>{T.d.ana.variancePct}</th><th>{t.commonSize}</th><th>{T.d.ana.ytd}</th></tr></thead>
       <tbody>{rows.map(({ l, k }) => {
         const v = P[k] as number, p = prior ? (prior.P[k] as number) : null;
         const why = flagReason("PL", k, v, p, h, fmt, T);
-        const mark = h?.lines[k] ?? null;
+        const mark = markAt(h?.lines, k);
+        noteFor(notes, T.tl(l), why, mark?.note);
         return (
           <tr key={k} className={rowCls(k, { base: "", mark, flagged: !!why })} data-line={k}>
             <td>{T.tl(l)}<Flag reason={why} /><MarkButton markKey={k} mark={mark} canEdit={false} onSave={noSave} label={T.tl(l)} /></td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
@@ -257,14 +261,24 @@ function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
         );
       })}</tbody>
     </table>
+    <StatementNotes notes={notes} />
+    </>
   );
+}
+
+/** A line's ⚠ reason and its editor's note, printed under the table. */
+function noteFor(notes: { label: string; text: string }[], label: string, why: string | null, note?: string) {
+  const text = [why, note].filter(Boolean).join(" · ");
+  if (text) notes.push({ label, text });
 }
 
 function BSTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highlights }) {
   const t = T.d.rep.doc;
   const { B, prior } = a.view;
-  const C = prior?.B ?? null;
+  // A comparison month with no balance sheet loaded is no comparison (not a balance sheet of zeros).
+  const C = prior && !emptyBS(prior.B) ? prior.B : null;
   const fmt = (v: number) => money(v, cur);
+  const notes: { label: string; text: string }[] = [];
   return (
     <>
       {!balanced(B.imbalance) && <p className="mb-2 text-end text-[12px] text-red">{T.d.ana.outOfBalance(money(B.imbalance, cur))}</p>}
@@ -275,7 +289,8 @@ function BSTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
           const v = B[k] as number, p = C ? (C[k] as number) : null;
           if (typ === 0 && !v && !p) return null;
           const why = flagReason("BS", k, v, p, h, fmt, T);
-          const mark = h?.lines[k] ?? null;
+          const mark = markAt(h?.lines, k);
+          noteFor(notes, T.tl(l), why, mark?.note);
           return (
             <tr key={l} className={rowCls(k, { base: "", mark, flagged: !!why })} data-line={k}>
               <td>{T.tl(l)}<Flag reason={why} /><MarkButton markKey={k} mark={mark} canEdit={false} onSave={noSave} label={T.tl(l)} /></td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
@@ -285,6 +300,7 @@ function BSTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
           );
         })}</tbody>
       </table>
+      <StatementNotes notes={notes} />
     </>
   );
 }

@@ -4,6 +4,8 @@
 --    "#code"). update_company_settings keeps it through a KPI save and merges it one level deep, like profile.
 --  * set_statement_mark(company, key, mark) sets or clears one mark under the row lock, so two editors marking
 --    different lines at once both stick. Editors only; five colours; a note of at most 120 characters.
+--  * A shared report link shows only the colours of statement lines: notes and account marks stay inside the company
+--    (private.public_report, applied by get_published_report to live and frozen reports alike).
 -- Only replaces functions and adds one: safe to run again.
 set client_min_messages = warning;
 
@@ -51,12 +53,13 @@ declare
   v_cfg jsonb;
   v_lines jsonb;
 begin
-  if p_key is null or length(p_key) not between 1 and 200 then
-    raise exception 'mark key must be 1 to 200 characters' using errcode = '22023';
+  -- A statement line ("gross_profit"), an account code ("#4110") or an uncoded account's name ("@petty cash").
+  if p_key is null or p_key !~ '^([a-z][a-z_]{0,39}|#[^[:space:]].{0,99}|@[^[:space:]].{0,198})$' or p_key in ('__proto__', 'constructor') then
+    raise exception 'a mark key is a statement line, #code or @name of at most 200 characters' using errcode = '22023';
   end if;
   if p_mark is not null and jsonb_typeof(p_mark) <> 'null' then
     if jsonb_typeof(p_mark) <> 'object'
-       or not (p_mark ->> 'color') = any (array['yellow', 'green', 'blue', 'pink', 'grey'])
+       or coalesce(p_mark ->> 'color', '') <> all (array['yellow', 'green', 'blue', 'pink', 'grey'])
        or exists (select 1 from jsonb_object_keys(p_mark) k where k not in ('color', 'note'))
        or (p_mark ? 'note' and (jsonb_typeof(p_mark -> 'note') <> 'string' or length(p_mark ->> 'note') > 120)) then
       raise exception 'a mark is a colour (yellow, green, blue, pink or grey) and a note of at most 120 characters' using errcode = '22023';
@@ -85,6 +88,27 @@ begin
 end $$;
 revoke execute on function public.set_statement_mark(uuid, text, jsonb) from public, anon;
 grant execute on function public.set_statement_mark(uuid, text, jsonb) to authenticated;
+
+create or replace function private.public_report(p_rep jsonb) returns jsonb language sql immutable set search_path = '' as $$
+  select case when jsonb_typeof(p_rep #> '{company,kpi_config,highlights,lines}') = 'object' then
+    jsonb_set(p_rep, '{company,kpi_config,highlights,lines}', coalesce((
+      select jsonb_object_agg(k, jsonb_build_object('color', v ->> 'color'))
+        from jsonb_each(p_rep #> '{company,kpi_config,highlights,lines}') as e(k, v)
+       where k ~ '^[a-z][a-z_]{0,39}$' and jsonb_typeof(v) = 'object' and v ? 'color'), '{}'::jsonb))
+  else p_rep end
+$$;
+revoke execute on function private.public_report(jsonb) from public, anon, authenticated;
+
+create or replace function public.get_published_report(p_token text) returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_id uuid := private.shared_report(p_token); s public.report_snapshots;
+begin
+  if v_id is null then return null; end if;
+  select * into s from public.report_snapshots where report_id = v_id;
+  if found then return private.public_report(s.report || jsonb_build_object('frozen_at', s.frozen_at)); end if;
+  return private.public_report(private.published_report_live(p_token));
+end $$;
+revoke execute on function public.get_published_report(text) from public;
+grant execute on function public.get_published_report(text) to anon, authenticated;
 
 create or replace function public.schema_version() returns integer language sql immutable set search_path = '' as $$ select 50 $$;
 revoke execute on function public.schema_version() from public;

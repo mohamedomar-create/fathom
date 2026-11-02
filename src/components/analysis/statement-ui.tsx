@@ -17,7 +17,7 @@ export function flagReason(statement: "PL" | "BS" | "CF", key: string, cur: numb
   if (statement === "BS" && wrongSide(key, cur)) return T.d.hl.flagWrongSide;
   if (h && flagChange(cur, cmp, h)) {
     const d = cur - (cmp ?? 0);
-    return T.d.hl.flagMove(cmp ? pct((d / Math.abs(cmp)) * 100, 0) : "+", (d >= 0 ? "+" : "") + fmt(d));
+    return cmp ? T.d.hl.flagMove(pct((d / Math.abs(cmp)) * 100, 0), (d >= 0 ? "+" : "") + fmt(d)) : T.d.hl.flagNew(fmt(d));
   }
   return null;
 }
@@ -41,7 +41,7 @@ export function ChangeCell({ statement, k, cur, cmp, kind, fmt }: { statement: "
 /** The ⚠ beside a line's name, with the reason in a tooltip and for screen readers. */
 export function Flag({ reason }: { reason: string | null }) {
   if (!reason) return null;
-  return <span className="flag-ic relative ms-1 cursor-help" title={reason} data-testid="line-flag"><span aria-hidden>⚠</span><span className="sr-only">{reason}</span></span>;
+  return <span tabIndex={0} className="flag-ic relative ms-1 cursor-help" title={reason} data-testid="line-flag"><span aria-hidden>⚠</span><span className="sr-only">{reason}</span></span>;
 }
 
 /**
@@ -56,7 +56,7 @@ export function MarkButton({ markKey, mark, canEdit, onSave, label }: { markKey:
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const dot = <span aria-hidden className={cn("inline-block h-3 w-3 rounded-full border border-line", mark ? `mk-dot-${mark.color}` : "bg-white")} />;
-  if (!canEdit) return mark ? <span className="relative ms-1 inline-flex align-middle" title={mark.note || T.d.hl.marked(T.d.hl.colors[mark.color])} data-testid="mark-dot">{dot}<span className="sr-only">{T.d.hl.marked(T.d.hl.colors[mark.color])}{mark.note ? `: ${mark.note}` : ""}</span></span> : null;
+  if (!canEdit) return mark ? <span tabIndex={0} className="relative ms-1 inline-flex align-middle" title={mark.note || T.d.hl.marked(T.d.hl.colors[mark.color])} data-testid="mark-dot">{dot}<span className="sr-only">{T.d.hl.marked(T.d.hl.colors[mark.color])}{mark.note ? `: ${mark.note}` : ""}</span></span> : null;
   const save = (m: Mark | null) => start(async () => {
     setErr(null);
     const r = await onSave(markKey, m);
@@ -90,3 +90,16 @@ export function MarkButton({ markKey, mark, canEdit, onSave, label }: { markKey:
 
 /** Money formatter bound to a currency, for flag reasons. */
 export const fmtIn = (cur: string) => (v: number) => money(v, cur);
+
+/** Cash-flow totals: the change in cash and the closing balance are what readers look for first. */
+export const cfRowCls = (label: string, total?: boolean) => cn("row", total && "tot", total && (/^(Change in Cash|Closing Balance)/.test(label) ? "grand" : "sub"));
+
+/** Under a statement: why each ⚠ line needs a look and each editor's note, numbered, so a printed page explains itself. */
+export function StatementNotes({ notes }: { notes: { label: string; text: string }[] }) {
+  if (!notes.length) return null;
+  return (
+    <ol className="mt-2 list-decimal space-y-0.5 ps-5 text-[11px] text-mute" data-testid="statement-notes">
+      {notes.map((n, i) => <li key={i}><span className="font-semibold text-ink">{n.label}</span>: {n.text}</li>)}
+    </ol>
+  );
+}

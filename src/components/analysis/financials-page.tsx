@@ -12,8 +12,8 @@ import { MissingData, Notes } from "./common";
 import { SourceDrawer, type SourceLine } from "./source-drawer";
 import { useT } from "@/lib/i18n/use-t";
 import { balanced } from "@/lib/tolerance";
-import { accountMarkKey, BS_LINES, PL_LINES, type Mark } from "@/lib/engine/statement-rows";
-import { ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
+import { accountMarkKey, BS_LINES, emptyBS, markAt, PL_LINES, type Highlights, type Mark } from "@/lib/engine/statement-rows";
+import { cfRowCls, ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
 import { setStatementMark } from "@/app/company/[id]/analysis/highlight-actions";
 
 type View = "pl" | "bs" | "cf";
@@ -54,9 +54,10 @@ export function FinancialsPage() {
     if (r.ok) setMarks((x) => { const n = { ...x }; if (mk) n[key] = mk; else delete n[key]; return n; });
     return r;
   };
-  const markOf = (key: string) => marks[key] ?? null;
-  const nameCell = (statement: "PL" | "BS", key: string, label: string, cur0: number, cmp0: number | null | undefined, indent = false) => {
-    const why = flagReason(statement, key, cur0, cmp0, h, fmt, T);
+  const markOf = (key: string) => markAt(marks, key);
+  // flagKey: the line (or an account's class) the rules read; key: where the mark is kept.
+  const nameCell = (statement: "PL" | "BS", key: string, label: string, cur0: number, cmp0: number | null | undefined, indent = false, flagKey = key) => {
+    const why = flagReason(statement, flagKey, cur0, cmp0, h, fmt, T);
     return { why, td: <td className={indent ? "ps-6" : undefined}>{label}<Flag reason={why} /><MarkButton markKey={key} mark={markOf(key)} canEdit={canMark} onSave={saveMark} label={label} /></td> };
   };
   const { P, B, B0 } = a.view;
@@ -72,9 +73,15 @@ export function FinancialsPage() {
     // A part month: the comparison's last month counts the same days, as in the total row above.
     cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p, i) => s + (x.amounts[p] ?? 0) * (comp && i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0),
   })).filter((x) => x.cur || x.cmp);
+  // A comparison month with no balance sheet loaded is no comparison (not a balance sheet of zeros).
+  const cbOk = !!comp && !emptyBS(comp.B);
   const ytd = a.view.ytd;
+  // Whether any line (or account under it) of a statement needs a look, for "only lines that need a look".
+  const anyFlag = (st: "PL" | "BS") => st === "PL"
+    ? PL_ROWS.some((r) => flagReason("PL", r.k, P[r.k] as number, compP?.[r.k] as number | undefined, h, fmt, T) || accts(r.classes, false).some((x) => flagReason("PL", r.k, x.cur, x.cmp, h, fmt, T)))
+    : BS_ROWS.some((r) => r.k && (flagReason("BS", r.k, B[r.k] as number, cbOk ? (comp!.B[r.k] as number) : undefined, h, fmt, T) || (r.typ === 0 && accts([r.k as ClassKey], true).some((x) => flagReason("BS", r.k!, x.cur, cbOk ? x.cmp : undefined, h, fmt, T)))));
   const fyCompMonths = c.months.filter((x) => compPeriods.includes(x.period));
-  const compP = comp?.P ?? (fyCompMonths.length ? plCalc(sumPL(fyCompMonths.map((x) => x.pl))) : null);
+  const compP = comp?.P ?? (fyCompMonths.length === compPeriods.length ? plCalc(sumPL(fyCompMonths.map((x) => x.pl))) : null);
   return (
     <>
       <PageHeader title={T.d.nav["analysis/financials"][1]} right={<PeriodPicker />}>
@@ -97,7 +104,7 @@ export function FinancialsPage() {
               {PL_ROWS.filter((r) => !r.ifAdjusted || P.adjustments || compP?.adjustments).map((r) => {
                 const v = P[r.k] as number, v0 = compP ? (compP[r.k] as number) : undefined;
                 const nc = nameCell("PL", r.k, T.tl(r.l), v, v0);
-                const lines = accts(r.classes, false).map((x) => ({ x, nc: nameCell("PL", x.key, x.name, x.cur, x.cmp, true) })).filter((y) => !flagsOnly || y.nc.why);
+                const lines = accts(r.classes, false).map((x) => ({ x, nc: nameCell("PL", x.key, x.name, x.cur, x.cmp, true, r.k) })).filter((y) => !flagsOnly || y.nc.why);
                 if (flagsOnly && !nc.why && !lines.length) return null;
                 return [
                   <tr key={r.k} className={rowCls(r.k, { mark: markOf(r.k), flagged: !!nc.why })} data-line={r.k}>
@@ -112,6 +119,7 @@ export function FinancialsPage() {
               })}
             </tbody>
           </table>
+          {flagsOnly && !anyFlag("PL") && <p className="mt-2 text-sm text-mute" data-testid="no-flags">{T.d.hl.noFlags}</p>}
           {bankAsInterest.length > 0 && <p className="mt-2 text-xs text-mute" data-testid="bank-charges-note">{t.bankChargesNote(bankAsInterest.join(", "))}</p>}
           <Notes findings={[]} comment={comments("pl")} />
         </div>
@@ -126,14 +134,14 @@ export function FinancialsPage() {
             <thead><tr><th>{t.bs}</th><th>{T.ml(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? T.ml(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>{t.varianceCur(cur)}</th><th>{t.variancePct}</th><th>{t.commonSize}</th></tr></thead>
             <tbody>
               {BS_ROWS.map((r) => {
-                if (r.typ === 2) return <tr key={r.l} className="cat"><td colSpan={6}>{T.tl(r.l)}</td></tr>;
+                if (r.typ === 2) return flagsOnly ? null : <tr key={r.l} className="cat"><td colSpan={6}>{T.tl(r.l)}</td></tr>;
                 const k = r.k!;
-                const cb = comp?.B ?? null;
+                const cb = cbOk ? comp!.B : null;
                 const v = B[k] as number, v0 = cb ? (cb[k] as number) : undefined;
                 if (r.typ === 0 && !v && !v0) return null;
                 const classes = r.typ === 0 ? [k as ClassKey] : undefined;
                 const nc = nameCell("BS", k, T.tl(r.l), v, v0);
-                const lines = accts(classes, true).map((x) => ({ x, nc: nameCell("BS", x.key, x.name, x.cur, x.cmp, true) })).filter((y) => !flagsOnly || y.nc.why);
+                const lines = accts(classes, true).map((x) => ({ x, nc: nameCell("BS", x.key, x.name, x.cur, cbOk ? x.cmp : undefined, true, k) })).filter((y) => !flagsOnly || y.nc.why);
                 if (flagsOnly && !nc.why && !lines.length) return null;
                 return [
                   <tr key={r.l} className={rowCls(k, { mark: markOf(k), flagged: !!nc.why })} data-line={k}>
@@ -148,17 +156,18 @@ export function FinancialsPage() {
                     ));
                   })() : []),
                   ...lines.map(({ x, nc: a1 }) => (
-                    <tr key={x.id} className={cn("row text-[12.5px] text-mute", markOf(x.key) && `mk-${markOf(x.key)!.color}`, a1.why && "flagged")} data-line={x.key}>{a1.td}<td>{m(x.cur)}</td><td>{m(x.cmp)}</td><ChangeCell statement="BS" k={k} cur={x.cur} cmp={x.cmp} kind="money" fmt={fmt} /><ChangeCell statement="BS" k={k} cur={x.cur} cmp={x.cmp} kind="pct" fmt={fmt} /><td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
+                    <tr key={x.id} className={cn("row text-[12.5px] text-mute", markOf(x.key) && `mk-${markOf(x.key)!.color}`, a1.why && "flagged")} data-line={x.key}>{a1.td}<td>{m(x.cur)}</td><td>{cbOk ? m(x.cmp) : "–"}</td><ChangeCell statement="BS" k={k} cur={x.cur} cmp={cbOk ? x.cmp : undefined} kind="money" fmt={fmt} /><ChangeCell statement="BS" k={k} cur={x.cur} cmp={cbOk ? x.cmp : undefined} kind="pct" fmt={fmt} /><td>{B.ta ? pct((x.cur / B.ta) * 100, 0) : "–"}</td></tr>
                   )),
                 ];
               })}
             </tbody>
           </table>
+          {flagsOnly && !anyFlag("BS") && <p className="mt-2 text-sm text-mute" data-testid="no-flags">{T.d.hl.noFlags}</p>}
           <Notes findings={a.findings.filter((f) => f.section === "bs")} comment={comments("bs")} />
         </div>
       )}
       <SourceDrawer line={src} onClose={() => setSrc(null)} />
-      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} sub={a.view.sub} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])!, sub: comp.sub } : null} compLabel={compLabel} cur={cur} label={T.pl(a.view.window.short)} />)}
+      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} sub={a.view.sub} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])!, sub: comp.sub } : null} compLabel={compLabel} cur={cur} label={T.pl(a.view.window.short)} h={h} flagsOnly={flagsOnly} />)}
     </>
   );
 }
@@ -171,7 +180,7 @@ function compB0(months: MonthData[], start: string) {
   return m && hasBS(m) ? bsCalc(m.bs) : null;
 }
 
-function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label }: { P: PLCalc; B: BSCalc; B0: BSCalc; sub?: CFSub; comp: { P: PLCalc; B: BSCalc; B0: BSCalc; sub?: CFSub } | null; compLabel: string; cur: string; label: string }) {
+function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label, h, flagsOnly }: { P: PLCalc; B: BSCalc; B0: BSCalc; sub?: CFSub; comp: { P: PLCalc; B: BSCalc; B0: BSCalc; sub?: CFSub } | null; compLabel: string; cur: string; label: string; h?: Highlights; flagsOnly: boolean }) {
   // Both columns list the same lines (an unexplained difference in either shows in both), so rows line up.
   const [s1, c1] = alignSubs(sub, comp?.sub);
   const gap = Math.abs(cashFlowStatement(P, B, B0, { sub: s1 }).unreconciled) > 0 || (comp ? Math.abs(cashFlowStatement(comp.P, comp.B, comp.B0, { sub: c1 }).unreconciled) > 0 : false);
@@ -181,11 +190,15 @@ function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label }: { P: PLCa
   return (
     <div tabIndex={0} className="-mx-4 overflow-x-auto px-4">
       <table className="tbl min-w-[560px]" data-testid="cf-table">
-        <thead><tr><th>{T.d.ana.cf}</th><th>{label}</th><th>{compLabel}</th></tr></thead>
+        <thead><tr><th>{T.d.ana.cf}</th><th>{label}</th><th>{compLabel}</th><th>{T.d.ana.varianceCur(cur)}</th></tr></thead>
         <tbody>
-          {s.lines.map((l, i) => l.heading
-            ? <tr key={l.label} className="cat"><td colSpan={3}>{T.tl(l.label)}</td></tr>
-            : <tr key={l.label + i} className={cn("row", l.total && "tot", l.total && (/^(Change in Cash|Closing Balance)/.test(l.label) ? "grand" : "sub"))}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td><td>{s2 ? money(s2.lines[i].value, cur) : "–"}</td></tr>)}
+          {s.lines.map((l, i) => {
+            if (l.heading) return flagsOnly ? null : <tr key={l.label} className="cat"><td colSpan={4}>{T.tl(l.label)}</td></tr>;
+            const v0 = s2 ? s2.lines[i].value : undefined;
+            const why = flagReason("CF", l.label, l.value, v0, h, (v) => money(v, cur), T);
+            if (flagsOnly && !why) return null;
+            return <tr key={l.label + i} className={cn(cfRowCls(l.label, l.total), why && "flagged")}><td>{T.tl(l.label)}<Flag reason={why} /></td><td>{money(l.value, cur)}</td><td>{v0 === undefined ? "–" : money(v0, cur)}</td><ChangeCell statement="CF" k={l.label} cur={l.value} cmp={v0} kind="money" fmt={(v) => money(v, cur)} /></tr>;
+          })}
         </tbody>
       </table>
       {s.estimated.length > 0 && (
@@ -197,3 +210,4 @@ function CashFlowTable({ P, B, B0, sub, comp, compLabel, cur, label }: { P: PLCa
     </div>
   );
 }
+
