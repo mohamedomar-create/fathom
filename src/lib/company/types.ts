@@ -52,6 +52,10 @@ export interface CompanyBundle {
   inventorySettings?: { rentalLocation: string | null; locationTypes?: LocationTypes };
   /** Where the company is ("Africa/Cairo"): Odoo's UTC date-times are moved to its days. Null: not moved. */
   timeZone?: string | null;
+  /** The approved budget's figures are the KPI targets where none is typed (Settings, Targets). */
+  budgetTargets?: boolean;
+  /** The latest approved budget, loaded only when budgetTargets is on. */
+  budget?: { name: string; lines: import("@/lib/engine/budget").BudgetLine[]; products: import("@/lib/engine/budget").BudgetProduct[] } | null;
   /** The company said its books start from zero (no opening balance due). */
   booksFromZero?: boolean;
   /** Which accounting system the books come from (Phase 4a picker); null until chosen. */

@@ -1,5 +1,6 @@
 import { getDict } from "@/lib/i18n/server";
 import { KpiConfigForm } from "@/components/settings/kpi-config-form";
+import { BudgetTargetsToggle } from "@/components/settings/budget-targets-toggle";
 
 export default async function Page() {
   const heading = (await getDict()).settingsNav.items["targets"]?.[0] ?? "Targets";
@@ -7,6 +8,7 @@ export default async function Page() {
     <div>
       <div className="label">4 · {heading}</div>
       <h1 className="mb-6 text-3xl font-light">{heading}</h1>
+      <BudgetTargetsToggle />
       <KpiConfigForm mode="targets" />
     </div>
   );

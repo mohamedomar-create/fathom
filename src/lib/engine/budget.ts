@@ -1,8 +1,8 @@
-import { addMonths, PL_KEYS, type ClassKey, type PLInput } from "@/lib/engine";
+import { addMonths, PL_KEYS, type ClassKey, type PLCalc, type PLInput } from "@/lib/engine";
 import { buildMonths } from "@/lib/company/build";
 import type { AccountLine } from "@/lib/company/types";
 import { accountMarkKey } from "./statement-rows";
-import { periodView, type PeriodSel } from "./period";
+import { compareWeight, periodView, type PeriodSel } from "./period";
 import type { SalesProductRow } from "./sales";
 
 /**
@@ -54,9 +54,14 @@ export function budgetAccounts(lines: BudgetLine[], products: BudgetProduct[]): 
   return { accounts: [...acc.values()], notes };
 }
 
-/** The budget for the selected window, worked out by the same statements as the actual figures. */
-export function budgetComparison(accounts: AccountLine[], sel: PeriodSel, fyStart: number, label: string) {
-  const v = periodView(buildMonths(accounts), sel, fyStart);
+/**
+ * The budget for the selected window, worked out by the same statements as the actual figures. When the books stop
+ * part-way through the window's last month (partDay), that month's budget counts the same share of its days.
+ */
+export function budgetComparison(accounts: AccountLine[], sel: PeriodSel, fyStart: number, label: string, partDay?: number) {
+  const w = compareWeight(partDay, sel.end);
+  const acc = w === 1 ? accounts : accounts.map((a) => (a.amounts[sel.end] === undefined ? a : { ...a, amounts: { ...a.amounts, [sel.end]: a.amounts[sel.end] * w } }));
+  const v = periodView(buildMonths(acc), sel, fyStart);
   return { P: v.P, B: v.B, label };
 }
 
@@ -206,4 +211,14 @@ export function productVariance(budget: BudgetProduct[], actual: SalesProductRow
       price: ok ? r2((ap - bp) * x.au!) : null,
     };
   }).sort((a, b) => Math.abs(b.actual - b.budget) - Math.abs(a.actual - a.budget));
+}
+
+/**
+ * KPI targets from the budget for a window: revenue, gross margin, EBIT margin and net margin. Already for the whole
+ * window (no monthly scaling). Targets typed by hand win (analyze applies these only where none is typed).
+ */
+export function budgetTargets(P: PLCalc): Record<string, number | null> {
+  const R = P.revenue;
+  const m = (x: number) => (R ? r2((x / R) * 100) : null);
+  return { total_revenue: r2(R), gpm: m(P.gross_profit), profit_ratio: m(P.ebit), npat: m(P.eat) };
 }

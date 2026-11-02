@@ -10,6 +10,7 @@ import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
+import { bud } from "./areas/bud";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -56,6 +57,7 @@ export const ar: Dict = {
     "analysis/growth": ["النمو", "النمو"],
     "analysis/trend": ["الاتجاه", "الاتجاه"],
     "analysis/goalseek": ["تحقيق الهدف", "تحقيق الهدف"],
+    "analysis/budget": ["الموازنة", "الموازنة"],
     "analysis/forecast": ["التوقعات", "التوقعات"],
     "analysis/financials": ["القوائم", "القوائم المالية"],
     "analysis/real-profit": ["الربح الحقيقي", "الربح الحقيقي"],
@@ -133,6 +135,7 @@ export const ar: Dict = {
   inv: inv.ar,
   cash: cash.ar,
   hl: hl.ar,
+  bud: bud.ar,
   bank: bank.ar,
   state: state.ar,
   access: access.ar,

@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { alignSubs, bankChargesAsInterest, compareWeight, type CFSub, splitRetained, bsCalc, cashFlowStatement, hasBS, type MonthData, money, pct, plCalc, sumPL, type BSCalc, type ClassKey, type PLCalc } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { useComments, useAnalysis } from "@/lib/company/use-period";
@@ -15,6 +15,12 @@ import { balanced } from "@/lib/tolerance";
 import { accountMarkKey, BS_LINES, emptyBS, markAt, PL_LINES, type Highlights, type Mark } from "@/lib/engine/statement-rows";
 import { cfRowCls, ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
 import { setStatementMark } from "@/app/company/[id]/analysis/highlight-actions";
+import { budgetAccounts, budgetComparison, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
+import { demoBudget } from "@/lib/company/demo-budget";
+import { demoSales } from "@/lib/company/demo-sales";
+
+/** The budget the "Budget" comparison uses: the latest approved version (else the latest draft), or none. */
+export interface CompareBudget { name: string; status: "draft" | "approved"; lines: BudgetLine[]; products: BudgetProduct[] }
 
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly" | "budget";
@@ -22,8 +28,16 @@ type Cmp = "prior" | "ly" | "budget";
 const PL_ROWS = PL_LINES;
 const BS_ROWS = BS_LINES;
 
-export function FinancialsPage() {
+export function FinancialsPage({ budget: budgetIn }: { budget?: CompareBudget | null } = {}) {
   const c = useCompany();
+  // The demo shows its made-up budget; a company the budget it saved.
+  const budget = useMemo<CompareBudget | null>(() => {
+    if (budgetIn !== undefined) return budgetIn;
+    if (c.source !== "demo") return null;
+    const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth ?? 1, demoSales().products);
+    return { name: b.name, status: "approved", lines: b.lines, products: b.products };
+  }, [budgetIn, c.source, c.accounts, c.months, c.settings.fyStartMonth]);
+  const bAcc = useMemo(() => (budget ? budgetAccounts(budget.lines, budget.products).accounts : null), [budget]);
   const bankAsInterest = bankChargesAsInterest(c.accounts);
   const a = useAnalysis();
   const comments = useComments();
@@ -43,9 +57,13 @@ export function FinancialsPage() {
   );
     // Same period last year by default; when last year isn't loaded, the previous period, and the page says so.
   const lyMissing = cmp === "ly" && !a.view.ly;
+  const isBudget = cmp === "budget" && !!bAcc;
   const useCmp: "prior" | "ly" = cmp === "ly" && !lyMissing ? "ly" : "prior";
-  const comp = useCmp === "prior" ? a.view.prior : a.view.ly;
-  const compLabel = comp ? T.pl(comp.label) : useCmp === "prior" ? t.prior : t.lastYear;
+  // The budget for the same window (a part month counts the same share of its month), through the same statements.
+  const budgetComp = isBudget ? { ...budgetComparison(bAcc!, a.view.sel, c.settings.fyStartMonth ?? 1, budget!.name, a.view.partDay), sub: undefined } : null;
+  const comp = isBudget ? budgetComp : useCmp === "prior" ? a.view.prior : a.view.ly;
+  const compLabel = isBudget ? `${T.d.hl.budget} · ${budget!.name}` : comp ? T.pl(comp.label) : useCmp === "prior" ? t.prior : t.lastYear;
+  const bByKey = new Map((bAcc ?? []).map((x) => [x.id, x]));
   const h = c.settings.highlights;
   const fmt = fmtIn(cur);
   const canMark = !c.readOnly && c.source !== "demo";
@@ -63,7 +81,7 @@ export function FinancialsPage() {
   const { P, B, B0 } = a.view;
   const periods = a.view.window.periods;
   const compPeriods = (() => {
-    const shift = useCmp === "ly" ? 12 : a.view.sel.type === "month" ? 1 : a.view.sel.type === "quarter" ? 3 : 12;
+    const shift = isBudget ? 0 : useCmp === "ly" ? 12 : a.view.sel.type === "month" ? 1 : a.view.sel.type === "quarter" ? 3 : 12;
     return periods.map((p) => { const [y, mo] = p.split("-").map(Number); const i = y * 12 + mo - 1 - shift; return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`; });
   })();
   const hasDetail = c.accounts.length > 0;
@@ -71,7 +89,9 @@ export function FinancialsPage() {
     id: x.id, key: accountMarkKey(x), name: `${x.code} ${x.name}`,
     cur: isBS ? x.amounts[a.view.window.end] ?? 0 : periods.reduce((s, p) => s + (x.amounts[p] ?? 0), 0),
     // A part month: the comparison's last month counts the same days, as in the total row above.
-    cmp: isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p, i) => s + (x.amounts[p] ?? 0) * (comp && i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0),
+    cmp: isBudget
+      ? (isBS ? 0 : compPeriods.reduce((s, p, i) => s + (bByKey.get(accountMarkKey(x))?.amounts[p] ?? 0) * (i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0))
+      : isBS ? x.amounts[compPeriods[compPeriods.length - 1]] ?? 0 : compPeriods.reduce((s, p, i) => s + (x.amounts[p] ?? 0) * (comp && i === compPeriods.length - 1 ? compareWeight(a.view.partDay, p) : 1), 0),
   })).filter((x) => x.cur || x.cmp);
   // A comparison month with no balance sheet loaded is no comparison (not a balance sheet of zeros).
   const cbOk = !!comp && !emptyBS(comp.B);
@@ -88,7 +108,7 @@ export function FinancialsPage() {
         <div className="sent">
           {t.view} <SentenceSelect testId="fin-view" value={view} onChange={setView} options={[{ value: "pl", label: t.pl }, { value: "bs", label: t.bs }, { value: "cf", label: t.cf }]} />
           {" "}{t.showingWord} <SentenceSelect value={layout} onChange={setLayout} options={[{ value: "summary", label: t.summary }, { value: "detailed", label: t.detailed, disabled: !hasDetail, hint: hasDetail ? t.accountLines : t.needsAccounts }]} />
-          {" "}{t.financialsCompared} <SentenceSelect testId="fin-compare" value={cmp} onChange={setCmp} options={[{ value: "ly", label: a.view.sel.type === "month" ? t.cmpSameMonthLY : t.cmpSamePeriodLY }, { value: "prior", label: a.view.sel.type === "month" ? t.cmpLastMonth : t.cmpPrior }, { value: "budget", label: T.d.hl.budget, disabled: true, hint: T.d.hl.budgetSoon }]} />
+          {" "}{t.financialsCompared} <SentenceSelect testId="fin-compare" value={cmp} onChange={setCmp} options={[{ value: "ly", label: a.view.sel.type === "month" ? t.cmpSameMonthLY : t.cmpSamePeriodLY }, { value: "prior", label: a.view.sel.type === "month" ? t.cmpLastMonth : t.cmpPrior }, { value: "budget", label: T.d.hl.budget, disabled: !bAcc, hint: bAcc ? undefined : T.d.hl.budgetSoon }]} />
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-mute">
           {lyMissing && <span data-testid="ly-missing">{T.d.hl.lyMissing}</span>}
@@ -131,7 +151,7 @@ export function FinancialsPage() {
             {!balanced(B.imbalance) && <span className="text-sm text-red" data-testid="oob">{t.outOfBalance(m(B.imbalance))}</span>}
           </div>
           <table className="tbl min-w-[720px]" data-testid="bs-table">
-            <thead><tr><th>{t.bs}</th><th>{T.ml(a.view.bsAt ?? a.view.window.end)}</th><th>{comp ? T.ml(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>{t.varianceCur(cur)}</th><th>{t.variancePct}</th><th>{t.commonSize}</th></tr></thead>
+            <thead><tr><th>{t.bs}</th><th>{T.ml(a.view.bsAt ?? a.view.window.end)}</th><th>{comp && !isBudget ? T.ml(compPeriods[compPeriods.length - 1]) : compLabel}</th><th>{t.varianceCur(cur)}</th><th>{t.variancePct}</th><th>{t.commonSize}</th></tr></thead>
             <tbody>
               {BS_ROWS.map((r) => {
                 if (r.typ === 2) return flagsOnly ? null : <tr key={r.l} className="cat"><td colSpan={6}>{T.tl(r.l)}</td></tr>;
@@ -167,7 +187,7 @@ export function FinancialsPage() {
         </div>
       )}
       <SourceDrawer line={src} onClose={() => setSrc(null)} />
-      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} sub={a.view.sub} comp={comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])!, sub: comp.sub } : null} compLabel={compLabel} cur={cur} label={T.pl(a.view.window.short)} h={h} flagsOnly={flagsOnly} />)}
+      {view === "cf" && (!a.CF || !B0 ? <MissingData view={a.view} basePath={c.basePath} need="cash" /> : <CashFlowTable P={P} B={B} B0={B0} sub={a.view.sub} comp={!isBudget && comp && compB0(c.months, compPeriods[0]) ? { P: comp.P, B: comp.B, B0: compB0(c.months, compPeriods[0])!, sub: comp.sub } : null} compLabel={compLabel} cur={cur} label={T.pl(a.view.window.short)} h={h} flagsOnly={flagsOnly} />)}
     </>
   );
 }

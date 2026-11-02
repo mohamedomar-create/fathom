@@ -1,5 +1,5 @@
 import {
-  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Hospital,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Hospital, Target,
   type LucideIcon,
 } from "lucide-react";
 
@@ -22,6 +22,7 @@ export const SECTORS: Sector[] = [
       { href: "analysis/real-profit", label: "Real Profit", title: "Real Profit", icon: Scale, group: "performance" },
       { href: "analysis/cashflow", label: "Cash Flow", title: "Cash Flow", icon: Waves, group: "cash" },
       { href: "analysis/financials", label: "Financials", title: "Financials", icon: FileSpreadsheet, group: "cash" },
+      { href: "analysis/budget", label: "Budget", title: "Budget", icon: Target, group: "plan" },
       { href: "analysis/forecast", label: "Forecast", title: "Forecast", icon: CalendarRange, group: "plan" },
       { href: "analysis/goalseek", label: "Goalseek", title: "Goalseek", icon: Telescope, group: "plan" },
     ],

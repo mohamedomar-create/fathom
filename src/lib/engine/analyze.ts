@@ -58,7 +58,11 @@ const PART_PRIOR_LABEL = { month: "the same days last month", quarter: "the same
 
 export function analyze(
   months: MonthData[], sel: PeriodSel, settings: CompanySettings,
-  opts: { comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null; lang?: "en" | "ar"; kpiName?: (d: KpiDef) => string } = {},
+  opts: {
+    comparison?: Comparison; alerts?: Record<string, { active: boolean; threshold: number | null }>; asOf?: string | null; lang?: "en" | "ar"; kpiName?: (d: KpiDef) => string;
+    /** Targets from the budget for this window (already for the whole window): used where no target is typed by hand. */
+    budgetTargets?: Record<string, number | null> | null;
+  } = {},
 ): Analysis {
   // A part month (books to asOf) is measured on its days covered and compared on the same days (periodView does both).
   const view = periodView(months, sel, settings.fyStartMonth, opts.asOf);
@@ -72,7 +76,10 @@ export function analyze(
   // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
   // A part month counts as the share of its days covered (revenue to the 10th is judged against 10 days' target).
   const partShare = view.partDay ? 1 - view.partDay / daysIn(view.window.end) : 0;
-  const targets = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length - partShare);
+  const scaled = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length - partShare);
+  const targets = opts.budgetTargets
+    ? { ...scaled, ...Object.fromEntries(Object.entries(opts.budgetTargets).filter(([k, v]) => v !== null && settings.targets?.[k] === undefined)) }
+    : scaled;
   const comparison = opts.comparison ?? "target";
   let compareK: Record<string, number | null> | null = null;
   if (comparison !== "target") {

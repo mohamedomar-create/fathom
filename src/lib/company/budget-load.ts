@@ -1,0 +1,52 @@
+import "server-only";
+import type { getUser } from "@/lib/supabase/server";
+import type { ClassKey } from "@/lib/engine";
+import type { BudgetLine, BudgetProduct } from "@/lib/engine/budget";
+
+type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
+
+export interface BudgetVersionInfo {
+  id: string; fy: string; name: string; kind: "original" | "revision"; status: "draft" | "approved";
+  basedOn: string | null; approvedAt: string | null; createdAt: string;
+}
+export interface BudgetSet { versions: BudgetVersionInfo[]; current: { id: string; lines: BudgetLine[]; products: BudgetProduct[] } | null; error?: string }
+
+const PAGE = 1000;
+
+/** Reads every row of a query, a page at a time (the API answers at most 1,000 rows a call). */
+async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1);
+    if (error) throw new Error(error.message);
+    out.push(...(data ?? []));
+    if (!data || data.length < PAGE) return out;
+  }
+}
+
+/**
+ * The company's budget versions (newest first) and the lines and products of one: the one asked for, else the latest
+ * approved, else the latest. Members only (row security).
+ */
+export async function loadBudgets(supabase: Supa, companyId: string, versionId?: string | null): Promise<BudgetSet> {
+  const { data: vs, error } = await supabase.from("budget_versions")
+    .select("id, fy, name, kind, status, based_on, approved_at, created_at").eq("company_id", companyId).order("created_at", { ascending: false });
+  if (error) return { versions: [], current: null, error: error.code === "42P01" ? "missing" : "read" };
+  const versions: BudgetVersionInfo[] = (vs ?? []).map((v) => ({ id: v.id, fy: v.fy, name: v.name, kind: v.kind, status: v.status, basedOn: v.based_on, approvedAt: v.approved_at, createdAt: v.created_at }));
+  const pick = versions.find((v) => v.id === versionId) ?? versions.find((v) => v.status === "approved") ?? versions[0];
+  if (!pick) return { versions, current: null };
+  try {
+    const lines = await all((a, b) => supabase.from("budget_lines").select("key, cls, label, month, amount").eq("version_id", pick.id).order("key").order("month").range(a, b));
+    const products = await all((a, b) => supabase.from("budget_products").select("product, category, month, units, price, unit_cost").eq("version_id", pick.id).order("product").order("month").range(a, b));
+    return {
+      versions,
+      current: {
+        id: pick.id,
+        lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
+        products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
+      },
+    };
+  } catch {
+    return { versions, current: null, error: "read" };
+  }
+}

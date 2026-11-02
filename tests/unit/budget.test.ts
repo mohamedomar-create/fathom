@@ -119,6 +119,10 @@ describe("budget vs actual", () => {
     expect(c.P.revenue).toBe(2000);
     expect(c.label).toBe("Budget FY 2026");
   });
+  it("a part month compares with the same share of the budget's month (books to 15 Feb: half of February's budget)", () => {
+    const c = budgetComparison(budget, { type: "year", end: "2026-02" }, 1, "B", 14);
+    expect(c.P.revenue).toBe(1000 + 500);
+  });
 });
 
 describe("price and volume", () => {
@@ -136,5 +140,23 @@ describe("price and volume", () => {
     expect(r.volume).toBeNull();
     expect(r.price).toBeNull();
     expect(r.actual - r.budget).toBe(-20);
+  });
+});
+
+describe("budget as KPI targets", () => {
+  it("revenue, gross margin, EBIT margin and net margin come from the budget for the window", async () => {
+    const { budgetTargets } = await import("@/lib/engine/budget");
+    const { plCalc } = await import("@/lib/engine");
+    const t = budgetTargets(plCalc({ revenue: 1000, cos_variable: 600, exp_fixed: 200, tax_expenses: 50 }));
+    expect(t).toEqual({ total_revenue: 1000, gpm: 40, profit_ratio: 20, npat: 15 });
+  });
+  it("targets typed by hand win over the budget's; the rest come from the budget, already for the whole window", async () => {
+    const { analyze } = await import("@/lib/engine");
+    const months = [{ period: "2026-01", pl: { revenue: 900, cos_variable: 500 }, bs: {}, has: { pl: true, bs: false } }, { period: "2026-02", pl: { revenue: 900, cos_variable: 500 }, bs: {}, has: { pl: true, bs: false } }];
+    const settings = { currency: "EGP", fyStartMonth: 1, taxRate: 0.225, targets: { gpm: 50 } };
+    const a = analyze(months as never, { type: "year", end: "2026-02" }, settings, { budgetTargets: { total_revenue: 2000, gpm: 40, profit_ratio: 20, npat: 15 } });
+    expect(a.targets.total_revenue).toBe(2000);
+    expect(a.targets.gpm).toBe(50);
+    expect(a.targets.npat).toBe(15);
   });
 });

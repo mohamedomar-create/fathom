@@ -32,6 +32,11 @@ export function booksFromZeroOf(kpiConfig: unknown): boolean {
   return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;
 }
 
+/** The company uses its approved budget as KPI targets (where no target is typed by hand). */
+export function budgetTargetsOf(kpiConfig: unknown): boolean {
+  return ((kpiConfig ?? {}) as Record<string, { budgetTargets?: unknown } | undefined>)[PROFILE_KEY]?.budgetTargets === true;
+}
+
 /** The day the company's books start in Odoo ("2021-07-01"): everything dated before it is the opening balance. */
 export function booksStartOf(kpiConfig: unknown): string | null {
   const v = ((kpiConfig ?? {}) as Record<string, { booksStart?: unknown } | undefined>)[PROFILE_KEY]?.booksStart;

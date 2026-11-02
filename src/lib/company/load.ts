@@ -15,7 +15,8 @@ import type { AlertSetting, CompanyBundle } from "./types";
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
-import { booksFromZeroOf, timeZoneOf, vatRateOf } from "./time-zone";
+import { booksFromZeroOf, budgetTargetsOf, timeZoneOf, vatRateOf } from "./time-zone";
+import { loadBudgets } from "./budget-load";
 import { systemOf } from "./system";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
 
@@ -105,6 +106,11 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     loadAccounts(supabase, id, c.data_version),
     loadSubMap(supabase, id),
   ]);
+  // The approved budget, only when the company uses it as KPI targets (a read failure: no budget targets, never an error).
+  const useBudget = budgetTargetsOf(c.kpi_config);
+  const bset = useBudget ? await loadBudgets(supabase, id) : null;
+  const bv = bset?.versions.find((v) => v.id === bset.current?.id && v.status === "approved");
+  const budget = bv && bset?.current ? { name: bv.name, lines: bset.current.lines, products: bset.current.products } : null;
   // Fails closed: a membership that couldn't be read is an error, none means not this person's company.
   const access = accessFrom(mem, memErr);
   if (access === "none") notFound();
@@ -133,6 +139,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     lastUpdated: c.last_synced_at, orgName: org?.name, notes: (c.notes as string[]) ?? [],
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
-    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, booksBasis, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), system: systemOf(c.kpi_config, c.source), closedThrough: c.closed_through ?? null,
+    accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, booksBasis, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), budgetTargets: useBudget, budget, system: systemOf(c.kpi_config, c.source), closedThrough: c.closed_through ?? null,
   };
 });

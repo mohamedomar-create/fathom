@@ -5,14 +5,14 @@ import { en } from "@/lib/i18n/en";
 import { ar } from "@/lib/i18n/ar";
 
 describe("Financials in four groups", () => {
-  it("groups the 11 pages as Overview, Performance, Cash & statements, Plan, in that order", () => {
+  it("groups the 12 pages as Overview, Performance, Cash & statements, Plan, in that order", () => {
     const g = navGroups(SECTORS.find((s) => s.key === "financials")!);
     expect(g.map((x) => x.key)).toEqual(["overview", "performance", "cash", "plan"]);
     expect(g.map((x) => x.items.map((i) => i.href))).toEqual([
       ["summary", "analysis/kpis", "analysis/explorer"],
       ["analysis/profitability", "analysis/growth", "analysis/trend", "analysis/real-profit"],
       ["analysis/cashflow", "analysis/financials"],
-      ["analysis/forecast", "analysis/goalseek"],
+      ["analysis/budget", "analysis/forecast", "analysis/goalseek"],
     ]);
   });
   it("other sectors are one group with no heading", () => {

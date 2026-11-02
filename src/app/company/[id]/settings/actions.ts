@@ -295,6 +295,17 @@ export async function setBooksFromZero(companyId: string, value: boolean): Promi
   return { ok: true };
 }
 
+/** Use the approved budget as KPI targets (revenue, gross margin, EBIT margin, net margin) where none is typed. */
+export async function setBudgetTargets(companyId: string, value: boolean): Promise<{ ok: boolean; error?: string }> {
+  if (!z.string().uuid().safeParse(companyId).success || typeof value !== "boolean") return { ok: false, error: "Invalid request." };
+  const { supabase, user } = await getUser();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { budgetTargets: value } });
+  if (!r.ok) return r;
+  revalidatePath(`/company/${companyId}`, "layout");
+  return { ok: true };
+}
+
 /** Forecast drivers: growth, margin, working-capital days, investment, borrowing and dividends. */
 export async function saveForecast(companyId: string, input: z.input<typeof ForecastSchema>): Promise<{ ok: boolean; error?: string }> {
   const v = ForecastSchema.safeParse(input);

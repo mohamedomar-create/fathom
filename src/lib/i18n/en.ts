@@ -10,6 +10,7 @@ import { exp } from "./areas/exp";
 import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
+import { bud } from "./areas/bud";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -59,6 +60,7 @@ export const en = {
     "analysis/growth": ["Growth", "Growth"],
     "analysis/trend": ["Trend", "Trend"],
     "analysis/goalseek": ["Goalseek", "Goalseek"],
+    "analysis/budget": ["Budget", "Budget"],
     "analysis/forecast": ["Forecast", "Forecast"],
     "analysis/financials": ["Financials", "Financials"],
     "analysis/real-profit": ["Real Profit", "Real Profit"],
@@ -136,6 +138,7 @@ export const en = {
   inv: inv.en,
   cash: cash.en,
   hl: hl.en,
+  bud: bud.en,
   bank: bank.en,
   state: state.en,
   access: access.en,
