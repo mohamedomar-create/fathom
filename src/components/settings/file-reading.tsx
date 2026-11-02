@@ -99,13 +99,13 @@ export function ReadAs({ layouts, overrides, onChange }: { layouts: SheetLayout[
   if (!shown.length) return null;
   const set = (sheet: string, readAs: SheetOverride["readAs"]) => onChange({ ...overrides, [sheet]: { ...overrides[sheet], readAs } });
   return (
-    <div className="mb-4 rounded-md border border-line px-4 py-3 text-sm" data-testid="read-as">
+    <div className="mb-4 min-w-0 overflow-hidden rounded-md border border-line px-4 py-3 text-sm" data-testid="read-as">
       {shown.map((l) => (
         <div key={l.sheet} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-0.5" data-testid={`read-as-${l.sheet}`}>
           <span className="font-medium">{l.sheet}</span>
           <span><span className="text-mute">{w.readAsTitle}: </span><span data-testid="read-as-source" className={cn(l.kind === "none" && "text-red")}>{l.source ?? (T.lang === "en" ? KIND[l.kind] : w.kind[l.kind] ?? KIND[l.kind])}</span></span>
-          <label className="ms-auto flex items-center gap-1.5 text-xs">{w.readAsPick}
-            <select value={overrides[l.sheet]?.readAs ?? ""} onChange={(e) => set(l.sheet, (e.target.value || undefined) as SheetOverride["readAs"])} className="rounded border border-line bg-white px-1 py-0.5" data-testid="read-as-pick">
+          <label className="ms-auto flex min-w-0 max-w-full items-center gap-1.5 text-xs">{w.readAsPick}
+            <select value={overrides[l.sheet]?.readAs ?? ""} onChange={(e) => set(l.sheet, (e.target.value || undefined) as SheetOverride["readAs"])} className="min-w-0 max-w-[14rem] rounded border border-line bg-white px-1 py-0.5" data-testid="read-as-pick">
               {(["", "journal-items", "ledger", "trial-balance", "columns"] as const).map((k) => <option key={k} value={k}>{w.readAsOpt[k || "auto"]}</option>)}
             </select>
           </label>

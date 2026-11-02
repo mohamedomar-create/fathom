@@ -64,6 +64,8 @@ test("Odoo export importer maps and balances a real file", async ({ page }) => {
   await expect(page.getByTestId("balanced")).toContainText("Yes");
   await expect(page.getByTestId("problems")).toContainText("0");
   await expect(page.getByTestId("error-count")).toHaveText("All good");
+  // The check step fits the screen: a wider page makes a phone shrink it, and taps land on the wrong control.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - Math.min(window.innerWidth, window.screen.width))).toBeLessThanOrEqual(0);
   await page.getByTestId("reading-tab-pl").click();
   await expect(page.getByTestId("sorted-pl")).toContainText("EGP 1,066,138");
   await expect(page.getByTestId("file-reading")).toContainText("Profit and Loss: 28 lines");
