@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { DownloadDiffs } from "@/components/ui/download-all";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { loadCompanyMeta } from "@/lib/company/meta";
 import { compareBooks, type BookDiff } from "@/lib/company/compare";
@@ -141,6 +142,8 @@ export default async function DataChecksPage({ params, searchParams }: { params:
               ))}</tbody>
             </table>
           )}
+          {comparison.diffs.length > 0 && <div className="mt-2"><DownloadDiffs name={`${comparison.name} - comparison`} testId="compare-download" labels={{ account: t.cls, books: t.here, file: comparison.name }}
+            rows={comparison.diffs.map((d) => ({ period: d.period, account: CLASS_LABEL[d.cls as ClassKey] ?? d.cls, books: d.here, file: d.there, diff: d.diff }))} /></div>}
         </section>
       )}
       <section className="mt-10">

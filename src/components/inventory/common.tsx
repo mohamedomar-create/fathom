@@ -5,6 +5,7 @@ import { Boxes, CheckCircle2, Info, Loader2, TriangleAlert } from "lucide-react"
 import { hasPL, money } from "@/lib/engine";
 import { inventoryAnalysis, inventoryLedger, isInsideCheck, isUnitCheck, tieSummary, type InventoryBridge } from "@/lib/engine/inventory";
 import type { TieOut } from "@/lib/engine/tieout";
+import { DownloadAll } from "@/components/ui/download-all";
 import { useCompany } from "@/lib/company/context";
 import { useExpenses } from "@/lib/company/expenses-context";
 import { useInventory, useInventoryState } from "@/lib/company/inventory-context";
@@ -102,6 +103,7 @@ export function TieBanner({ s, link }: { s: InventoryView; link?: string }) {
         <div className="rounded bg-red-bg px-4 py-2.5 text-[13px] text-red">
           <div className="flex items-start gap-2 font-medium"><TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />{t.someOff(off.length)}{more}</div>
           <ul className="ms-6 mt-1 list-disc">{off.slice(0, 6).map((x) => <li key={`${x.key}${x.period}`}>{T.ml(x.period)}: {t.checks[x.key]}</li>)}</ul>
+          {off.length > 6 && <div className="ms-6 mt-1.5"><DownloadAll name="stock checks that differ" total={off.length} testId="tie-off-download" sheets={() => [{ name: "Checks that differ", rows: [["Month", "Check", "Stock records", "Ledger", "Difference"], ...off.map((x) => [x.period, t.checks[x.key], x.module, x.ledger, x.diff])] }]} /></div>}
         </div>
       ) : checked > 0 ? (
         <p className="flex items-start gap-2 rounded bg-green-bg px-4 py-2.5 text-[13px] text-green-d"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />{t.allAgree(agreed)}{more}</p>
@@ -147,7 +149,8 @@ export function TieTable({ tieouts, cur }: { tieouts: TieOut[]; cur: string }) {
                 {x.causes.length > 0 && (
                   <details className="mt-1 text-[12px]">
                     <summary className="cursor-pointer text-mute">{t.causes(x.causes.length)}</summary>
-                    <ul className="mt-1 space-y-0.5">{x.causes.map((c) => <li key={c.ref}><span className="font-medium">{c.ref}</span>: {f(x, c.module)} / {f(x, c.ledger)} <span className="text-mute">({t.why[c.why]})</span></li>)}</ul>
+                    <ul className="mt-1 space-y-0.5">{x.causes.slice(0, 20).map((c) => <li key={c.ref}><span className="font-medium">{c.ref}</span>: {f(x, c.module)} / {f(x, c.ledger)} <span className="text-mute">({t.why[c.why]})</span></li>)}</ul>
+                    <div className="mt-1.5"><DownloadAll name={`${x.key} ${x.period} - documents`} total={x.causes.length} testId="tie-causes-download" sheets={() => [{ name: "Documents", rows: [["Document", "Stock records", "Ledger", "Difference", "Why"], ...x.causes.map((c) => [c.ref, c.module, c.ledger, Math.round((c.module - c.ledger) * 100) / 100, t.why[c.why]])] }]} /></div>
                   </details>
                 )}
               </td>

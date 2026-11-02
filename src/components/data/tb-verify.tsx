@@ -5,6 +5,7 @@ import { useMemo, useState, useTransition } from "react";
 import { mlabel, money } from "@/lib/engine";
 import { compareTrialBalance } from "@/lib/company/compare";
 import { WizardNav, WizardSteps, WizardTitle } from "@/components/upload/wizard-shell";
+import { DownloadDiffs } from "@/components/ui/download-all";
 import { saveTbCheck } from "@/app/company/[id]/data/actions";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -36,7 +37,7 @@ export function TbVerify({ companyId, fileName, file, ranges, books, currency, d
   const [saving, start] = useTransition();
   const keep = () => start(async () => {
     setErr(null);
-    const out = await saveTbCheck(companyId, { file: fileName.slice(0, 200), months: r.months, diffs: r.diffs.slice(0, 2000) });
+    const out = await saveTbCheck(companyId, { file: fileName.slice(0, 200), months: r.months, diffs: r.diffs.slice(0, 2000), total: r.diffs.length });
     if (!out.ok) { setErr(out.error); return; }
     onDone(r.diffs.length ? t.done(r.diffs.length) : t.doneOk(r.months.map(ml).join(t.sep)));
   });
@@ -66,7 +67,10 @@ export function TbVerify({ companyId, fileName, file, ranges, books, currency, d
               ))}
             </tbody>
           </table>
-          {r.diffs.length > 200 && <p className="px-3 py-2 text-[12px] text-mute">{t.more(r.diffs.length - 200)}</p>}
+          <div className="flex flex-wrap items-center gap-3 px-3 py-2">
+            {r.diffs.length > 200 && <p className="text-[12px] text-mute">{t.more(r.diffs.length - 200)}</p>}
+            <DownloadDiffs name={`${fileName} - differences`} rows={r.diffs} testId="tb-download-all" />
+          </div>
         </div>
       )}
       {onUseAsFigures && !demo && (

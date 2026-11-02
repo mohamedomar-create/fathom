@@ -13,6 +13,7 @@ const Check = z.object({
   file: z.string().min(1).max(200),
   months: z.array(Period).max(600),
   diffs: z.array(z.object({ period: Period, account: z.string().min(1).max(300), books: Amount, file: Amount, diff: Amount })).max(2000),
+  total: z.number().int().min(0).max(10_000_000).optional(),
 });
 
 /**

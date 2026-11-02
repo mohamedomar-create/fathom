@@ -1,5 +1,6 @@
 "use client";
 import { CheckCircle2, ExternalLink, Loader2, PlugZap, RefreshCw, ShieldCheck, ShieldAlert, Unplug, XCircle } from "lucide-react";
+import { DownloadAll } from "@/components/ui/download-all";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { disconnectOdoo, rekeyOdoo, saveOdoo, setOdooNightly, stopOdooSync, syncOdooDetail, syncOdooNow, testOdoo, type DetailStepInput } from "@/app/company/[id]/settings/odoo-actions";
@@ -41,7 +42,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
   const [expires, setExpires] = useState(connection?.key_expires_on ?? "");
   const admin = role === "admin";
   const [from, setFrom] = useState(others[0]?.id ?? "");
-  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[] } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
+  const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string; detail?: string[]; accounts?: { unmapped: string[]; offBalance: string[] } } | null>(connection?.status === "error" && connection.last_error ? { tone: "bad", text: connection.last_error } : null);
   const [pending, start] = useTransition();
   const [step, setStep] = useState<"idle" | "test" | "save" | "sync">("idle");
   const [progress, setProgress] = useState<string | null>(null);
@@ -120,7 +121,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
       const d = r.data;
       const err = await detail(true);
       setProgress(null);
-      setMsg({ tone: err ? "bad" : "ok", text: t.synced(d.months, d.accounts, d.version, err), detail: [t.method(d.method), t.tbCheck(d.tb), ...(d.unmapped.length ? [t.notMapped(d.unmapped.slice(0, 6).join(", "))] : []), ...(d.offBalance?.length ? [t.offBalance(d.offBalance.slice(0, 6).join(", "))] : []), ...(d.detail ? [d.detail] : [])] });
+      setMsg({ tone: err ? "bad" : "ok", text: t.synced(d.months, d.accounts, d.version, err), detail: [t.method(d.method), t.tbCheck(d.tb), ...(d.unmapped.length ? [t.notMapped(d.unmapped.slice(0, 6).join(", "))] : []), ...(d.offBalance?.length ? [t.offBalance(d.offBalance.slice(0, 6).join(", "))] : []), ...(d.detail ? [d.detail] : [])], ...(d.unmapped.length > 6 || (d.offBalance?.length ?? 0) > 6 ? { accounts: { unmapped: d.unmapped, offBalance: d.offBalance ?? [] } } : {}) });
       router.refresh();
     });
   };
@@ -208,7 +209,9 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
         {msg && (
           <div className={cn("mt-5 flex gap-2 rounded px-3 py-2.5 text-sm", msg.tone === "ok" ? "bg-green-bg text-green-d" : "bg-red-bg text-red")} role="status">
             {msg.tone === "ok" ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <XCircle className="mt-0.5 h-4 w-4 shrink-0" />}
-            <div>{msg.text}{msg.detail && <ul className="mt-1 text-xs text-ink/70">{msg.detail.map((d) => <li key={d}>{d}</li>)}</ul>}</div>
+            <div>{msg.text}{msg.detail && <ul className="mt-1 text-xs text-ink/70">{msg.detail.map((d) => <li key={d}>{d}</li>)}</ul>}
+              {msg.accounts && <div className="mt-2"><DownloadAll name="odoo accounts to look at" total={msg.accounts.unmapped.length + msg.accounts.offBalance.length} testId="odoo-accounts-download"
+                sheets={() => [{ name: "Accounts", rows: [["Account", "Why"], ...msg.accounts!.unmapped.map((a) => [a, "Not mapped to a class"]), ...msg.accounts!.offBalance.map((a) => [a, "Off-balance account with entries"])] }]} /></div>}</div>
           </div>
         )}
         {log.length > 0 && (

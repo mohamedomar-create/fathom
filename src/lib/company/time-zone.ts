@@ -72,7 +72,7 @@ export function controlAccountsOf(kpiConfig: unknown): { receivable?: string[]; 
 }
 
 /** A Trial Balance read against the books (never saved as data): when, which file, the months compared, the differences. */
-export interface TbCheck { at: string; file: string; months: string[]; diffs: { period: string; account: string; books: number; file: number; diff: number }[] }
+export interface TbCheck { at: string; file: string; months: string[]; diffs: { period: string; account: string; books: number; file: number; diff: number }[]; /** Every difference the check found (the first 2,000 are kept). */ total?: number }
 
 /** The last Trial Balance check kept for the company, or null when none was kept (or what is kept is not one). */
 export function tbCheckOf(kpiConfig: unknown): TbCheck | null {
@@ -80,5 +80,5 @@ export function tbCheckOf(kpiConfig: unknown): TbCheck | null {
   if (!v || typeof v.at !== "string" || typeof v.file !== "string" || !Array.isArray(v.months) || !Array.isArray(v.diffs)) return null;
   const num = (x: unknown) => typeof x === "number" && Number.isFinite(x);
   const diffs = v.diffs.filter((d) => d && typeof d.period === "string" && typeof d.account === "string" && num(d.books) && num(d.file) && num(d.diff));
-  return { at: v.at, file: v.file, months: v.months.filter((m): m is string => typeof m === "string"), diffs };
+  return { at: v.at, file: v.file, months: v.months.filter((m): m is string => typeof m === "string"), diffs, ...(num(v.total) ? { total: v.total } : {}) };
 }

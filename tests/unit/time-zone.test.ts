@@ -38,3 +38,11 @@ describe("the last Trial Balance check, kept in the profile", () => {
     expect(tbCheckOf(withProfile({}, { tbCheck: { at: "x", file: 3, months: "no", diffs: null } as never }))).toBeNull();
   });
 });
+
+describe("D5: a saved Trial Balance check says how many differences there were in all", () => {
+  it("keeps the total beside the rows it keeps", async () => {
+    const { tbCheckOf, withProfile } = await import("@/lib/company/time-zone");
+    const check = { at: "2026-11-02T10:00:00Z", file: "tb.xlsx", months: ["2026-09"], diffs: [{ period: "2026-09", account: "410000", books: 1, file: 2, diff: -1 }], total: 3500 };
+    expect(tbCheckOf(withProfile({}, { tbCheck: check }))?.total).toBe(3500);
+  });
+});

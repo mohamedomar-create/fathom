@@ -76,3 +76,13 @@ describe("why stock and the accounts differ", () => {
     expect(t.buckets).toEqual({ no_entry: 20 });
   });
 });
+
+describe("D5: every document behind a difference is kept (the page shows the largest; the download has all)", () => {
+  it("thirty differing documents give thirty causes, largest first", async () => {
+    const { tieOut } = await import("@/lib/engine/tieout");
+    const stock = Object.fromEntries(Array.from({ length: 30 }, (_, i) => [`WH/OUT/${i}`, 100 + i]));
+    const t = tieOut("cogs", "2026-01", 5000, 0, { module: stock, ledger: {} });
+    expect(t.causes).toHaveLength(30);
+    expect(t.causes[0].ref).toBe("WH/OUT/29");
+  });
+});

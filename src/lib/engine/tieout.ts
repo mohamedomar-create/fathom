@@ -12,7 +12,7 @@ export type TieStatus = "ok" | "off" | "no_ledger";
 export type CauseBucket = "no_entry" | "manual" | "date" | "amount";
 /** One reference (WH/OUT/0012, LC/2026/0004…) whose module amount and ledger amount differ. */
 export interface TieCause { ref: string; module: number; ledger: number; why: "module_only" | "ledger_only" | "amount_differs"; bucket?: CauseBucket }
-/** buckets: the difference split by reason, over every document (causes lists only the largest). */
+/** causes: every document behind the difference, largest first (pages show the first ones; the download has all). buckets: the difference split by reason. */
 export interface TieOut { key: string; period: string; module: number; ledger: number | null; diff: number | null; status: TieStatus; causes: TieCause[]; buckets?: Partial<Record<CauseBucket, number>> }
 type Classify = (c: Omit<TieCause, "bucket">) => CauseBucket;
 
@@ -25,10 +25,9 @@ export function stockBuckets(everModule: Set<string>, everLedger: Set<string>): 
 
 /** Differences up to one pound are rounding, not a mismatch (the app's one rule, src/lib/tolerance.ts). */
 export const TIE_TOLERANCE = TIE_EGP;
-const MAX_CAUSES = 20;
 const r2 = (v: number) => Math.round(v * 100) / 100;
 
-/** The references whose amounts differ, largest gap first, and (with a classify) the difference totalled by reason. */
+/** Every reference whose amounts differ, largest gap first, and (with a classify) the difference totalled by reason. */
 function causesOf(byRef: { module: Record<string, number>; ledger: Record<string, number> }, tolerance: number, classify?: Classify): { causes: TieCause[]; buckets?: Partial<Record<CauseBucket, number>> } {
   const refs = new Set([...Object.keys(byRef.module), ...Object.keys(byRef.ledger)]);
   const out: TieCause[] = [];
@@ -41,7 +40,7 @@ function causesOf(byRef: { module: Record<string, number>; ledger: Record<string
     if (classify) { c.bucket = classify(c); buckets[c.bucket] = r2((buckets[c.bucket] ?? 0) + m - l); }
     out.push(c);
   }
-  return { causes: out.sort((a, b) => Math.abs(b.module - b.ledger) - Math.abs(a.module - a.ledger)).slice(0, MAX_CAUSES), ...(classify ? { buckets } : {}) };
+  return { causes: out.sort((a, b) => Math.abs(b.module - b.ledger) - Math.abs(a.module - a.ledger)), ...(classify ? { buckets } : {}) };
 }
 
 type ByRef = { module: Record<string, number>; ledger: Record<string, number> };

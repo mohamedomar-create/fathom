@@ -11,6 +11,7 @@ import type { SubLedgers } from "@/lib/company/data-status";
 import type { TbCheck } from "@/lib/company/time-zone";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
+import { DownloadDiffs } from "@/components/ui/download-all";
 
 /** What only the server knows: where the books came from, the opening balances, the last Trial Balance check. */
 export interface DataFacts {
@@ -84,6 +85,7 @@ export function DataSteps({ facts, sub }: { facts: DataFacts; sub: SubLedgers | 
                   <details className="mt-2 text-[13px]" data-testid={id("tb-check-diffs")}>
                     <summary className="cursor-pointer text-brand-d">{t.seeDiffs(tb.file, new Date(tb.at).toISOString().slice(0, 10))}</summary>
                     <ul className="mt-1 space-y-0.5">{tb.diffs.slice(0, 50).map((d) => <li key={`${d.period}|${d.account}`}>{T.lang === "ar" ? T.ml(d.period) : mlabel(d.period)} · {d.account}: {t.diff(d.books.toLocaleString("en-US"), d.file.toLocaleString("en-US"), d.diff.toLocaleString("en-US"))}</li>)}</ul>
+                    <div className="mt-2 flex flex-wrap items-center gap-3"><DownloadDiffs name={`${tb.file} - differences`} rows={tb.diffs} testId={id("tb-check-download")} />{(tb.total ?? 0) > tb.diffs.length && <span className="text-mute">{t.keptOf(tb.diffs.length, tb.total!)}</span>}</div>
                   </details>
                 )}
                 {(s.file || s.verifies) && s.status !== "locked" && (

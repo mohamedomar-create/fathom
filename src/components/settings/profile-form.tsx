@@ -1,5 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
+import { ExportButton } from "./export-button";
 import { useState, useTransition } from "react";
 import { deleteCompany, saveProfile } from "@/app/company/[id]/settings/actions";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -82,7 +83,7 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
       {canExport && <section className="rounded-md border border-line p-4">
         <h3 className="font-medium">{p.yourData}</h3>
         <p className="mb-3 text-sm text-mute">{p.yourDataText}</p>
-        <a href={`/api/export/${initial.id}`} download className="inline-block rounded border border-line px-4 py-2 text-sm hover:bg-band" data-testid="export-company">{p.downloadAll}</a>
+        <ExportButton companyId={initial.id} label={p.downloadAll} />
       </section>}
       {!readOnly && <ToCashBook companyId={initial.id} />}
       {reset && role && <DataAndDeletion companyId={initial.id} name={initial.name} role={role} preview={reset} />}
