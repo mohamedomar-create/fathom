@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { dbError } from "@/lib/action-error";
+import { loadBalances } from "@/lib/company/balances";
 import { attachment, companySheets, slug, toXlsx, type CompanyExport } from "@/lib/export/company-workbook";
 import { getLang } from "@/lib/i18n/server";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
@@ -34,15 +35,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ company
   if (failed) return NextResponse.json({ error: dbError(failed, "export:company") }, { status: 500 });
 
   const amounts = new Map<string, Record<string, number>>((accts.data ?? []).map((a) => [a.id, {}]));
-  for (let from = 0; ; from += 1000) {
-    const { data: bal, error: e2 } = await supabase.from("account_balances")
-      .select("account_id, period, amount, source_accounts!inner(version)")
-      .eq("company_id", c.id).eq("source_accounts.version", c.data_version)
-      .order("account_id").order("period").range(from, from + 999);
-    if (e2) return NextResponse.json({ error: dbError(e2, "export:balances") }, { status: 500 });
-    for (const b of bal ?? []) { const r = amounts.get(b.account_id); if (r) r[b.period] = Number(b.amount); }
-    if (!bal || bal.length < 1000) break;
-  }
+  // One call: company_balances checks membership once, instead of paging the joined table row by row (timed out).
+  let bal;
+  try { bal = await loadBalances(supabase, c.id, c.data_version); }
+  catch (e) { return NextResponse.json({ error: dbError(e as { message: string }, "export:balances") }, { status: 500 }); }
+  for (const b of bal) { const r = amounts.get(b.account_id); if (r) r[b.period] = b.amount; }
 
   const sales: NonNullable<CompanyExport["sales"]> = [];
   for (let from = 0; from < 200_000; from += 1000) {
