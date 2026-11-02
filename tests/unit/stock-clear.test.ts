@@ -9,7 +9,7 @@ const src = readFileSync("src/lib/company/ledger-lines.ts", "utf8");
 describe("D1: clearing stock postings", () => {
   it("goes through clear_stock_ledger, and the app needs database update 51", () => {
     expect(src).toContain('rpc("clear_stock_ledger"');
-    expect(REQUIRED_SCHEMA).toBe(51);
+    expect(REQUIRED_SCHEMA).toBeGreaterThanOrEqual(51);
   });
   it("never deletes stock_ledger_lines through the API", () => {
     expect(src).not.toMatch(/from\(t\.lines\)\.delete\(\)[^;]*stock/);

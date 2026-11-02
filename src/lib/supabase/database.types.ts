@@ -9,6 +9,12 @@ type Table<Row, Required extends keyof Row> = {
   Relationships: [];
 };
 
+export type BudgetVersionRow = {
+  id: string; company_id: string; fy: string; name: string; kind: "original" | "revision"; status: "draft" | "approved";
+  based_on: string | null; created_by: string | null; approved_by: string | null; approved_at: string | null; created_at: string; updated_at: string;
+}
+export type BudgetLineRow = { version_id: string; company_id: string; key: string; cls: string; label: string | null; month: string; amount: number }
+export type BudgetProductRow = { version_id: string; company_id: string; product: string; category: string | null; month: string; units: number; price: number; unit_cost: number | null }
 export type OrganizationRow = { id: string; name: string; logo_url: string | null; brand_colour: string | null; disclaimer: string; report_footer: string | null; created_by: string | null; created_at: string; owner_id: string | null; deleted_at: string | null; ai_monthly_usd: number }
 export type MembershipRow = { org_id: string; user_id: string; role: MemberRole; created_at: string }
 export type ProfileRow = { id: string; email: string; full_name: string | null; created_at: string; mfa_required_from: string }
@@ -88,6 +94,9 @@ export type Database = {
       sales_batches: Table<SalesBatchRow, "company_id" | "source">;
       cash_uploads: Table<CashUploadRow, "company_id">;
       cash_category_rules: Table<CashCategoryRuleRow, "company_id" | "direction" | "match_on" | "match" | "category" | "kind">;
+      budget_versions: Table<BudgetVersionRow, "company_id" | "fy" | "name" | "kind">;
+      budget_lines: Table<BudgetLineRow, "version_id" | "company_id" | "key" | "cls" | "month" | "amount">;
+      budget_products: Table<BudgetProductRow, "version_id" | "company_id" | "product" | "month" | "units" | "price">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
       aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
@@ -128,6 +137,11 @@ export type Database = {
       close_month: { Args: { p_company: string; p_month: string }; Returns: string };
       set_statement_mark: { Args: { p_company: string; p_key: string; p_mark: Json | null }; Returns: Json };
       clear_stock_ledger: { Args: { p_company: string; p_periods?: string[] | null }; Returns: number };
+      budget_create: { Args: { p_company: string; p_fy: string; p_kind: string; p_name: string; p_from?: string | null }; Returns: string };
+      budget_save_lines: { Args: { p_version: string; p_lines: Json; p_replace?: boolean }; Returns: number };
+      budget_save_products: { Args: { p_version: string; p_rows: Json; p_replace?: boolean }; Returns: number };
+      budget_approve: { Args: { p_version: string }; Returns: undefined };
+      budget_delete: { Args: { p_version: string }; Returns: undefined };
       update_company_settings: { Args: { p_company: string; p_patch: Json; p_replace_kpis?: boolean }; Returns: Json };
       reopen_month: { Args: { p_company: string; p_month: string }; Returns: string };
       freeze_report: { Args: { p_report: string }; Returns: string };
