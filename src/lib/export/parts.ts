@@ -19,7 +19,8 @@ export async function readLinePage(supabase: Supa, table: LineTable, companyId: 
   const { data, error } = await supabase.from(table).select(COLS[table]).eq("company_id", companyId).gt("id", after).order("id").limit(LINE_PAGE);
   if (error) throw new DbError(error);
   const rows = (data ?? []) as unknown as Line[];
-  return { rows, next: rows.length === LINE_PAGE ? rows[rows.length - 1].id : null };
+  // The API may return fewer rows than asked (its own cap): the next page starts after the last row, until one comes back empty.
+  return { rows, next: rows.length ? rows[rows.length - 1].id : null };
 }
 
 /** Every line, page by page, in month order (the order the export shows them). */

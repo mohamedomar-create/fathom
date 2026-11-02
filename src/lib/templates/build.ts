@@ -62,7 +62,7 @@ function readMe(wb: ExcelJS.Workbook, heading: string, lines: [string, string][]
 function financials(wb: ExcelJS.Workbook, o: TemplateOptions) {
   const fyRun = templateMonths(o.year, o.fyStart);
   const { opening, months } = o.months?.length ? { opening: addMonths(o.months[0], -1), months: o.months } : fyRun;
-  const fy = `${mlabel(months[0])} – ${mlabel(months[11])}`;
+  const fy = `${mlabel(months[0])} – ${mlabel(months[months.length - 1])}`;
   readMe(wb, `iReport · ${L(o, "Monthly financials template", "قالب القوائم المالية الشهرية")}${o.company ? ` · ${o.company}` : ""}`, [
     ["Fill in one column per month, upload the file, and iReport reads every figure exactly as you entered it.", "املأ عمودًا لكل شهر، ثم ارفع الملف، وسيقرأ iReport كل رقم كما أدخلته تمامًا."],
     ["HOW TO FILL IT", "طريقة الملء"],

@@ -270,7 +270,9 @@ function journalItems({ g, rows, num, layout, issues, today, cutoff: chosen, tr 
       line.entries!.push({ day, period: p, ref: cMove >= 0 ? str(row[cMove]) : cLabel >= 0 ? str(row[cLabel]) : "", label: cLabel >= 0 ? str(row[cLabel]) : "", partner: cPartner >= 0 ? str(row[cPartner]) : "", amount: amt });
       mark(tr, i, tr.errs.length > errs ? { role: "error", ref: key, note: "the amount cannot be read" } : { role: "entry", ref: key });
     }
-    layout.asOf = partialDay(partialDay(title?.endDay) && lastDay < title!.endDay! && lastDay.slice(0, 7) === title!.endDay!.slice(0, 7) ? lastDay : title?.endDay ?? (lastDay || undefined));
+    // As the General Ledger: a part month comes from the chosen cut-off or the report's title, never from the last posting day alone.
+    const byChoice = cutoff === chosen && cutoff !== end;
+    layout.asOf = partialDay(byChoice ? cutoff : partialDay(title?.endDay) && lastDay < title!.endDay! && lastDay.slice(0, 7) === title!.endDay!.slice(0, 7) ? lastDay : title?.endDay);
     if (late.length) (issues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} entr${late.length > 1 ? "ies are" : "y is"} dated after ${fmtDay(cutoff)}`, detail: "Left out, as Odoo's reports for the period do. Export a later period, or move the cut-off date, to include them." });
     const out = [...byKey.values()];
     return out.length ? out : null;

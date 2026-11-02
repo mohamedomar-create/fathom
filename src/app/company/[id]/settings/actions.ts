@@ -190,7 +190,7 @@ export async function restoreVersion(companyId: string, version: number): Promis
   if (error) return { ok: false, error: error.code === "42501" ? "Only editors can restore data." : dbError(error, "restoreVersion") };
   // Sales and expense lines taken from a ledger follow the accounts: months that no longer tie to the restored P&L lose them.
   let notice: string | null = null;
-  try { notice = clearedNotice(await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, version))); }
+  try { const st = await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, version)); notice = [clearedNotice(st.cleared), driftNotice(st.drift)].filter(Boolean).join(" ") || null; }
   catch (e) { console.error("restoreVersion: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, notice };
@@ -330,7 +330,7 @@ export async function reclassify(companyId: string, changes: Record<string, stri
   let notice: string | null = null;
   try {
     const { data: co } = await supabase.from("companies").select("data_version").eq("id", companyId).maybeSingle();
-    if (co?.data_version) notice = clearedNotice(await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, co.data_version)));
+    if (co?.data_version) { const st = await keepLedgerInStep(supabase, companyId, await loadVersion(supabase, companyId, co.data_version)); notice = [clearedNotice(st.cleared), driftNotice(st.drift)].filter(Boolean).join(" ") || null; }
   } catch (e) { console.error("reclassify: ledger lines", e); }
   revalidatePath(`/company/${companyId}`, "layout");
   return { ok: true, count: data as number, notice };

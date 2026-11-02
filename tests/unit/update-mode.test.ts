@@ -6,20 +6,20 @@ const touched = ["2026-08", "2026-09"];
 
 describe("D1: 'Update these months' keeps the sales, expense and payment detail", () => {
   it("a Trial Balance or P&L (no ledger lines) clears no detail for the months it updates", () => {
-    expect(ledgerClear("merge", { fileHasLedger: false, touchedPL: touched, preStart: [] })).toEqual({ all: false, months: [] });
+    expect(ledgerClear("merge", { ledgerMonths: [], touchedPL: touched, preStart: [] })).toEqual({ all: false, months: [] });
   });
   it("a General Ledger replaces the detail of its own months only", () => {
-    expect(ledgerClear("merge", { fileHasLedger: true, touchedPL: touched, preStart: [] })).toEqual({ all: false, months: touched });
+    expect(ledgerClear("merge", { ledgerMonths: touched, touchedPL: touched, preStart: [] })).toEqual({ all: false, months: touched });
   });
   it("months before the books start always lose their lines (they are no longer in the books)", () => {
-    expect(ledgerClear("merge", { fileHasLedger: false, touchedPL: touched, preStart: ["2021-05"] })).toEqual({ all: false, months: ["2021-05"] });
-    expect(ledgerClear("add", { fileHasLedger: true, touchedPL: touched, preStart: ["2021-05"] })).toEqual({ all: false, months: ["2021-05"] });
+    expect(ledgerClear("merge", { ledgerMonths: [], touchedPL: touched, preStart: ["2021-05"] })).toEqual({ all: false, months: ["2021-05"] });
+    expect(ledgerClear("add", { ledgerMonths: touched, touchedPL: touched, preStart: ["2021-05"] })).toEqual({ all: false, months: ["2021-05"] });
   });
   it("'add only new months' never clears loaded months", () => {
-    expect(ledgerClear("add", { fileHasLedger: true, touchedPL: touched, preStart: [] })).toEqual({ all: false, months: [] });
+    expect(ledgerClear("add", { ledgerMonths: touched, touchedPL: touched, preStart: [] })).toEqual({ all: false, months: [] });
   });
   it("'Replace all' keeps today's behaviour: everything goes", () => {
-    expect(ledgerClear("replace", { fileHasLedger: false, touchedPL: touched, preStart: [] })).toEqual({ all: true, months: [] });
+    expect(ledgerClear("replace", { ledgerMonths: [], touchedPL: touched, preStart: [] })).toEqual({ all: true, months: [] });
   });
 });
 

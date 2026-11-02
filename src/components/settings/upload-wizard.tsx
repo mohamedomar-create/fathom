@@ -541,7 +541,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       const touchedPL = preview?.timeline.filter((t) => t.PL === "new" || t.PL === "overwrite").map((t) => t.period) ?? [];
       const preStart = booksStart && !replaceAll ? (preview?.timeline ?? []).map((t) => t.period).filter((p) => p < booksStart.slice(0, 7)) : [];
       // "Update these months" keeps the detail: only a file with its own ledger lines (a General Ledger) replaces them.
-      const { months } = ledgerClear(mode, { fileHasLedger: res.lines.some(hasEntries), touchedPL, preStart });
+      const ledgerMonths = [...new Set(res.lines.filter(hasEntries).flatMap((l) => (l.entries ?? []).map((e) => e.period)))];
+      const { months } = ledgerClear(mode, { ledgerMonths, touchedPL, preStart });
       const clears = replaceAll || months.length > 0;
       const keep = <T extends { period: string }>(ls: T[]) => keepForMode(ls, mode, addedPL);
       const pay = derived.payments;

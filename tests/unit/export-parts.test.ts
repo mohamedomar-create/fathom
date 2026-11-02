@@ -30,10 +30,10 @@ describe("D5: the export reads lines page by page from where the last page stopp
     expect(calls).toContain("order id");
     expect(calls).not.toContain("range");
   });
-  it("the last page says there is no next", async () => {
+  it("an empty page says there is no next", async () => {
     const { supabase } = fake(LINE_PAGE + 10);
-    const p = await readLinePage(supabase, "sales_lines", "co", LINE_PAGE);
-    expect(p.rows).toHaveLength(10);
+    const p = await readLinePage(supabase, "sales_lines", "co", LINE_PAGE + 10);
+    expect(p.rows).toHaveLength(0);
     expect(p.next).toBeNull();
   });
   it("reads every line, none cut off", async () => {

@@ -8,9 +8,11 @@ export function keepForMode<T extends { period: string }>(lines: T[], mode: stri
  * "Update these months" (merge) keeps the detail unless the file brings its own ledger lines; then only its months are
  * replaced. Months before the books start are no longer in the books, so their lines always go. "Replace all" clears all.
  */
-export function ledgerClear(mode: string, o: { fileHasLedger: boolean; touchedPL: string[]; preStart: string[] }): { all: boolean; months: string[] } {
+export function ledgerClear(mode: string, o: { ledgerMonths: string[]; touchedPL: string[]; preStart: string[] }): { all: boolean; months: string[] } {
   if (mode === "replace") return { all: true, months: [] };
-  const own = mode === "merge" && o.fileHasLedger ? o.touchedPL : [];
+  // Only the months the ledger itself covers: a balances file uploaded with it never clears the others.
+  const gl = new Set(o.ledgerMonths);
+  const own = mode === "merge" ? o.touchedPL.filter((p) => gl.has(p)) : [];
   return { all: false, months: [...new Set([...own, ...o.preStart])].sort() };
 }
 

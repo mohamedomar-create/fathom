@@ -1,4 +1,5 @@
-import { EXPENSE_GROUPS, mlabel, type ClassKey } from "@/lib/engine";
+import { EXPENSE_GROUPS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
+const PL_CLS = new Set<string>(PL_KEYS);
 import { differs } from "@/lib/tolerance";
 
 export type LineKind = "sales" | "expenses";
@@ -53,4 +54,18 @@ export function driftNotice(drift: Drift[]): string | null {
   }).filter(Boolean);
   const n = new Set(drift.map((x) => x.period)).size;
   return `${parts.join(" ")} Upload the General Ledger for ${n > 1 ? "those months" : "that month"} to bring the detail in line.`;
+}
+
+/**
+ * After an undo, restore or class change: detail for months that no longer have a P&L is cleared (nothing to mirror);
+ * detail for months that still have figures is kept, and listed where it differs.
+ */
+export function ledgerStep(totals: Record<LineKind, Record<string, number>>, accounts: { cls: ClassKey; amounts: Record<string, number> }[]): { clear: Record<LineKind, string[]>; drift: Drift[] } {
+  const withPL = new Set<string>();
+  for (const a of accounts) if (a.cls === "revenue" || COSTS.has(a.cls) || PL_CLS.has(a.cls)) for (const [p, v] of Object.entries(a.amounts)) if (v) withPL.add(p);
+  const bad = untied(totals, accounts);
+  return {
+    clear: { sales: bad.sales.filter((p) => !withPL.has(p)), expenses: bad.expenses.filter((p) => !withPL.has(p)) },
+    drift: ledgerDrift(totals, accounts).filter((d) => withPL.has(d.period)),
+  };
 }

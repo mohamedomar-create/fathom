@@ -1,7 +1,7 @@
 import "server-only";
 import { DbError } from "@/lib/action-error";
 import { isCostLine, type ClassKey } from "@/lib/engine";
-import { untied, type LineKind } from "./ledger-tie";
+import { ledgerStep, type Drift, type LineKind } from "./ledger-tie";
 import type { Json } from "@/lib/supabase/database.types";
 import type { createClient } from "@/lib/supabase/server";
 import type { SalesLine } from "@/lib/ingest/sales";
@@ -88,11 +88,12 @@ export async function ledgerTotals(supabase: Supa, companyId: string): Promise<R
 }
 
 /** After the accounts change (an undo or a restore): clears the months whose ledger lines no longer tie. */
-export async function keepLedgerInStep(supabase: Supa, companyId: string, accounts: { cls: ClassKey; amounts: Record<string, number> }[]): Promise<Record<LineKind, string[]>> {
-  const bad = untied(await ledgerTotals(supabase, companyId), accounts);
-  await clearLedger(supabase, companyId, bad.sales, ["sales"]);
-  await clearLedger(supabase, companyId, bad.expenses, ["expenses"]);
-  return bad;
+export async function keepLedgerInStep(supabase: Supa, companyId: string, accounts: { cls: ClassKey; amounts: Record<string, number> }[]): Promise<{ cleared: Record<LineKind, string[]>; drift: Drift[] }> {
+  // Detail is removed only for months that no longer have a P&L; elsewhere it is kept and its difference listed.
+  const { clear, drift } = ledgerStep(await ledgerTotals(supabase, companyId), accounts);
+  await clearLedger(supabase, companyId, clear.sales, ["sales"]);
+  await clearLedger(supabase, companyId, clear.expenses, ["expenses"]);
+  return { cleared: clear, drift };
 }
 
 const CHUNK = 4000;

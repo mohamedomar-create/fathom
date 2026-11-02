@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useT } from "@/lib/i18n/use-t";
-import { companySheets, slug, toXlsx, type CompanyExport } from "@/lib/export/company-workbook";
+import type { CompanyExport } from "@/lib/export/company-workbook";
 
 type Line = Record<string, unknown> & { id: number; period: string };
 
@@ -39,6 +39,7 @@ export function ExportButton({ companyId, label }: { companyId: string; label: s
       const sales = await lines("sales", ar ? "المبيعات" : "Sales");
       const expenses = await lines("expenses", ar ? "المصروفات" : "Expenses");
       setBusy(ar ? "جارٍ إنشاء الملف…" : "Building the file…");
+      const { companySheets, slug, toXlsx } = await import("@/lib/export/company-workbook");
       const data = { ...meta, sales, expenses } as CompanyExport;
       const bytes = await toXlsx(companySheets(data, T.lang));
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));

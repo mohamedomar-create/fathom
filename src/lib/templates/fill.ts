@@ -1,5 +1,6 @@
 import { PL_KEYS, type ClassKey } from "@/lib/engine";
 import type { AccountLine } from "@/lib/company/types";
+import { mapKey } from "@/lib/ingest/subclass";
 import type { SortedFinancials } from "@/lib/ingest/sorted";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
@@ -32,7 +33,7 @@ export function storedFill(accounts: AccountLine[], classed: { key: string; cls:
     const values = Object.fromEntries(Object.entries(a.amounts).filter(([, v]) => v));
     Object.keys(values).forEach((p) => side.months.add(p));
     side.rows.push({ code: a.code, name: a.name.slice(0, 300), cls: a.cls, values });
-    seen.add(a.code ? `#${a.code.trim()}` : a.name.trim());
+    seen.add(mapKey(a));
   }
   for (const m of classed) {
     if (!m.cls || seen.has(m.key)) continue;
