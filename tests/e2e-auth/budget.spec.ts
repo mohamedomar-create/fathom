@@ -67,11 +67,11 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   await expect(page.getByTestId("budget-upload")).toHaveCount(0);
   expect(sql(`select status from public.budget_versions where id = '${v}'`)).toBe("approved");
 
-  // Financials offers the saved budget as its comparison.
+  // Financials: the budget is for next year, so the period on screen has none and Budget is not offered (review I4).
   await page.goto(`/company/${id}/analysis/financials`);
   await page.getByTestId("fin-compare").click();
-  await page.getByRole("button", { name: "Budget", exact: true }).click();
-  await expect(page.getByTestId("pl-table").locator("thead")).toContainText("Budget");
+  await expect(page.getByRole("button", { name: /^Budget available when/ })).toBeDisabled();
+  await page.keyboard.press("Escape");
 
   // Settings, Targets: the approved budget becomes the targets.
   await page.goto(`/company/${id}/settings/targets`);

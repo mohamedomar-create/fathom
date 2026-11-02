@@ -255,13 +255,13 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
           )}
 
           {tab === "accounts" && (
-            <AccountsGrid lines={lines} months={months} edit={canEdit} clsName={clsName} ms={ms} fmt={fmt} productMonths={new Set(products.map((p) => p.month))}
+            <AccountsGrid key={`${version.id}:${version.updatedAt}`} lines={lines} months={months} edit={canEdit} clsName={clsName} ms={ms} fmt={fmt} productMonths={new Set(products.map((p) => p.month))}
               onCell={(k, m, v) => setEdits((e) => ({ ...e, [cellKey(k, m)]: v }))}
               addable={canEdit ? c.accounts.filter((a) => PLS.has(a.cls) && !lines.some((l) => l.key === accountMarkKey(a)) && !extra.some((x) => x.key === accountMarkKey(a))) : []}
               onAdd={(a) => setExtra((x) => [...x, { key: accountMarkKey(a), cls: a.cls, label: a.code ? `${a.code} ${a.name}` : a.name }])}
               extra={extra} notes={notes} fromProducts={budget.filter((a) => a.id.startsWith("prod:"))} />
           )}
-          {tab === "products" && <ProductsGrid rows={products} months={months} edit={canEdit} onChange={setProdEdits} fmt={fmt} ml={ml} />}
+          {tab === "products" && <ProductsGrid key={`${version.id}:${version.updatedAt}`} rows={products} months={months} edit={canEdit} onChange={setProdEdits} fmt={fmt} ml={ml} />}
 
           {canEdit && dirty > 0 && (
             <div className="sticky bottom-16 mt-4 flex items-center gap-3 rounded border border-line bg-white p-3 shadow md:bottom-2">

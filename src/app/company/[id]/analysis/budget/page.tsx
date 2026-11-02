@@ -11,7 +11,5 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   const { v } = await searchParams;
   const { supabase } = await getUser();
   const [set, sales] = await Promise.all([loadBudgets(supabase, id, v && isUuid(v) ? v : null), loadSales(id)]);
-  const v0 = set.versions.find((x) => x.id === set.current?.id);
-  // A fresh page whenever the version or its saved figures change: no box keeps text typed over older figures.
-  return <BudgetPage key={`${v0?.id ?? "none"}:${v0?.updatedAt ?? ""}`} versions={set.versions} current={set.current} salesProducts={sales.data.products} />;
+  return <BudgetPage versions={set.versions} current={set.current} salesProducts={sales.data.products} />;
 }
