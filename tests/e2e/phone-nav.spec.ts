@@ -43,6 +43,8 @@ test.describe("phone bottom bar", () => {
 
   test("the bar never covers the end of the page", async ({ page }) => {
     await page.goto("/demo/summary");
+    // Measured only once the bar is on screen: on a slow machine it is not laid out straight after navigation.
+    await expect(page.getByTestId("bottom-bar")).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     const main = await page.locator("main").boundingBox();
     const bar = await page.getByTestId("bottom-bar").boundingBox();
