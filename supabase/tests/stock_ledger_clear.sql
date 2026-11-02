@@ -41,7 +41,7 @@ insert into public.stock_ledger_lines (company_id, batch_id, day, period, ref, a
 select (select co from ids), b.id, (p || '-10')::date, p, 'WH/OUT/' || i, '123000 Stock', 10
 from public.stock_ledger_batches b, unnest(b.periods) p, generate_series(1, 2500) i
 where b.company_id = (select co from ids);
-select pg_temp.check('schema version 51', public.schema_version()::text, '51');
+select pg_temp.check('the clearing function is there', (to_regprocedure('public.clear_stock_ledger(uuid, text[])') is not null)::text, 'true');
 select pg_temp.check('60,000 lines loaded', (select count(*) from public.stock_ledger_lines where company_id = (select co from ids))::text, '60000');
 analyze public.stock_ledger_lines;
 
