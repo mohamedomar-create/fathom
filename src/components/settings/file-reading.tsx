@@ -91,3 +91,31 @@ export function FileReading({ layouts, overrides, onChange }: { layouts: SheetLa
     </details>
   );
 }
+
+/** "Read as: …" for every sheet, on the Check step itself, with the person's choice when the guess was wrong. */
+export function ReadAs({ layouts, overrides, onChange }: { layouts: SheetLayout[]; overrides: Overrides; onChange: (o: Overrides) => void }) {
+  const T = useT(), w = T.d.wiz.read;
+  const shown = layouts.filter((l) => l.kind !== "skipped");
+  if (!shown.length) return null;
+  const set = (sheet: string, readAs: SheetOverride["readAs"]) => onChange({ ...overrides, [sheet]: { ...overrides[sheet], readAs } });
+  return (
+    <div className="mb-4 rounded-md border border-line px-4 py-3 text-sm" data-testid="read-as">
+      {shown.map((l) => (
+        <div key={l.sheet} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-0.5" data-testid={`read-as-${l.sheet}`}>
+          <span className="font-medium">{l.sheet}</span>
+          <span><span className="text-mute">{w.readAsTitle}: </span><span data-testid="read-as-source" className={cn(l.kind === "none" && "text-red")}>{l.source ?? (T.lang === "en" ? KIND[l.kind] : w.kind[l.kind] ?? KIND[l.kind])}</span></span>
+          <label className="ms-auto flex items-center gap-1.5 text-xs">{w.readAsPick}
+            <select value={overrides[l.sheet]?.readAs ?? ""} onChange={(e) => set(l.sheet, (e.target.value || undefined) as SheetOverride["readAs"])} className="rounded border border-line bg-white px-1 py-0.5" data-testid="read-as-pick">
+              {(["", "journal-items", "ledger", "trial-balance", "columns"] as const).map((k) => <option key={k} value={k}>{w.readAsOpt[k || "auto"]}</option>)}
+            </select>
+          </label>
+        </div>
+      ))}
+      <details className="mt-2 text-xs" data-testid="layouts-help">
+        <summary className="cursor-pointer text-brand-d underline">{w.layoutsLink}</summary>
+        <ul className="mt-2 list-disc space-y-1 ps-5 text-mute">{w.layouts.map((x) => <li key={x}>{x}</li>)}</ul>
+        <a href={`/api/templates/journal-items?lang=${T.lang}`} download className="mt-2 inline-block text-brand-d underline" data-testid="template-journal-items">{w.journalSample}</a>
+      </details>
+    </div>
+  );
+}

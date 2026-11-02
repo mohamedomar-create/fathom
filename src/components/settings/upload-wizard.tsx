@@ -20,7 +20,7 @@ import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
 import { keepForMode, ledgerClear } from "@/lib/company/add-mode";
 import { ADMIN_ONLY } from "@/lib/company/accept";
-import { FileReading } from "./file-reading";
+import { FileReading, ReadAs } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
 import { deriveInWorker, ingestInWorker, putSheets, readForUpload } from "@/lib/imports/worker-client";
 import { hasEntries, type IngestOutcome } from "@/lib/ingest/wizard-ingest";
@@ -1022,7 +1022,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // copy of the figures (the ledger is the book of record).
   if (verifyOnly) {
     return <TbVerify companyId={companyId} fileName={files.map((f) => f.name).join(" + ") || "file"} file={toAccountInputs(res)} ranges={res.ranges} books={company.accounts} currency={currency} demo={demo}
-      onBack={() => setScreen("upload")} onDone={(what) => { setChecked(true); dispatch({ type: "saved", what }); router.refresh(); }} onUseAsFigures={() => setAsFigures(true)} />;
+      onBack={() => setScreen("upload")} onDone={(what) => { setChecked(true); dispatch({ type: "saved", what }); router.refresh(); }} onUseAsFigures={() => setAsFigures(true)} readAs={<ReadAs layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />} />;
   }
 
   // 5 · Save (accounts)
@@ -1084,6 +1084,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         <Stat label={w.problems} value={String(errorCount)} tone={errorCount ? "bad" : "ok"} testId="problems" />
       </div>
       {dateFields}
+      <ReadAs layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />
       {box}
       {more(<>
         <FileReading layouts={res.layouts} overrides={overrides} onChange={(o) => { setOverrides(o); setPreview(null); }} />

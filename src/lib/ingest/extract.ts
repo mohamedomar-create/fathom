@@ -101,7 +101,9 @@ export interface SheetLayout {
  * User corrections for one sheet. periods: column index (of the rows read) → month ("YYYY-MM") or null to leave the column out.
  * cells / skipRows (from Fixes) index the sheet as uploaded.
  */
-export interface SheetOverride extends Fixes { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null>; dateOrder?: DateOrder }
+/** How the person said a sheet is laid out, when the guess was wrong (absent: iReport's own reading). */
+export type ReadAs = "journal-items" | "ledger" | "trial-balance" | "columns";
+export interface SheetOverride extends Fixes { skip?: boolean; scale?: number; decimal?: "." | ","; periods?: Record<number, string | null>; dateOrder?: DateOrder; readAs?: ReadAs }
 export type Overrides = Record<string, SheetOverride>;
 
 /** A total row printed in the file, used to verify the imported figures. */
@@ -202,6 +204,9 @@ function balanceColumnHeader(rows: Cell[][]): Header | null {
   for (let r = 0; r < Math.min(rows.length, 20); r++) {
     const c = rows[r].findIndex((v) => /^(balance|amount|total|net|الرصيد|المبلغ|الصافي|solde|montant)$/i.test(str(v)));
     if (c < 1) continue;
+    // A list of entries (Date, Debit, Credit, running Balance) is not a statement with one balance column.
+    const hs = rows[r].map((v) => str(v).trim());
+    if (hs.some((h) => /date|تاريخ/i.test(h)) && hs.some((h) => /^(debit|مدين|débit)$/i.test(h)) && hs.some((h) => /^(credit|دائن|crédit)$/i.test(h))) continue;
     for (let t = r; t >= 0; t--) {
       for (const v of rows[t]) {
         const h = headerPeriod(v);
@@ -509,7 +514,7 @@ export function extractGrid(g: Grid, issues: ExtractIssues, ov: SheetOverride = 
   }
   // Known exports first: Odoo's General Ledger, Trial Balance and statements are read by their exact layout.
   const odoo = extractOdoo(g, rows, num, ov, layout, issues, today, attempt, cutoff);
-  if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" ? "ledger" : "trial-balance", odoo);
+  if (odoo?.length) return done(odoo[0].kind === "natural" ? "columns" : layout.source === "Odoo General Ledger" || layout.source === "Odoo Journal Items" ? "ledger" : "trial-balance", odoo);
   layout.columns = []; layout.source = undefined; layout.asOf = undefined; layout.dates = undefined; layout.headerRow = null;
   const found = findHeader(rows);
   // Columns the user re-dated or left out; a re-dated column always counts as one month.

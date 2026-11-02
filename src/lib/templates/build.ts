@@ -21,6 +21,7 @@ export async function buildTemplate(kind: TemplateKind, o: TemplateOptions): Pro
   if (kind === "financials") financials(wb, o);
   else if (kind === "expenses") expenses(wb, o);
   else if (kind === "opening") opening(wb, o);
+  else if (kind === "journal-items") journalItems(wb, o);
   else sales(wb, o);
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
@@ -186,6 +187,29 @@ function expenses(wb: ExcelJS.Workbook, o: TemplateOptions) {
 }
 
 /** Opening balances: every account's balance the day before the books start, as debit or credit. */
+/** A sample of Odoo's Journal Items list (Accounting → Journal Items, exported flat): the layout iReport reads row by row. */
+function journalItems(wb: ExcelJS.Workbook, o: TemplateOptions) {
+  readMe(wb, `iReport · ${L(o, "Journal items sample", "نموذج بنود القيود")}${o.company ? ` · ${o.company}` : ""}`, [
+    ["Odoo's Journal Items list, exported flat: one row per journal item, each with its own date, account, debit and credit.", "قائمة بنود القيود من Odoo مصدّرة كما هي: صف لكل بند، لكل منه تاريخه وحسابه ومدينه ودائنه."],
+    ["HOW TO EXPORT IT FROM ODOO", "طريقة التصدير من Odoo"],
+    ["1. Accounting → Accounting → Journal Items. Remove the grouping, filter Posted, and pick the dates.", "١. المحاسبة ← المحاسبة ← بنود القيود. أزل التجميع، واختر المرحّلة، وحدد التواريخ."],
+    ["2. Select all records, then Action → Export with: Date, Journal Entry, Account, Partner, Label, Debit, Credit.", "٢. حدد كل السجلات ثم إجراء ← تصدير مع: التاريخ، القيد، الحساب، الشريك، البيان، مدين، دائن."],
+    ['3. Upload it on the accounts card. The Check step says "Read as: Odoo Journal Items".', "٣. ارفعه من بطاقة الحسابات. تقول خطوة المراجعة «قُرئ كـ: بنود قيود Odoo»."],
+    [`Amounts in ${o.currency}. The account's code comes first in the Account column ("410000 Revenues").`, "المبالغ أرقام فقط. يأتي كود الحساب أولًا في عمود الحساب («410000 Revenues»)."],
+  ]);
+  const ws = wb.addWorksheet("Journal Items", { views: [{ state: "frozen", ySplit: 1 }] });
+  ws.columns = [{ width: 12 }, { width: 18 }, { width: 34 }, { width: 22 }, { width: 30 }, { width: 14 }, { width: 14 }];
+  const h = ws.addRow(["Date", "Journal Entry", "Account", "Partner", "Label", "Debit", "Credit"]);
+  header(h);
+  const y = o.year;
+  for (const r of [
+    [`${y}-01-03`, `INV/${y}/0001`, "410000 Revenues", "Customer A", "Sale", 0, 10000],
+    [`${y}-01-03`, `INV/${y}/0001`, "122200 Trade Receivables", "Customer A", "", 10000, 0],
+    [`${y}-01-15`, `BILL/${y}/0001`, "620100 Rent", "Landlord", "Rent", 2500, 0],
+    [`${y}-01-15`, `BILL/${y}/0001`, "121000 Bank", "Landlord", "", 0, 2500],
+  ]) { const row = ws.addRow(r); row.getCell(1).value = new Date(`${r[0]}T00:00:00Z`); row.getCell(1).numFmt = "dd/mm/yyyy"; row.getCell(6).numFmt = NUM; row.getCell(7).numFmt = NUM; }
+}
+
 function opening(wb: ExcelJS.Workbook, o: TemplateOptions) {
   readMe(wb, `iReport · ${L(o, "Opening balances template", "قالب الأرصدة الافتتاحية")}${o.company ? ` · ${o.company}` : ""}`, [
     ["Your balance sheet the day before your books start in iReport (for example 30/06/2021 when the books start on 1/7/2021).", "الميزانية في اليوم السابق لبداية الدفاتر في iReport (مثلًا ٣٠/٦/٢٠٢١ إذا بدأت الدفاتر في ١/٧/٢٠٢١)."],

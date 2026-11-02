@@ -1,4 +1,5 @@
 "use client";
+import type React from "react";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { mlabel, money } from "@/lib/engine";
@@ -14,10 +15,12 @@ type Acct = { code: string; name: string; cls: string; amounts: Record<string, n
  * evidence, never a second copy of the figures. Every account in every month the file and the books share is compared;
  * the differences are listed; the books are left as the ledger made them. Keeping the check stores only its result.
  */
-export function TbVerify({ companyId, fileName, file, ranges, books, currency, demo, onBack, onDone, onUseAsFigures }: {
+export function TbVerify({ companyId, fileName, file, ranges, books, currency, demo, onBack, onDone, onUseAsFigures, readAs }: {
   companyId: string; fileName: string; file: Acct[]; ranges: Record<string, number>; books: Acct[]; currency: string; demo: boolean; onBack: () => void; onDone: (what: string) => void;
   /** Replace the books with this file instead (when the ledger itself was wrong): asked for on purpose, never the default. */
   onUseAsFigures?: () => void;
+  /** "Read as: …" for each sheet, with the person's choice (a look-alike file is said, never read quietly as a balance). */
+  readAs?: React.ReactNode;
 }) {
   const T = useT();
   const t = T.d.dat.tb;
@@ -42,6 +45,7 @@ export function TbVerify({ companyId, fileName, file, ranges, books, currency, d
     <div data-testid="tb-verify">
       <WizardSteps at="check" />
       <WizardTitle title={t.title} hint={t.hint} />
+      {readAs}
       {r.months.length === 0
         ? <p className="mb-4 max-w-3xl rounded-lg border border-amber bg-amber/10 px-4 py-3 text-[14px]" data-testid="tb-no-months">{t.noMonths(r.missing.map(ml).join(t.sep))}</p>
         : ok

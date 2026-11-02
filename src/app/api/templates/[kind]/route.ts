@@ -48,7 +48,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ kind: string }>
   const run = kind === "financials" && q.data.from && q.data.to ? monthsBetween(q.data.from, q.data.to) : [];
   if (q.data.from && q.data.to && !run.length) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const buf = await buildTemplate(kind as TemplateKind, { year, fyStart: q.data.fy, currency: q.data.currency, company, lang, ...(run.length ? { months: run } : {}) });
-  const file = `ireport-${kind}-template${kind === "financials" ? `-${year}` : ""}.xlsx`;
+  const file = kind === "journal-items" ? "ireport-journal-items-sample.xlsx" : `ireport-${kind}-template${kind === "financials" ? `-${year}` : ""}.xlsx`;
   return new NextResponse(new Uint8Array(buf), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

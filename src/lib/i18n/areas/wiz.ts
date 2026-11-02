@@ -96,6 +96,9 @@ export const wiz = area(
     },
     read: {
       kind: { columns: "Report with month columns", "trial-balance": "Trial balance (debit / credit)", list: "List of entries (account, date, amount)", ledger: "General ledger", none: "Not recognised: nothing read", skipped: "Left out" } as Record<string, string>,
+      readAsTitle: "Read as", readAsPick: "Read it as", readAsOpt: { auto: "As iReport read it", "journal-items": "Odoo Journal Items (one row per entry)", ledger: "General Ledger (account headings over dated lines)", "trial-balance": "Trial Balance (debit / credit by account)", columns: "Report with month columns" } as Record<string, string>,
+      layoutsLink: "What layouts can I upload?", journalSample: "Download a journal items sample",
+      layouts: ["Odoo General Ledger: Accounting → Reporting → General Ledger, unfold all, export to Excel.", "Odoo Trial Balance: Accounting → Reporting → Trial Balance, one column per month, export to Excel.", "Odoo Journal Items: Accounting → Accounting → Journal Items, remove the grouping, select all, Action → Export with Date, Journal Entry, Account, Partner, Label, Debit, Credit.", "Profit and Loss and Balance Sheet: Accounting → Reporting, one column per month, export to Excel.", "Or iReport's own templates: monthly financials, opening balances, sales and expenses."],
       title: "How the file was read", noFigures: "no figures", leftOut: "left out", checkOnly: "check only", lines: (n: number) => `${n} lines`, headingsOn: (n: number) => ` · headings on row ${n}`,
       checkChip: "Used to check the other file, not imported", units: "Units", asShown: "as shown", thousands: "thousands", millions: "millions", numbers: "Numbers",
       unitsFrom: (x: string) => `Units taken from “${x}”.`, datesRead: (mdy: boolean) => `Dates read ${mdy ? "month first (01/31/2026)" : "day first (31/01/2026)"}`,
@@ -368,6 +371,9 @@ export const wiz = area(
     },
     read: {
       kind: { columns: "تقرير بأعمدة شهرية", "trial-balance": "ميزان مراجعة (مدين / دائن)", list: "قائمة قيود (الحساب، التاريخ، المبلغ)", ledger: "دفتر الأستاذ العام", none: "غير معروف: لم يُقرأ شيء", skipped: "مستبعد" },
+      readAsTitle: "قُرئ كـ", readAsPick: "اقرأه كـ", readAsOpt: { auto: "كما قرأه iReport", "journal-items": "بنود قيود Odoo (صف لكل بند)", ledger: "دفتر الأستاذ العام (عناوين الحسابات فوق سطور مؤرخة)", "trial-balance": "ميزان المراجعة (مدين / دائن لكل حساب)", columns: "تقرير بعمود لكل شهر" } as Record<string, string>,
+      layoutsLink: "ما الأشكال التي يمكنني رفعها؟", journalSample: "نزّل نموذج بنود القيود",
+      layouts: ["دفتر الأستاذ العام من Odoo: المحاسبة ← التقارير ← دفتر الأستاذ العام، افتح الكل، صدّر إلى Excel.", "ميزان المراجعة من Odoo: المحاسبة ← التقارير ← ميزان المراجعة، عمود لكل شهر، صدّر إلى Excel.", "بنود القيود من Odoo: المحاسبة ← المحاسبة ← بنود القيود، أزل التجميع، حدد الكل، إجراء ← تصدير مع التاريخ والقيد والحساب والشريك والبيان والمدين والدائن.", "قائمة الدخل والميزانية: المحاسبة ← التقارير، عمود لكل شهر، صدّر إلى Excel.", "أو نماذج iReport: القوائم الشهرية والأرصدة الافتتاحية والمبيعات والمصروفات."],
       title: "كيف قُرئ الملف", noFigures: "بلا أرقام", leftOut: "مستبعد", checkOnly: "للفحص فقط", lines: (n: number) => `عدد السطور ${n}`, headingsOn: (n: number) => ` · العناوين في الصف ${n}`,
       checkChip: "يُستخدم لفحص الملف الآخر، ولا يُستورد", units: "الوحدات", asShown: "كما هي", thousands: "بالآلاف", millions: "بالملايين", numbers: "الأرقام",
       unitsFrom: (x: string) => `الوحدات مأخوذة من «${x}».`, datesRead: (mdy: boolean) => `قُرئت التواريخ ${mdy ? "بالشهر أولًا (01/31/2026)" : "باليوم أولًا (31/01/2026)"}`,

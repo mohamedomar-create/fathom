@@ -22,6 +22,12 @@ const END_GROUP = arRx(/^(end(ing)?( balance)?|closing( balance)?|balance|رصي
 const GRAND_TOTAL = arRx(/^(total|grand total|الإجمالي|الاجمالي|المجموع|إجمالي|الإجمالي العام|المجموع الكلي)$/i);
 const TOTAL_PREFIX = arRx(/^(total|الإجمالي|الاجمالي|إجمالي|اجمالي|مجموع)(?=\s|$|[:\-–.])/i);
 const PARTNER_HDR = arRx(/^(partner|customer|الشريك|العميل|الطرف|partenaire)$/i);
+/** The entry's date in a journal-items list ("Date", Odoo's "Accounting Date"). */
+const DATE_HDR = arRx(/^(date|accounting date|entry date|posting date|move date|التاريخ|تاريخ|تاريخ القيد|تاريخ المحاسبة|تاريخ الترحيل)$/i);
+/** The account as one cell, its code first ("410000 Revenues"). */
+const ACCOUNT_HDR = arRx(/^(account|الحساب|compte)$/i);
+const MOVE_HDR = arRx(/^(journal entry|entry|move|number|reference|ref|القيد|رقم القيد|المرجع|pièce)$/i);
+const CODE_IN = /^([\dA-Za-z][\d.\-]*\d[\d.\-]*)\s+(.+)$/;
 const LABEL_HDR = arRx(/^(communication|label|description|memo|البيان|الوصف|البيان التفصيلي|libellé)$/i);
 const ASSETS_HEAD = arRx(/^(assets|total assets|الأصول|الاصول|actif)$/i);
 const CLAIMS_HEAD = arRx(/^(liabilities|equity|liabilities (\+|and|&) equity|الخصوم|الالتزامات|حقوق الملكية|الخصوم وحقوق الملكية|passif|capitaux propres)$/i);
@@ -71,6 +77,14 @@ function headings(rows: Cell[][], r: number): { head: string[]; above: string[] 
 }
 
 export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][], num: Num, ov: SheetOverride, layout: SheetLayout, issues: ExtractIssues, today: string, attempt: () => Tr, cutoff?: string): RawLine[] | null {
+  // The person said how to read it: "columns" is not one of Odoo's account reports.
+  if (ov.readAs === "columns") return null;
+  // A flat list of journal items (every row an entry with its own date and account) before the reports it resembles.
+  if (!ov.readAs || ov.readAs === "journal-items") {
+    const ji = journalItems({ g, rows, num, ov, layout, issues, today, cutoff, head: [], above: [], last: -1, tr: attempt() }, ov.readAs === "journal-items");
+    if (ji) return ji;
+    if (ov.readAs === "journal-items") return null;
+  }
   for (let r = 0; r < Math.min(rows.length, 12); r++) {
     const { head: cells, above } = headings(rows, r);
     const cCode = cells.findIndex((x) => CODE_HDR.test(x));
@@ -83,8 +97,8 @@ export function extractOdoo(g: { name: string; rows: Cell[][] }, rows: Cell[][],
     const dat = cells.findIndex((x) => /^(date|التاريخ|تاريخ)$/i.test(x));
     const debits = cells.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
     // A heading row that turns out not to be one of these layouts (e.g. the group row above Debit/Credit) lets the next row try.
-    if (dat > last && debits.length === 1) return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)), cells.findIndex((x) => PARTNER_HDR.test(x)), cells.findIndex((x) => LABEL_HDR.test(x)));
-    if (debits.length >= 2 || (debits.length === 1 && dat < 0)) { const tb = trialBalance(ctx, r, cCode, cName); if (tb) return tb; continue; }
+    if (dat > last && debits.length === 1 && ov.readAs !== "trial-balance") return ledger(ctx, r, cCode, cName, dat, debits[0], cells.findIndex((x) => CREDIT.test(x)), cells.findIndex((x) => PARTNER_HDR.test(x)), cells.findIndex((x) => LABEL_HDR.test(x)));
+    if (ov.readAs !== "ledger" && (debits.length >= 2 || (debits.length === 1 && (dat < 0 || ov.readAs === "trial-balance")))) { const tb = trialBalance(ctx, r, cCode, cName); if (tb) return tb; continue; }
     const vals = cells.map((x, i) => (i > last && x ? i : -1)).filter((i) => i >= 0);
     if (vals.length) { const st = statement({ ...ctx, tr: attempt() }, r, cCode, cName, vals); if (st) return st; layout.columns = []; }
   }
@@ -200,7 +214,78 @@ function ledger({ g, rows, num, ov, layout, issues, today, cutoff: chosen, tr }:
   return out.length ? out : null;
 }
 
+/**
+ * Odoo's Journal Items list (Accounting → Journal Items, exported flat): every row an entry with its own date, account,
+ * debit and credit; the account in one cell ("410000 Revenues") or as Code and Name. Read as the ledger's movements by
+ * month with each entry kept (no opening balances: the list has none). `forced`: the person chose this reading.
+ */
+function journalItems({ g, rows, num, layout, issues, today, cutoff: chosen, tr }: Ctx, forced: boolean): RawLine[] | null {
+  for (let r = 0; r < Math.min(rows.length, 12); r++) {
+    const head = rows[r].map(hn);
+    const cDate = head.findIndex((x) => DATE_HDR.test(x));
+    const deb = head.map((x, i) => (DEBIT.test(x) ? i : -1)).filter((i) => i >= 0);
+    const cred = head.map((x, i) => (CREDIT.test(x) ? i : -1)).filter((i) => i >= 0);
+    if (cDate < 0 || deb.length !== 1 || cred.length !== 1) continue;
+    const cCode = head.findIndex((x) => CODE_HDR.test(x));
+    const cName = cCode >= 0 ? head.findIndex((x, i) => i !== cCode && NAME_HDR.test(x) && !LABEL_HDR.test(x)) : -1;
+    const cAcc = cCode < 0 ? head.findIndex((x) => ACCOUNT_HDR.test(x)) : -1;
+    if (cCode < 0 && cAcc < 0) continue;
+    const accountOf = (row: Cell[]): { code: string; name: string } | null => {
+      if (cCode >= 0) { const code = str(row[cCode]); return code ? { code, name: cName >= 0 ? str(row[cName]) || code : code } : null; }
+      const m = str(row[cAcc]).match(CODE_IN);
+      return m ? { code: m[1], name: m[2].trim() } : null;
+    };
+    const found = detectDateOrder(rows.slice(r + 1).map((row) => row[cDate]));
+    const order: DateOrder = found.order ?? "dmy";
+    // Flat: the rows with an amount are entries, each with its own date and account (a General Ledger's are not).
+    const body = rows.slice(r + 1).filter((row) => num(row[deb[0]]) !== null || num(row[cred[0]]) !== null);
+    const flat = body.filter((row) => parsePeriod(row[cDate], order) && accountOf(row)).length;
+    if (body.length < 2 || (!forced && flat / body.length < 0.8)) continue;
+    layout.source = "Odoo Journal Items";
+    layout.headerRow = r;
+    layout.dates = { order, sample: found.sample };
+    const cMove = head.findIndex((x) => MOVE_HDR.test(x)), cPartner = head.findIndex((x) => PARTNER_HDR.test(x)), cLabel = head.findIndex((x, i) => LABEL_HDR.test(x) && i !== cName);
+    noteHeadings(layout, rows[r], [cDate, cCode, cName, cAcc, deb[0], cred[0], cMove, cPartner, cLabel].filter((c) => c >= 0));
+    mark(tr, r, { role: "header" });
+    const title = titlePeriod(rows, r);
+    const end = title?.endDay ?? today;
+    const cutoff = chosen && chosen < end ? chosen : end;
+    const late: string[] = [];
+    let lastDay = "";
+    const byKey = new Map<string, RawLine>();
+    for (let i = r + 1; i < rows.length; i++) {
+      const row = rows[i];
+      const p = parsePeriod(row[cDate], order);
+      const acc = accountOf(row);
+      if (!p || !acc) { if (row.some((v) => str(v))) mark(tr, i, GRAND_TOTAL.test(hn(row[cCode >= 0 ? cCode : cAcc])) ? TOTAL_NOTE : { role: "unused", note: "no date or account" }); continue; }
+      const day = parseDay(row[cDate], order) ?? `${p}-01`;
+      if (day > cutoff) { late.push(day); mark(tr, i, { role: "unused", note: `dated after ${fmtDay(cutoff)}` }); continue; }
+      if (day > lastDay) lastDay = day;
+      const key = `${g.name}|ji|${acc.code}|${acc.name}`;
+      let line = byKey.get(key);
+      if (!line) { line = { key, sheet: g.name, row: i + 1, label: `${acc.code} ${acc.name}`.trim(), code: acc.code, name: acc.name, section: "", stmt: null, kind: "movement", values: {}, opening: 0, entries: [] }; byKey.set(key, line); }
+      const errs = tr.errs.length;
+      const amt = (amount(tr, num, rows, i, deb[0]) ?? 0) - (amount(tr, num, rows, i, cred[0]) ?? 0);
+      line.values[p] = Math.round(((line.values[p] ?? 0) + amt) * 100) / 100;
+      line.entries!.push({ day, period: p, ref: cMove >= 0 ? str(row[cMove]) : cLabel >= 0 ? str(row[cLabel]) : "", label: cLabel >= 0 ? str(row[cLabel]) : "", partner: cPartner >= 0 ? str(row[cPartner]) : "", amount: amt });
+      mark(tr, i, tr.errs.length > errs ? { role: "error", ref: key, note: "the amount cannot be read" } : { role: "entry", ref: key });
+    }
+    layout.asOf = partialDay(partialDay(title?.endDay) && lastDay < title!.endDay! && lastDay.slice(0, 7) === title!.endDay!.slice(0, 7) ? lastDay : title?.endDay ?? (lastDay || undefined));
+    if (late.length) (issues.checks ??= []).push({ id: "future_dated", severity: "warn", title: `${late.length} entr${late.length > 1 ? "ies are" : "y is"} dated after ${fmtDay(cutoff)}`, detail: "Left out, as Odoo's reports for the period do. Export a later period, or move the cut-off date, to include them." });
+    const out = [...byKey.values()];
+    return out.length ? out : null;
+  }
+  return null;
+}
+
 function trialBalance({ g, rows, num, ov, layout, issues, head, above, last, tr }: Ctx, r: number, cCode: number, cName: number): RawLine[] | null {
+  // Balances carry no date: a sheet whose rows are mostly dated is a list of entries, not a trial balance.
+  const dateCol = head.findIndex((x) => DATE_HDR.test(x));
+  if (dateCol >= 0 && ov.readAs !== "trial-balance") {
+    const body = rows.slice(r + 1).filter((row) => str(row[cCode]) || str(row[cName]));
+    const dated = body.filter((row) => parsePeriod(row[dateCol], "dmy") || parsePeriod(row[dateCol], "mdy")).length;
+    if (body.length && dated / body.length > 0.5) return null;
+  }
   // Group labels sit in the nearest non-empty row above the Debit/Credit headings, at or left of each Debit column.
   const groupAt = (c: number) => { for (let k = c; k > last; k--) if (above[k]) return { label: above[k], col: k }; return null; };
   type Grp = { kind: "initial" | "end" | "period"; deb: number; cred: number; col: number; label: string; p?: string; months?: number; endDay?: string };

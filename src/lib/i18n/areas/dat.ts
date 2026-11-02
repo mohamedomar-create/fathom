@@ -3,7 +3,7 @@ import { area } from "../types";
 type Side = "receivable" | "payable";
 type AgeStatus = "ok" | "off" | "no_books";
 type Basis = "ledger" | "odoo" | "statements" | "cash";
-type Tpl = "financials" | "sales" | "expenses" | "opening";
+type Tpl = "financials" | "sales" | "expenses" | "opening" | "journal-items";
 
 const s = (n: number) => (n === 1 ? "" : "s");
 /** "n months" in Arabic with its number agreement. */
@@ -180,7 +180,7 @@ export const dat = area(
     },
     /** The readiness screens and the sector cards. */
     ready: {
-      template: { financials: "monthly financials template", sales: "sales template", expenses: "expenses template", opening: "opening balances template" } as Record<Tpl, string>,
+      template: { financials: "monthly financials template", sales: "sales template", expenses: "expenses template", opening: "opening balances template", "journal-items": "journal items sample" } as Record<Tpl, string>,
       download: (name: string) => `Download the ${name}`,
       withData: "Download the template with your data (every month, codes and classes)",
       allMonths: (from: string) => `Blank template, every month since ${from}`,
@@ -553,7 +553,7 @@ export const dat = area(
       title: "أين تذهب بياناتك", sub: "ملف واحد يغذي كل جزء يستطيعه.", empty: "لم يُرفع شيء بعد. ابدأ بالخطوة 2.", what: "ما المرفوع",
     },
     ready: {
-      template: { financials: "نموذج القوائم الشهرية", sales: "نموذج المبيعات", expenses: "نموذج المصروفات", opening: "نموذج الأرصدة الافتتاحية" },
+      template: { financials: "نموذج القوائم الشهرية", sales: "نموذج المبيعات", expenses: "نموذج المصروفات", opening: "نموذج الأرصدة الافتتاحية", "journal-items": "نموذج بنود القيود" },
       download: (name: string) => `نزّل ${name}`,
       withData: "نزّل النموذج ببياناتك (كل الأشهر والأكواد والتصنيفات)",
       allMonths: (from: string) => `نموذج فارغ لكل شهر منذ ${from}`,
