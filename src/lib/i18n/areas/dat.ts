@@ -182,6 +182,8 @@ export const dat = area(
     ready: {
       template: { financials: "monthly financials template", sales: "sales template", expenses: "expenses template", opening: "opening balances template" } as Record<Tpl, string>,
       download: (name: string) => `Download the ${name}`,
+      withData: "Download the template with your data (every month, codes and classes)",
+      allMonths: (from: string) => `Blank template, every month since ${from}`,
       nothingToCheck: "Nothing loaded here can be checked yet", couldNotSave: "Could not save", fromZero: "My books start from zero (no history before)",
       what: "What:", how: "How:", go: "Go there",
       pending: "Still adding up your latest upload. Nothing is missing because of this; reload the page in a minute.",
@@ -553,6 +555,8 @@ export const dat = area(
     ready: {
       template: { financials: "نموذج القوائم الشهرية", sales: "نموذج المبيعات", expenses: "نموذج المصروفات", opening: "نموذج الأرصدة الافتتاحية" },
       download: (name: string) => `نزّل ${name}`,
+      withData: "نزّل النموذج ببياناتك (كل الأشهر والأكواد والتصنيفات)",
+      allMonths: (from: string) => `نموذج فارغ لكل شهر منذ ${from}`,
       nothingToCheck: "لا يوجد هنا ما يمكن مطابقته بعد", couldNotSave: "تعذر الحفظ", fromZero: "دفاتري تبدأ من الصفر (لا تاريخ قبلها)",
       what: "المطلوب:", how: "الطريقة:", go: "اذهب إليها",
       pending: "ما زلنا نجمع آخر ملف رفعته. لا ينقص شيء بسبب ذلك؛ أعد تحميل الصفحة بعد دقيقة.",

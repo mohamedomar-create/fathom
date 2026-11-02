@@ -1,4 +1,5 @@
-import type { ClassKey } from "@/lib/engine";
+import { PL_KEYS, type ClassKey } from "@/lib/engine";
+import type { AccountLine } from "@/lib/company/types";
 import type { SortedFinancials } from "@/lib/ingest/sorted";
 import type { SalesLine } from "@/lib/ingest/sales";
 import type { ExpenseLine } from "@/lib/ingest/expenses";
@@ -15,6 +16,33 @@ export function financialsFill(f: SortedFinancials): FinancialsFill {
     ...(f.plPeriods.length ? { pl: { months: f.plPeriods, rows: rows(f.pl) } } : {}),
     ...(f.bsPeriods.length ? { bs: { months: f.bsPeriods, rows: rows(f.bs) } } : {}),
   };
+}
+
+const PL = new Set<string>(PL_KEYS);
+/**
+ * The company's stored accounts as the rows of a financials template: every month it holds (P&L and balance sheet apart),
+ * codes and classes as stored. Accounts the company has classed but holds no balances for come too, empty, so the next
+ * file can be filled in without retyping them; an account the company left out ("") does not.
+ */
+export function storedFill(accounts: AccountLine[], classed: { key: string; cls: ClassKey | ""; name: string }[]): FinancialsFill {
+  const out: Record<"pl" | "bs", { months: Set<string>; rows: FillRow[] }> = { pl: { months: new Set(), rows: [] }, bs: { months: new Set(), rows: [] } };
+  const seen = new Set<string>();
+  for (const a of accounts) {
+    const side = PL.has(a.cls) ? out.pl : out.bs;
+    const values = Object.fromEntries(Object.entries(a.amounts).filter(([, v]) => v));
+    Object.keys(values).forEach((p) => side.months.add(p));
+    side.rows.push({ code: a.code, name: a.name.slice(0, 300), cls: a.cls, values });
+    seen.add(a.code ? `#${a.code.trim()}` : a.name.trim());
+  }
+  for (const m of classed) {
+    if (!m.cls || seen.has(m.key)) continue;
+    seen.add(m.key);
+    const code = m.key.startsWith("#") ? m.key.slice(1) : "";
+    (PL.has(m.cls) ? out.pl : out.bs).rows.push({ code, name: (code ? m.name : m.key).slice(0, 300), cls: m.cls, values: {} });
+  }
+  const part = (s: { months: Set<string>; rows: FillRow[] }) => (s.rows.length ? { months: [...s.months].sort(), rows: s.rows } : undefined);
+  const pl = part(out.pl), bs = part(out.bs);
+  return { ...(pl ? { pl } : {}), ...(bs ? { bs } : {}) };
 }
 
 const csvCell = (v: string | number | null | undefined) => {

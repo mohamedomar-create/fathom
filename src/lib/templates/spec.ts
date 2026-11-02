@@ -102,3 +102,11 @@ export function templateMonths(year: number, fyStart: number) {
   const first = `${year}-${String(fyStart).padStart(2, "0")}`;
   return { opening: addMonths(first, -1), months: Array.from({ length: 12 }, (_, i) => addMonths(first, i)) };
 }
+
+/** Every month from `from` to `to` (YYYY-MM), at most the last 240; empty when `to` comes before `from`. */
+export function monthsBetween(from: string, to: string): string[] {
+  if (to < from) return [];
+  const out: string[] = [];
+  for (let p = from; p <= to; p = addMonths(p, 1)) out.push(p);
+  return out.slice(-240);
+}

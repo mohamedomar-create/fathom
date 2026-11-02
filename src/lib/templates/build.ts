@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
+import { addMonths, BS_KEYS, mlabel, PL_KEYS, type ClassKey } from "@/lib/engine";
 import { COSTS_DEFINITION } from "@/lib/engine/expenses";
 import { BS_ROWS, CLASS_HELP, classChoice, EXPENSE_COLS, FIN_HEAD, MARK, PL_ROWS, SALES_COLS, templateMonths, type TemplateKind } from "./spec";
 import type { FinancialsFill, FillRow } from "./fill";
@@ -9,7 +9,7 @@ const TEAL = "FF0B6E70", BAND = "FFF5F5F3", INPUT = "FFFFFBEA", MUTE = "FF76766F
 const NUM = '#,##0.00;[Red]-#,##0.00';
 
 /** fill: the template comes back filled with figures already read and sorted by iReport (financials only). */
-export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string; fill?: FinancialsFill; /** Titles, help headings and cell messages in Arabic; the headings iReport reads back stay as they are. */ lang?: "en" | "ar" }
+export interface TemplateOptions { year: number; fyStart: number; currency: string; company?: string; fill?: FinancialsFill; /** A run of months for the blank financials template instead of one financial year. */ months?: string[]; /** Titles, help headings and cell messages in Arabic; the headings iReport reads back stay as they are. */ lang?: "en" | "ar" }
 
 /** The English, or the Arabic when the template is asked for in Arabic. */
 const L = (o: { lang?: "en" | "ar" }, en: string, ar: string) => (o.lang === "ar" ? ar : en);
@@ -59,7 +59,8 @@ function readMe(wb: ExcelJS.Workbook, heading: string, lines: [string, string][]
 }
 
 function financials(wb: ExcelJS.Workbook, o: TemplateOptions) {
-  const { opening, months } = templateMonths(o.year, o.fyStart);
+  const fyRun = templateMonths(o.year, o.fyStart);
+  const { opening, months } = o.months?.length ? { opening: addMonths(o.months[0], -1), months: o.months } : fyRun;
   const fy = `${mlabel(months[0])} – ${mlabel(months[11])}`;
   readMe(wb, `iReport · ${L(o, "Monthly financials template", "قالب القوائم المالية الشهرية")}${o.company ? ` · ${o.company}` : ""}`, [
     ["Fill in one column per month, upload the file, and iReport reads every figure exactly as you entered it.", "املأ عمودًا لكل شهر، ثم ارفع الملف، وسيقرأ iReport كل رقم كما أدخلته تمامًا."],

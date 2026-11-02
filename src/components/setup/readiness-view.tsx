@@ -24,14 +24,33 @@ export function templateHref(kind: TemplateKind, c: { name: string; settings: { 
   return `/api/templates/${kind}?${q}`;
 }
 
+/** The financials template filled with what the company holds (every month, codes, classes); members only. */
+export function dataTemplateHref(id: string, lang: "en" | "ar" = "en") {
+  return `/api/templates/financials?${new URLSearchParams({ id, data: "1", lang })}`;
+}
+
 export function TemplateButton({ kind, compact = false }: { kind: TemplateKind; compact?: boolean }) {
   const c = useCompany();
   const T = useT();
   const t = T.d.dat.ready;
+  const cls = cn("inline-flex items-center gap-1.5 rounded border border-brand-d text-brand-d hover:bg-brand-bg", compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm");
+  // With figures stored: the template filled with them, and a blank one for every month since the books begin.
+  const months = kind === "financials" && c.source !== "demo" ? [...new Set(c.accounts.flatMap((a) => Object.keys(a.amounts)))].sort() : [];
+  const now = new Date();
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const run = months.length ? `${templateHref(kind, c, T.lang)}&${new URLSearchParams({ from: months[0], to: months[months.length - 1] > thisMonth ? months[months.length - 1] : thisMonth })}` : "";
   return (
-    <a href={templateHref(kind, c, T.lang)} download className={cn("inline-flex items-center gap-1.5 rounded border border-brand-d text-brand-d hover:bg-brand-bg", compact ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm")} data-testid={`template-${kind}`}>
-      <Download className="h-3.5 w-3.5" />{t.download(t.template[kind])}
-    </a>
+    <>
+      <a href={templateHref(kind, c, T.lang)} download className={cls} data-testid={`template-${kind}`}>
+        <Download className="h-3.5 w-3.5" />{t.download(t.template[kind])}
+      </a>
+      {months.length > 0 && (
+        <>
+          <a href={dataTemplateHref(c.id, T.lang)} download className={cls} data-testid="template-financials-data"><Download className="h-3.5 w-3.5" />{t.withData}</a>
+          <a href={run} download className={cls} data-testid="template-financials-all"><Download className="h-3.5 w-3.5" />{t.allMonths(months[0])}</a>
+        </>
+      )}
+    </>
   );
 }
 
