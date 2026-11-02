@@ -31,4 +31,7 @@ test("a journal items export is read as Odoo Journal Items, shown on the Check s
   await expect(row.getByTestId("read-as-source")).not.toHaveText("Odoo Journal Items");
   await row.getByTestId("read-as-pick").selectOption("");
   await expect(row.getByTestId("read-as-source")).toHaveText("Odoo Journal Items");
+  // D4: without a key, the Odoo tab says how to bring the figures in on Odoo Online's standard plan.
+  await page.goto(`/company/${id}/data/odoo`);
+  await expect(page.getByTestId("odoo-no-custom")).toContainText("without the Custom plan");
 });

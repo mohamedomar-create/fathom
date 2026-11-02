@@ -15,7 +15,9 @@ test("updating months with a P&L keeps the sales and expense detail, and says wh
   await startUpload(page, id);
   await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
   await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("use-as-figures-box").locator("summary").click();
+  // D4: the two choices are side by side, the check first; nothing is hidden behind a fold.
+  await expect(page.getByTestId("choice-check")).toBeVisible();
+  await expect(page.getByTestId("choice-figures")).toContainText("Use as my figures for these months");
   await page.getByTestId("use-as-figures").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("continue-timeline").click();
@@ -66,7 +68,6 @@ test("the template with your data: download, change one cell, upload with Update
   await startUpload(page, id);
   await page.getByTestId("file-input").setInputFiles({ name: "with-data.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: Buffer.from(await wb.xlsx.writeBuffer()) });
   await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("use-as-figures-box").locator("summary").click();
   await page.getByTestId("use-as-figures").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("continue-timeline").click();

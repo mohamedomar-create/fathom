@@ -13,3 +13,12 @@ export function ledgerClear(mode: string, o: { fileHasLedger: boolean; touchedPL
   const own = mode === "merge" && o.fileHasLedger ? o.touchedPL : [];
   return { all: false, months: [...new Set([...own, ...o.preStart])].sort() };
 }
+
+/**
+ * Whether a balances file (Trial Balance, P&L, balance sheet) is only checked against the books: by default when the books
+ * come from a General Ledger, or when the Trial Balance step asked for a check. Chosen "as my figures", it is saved, with
+ * "Update these months" keeping the detail. A file with its own entries (a ledger, journal items) is never only a check.
+ */
+export function balancesCheckOnly(o: { kind: string | null; read: boolean; ledgerFile: boolean; asFigures: boolean; setupStep: string | null; ledgerLoaded: boolean }): boolean {
+  return o.kind === "accounts" && o.read && !o.ledgerFile && !o.asFigures && (o.setupStep === "tb" || o.ledgerLoaded);
+}

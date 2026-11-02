@@ -181,7 +181,6 @@ test("replacing a ledger with a P&L and balance sheet clears its sales and expen
   await page.getByTestId("file-input").setInputFiles(fixture("odoo-pl-bs.xlsx"));
   // The books come from the ledger, so a P&L and balance sheet is read as a check first; replacing is asked for on purpose.
   await expect(page.getByTestId("tb-verify")).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId("use-as-figures-box").locator("summary").click();
   await page.getByTestId("use-as-figures").click();
   await expect(page.getByTestId("review")).toBeVisible({ timeout: 15_000 });
   await page.getByTestId("continue-timeline").click();

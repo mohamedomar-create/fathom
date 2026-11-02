@@ -18,7 +18,7 @@ import { TwoBox } from "@/components/upload/two-box";
 import { ChoiceCard, WizardNav, WizardSteps, WizardTitle, type Screen } from "@/components/upload/wizard-shell";
 import { ImportReadiness } from "@/components/setup/import-readiness";
 import { useCompany } from "@/lib/company/context";
-import { keepForMode, ledgerClear } from "@/lib/company/add-mode";
+import { balancesCheckOnly, keepForMode, ledgerClear } from "@/lib/company/add-mode";
 import { ADMIN_ONLY } from "@/lib/company/accept";
 import { FileReading, ReadAs } from "./file-reading";
 import { normLabel } from "@/lib/ingest/parse";
@@ -305,7 +305,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   );
   // The books come from a General Ledger and this file isn't one: a Trial Balance or statement is read as a check only.
   const ledgerFile = !!res?.layouts.some((l) => l.kind === "ledger");
-  const verifyOnly = kind === "accounts" && !!res && !ledgerFile && !asFigures && (setupStep === "tb" || ledgerLoaded);
+  const verifyOnly = balancesCheckOnly({ kind, read: !!res, ledgerFile, asFigures, setupStep: setupStep ?? null, ledgerLoaded });
   const maxImb = res ? Math.max(0, ...Object.values(res.imbalance).map(Math.abs)) : 0;
   // Problems visible before the server preview: double counting, unbalanced debits/credits, totals that differ from the file.
   const fileChecks = useMemo(() => {

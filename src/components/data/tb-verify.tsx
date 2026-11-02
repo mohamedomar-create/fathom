@@ -70,11 +70,17 @@ export function TbVerify({ companyId, fileName, file, ranges, books, currency, d
         </div>
       )}
       {onUseAsFigures && !demo && (
-        <details className="mt-6 max-w-3xl text-[13px]" data-testid="use-as-figures-box">
-          <summary className="cursor-pointer text-mute">{t.wrongQ}</summary>
-          <p className="mt-2">{t.wrongText}</p>
-          <button onClick={onUseAsFigures} className="mt-2 rounded border border-red/60 px-3 py-1.5 text-red" data-testid="use-as-figures">{t.useAs}</button>
-        </details>
+        <div className="mt-6 grid max-w-4xl gap-3 sm:grid-cols-2 text-[13px]" data-testid="use-as-figures-box">
+          <div className="rounded-lg border-2 border-brand-d/50 bg-brand-bg/30 p-4" data-testid="choice-check">
+            <p className="font-medium">{t.checkChoice}</p>
+            <p className="mt-1 text-mute">{t.checkChoiceText}</p>
+          </div>
+          <div className="rounded-lg border border-line p-4" data-testid="choice-figures">
+            <p className="font-medium">{t.wrongQ}</p>
+            <p className="mt-1 text-mute">{t.wrongText}</p>
+            <button onClick={onUseAsFigures} className="mt-3 rounded border border-brand-d px-3 py-1.5 text-brand-d" data-testid="use-as-figures">{t.useAs}</button>
+          </div>
+        </div>
       )}
       {err && <p className="mt-4 rounded bg-red-bg px-3 py-2 text-sm text-red" role="alert">{err}</p>}
       {demo

@@ -236,6 +236,7 @@ export function OdooPanel({ companyId, connection, hasData, booksStart = null, r
           <li>{t.how4}</li>
         </ol>
         <p className="mt-3 text-mute">{t.saas[0]}<b>Custom</b>{t.saas[1]}</p>
+        <p className="mt-2 rounded border border-line bg-band px-3 py-2 text-mute" data-testid="odoo-no-custom">{t.noCustom}</p>
         <a className="mt-3 inline-flex items-center gap-1 text-brand-d hover:underline" href="https://www.odoo.com/documentation/18.0/developer/reference/external_api.html" target="_blank" rel="noreferrer">{t.docs} <ExternalLink className="h-3 w-3" /></a>
         <p className="mt-3 text-xs text-mute">{t.security}</p>
       </aside>

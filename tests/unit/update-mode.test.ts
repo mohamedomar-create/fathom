@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ledgerClear } from "@/lib/company/add-mode";
+import { balancesCheckOnly, ledgerClear } from "@/lib/company/add-mode";
 import { ledgerDrift, driftNotice } from "@/lib/company/ledger-tie";
 
 const touched = ["2026-08", "2026-09"];
@@ -39,5 +39,22 @@ describe("D1: kept detail that no longer agrees is listed, never deleted", () =>
     expect(driftNotice([{ kind: "sales", period: "2026-09", lines: 1500, figures: 2000, diff: -500 }])).toBe(
       "Sales detail for Sep 2026 was kept but differs from the new figures by -500. Upload the General Ledger for that month to bring the detail in line.");
     expect(driftNotice([])).toBeNull();
+  });
+});
+
+describe("D4: a balances file can be the figures for its months", () => {
+  const base = { kind: "accounts", read: true, ledgerFile: false, asFigures: false, setupStep: null, ledgerLoaded: true };
+  it("a Trial Balance when the books come from a ledger is a check by default", () => {
+    expect(balancesCheckOnly(base)).toBe(true);
+  });
+  it("chosen as the figures, it is saved as the figures", () => {
+    expect(balancesCheckOnly({ ...base, asFigures: true })).toBe(false);
+  });
+  it("a General Ledger or journal items list is never only a check", () => {
+    expect(balancesCheckOnly({ ...base, ledgerFile: true })).toBe(false);
+  });
+  it("without a ledger loaded, balances are the figures, unless the Trial Balance step asked for a check", () => {
+    expect(balancesCheckOnly({ ...base, ledgerLoaded: false })).toBe(false);
+    expect(balancesCheckOnly({ ...base, ledgerLoaded: false, setupStep: "tb" })).toBe(true);
   });
 });
