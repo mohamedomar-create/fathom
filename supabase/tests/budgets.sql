@@ -122,9 +122,9 @@ select pg_temp.check('the original is unchanged by editing the revision', (publi
 
 -- Another company's version can't be copied.
 reset role;
-insert into public.companies (org_id, name) values (pg_temp.home('buo@x.test'), 'Other Co');
+insert into public.companies (org_id, name) values (pg_temp.home('buo@x.test'), 'Budget Outsider Co');
 select pg_temp.login('buo@x.test');
-select pg_temp.check('another company''s version cannot be copied', pg_temp.fails($$select public.budget_create((select id from public.companies where name = 'Other Co'), '2026', 'original', 'x', (select v1 from ids))$$), 'refused');
+select pg_temp.check('another company''s version cannot be copied', pg_temp.fails($$select public.budget_create((select id from public.companies where name = 'Budget Outsider Co'), '2026', 'original', 'x', (select v1 from ids))$$), 'refused');
 
 -- Deleting a draft.
 select pg_temp.login('bue@x.test');

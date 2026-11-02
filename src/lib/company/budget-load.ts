@@ -36,17 +36,25 @@ export async function loadBudgets(supabase: Supa, companyId: string, versionId?:
   const pick = versions.find((v) => v.id === versionId) ?? versions.find((v) => v.status === "approved") ?? versions[0];
   if (!pick) return { versions, current: null };
   try {
-    const lines = await all((a, b) => supabase.from("budget_lines").select("key, cls, label, month, amount").eq("version_id", pick.id).order("key").order("month").range(a, b));
-    const products = await all((a, b) => supabase.from("budget_products").select("product, category, month, units, price, unit_cost").eq("version_id", pick.id).order("product").order("month").range(a, b));
-    return {
-      versions,
-      current: {
-        id: pick.id,
-        lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
-        products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
-      },
-    };
+    return { versions, current: { id: pick.id, ...(await loadBudgetRows(supabase, pick.id)) } };
   } catch {
     return { versions, current: null, error: "read" };
   }
+}
+
+/** The latest approved budget (for reports and targets), or null when none is approved or it couldn't be read. */
+export async function loadApprovedBudget(supabase: Supa, companyId: string): Promise<{ name: string; lines: BudgetLine[]; products: BudgetProduct[] } | null> {
+  const set = await loadBudgets(supabase, companyId);
+  const v = set.versions.find((x) => x.id === set.current?.id && x.status === "approved");
+  return v && set.current ? { name: v.name, lines: set.current.lines, products: set.current.products } : null;
+}
+
+/** One version's lines and products, every row (paged). Throws when they can't be read. */
+export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[] }> {
+  const lines = await all((a, b) => supabase.from("budget_lines").select("key, cls, label, month, amount").eq("version_id", versionId).order("key").order("month").range(a, b));
+  const products = await all((a, b) => supabase.from("budget_products").select("product, category, month, units, price, unit_cost").eq("version_id", versionId).order("product").order("month").range(a, b));
+  return {
+    lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
+    products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
+  };
 }

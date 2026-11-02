@@ -66,4 +66,15 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   await expect(page.locator("[data-testid^=budget-cell-]")).toHaveCount(0);
   await expect(page.getByTestId("budget-upload")).toHaveCount(0);
   expect(sql(`select status from public.budget_versions where id = '${v}'`)).toBe("approved");
+
+  // Financials offers the saved budget as its comparison.
+  await page.goto(`/company/${id}/analysis/financials`);
+  await page.getByTestId("fin-compare").click();
+  await page.getByRole("button", { name: "Budget", exact: true }).click();
+  await expect(page.getByTestId("pl-table").locator("thead")).toContainText("Budget");
+
+  // Settings, Targets: the approved budget becomes the targets.
+  await page.goto(`/company/${id}/settings/targets`);
+  await page.getByTestId("budget-targets").getByRole("switch").click();
+  await expect.poll(() => sql(`select kpi_config->'profile'->>'budgetTargets' from public.companies where id = '${id}'`)).toBe("true");
 });

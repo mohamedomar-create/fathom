@@ -3,6 +3,7 @@ import { getUser } from "@/lib/supabase/server";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { loadSales } from "@/lib/company/sales-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
+import { loadApprovedBudget } from "@/lib/company/budget-load";
 import { selectableEnds, windowFor, type PeriodType } from "@/lib/engine";
 import { normaliseSections, type ReportInput } from "@/lib/report/types";
 
@@ -18,7 +19,7 @@ export async function loadCompanyReportInput(companyId: string, reportId: string
   const c = await loadCompanyBundle(companyId);
   const { data: o } = await supabase.from("organizations").select("name, logo_url, brand_colour, disclaimer, report_footer").eq("id", c.orgId).maybeSingle();
   if (!o) return null;
-  const [sales, expenses] = await Promise.all([loadSales(companyId), loadExpenses(companyId)]);
+  const [sales, expenses, budget] = await Promise.all([loadSales(companyId), loadExpenses(companyId), loadApprovedBudget(supabase, companyId)]);
   const type = r.period_type as PeriodType;
   const ends = selectableEnds(c.months, type, c.settings.fyStartMonth);
   const end = ends.some((e) => e.end === r.period_end) ? r.period_end : ends[ends.length - 1]?.end ?? r.period_end;
@@ -31,7 +32,7 @@ export async function loadCompanyReportInput(companyId: string, reportId: string
     input: {
       title: r.title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
       sel: { type, end }, sections: normaliseSections(r.sections), commentary, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {},
-      sales: sales.data, expenses: expenses.data, asOf: c.asOf ?? null,
+      sales: sales.data, expenses: expenses.data, asOf: c.asOf ?? null, budget,
       preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
     },
     footer: o.report_footer || `${c.name} (${windowFor({ type, end }, c.settings.fyStartMonth).label}) - Prepared by ${o.name}`,

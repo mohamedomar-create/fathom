@@ -6,7 +6,7 @@ import { balanced } from "@/lib/tolerance";
 import { Fragment, useMemo } from "react";
 import {
   analyze, bsCalc, CAT_COL, CAT_ORDER, formatTrend, goalFor, goalseekTable, GOAL_KPIS, LEVERS, mlabel, money, mshort, pct, plCalc, quadrantOf, QUADRANT_TEXT,
-  type Analysis, type Finding,
+  type Analysis, type Finding, type PLCalc,
 } from "@/lib/engine";
 import { BreakevenChart } from "@/components/charts/breakeven-chart";
 import { CashWaterfall } from "@/components/charts/waterfall";
@@ -27,6 +27,7 @@ import { useT } from "@/lib/i18n/use-t";
 import { dirOf, htmlLang, monthNames } from "@/lib/i18n";
 import { DEMO_NOTE } from "@/lib/company/demo-note";
 import { inLang } from "@/lib/i18n/script";
+import { budgetAccounts, budgetComparison } from "@/lib/engine/budget";
 
 type TT = ReturnType<typeof useT>;
 
@@ -48,6 +49,10 @@ export function ReportDocument({ input }: { input: ReportInput }) {
   const a = useMemo(() => analyze(input.months, input.sel, input.settings, { alerts: input.alerts, asOf: input.asOf, lang, kpiName: lang === "ar" ? kn : undefined }), [input.months, input.sel, input.settings, input.alerts, input.asOf, lang, kn]);
   const wl = T.pl(a.view.window.label);
   const cur = input.settings.currency;
+  // The approved budget for the report's window (a part month counts the same share of its month), when there is one.
+  const bud = useMemo(() => (input.budget
+    ? budgetComparison(budgetAccounts(input.budget.lines, input.budget.products).accounts, input.sel, input.settings.fyStartMonth, input.budget.name, a.view.partDay)
+    : null), [input.budget, input.sel, input.settings.fyStartMonth, a.view.partDay]);
   const brand = input.org.brandColour ?? "#0B6E70";
   // The Sales and Expenses pages are left out when there is nothing to show, rather than printed empty.
   const enabled = input.sections.filter((s) => s.enabled && (s.key !== "sales" || canPrintSales(input)) && (s.key !== "expenses" || hasExpenses(input))).map((s) => s.key);
@@ -84,7 +89,7 @@ export function ReportDocument({ input }: { input: ReportInput }) {
       <CashWaterfall rows={a.W.rows} cur={cur} />
       <p className="mt-2 text-[10px] text-mute"><b>{t.ncfAlso}</b>{t.ncfCalc(money(a.W.dcash, cur), money(a.W.ddebt, cur))}</p>
     </> : <p className="text-mute">{t.needsOpeningPeriod}</p>}{comment("cashflow")}</>,
-    pl: () => <>{head(T.d.rep.secs.pl)}<PLTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("pl")}</>,
+    pl: () => <>{head(T.d.rep.secs.pl)}<PLTable a={a} cur={cur} T={T} h={input.settings.highlights} bud={bud} />{comment("pl")}</>,
     bs: () => <>{head(T.d.rep.secs.bs)}<BSTable a={a} cur={cur} T={T} h={input.settings.highlights} />{comment("bs")}</>,
     cf: () => <>{head(T.d.rep.secs.cf)}{a.CF ? <table className="tbl text-[11.5px]"><tbody>
       {a.CF.lines.map((l, i) => l.heading ? <tr key={i} className="cat"><td colSpan={2}>{T.tl(l.label)}</td></tr> : <tr key={i} className={cfRowCls(l.label, l.total).replace("row", "").trim()}><td>{T.tl(l.label)}</td><td>{money(l.value, cur)}</td></tr>)}
@@ -236,7 +241,7 @@ function Profitability({ a, cur, T }: { a: Analysis; cur: string; T: TT }) {
 }
 
 /** The report's statements: the same lines, shading, better/worse cells, flags and colour marks as the Financials page. */
-function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highlights }) {
+function PLTable({ a, cur, T, h, bud }: { a: Analysis; cur: string; T: TT; h?: Highlights; bud?: { P: PLCalc; label: string } | null }) {
   const t = T.d.rep.doc;
   const { P, prior, ytd } = a.view;
   const fmt = (v: number) => money(v, cur);
@@ -245,7 +250,7 @@ function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
   return (
     <>
     <table className="tbl text-[11.5px]">
-      <thead><tr><th>{T.tl("Profit & Loss")}</th><th>{T.pl(a.view.window.short)}</th><th>{prior ? T.pl(prior.label) : t.priorCol}</th><th>{T.d.ana.variancePct}</th><th>{t.commonSize}</th><th>{T.d.ana.ytd}</th></tr></thead>
+      <thead><tr><th>{T.tl("Profit & Loss")}</th><th>{T.pl(a.view.window.short)}</th><th>{prior ? T.pl(prior.label) : t.priorCol}</th><th>{T.d.ana.variancePct}</th>{bud && <><th title={bud.label}>{T.d.bud.budget}</th><th>{T.d.bud.diff}</th></>}<th>{t.commonSize}</th><th>{T.d.ana.ytd}</th></tr></thead>
       <tbody>{rows.map(({ l, k }) => {
         const v = P[k] as number, p = prior ? (prior.P[k] as number) : null;
         const why = flagReason("PL", k, v, p, h, fmt, T);
@@ -255,6 +260,7 @@ function PLTable({ a, cur, T, h }: { a: Analysis; cur: string; T: TT; h?: Highli
           <tr key={k} className={rowCls(k, { base: "", mark, flagged: !!why })} data-line={k}>
             <td>{T.tl(l)}<Flag reason={why} /><MarkButton markKey={k} mark={mark} canEdit={false} onSave={noSave} label={T.tl(l)} /></td><td>{money(v, cur)}</td><td>{p === null ? "–" : money(p, cur)}</td>
             <ChangeCell statement="PL" k={k} cur={v} cmp={p} kind="pct" fmt={fmt} />
+            {bud && <><td data-testid="report-budget-cell">{money(bud.P[k] as number, cur)}</td><ChangeCell statement="PL" k={k} cur={v} cmp={bud.P[k] as number} kind="money" fmt={fmt} /></>}
             <td>{P.revenue ? <><MiniPie p={(v / P.revenue) * 100} /> {pct((v / P.revenue) * 100, 0)}</> : "–"}</td>
             <td>{money(ytd[k] as number, cur)}</td>
           </tr>

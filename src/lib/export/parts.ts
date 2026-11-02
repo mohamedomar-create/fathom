@@ -1,6 +1,7 @@
 import "server-only";
 import { DbError } from "@/lib/action-error";
 import { loadBalances } from "@/lib/company/balances";
+import { loadBudgetRows } from "@/lib/company/budget-load";
 import type { createClient } from "@/lib/supabase/server";
 import type { CompanyExport } from "./company-workbook";
 
@@ -52,6 +53,9 @@ export async function loadExportMeta(supabase: Supa, companyId: string): Promise
   ]);
   const failed = [org, accts, imports, commentary, reports].find((r) => r.error)?.error;
   if (failed) throw new DbError(failed);
+  // Every budget version with its rows (a database without budgets yet: none).
+  const { data: bv } = await supabase.from("budget_versions").select("id, name, fy, kind, status").eq("company_id", c.id).order("created_at");
+  const budgets = await Promise.all((bv ?? []).map(async (v) => ({ name: v.name, fy: v.fy, kind: v.kind, status: v.status, ...(await loadBudgetRows(supabase, v.id)) })));
   const amounts = new Map<string, Record<string, number>>((accts.data ?? []).map((a) => [a.id, {}]));
   for (const b of bal) { const r = amounts.get(b.account_id); if (r) r[b.period] = b.amount; }
   return {
@@ -63,5 +67,6 @@ export async function loadExportMeta(supabase: Supa, companyId: string): Promise
     commentary: commentary.data ?? [],
     reports: (reports.data ?? []).map(({ share_token, ...r }) => ({ ...r, shared: !!share_token })),
     odoo: odoo.data ?? null, // viewers cannot read the connection (RLS) and simply get no sheet
+    budgets,
   };
 }

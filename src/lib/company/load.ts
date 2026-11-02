@@ -16,7 +16,7 @@ export interface KpiConfigEntry { active?: boolean; importance?: Importance; tar
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
 import { booksFromZeroOf, budgetTargetsOf, timeZoneOf, vatRateOf } from "./time-zone";
-import { loadBudgets } from "./budget-load";
+import { loadApprovedBudget } from "./budget-load";
 import { systemOf } from "./system";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
 
@@ -108,9 +108,7 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   ]);
   // The approved budget, only when the company uses it as KPI targets (a read failure: no budget targets, never an error).
   const useBudget = budgetTargetsOf(c.kpi_config);
-  const bset = useBudget ? await loadBudgets(supabase, id) : null;
-  const bv = bset?.versions.find((v) => v.id === bset.current?.id && v.status === "approved");
-  const budget = bv && bset?.current ? { name: bv.name, lines: bset.current.lines, products: bset.current.products } : null;
+  const budget = useBudget ? await loadApprovedBudget(supabase, id) : null;
   // Fails closed: a membership that couldn't be read is an error, none means not this person's company.
   const access = accessFrom(mem, memErr);
   if (access === "none") notFound();

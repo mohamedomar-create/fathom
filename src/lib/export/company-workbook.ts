@@ -19,6 +19,8 @@ export interface CompanyExport {
   reports: { title: string; period_type: string; period_end: string; status: string; shared: boolean; expires_at: string | null; published_at: string | null; created_at: string }[];
   odoo: { url: string; db: string; login: string; odoo_company_name: string | null; months_history: number; status: string; last_sync_at: string | null } | null;
   expenses?: { day: string | null; period: string; doc: string; series: string; supplier: string; account: string; cls: string | null; category: string; label: string; amount: number; source: string }[];
+  /** Every budget version with its lines and products. */
+  budgets?: { name: string; fy: string; kind: string; status: string; lines: { key: string; cls: string; label: string | null; month: string; amount: number }[]; products: { product: string; category: string | null; month: string; units: number; price: number; unit_cost: number | null }[] }[];
   sales?: { day: string | null; period: string; doc: string; series: string; customer: string; product: string; category: string; salesperson: string; qty: number | null; amount: number; cost: number | null; source: string }[];
 }
 
@@ -79,6 +81,14 @@ export function companySheets(d: CompanyExport, lang: "en" | "ar" = "en"): Sheet
   if (d.sales?.length) {
     sheets.push({ name: w("Sales lines", "بنود المبيعات"), rows: [[w("Date", "التاريخ"), w("Month", "الشهر"), w("Invoice", "الفاتورة"), w("Series", "السلسلة"), w("Customer", "العميل"), w("Product", "المنتج"), w("Category", "الفئة"), w("Salesperson", "مندوب المبيعات"), w("Quantity", "الكمية"), w("Amount", "المبلغ"), w("Cost", "التكلفة"), w("Source", "المصدر")],
       ...d.sales.map((l) => [l.day, l.period, l.doc, l.series, l.customer, l.product, l.category, l.salesperson, l.qty === null ? null : Number(l.qty), Number(l.amount), l.cost === null ? null : Number(l.cost), l.source === "file" ? w("Sales file", "ملف المبيعات") : w("General Ledger", "دفتر الأستاذ العام")])] });
+  }
+  if (d.budgets?.some((b) => b.lines.length)) {
+    sheets.push({ name: w("Budget lines", "بنود الموازنة"), rows: [[w("Version", "الإصدار"), w("Financial year", "السنة المالية"), w("Status", "الحالة"), w("Key", "المفتاح"), w("Account", "الحساب"), w("Class", "التصنيف"), w("Month", "الشهر"), w("Amount", "المبلغ")],
+      ...d.budgets.flatMap((b) => b.lines.map((l) => [b.name, b.fy, b.status, l.key, l.label, l.cls, l.month, Number(l.amount)]))] });
+  }
+  if (d.budgets?.some((b) => b.products.length)) {
+    sheets.push({ name: w("Budget products", "منتجات الموازنة"), rows: [[w("Version", "الإصدار"), w("Financial year", "السنة المالية"), w("Product", "المنتج"), w("Category", "الفئة"), w("Month", "الشهر"), w("Units", "الكمية"), w("Price", "السعر"), w("Unit cost", "تكلفة الوحدة")],
+      ...d.budgets.flatMap((b) => b.products.map((p) => [b.name, b.fy, p.product, p.category, p.month, Number(p.units), Number(p.price), p.unit_cost === null ? null : Number(p.unit_cost)]))] });
   }
   if (d.odoo) {
     const o = d.odoo;

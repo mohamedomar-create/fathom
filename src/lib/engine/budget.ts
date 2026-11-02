@@ -1,8 +1,8 @@
-import { addMonths, PL_KEYS, type ClassKey, type PLCalc, type PLInput } from "@/lib/engine";
+import { addMonths, bsCalc, PL_KEYS, plCalc, type ClassKey, type PLCalc, type PLInput } from "@/lib/engine";
 import { buildMonths } from "@/lib/company/build";
 import type { AccountLine } from "@/lib/company/types";
 import { accountMarkKey } from "./statement-rows";
-import { compareWeight, periodView, type PeriodSel } from "./period";
+import { compareWeight, windowFor, type PeriodSel } from "./period";
 import type { SalesProductRow } from "./sales";
 
 /**
@@ -59,10 +59,18 @@ export function budgetAccounts(lines: BudgetLine[], products: BudgetProduct[]): 
  * part-way through the window's last month (partDay), that month's budget counts the same share of its days.
  */
 export function budgetComparison(accounts: AccountLine[], sel: PeriodSel, fyStart: number, label: string, partDay?: number) {
-  const w = compareWeight(partDay, sel.end);
-  const acc = w === 1 ? accounts : accounts.map((a) => (a.amounts[sel.end] === undefined ? a : { ...a, amounts: { ...a.amounts, [sel.end]: a.amounts[sel.end] * w } }));
-  const v = periodView(buildMonths(acc), sel, fyStart);
-  return { P: v.P, B: v.B, label };
+  const w = windowFor(sel, fyStart);
+  const share = compareWeight(partDay, sel.end);
+  const byPeriod = new Map(buildMonths(accounts).map((m) => [m.period, m.pl]));
+  const pl: PLInput = {};
+  for (const p of w.periods) {
+    const m = byPeriod.get(p);
+    if (!m) continue;
+    const f = p === sel.end ? share : 1;
+    for (const [k, v] of Object.entries(m)) pl[k as keyof PLInput] = (pl[k as keyof PLInput] ?? 0) + (v ?? 0) * f;
+  }
+  // A budget has no balance sheet: the comparison's balance sheet is empty (shown as no comparison).
+  return { P: plCalc(pl), B: bsCalc({}), label };
 }
 
 export interface VarianceCell { actual: number; budget: number; diff: number; pct: number | null }

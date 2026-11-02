@@ -119,6 +119,10 @@ describe("budget vs actual", () => {
     expect(c.P.revenue).toBe(2000);
     expect(c.label).toBe("Budget FY 2026");
   });
+  it("a window the budget doesn't cover compares with zero, never fails", () => {
+    const c = budgetComparison(budget, { type: "month", end: "2025-06" }, 1, "B");
+    expect(c.P.revenue).toBe(0);
+  });
   it("a part month compares with the same share of the budget's month (books to 15 Feb: half of February's budget)", () => {
     const c = budgetComparison(budget, { type: "year", end: "2026-02" }, 1, "B", 14);
     expect(c.P.revenue).toBe(1000 + 500);
