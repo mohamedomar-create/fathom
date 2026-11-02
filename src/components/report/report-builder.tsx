@@ -21,7 +21,7 @@ import { cn } from "@/lib/cn";
 
 export interface ReportRecord { id: string; title: string; period_type: PeriodType; period_end: string; sections: ReportSection[]; status: string; share_token: string | null; expires_at?: string | null; frozen_at?: string | null }
 
-export function ReportBuilder({ report, org, demo = false, budget: budgetIn }: { report: ReportRecord; org: ReportOrg; demo?: boolean; budget?: ReportInput["budget"] }) {
+export function ReportBuilder({ report, org, demo = false, budgets: budgetsIn }: { report: ReportRecord; org: ReportOrg; demo?: boolean; budgets?: ReportInput["budgets"] }) {
   const c = useCompany();
   const router = useRouter();
   const sales = useSales();
@@ -56,17 +56,17 @@ export function ReportBuilder({ report, org, demo = false, budget: budgetIn }: {
   const footer = org.footer || t.footer(c.name, T.pl(windowFor({ type, end: validEnd }, c.settings.fyStartMonth).label), org.name);
 
   // The demo shows its made-up approved budget; a company the budget it approved.
-  const budget = useMemo<ReportInput["budget"]>(() => {
-    if (budgetIn !== undefined) return budgetIn;
-    if (!demo) return null;
+  const budgets = useMemo<ReportInput["budgets"]>(() => {
+    if (budgetsIn !== undefined) return budgetsIn;
+    if (!demo) return [];
     const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth, demoSales().products);
-    return { name: b.name, lines: b.lines, products: b.products };
-  }, [budgetIn, demo, c.accounts, c.months, c.settings.fyStartMonth]);
+    return [{ fy: b.fy, name: b.name, lines: b.lines, products: b.products }];
+  }, [budgetsIn, demo, c.accounts, c.months, c.settings.fyStartMonth]);
   const input = useMemo(() => ({
     title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
-    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {}, sales, expenses, asOf: c.asOf ?? null, budget,
+    sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {}, sales, expenses, asOf: c.asOf ?? null, budgets,
     preparedOn: new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }),
-  }), [title, c, type, validEnd, sections, comments, org, sales, expenses, budget]);
+  }), [title, c, type, validEnd, sections, comments, org, sales, expenses, budgets]);
   const shortDate = (d: string, time = false) => dateIn(new Date(d).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", ...(time ? { hour: "2-digit", minute: "2-digit" } : {}) }), T).replace(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sept?|Oct|Nov|Dec)\b/g, (x) => (T.lang === "ar" ? T.pl(x.slice(0, 3)) : x));
 
   const move = (i: number, d: -1 | 1) => setSections((s) => { const n = [...s]; const j = i + d; if (j < 0 || j >= n.length) return s; [n[i], n[j]] = [n[j], n[i]]; return n; });

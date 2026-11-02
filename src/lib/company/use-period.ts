@@ -6,7 +6,7 @@ import { useCompany } from "./context";
 import { useLang } from "@/lib/i18n/context";
 import { inLang } from "@/lib/i18n/script";
 import { kpiName } from "@/lib/i18n/kpis";
-import { budgetAccounts, budgetComparison, budgetTargets } from "@/lib/engine/budget";
+import { budgetAccounts, budgetComparison, budgetFor, budgetTargets } from "@/lib/engine/budget";
 import type { CompanyBundle } from "./types";
 
 /** Period selection lives in the URL (?type=month&end=2026-09&cmp=target) so views are shareable. */
@@ -44,7 +44,7 @@ export function useAnalysis() {
   const lang = useLang();
   return useMemo(
     () => (sel.end ? analyze(company.months, sel, company.settings, { comparison: cmp, alerts: company.alerts, asOf: company.asOf, lang, kpiName: (d) => kpiName(d, lang), budgetTargets: targetsFromBudget(company, sel) }) : null),
-    [company.months, company.settings, company.alerts, company.asOf, company.budget, company.budgetTargets, sel.type, sel.end, cmp, lang], // eslint-disable-line react-hooks/exhaustive-deps
+    [company.months, company.settings, company.alerts, company.asOf, company.budgets, company.budgetTargets, sel.type, sel.end, cmp, lang], // eslint-disable-line react-hooks/exhaustive-deps
   );
 }
 
@@ -60,8 +60,9 @@ export function useComments() {
 
 /** The approved budget's targets for the selected window, when the company uses its budget as targets. */
 function targetsFromBudget(c: CompanyBundle, sel: PeriodSel): Record<string, number | null> | null {
-  if (!c.budgetTargets || !c.budget) return null;
+  const b = c.budgetTargets ? budgetFor(c.budgets, sel.end, c.settings.fyStartMonth) : null;
+  if (!b) return null;
   const day = c.asOf && c.asOf.startsWith(sel.end) ? Number(c.asOf.slice(8)) : undefined;
-  const acc = budgetAccounts(c.budget.lines, c.budget.products).accounts;
-  return budgetTargets(budgetComparison(acc, sel, c.settings.fyStartMonth, c.budget.name, day).P);
+  const acc = budgetAccounts(b.lines, b.products).accounts;
+  return budgetTargets(budgetComparison(acc, sel, c.settings.fyStartMonth, b.name, day).P);
 }

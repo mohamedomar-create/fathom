@@ -30,6 +30,17 @@ export interface Analysis {
   breakeven: ReturnType<typeof breakeven>;
 }
 
+/**
+ * A target typed by hand: saved and different from the KPI's default. (The KPI form saves every KPI's target on any
+ * save, so a saved default is not a choice.)
+ */
+export function typedTarget(settings: CompanySettings, key: string): boolean {
+  const t = settings.targets?.[key];
+  if (t === undefined) return false;
+  const def = KPI_DEFS.find((d) => d.key === key)?.target ?? null;
+  return t !== def;
+}
+
 export function resolveTargets(settings: CompanySettings): Record<string, number | null> {
   return Object.fromEntries(KPI_DEFS.map((d) => {
     const t = settings.targets?.[d.key];
@@ -78,7 +89,7 @@ export function analyze(
   const partShare = view.partDay ? 1 - view.partDay / daysIn(view.window.end) : 0;
   const scaled = scaleTargets(resolveTargets(settings), view.annual ? 12 : view.window.periods.length - view.missing.pl.length - partShare);
   const targets = opts.budgetTargets
-    ? { ...scaled, ...Object.fromEntries(Object.entries(opts.budgetTargets).filter(([k, v]) => v !== null && settings.targets?.[k] === undefined)) }
+    ? { ...scaled, ...Object.fromEntries(Object.entries(opts.budgetTargets).filter(([k, v]) => v !== null && !typedTarget(settings, k))) }
     : scaled;
   const comparison = opts.comparison ?? "target";
   let compareK: Record<string, number | null> | null = null;

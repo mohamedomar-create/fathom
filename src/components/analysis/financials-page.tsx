@@ -15,12 +15,12 @@ import { balanced } from "@/lib/tolerance";
 import { accountMarkKey, BS_LINES, emptyBS, markAt, PL_LINES, type Highlights, type Mark } from "@/lib/engine/statement-rows";
 import { cfRowCls, ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
 import { setStatementMark } from "@/app/company/[id]/analysis/highlight-actions";
-import { budgetAccounts, budgetComparison, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
+import { budgetAccounts, budgetComparison, budgetFor, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
 import { demoBudget } from "@/lib/company/demo-budget";
 import { demoSales } from "@/lib/company/demo-sales";
 
-/** The budget the "Budget" comparison uses: the latest approved version (else the latest draft), or none. */
-export interface CompareBudget { name: string; status: "draft" | "approved"; lines: BudgetLine[]; products: BudgetProduct[] }
+/** A financial year's budget for the "Budget" comparison: its latest approved version, else its latest draft. */
+export interface CompareBudget { fy: string; name: string; status: "draft" | "approved"; lines: BudgetLine[]; products: BudgetProduct[] }
 
 type View = "pl" | "bs" | "cf";
 type Cmp = "prior" | "ly" | "budget";
@@ -28,18 +28,21 @@ type Cmp = "prior" | "ly" | "budget";
 const PL_ROWS = PL_LINES;
 const BS_ROWS = BS_LINES;
 
-export function FinancialsPage({ budget: budgetIn }: { budget?: CompareBudget | null } = {}) {
+export function FinancialsPage({ budgets: budgetsIn }: { budgets?: CompareBudget[] } = {}) {
   const c = useCompany();
   // The demo shows its made-up budget; a company the budget it saved.
-  const budget = useMemo<CompareBudget | null>(() => {
-    if (budgetIn !== undefined) return budgetIn;
-    if (c.source !== "demo") return null;
+  const budgets = useMemo<CompareBudget[]>(() => {
+    if (budgetsIn !== undefined) return budgetsIn;
+    if (c.source !== "demo") return [];
     const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth ?? 1, demoSales().products);
-    return { name: b.name, status: "approved", lines: b.lines, products: b.products };
-  }, [budgetIn, c.source, c.accounts, c.months, c.settings.fyStartMonth]);
+    return [{ fy: b.fy, name: b.name, status: "approved", lines: b.lines, products: b.products }];
+  }, [budgetsIn, c.source, c.accounts, c.months, c.settings.fyStartMonth]);
+  // The budget of the financial year the selected period falls in (none: the Budget comparison is not offered).
+  const a = useAnalysis();
+  const selEnd = a?.view.sel.end;
+  const budget = selEnd ? budgetFor(budgets, selEnd, c.settings.fyStartMonth ?? 1) : null;
   const bAcc = useMemo(() => (budget ? budgetAccounts(budget.lines, budget.products).accounts : null), [budget]);
   const bankAsInterest = bankChargesAsInterest(c.accounts);
-  const a = useAnalysis();
   const comments = useComments();
   const [view, setView] = useState<View>("pl");
   const [layout, setLayout] = useState<"summary" | "detailed">("summary");

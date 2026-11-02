@@ -36,3 +36,26 @@ describe("budget template", () => {
     expect(readBudgetGrids([{ name: "S", rows: [["Date", "Amount"]] }], months).errors[0]).toMatch(/budget template/i);
   });
 });
+
+describe("budget template: review fixes", () => {
+  const head = ["Key", "Account", "Class", ...months];
+  it("a file without the Products sheet says so, so the products are left as they are (I7)", () => {
+    const r = readBudgetGrids([{ name: "Budget", rows: [[BUDGET_MARK.lines], head, ["#1", "One", "revenue", 5]] }], months);
+    expect(r.hasLines).toBe(true);
+    expect(r.hasProducts).toBe(false);
+  });
+  it("a bare account code becomes its key; other prefixes are refused (M1)", () => {
+    const r = readBudgetGrids([{ name: "Budget", rows: [[BUDGET_MARK.lines], head, ["4000", "Sales", "revenue", 5], ["prod:revenue", "X", "revenue", 1]] }], months);
+    expect(r.lines.map((l) => l.key)).toEqual(["#4000"]);
+    expect(r.errors.join(" ")).toMatch(/row 4/i);
+  });
+  it("the same account twice is added up, as the download does (M3)", () => {
+    const r = readBudgetGrids([{ name: "Budget", rows: [[BUDGET_MARK.lines], head, ["#1", "One", "revenue", 5], ["#1", "One", "revenue", 7]] }], months);
+    expect(r.lines).toEqual([{ key: "#1", cls: "revenue", label: "One", month: "2026-01", amount: 12 }]);
+  });
+  it("a month typed as a date in the Products sheet is read (M2)", () => {
+    const r = readBudgetGrids([{ name: "Products", rows: [[BUDGET_MARK.products], ["Product", "Category", "Month", "Units", "Price", "Unit cost"], ["Mask", "", new Date(Date.UTC(2026, 2, 1)), 2, 10, ""]] }], months);
+    expect(r.errors).toEqual([]);
+    expect(r.products[0].month).toBe("2026-03");
+  });
+});

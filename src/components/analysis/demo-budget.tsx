@@ -12,7 +12,7 @@ export function DemoBudget() {
     const sales = demoSales().products;
     const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth ?? 1, sales);
     return {
-      versions: [{ id: "demo", fy: b.fy, name: b.name, kind: "original" as const, status: "approved" as const, basedOn: null, approvedAt: `${b.fy}-01-05`, createdAt: `${b.fy}-01-01` }],
+      versions: [{ id: "demo", fy: b.fy, name: b.name, kind: "original" as const, status: "approved" as const, basedOn: null, approvedAt: `${b.fy}-01-05`, createdAt: `${b.fy}-01-01`, updatedAt: `${b.fy}-01-05` }],
       current: { id: "demo", lines: b.lines, products: b.products },
       salesProducts: sales,
     };

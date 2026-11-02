@@ -54,8 +54,8 @@ export interface CompanyBundle {
   timeZone?: string | null;
   /** The approved budget's figures are the KPI targets where none is typed (Settings, Targets). */
   budgetTargets?: boolean;
-  /** The latest approved budget, loaded only when budgetTargets is on. */
-  budget?: { name: string; lines: import("@/lib/engine/budget").BudgetLine[]; products: import("@/lib/engine/budget").BudgetProduct[] } | null;
+  /** The approved budget of each financial year, loaded only when budgetTargets is on. */
+  budgets?: { fy: string; name: string; lines: import("@/lib/engine/budget").BudgetLine[]; products: import("@/lib/engine/budget").BudgetProduct[] }[];
   /** The company said its books start from zero (no opening balance due). */
   booksFromZero?: boolean;
   /** Which accounting system the books come from (Phase 4a picker); null until chosen. */

@@ -131,6 +131,24 @@ select pg_temp.login('bue@x.test');
 select public.budget_delete((select v2 from ids));
 select pg_temp.check('a draft is deleted with its lines', (select count(*) from public.budget_lines where version_id = (select v2 from ids))::text, '0');
 
+-- One save for lines and products together: all or nothing (review I6).
+select pg_temp.login('bue@x.test');
+update ids set v2 = public.budget_create(co, '2026', 'revision', 'Revision 2', v1);
+select pg_temp.check('lines and products saved in one call', (public.budget_save((select v2 from ids),
+  '[{"key":"#410000","cls":"revenue","label":"Revenue","month":"2026-05","amount":77}]'::jsonb,
+  '[{"product":"Gel","category":null,"month":"2026-05","units":3,"price":10,"unit_cost":null}]'::jsonb, false))::text,
+  '{"lines": 1, "products": 1}');
+select pg_temp.check('the products were replaced', (select string_agg(product, ',') from public.budget_products where version_id = (select v2 from ids)), 'Gel');
+select pg_temp.check('a bad product row undoes the lines of the same save', pg_temp.fails($$select public.budget_save((select v2 from ids),
+  '[{"key":"#410000","cls":"revenue","label":"Revenue","month":"2026-06","amount":88}]'::jsonb,
+  '[{"product":"","month":"2026-06","units":1,"price":1}]'::jsonb, false)$$), 'refused');
+select pg_temp.check('nothing of that save stayed', (select count(*) from public.budget_lines where version_id = (select v2 from ids) and month = '2026-06')::text, '0');
+select pg_temp.check('lines only leave the products as they are', ((public.budget_save((select v2 from ids), '[]'::jsonb, null, false))->>'products'), null);
+select pg_temp.check('products still there', (select count(*) from public.budget_products where version_id = (select v2 from ids))::text, '1');
+-- Integrity: P&L classes only; a revision copies only its own year (review M4).
+select pg_temp.check('a balance-sheet class is refused', pg_temp.fails($$select public.budget_save((select v2 from ids), '[{"key":"#121","cls":"cash","month":"2026-01","amount":1}]'::jsonb, null, false)$$), 'refused');
+select pg_temp.check('a revision of 2027 cannot copy 2026', pg_temp.fails($$select public.budget_create((select co from ids), '2027', 'revision', 'x', (select v1 from ids))$$), 'refused');
+
 -- 20,000 lines in one call, inside 8 seconds; 20,001 are refused.
 update ids set v3 = (select id from public.budget_versions where company_id = (select co from ids) and fy = '2027');
 create temp table big as select jsonb_agg(jsonb_build_object('key', '#' || a, 'cls', 'exp_fixed', 'label', 'Account ' || a,

@@ -7,7 +7,7 @@ type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 
 export interface BudgetVersionInfo {
   id: string; fy: string; name: string; kind: "original" | "revision"; status: "draft" | "approved";
-  basedOn: string | null; approvedAt: string | null; createdAt: string;
+  basedOn: string | null; approvedAt: string | null; createdAt: string; updatedAt: string;
 }
 export interface BudgetSet { versions: BudgetVersionInfo[]; current: { id: string; lines: BudgetLine[]; products: BudgetProduct[] } | null; error?: string }
 
@@ -30,9 +30,9 @@ async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[
  */
 export async function loadBudgets(supabase: Supa, companyId: string, versionId?: string | null): Promise<BudgetSet> {
   const { data: vs, error } = await supabase.from("budget_versions")
-    .select("id, fy, name, kind, status, based_on, approved_at, created_at").eq("company_id", companyId).order("created_at", { ascending: false });
+    .select("id, fy, name, kind, status, based_on, approved_at, created_at, updated_at").eq("company_id", companyId).order("created_at", { ascending: false });
   if (error) return { versions: [], current: null, error: error.code === "42P01" ? "missing" : "read" };
-  const versions: BudgetVersionInfo[] = (vs ?? []).map((v) => ({ id: v.id, fy: v.fy, name: v.name, kind: v.kind, status: v.status, basedOn: v.based_on, approvedAt: v.approved_at, createdAt: v.created_at }));
+  const versions: BudgetVersionInfo[] = (vs ?? []).map((v) => ({ id: v.id, fy: v.fy, name: v.name, kind: v.kind, status: v.status, basedOn: v.based_on, approvedAt: v.approved_at, createdAt: v.created_at, updatedAt: v.updated_at }));
   const pick = versions.find((v) => v.id === versionId) ?? versions.find((v) => v.status === "approved") ?? versions[0];
   if (!pick) return { versions, current: null };
   try {
@@ -42,11 +42,27 @@ export async function loadBudgets(supabase: Supa, companyId: string, versionId?:
   }
 }
 
-/** The latest approved budget (for reports and targets), or null when none is approved or it couldn't be read. */
-export async function loadApprovedBudget(supabase: Supa, companyId: string): Promise<{ name: string; lines: BudgetLine[]; products: BudgetProduct[] } | null> {
-  const set = await loadBudgets(supabase, companyId);
-  const v = set.versions.find((x) => x.id === set.current?.id && x.status === "approved");
-  return v && set.current ? { name: v.name, lines: set.current.lines, products: set.current.products } : null;
+export interface YearBudget { fy: string; name: string; status: "draft" | "approved"; lines: BudgetLine[]; products: BudgetProduct[] }
+
+/**
+ * One budget per financial year: the latest approved version (a revision approved later wins), else, when drafts are
+ * asked for, the latest draft. Empty when there is none or it couldn't be read (never an error on the page).
+ */
+export async function loadYearBudgets(supabase: Supa, companyId: string, opts: { drafts?: boolean } = {}): Promise<YearBudget[]> {
+  const { data: vs, error } = await supabase.from("budget_versions").select("id, fy, name, status, approved_at, created_at").eq("company_id", companyId);
+  if (error || !vs) return [];
+  const pick = new Map<string, (typeof vs)[number]>();
+  const rank = (v: (typeof vs)[number]) => (v.status === "approved" ? `1${v.approved_at ?? ""}` : `0${v.created_at}`);
+  for (const v of vs) {
+    if (v.status !== "approved" && !opts.drafts) continue;
+    const cur = pick.get(v.fy);
+    if (!cur || rank(v) > rank(cur)) pick.set(v.fy, v);
+  }
+  try {
+    return await Promise.all([...pick.values()].map(async (v) => ({ fy: v.fy, name: v.name, status: v.status, ...(await loadBudgetRows(supabase, v.id)) })));
+  } catch {
+    return [];
+  }
 }
 
 /** One version's lines and products, every row (paged). Throws when they can't be read. */

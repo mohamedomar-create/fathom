@@ -25,7 +25,7 @@ export const bud = area(
     account: "Account", cls: "Class", total: "Total", addAccount: "Add an account", choose: "Choose…",
     save: "Save changes", saving: (a: number, b: number) => `Saving ${a.toLocaleString("en-US")} of ${b.toLocaleString("en-US")}…`, saved: "Saved.",
     unsaved: (n: number) => `${n} change${n === 1 ? "" : "s"} not saved`,
-    fromProducts: "From products", fromProductsNote: "Revenue and cost of sales in months with products come from units × price and units × unit cost.",
+    fromProducts: "From products", fromProductsNote: "Products add units × price to revenue and units × unit cost to cost of sales, on top of the lines entered by account.",
     product: "Product", category: "Category", month: "Month", units: "Units", price: "Price", unitCost: "Unit cost", revenue: "Revenue", cost: "Cost of sales",
     addProduct: "Add a product row", productPh: "Product name", allProducts: "All products",
     // Template
@@ -63,7 +63,7 @@ export const bud = area(
     account: "الحساب", cls: "التصنيف", total: "الإجمالي", addAccount: "إضافة حساب", choose: "اختر…",
     save: "حفظ التغييرات", saving: (a: number, b: number) => `جارٍ حفظ ${a.toLocaleString("ar-EG")} من ${b.toLocaleString("ar-EG")}…`, saved: "تم الحفظ.",
     unsaved: (n: number) => `${n.toLocaleString("ar-EG")} تغيير لم يُحفظ`,
-    fromProducts: "من المنتجات", fromProductsNote: "الإيرادات وتكلفة المبيعات في الأشهر التي بها منتجات تأتي من الكمية × السعر والكمية × تكلفة الوحدة.",
+    fromProducts: "من المنتجات", fromProductsNote: "المنتجات تضيف الكمية × السعر إلى الإيرادات والكمية × تكلفة الوحدة إلى تكلفة المبيعات، فوق البنود المدخلة حسب الحساب.",
     product: "المنتج", category: "الفئة", month: "الشهر", units: "الكمية", price: "السعر", unitCost: "تكلفة الوحدة", revenue: "الإيراد", cost: "تكلفة المبيعات",
     addProduct: "إضافة صف منتج", productPh: "اسم المنتج", allProducts: "كل المنتجات",
     download: "تنزيل النموذج", upload: "رفع النموذج", uploadText: "نموذج الموازنة بعد تعديلك: يحل محل بنود ومنتجات هذه المسودة.",

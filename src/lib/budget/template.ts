@@ -43,15 +43,17 @@ export async function buildBudgetWorkbook(o: { lines: BudgetLine[]; products: Bu
   return buf as ArrayBuffer;
 }
 
+/** A month cell as YYYY-MM: text as typed, or a date (Excel turns a typed 2026-03 into one). */
+const monthOf = (v: unknown) => (v instanceof Date ? `${v.getUTCFullYear()}-${String(v.getUTCMonth() + 1).padStart(2, "0")}` : txt(v).slice(0, 7));
 const txt = (v: unknown) => (v === null || v === undefined ? "" : String(v).trim());
 
 /** Reads the budget back from the template's sheets: lines, products and every cell that couldn't be read (by row). */
-export function readBudgetGrids(grids: Grid[], months: string[]): { lines: BudgetLine[]; products: BudgetProduct[]; errors: string[] } {
+export function readBudgetGrids(grids: Grid[], months: string[]): { lines: BudgetLine[]; products: BudgetProduct[]; errors: string[]; hasLines: boolean; hasProducts: boolean } {
   const lines: BudgetLine[] = [], products: BudgetProduct[] = [], errors: string[] = [];
   const inYear = new Set(months);
   const lg = grids.find((g) => txt(g.rows[0]?.[0]) === BUDGET_MARK.lines);
   const pg = grids.find((g) => txt(g.rows[0]?.[0]) === BUDGET_MARK.products);
-  if (!lg && !pg) return { lines, products, errors: ["This file isn't the budget template. Download the template from this page, fill it in, and upload it again."] };
+  if (!lg && !pg) return { lines, products, hasLines: false, hasProducts: false, errors: ["This file isn't the budget template. Download the template from this page, fill it in, and upload it again."] };
   if (lg) {
     const head = (lg.rows[1] ?? []).map(txt);
     const cols = head.map((h, i) => ({ h, i })).filter((x) => x.i >= 3 && x.h);
@@ -63,6 +65,11 @@ export function readBudgetGrids(grids: Grid[], months: string[]): { lines: Budge
       const cls = txt(row[2]);
       if (!key && !label) return;
       if (!key) key = `@${label.toLowerCase()}`;
+      // A bare account code is that account; any other prefix (a class or product line) can't come from a file.
+      else if (!key.startsWith("#") && !key.startsWith("@") && key !== `cls:${cls}`) {
+        if (/^[\w.\-/]+$/.test(key) && !key.includes(":")) key = `#${key}`;
+        else { errors.push(`Row ${rowNo}: key "${key}" is not an account (#code, @name, cls:<its class> or a plain account code).`); return; }
+      }
       if (!PL.has(cls)) { errors.push(`Row ${rowNo}: class "${cls}" is not a P&L class.`); return; }
       for (const c of cols) {
         if (!inYear.has(c.h)) continue;
@@ -71,7 +78,11 @@ export function readBudgetGrids(grids: Grid[], months: string[]): { lines: Budge
         const n = cleanNum(v as never);
         if (n === null) { errors.push(`Row ${rowNo}, ${c.h}: "${txt(v)}" is not a number.`); continue; }
         if (n === 0) continue;
-        lines.push({ key: key.slice(0, 220), cls: cls as ClassKey, label: label || null, month: c.h, amount: Math.round(n * 100) / 100 });
+        // The same account and month twice adds up, as the download does.
+        const k = key.slice(0, 220);
+        const prev = lines.find((l) => l.key === k && l.month === c.h);
+        if (prev) prev.amount = Math.round((prev.amount + n) * 100) / 100;
+        else lines.push({ key: k, cls: cls as ClassKey, label: label || null, month: c.h, amount: Math.round(n * 100) / 100 });
       }
     });
   }
@@ -80,7 +91,7 @@ export function readBudgetGrids(grids: Grid[], months: string[]): { lines: Budge
       const rowNo = ri + 3;
       const product = txt(row[0]);
       if (!product) return;
-      const month = txt(row[2]);
+      const month = monthOf(row[2]);
       if (!inYear.has(month)) { errors.push(`Products row ${rowNo}: month "${month}" is not a month of this budget's year.`); return; }
       const units = cleanNum(row[3] as never), price = cleanNum(row[4] as never);
       const uc = txt(row[5]) === "" ? null : cleanNum(row[5] as never);
@@ -88,5 +99,5 @@ export function readBudgetGrids(grids: Grid[], months: string[]): { lines: Budge
       products.push({ product, category: txt(row[1]) || null, month, units, price, unit_cost: uc });
     });
   }
-  return { lines, products, errors };
+  return { lines, products, errors, hasLines: !!lg, hasProducts: !!pg };
 }

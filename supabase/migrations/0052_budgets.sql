@@ -95,6 +95,7 @@ begin
   if p_from is not null then
     select company_id into v_from_co from public.budget_versions where id = p_from;
     if v_from_co is distinct from p_company then raise exception 'not allowed' using errcode = '42501'; end if;
+    if (select fy from public.budget_versions where id = p_from) <> p_fy then raise exception 'A version can only be copied into the same financial year.'; end if;
   end if;
   perform pg_advisory_xact_lock(hashtext('budget:' || p_company::text || ':' || p_fy));
   if p_kind = 'original' and exists (select 1 from public.budget_versions where company_id = p_company and fy = p_fy and kind = 'original') then
@@ -129,8 +130,10 @@ begin
   select count(*) into v_bad from jsonb_to_recordset(p_lines) as r(key text, cls text, label text, month text, amount numeric)
   where r.key is null or length(r.key) not between 1 and 220 or r.cls is null or length(r.cls) not between 1 and 40
      or length(coalesce(r.label, '')) > 200 or r.month is null or r.month !~ '^\d{4}-(0[1-9]|1[0-2])$'
-     or r.amount is null or abs(r.amount) >= 1e15;
-  if v_bad > 0 then raise exception '% budget line(s) are not valid: each needs an account, a class, a month (YYYY-MM) and an amount.', v_bad; end if;
+     or r.amount is null or abs(r.amount) >= 1e15
+     or r.cls not in ('revenue', 'cos_variable', 'cos_fixed', 'cos_depreciation', 'exp_variable', 'exp_fixed', 'exp_depreciation',
+                      'other_income', 'other_expenses', 'interest_income', 'interest_expenses', 'tax_expenses', 'adjustments', 'dividends');
+  if v_bad > 0 then raise exception '% budget line(s) are not valid: each needs an account, a P&L class, a month (YYYY-MM) and an amount.', v_bad; end if;
   if p_replace then delete from public.budget_lines where version_id = p_version; end if;
   insert into public.budget_lines (version_id, company_id, key, cls, label, month, amount)
   select distinct on (r.key, r.month) p_version, v_co, r.key, r.cls, nullif(r.label, ''), r.month, r.amount
@@ -167,6 +170,18 @@ begin
   return v_n;
 end $$;
 
+-- One save of a draft, all or nothing: lines (added or changed, or replacing all with p_replace_lines) and products
+-- (when given, they replace the version's products). Null leaves that part as it is. An approval waits for it (row lock).
+create or replace function public.budget_save(p_version uuid, p_lines jsonb default null, p_products jsonb default null, p_replace_lines boolean default false)
+returns jsonb language plpgsql security definer set search_path = '' as $$
+declare v_l integer; v_p integer;
+begin
+  perform private.budget_draft(p_version);
+  if p_lines is not null then v_l := public.budget_save_lines(p_version, p_lines, p_replace_lines); end if;
+  if p_products is not null then v_p := public.budget_save_products(p_version, p_products, true); end if;
+  return jsonb_build_object('lines', v_l, 'products', v_p);
+end $$;
+
 -- An owner or admin approves a draft; from then on it is locked.
 create or replace function public.budget_approve(p_version uuid) returns void
 language plpgsql security definer set search_path = '' as $$
@@ -191,9 +206,9 @@ end $$;
 
 revoke execute on function private.budget_draft(uuid) from public, anon, authenticated;
 revoke execute on function public.budget_create(uuid, text, text, text, uuid), public.budget_save_lines(uuid, jsonb, boolean),
-  public.budget_save_products(uuid, jsonb, boolean), public.budget_approve(uuid), public.budget_delete(uuid) from public, anon;
+  public.budget_save_products(uuid, jsonb, boolean), public.budget_save(uuid, jsonb, jsonb, boolean), public.budget_approve(uuid), public.budget_delete(uuid) from public, anon;
 grant execute on function public.budget_create(uuid, text, text, text, uuid), public.budget_save_lines(uuid, jsonb, boolean),
-  public.budget_save_products(uuid, jsonb, boolean), public.budget_approve(uuid), public.budget_delete(uuid) to authenticated;
+  public.budget_save_products(uuid, jsonb, boolean), public.budget_save(uuid, jsonb, jsonb, boolean), public.budget_approve(uuid), public.budget_delete(uuid) to authenticated;
 
 insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('budget', 'user', 3600, 600)
   on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;

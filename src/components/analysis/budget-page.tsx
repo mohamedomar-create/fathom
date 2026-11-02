@@ -4,14 +4,14 @@ import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Download, Lock, Plus, Target, Upload } from "lucide-react";
 import { forecast, fyStartOf, hasPL, money, pct, plCalc, PL_KEYS, type ClassKey, type PLInput } from "@/lib/engine";
 import {
-  budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedProducts, varianceRows,
+  budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedWithProducts, varianceRows,
   type BudgetLine, type BudgetProduct,
 } from "@/lib/engine/budget";
 import { accountMarkKey } from "@/lib/engine/statement-rows";
 import type { SalesProductRow } from "@/lib/engine/sales";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
-import { approveBudget, createBudget, deleteBudget, saveBudgetLines, saveBudgetProducts } from "@/app/company/[id]/analysis/budget-actions";
+import { approveBudget, createBudget, deleteBudget, saveBudget } from "@/app/company/[id]/analysis/budget-actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -19,7 +19,6 @@ import { EmptyState } from "./common";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
 
-const PART = 5000;
 const PLS = new Set<string>(PL_KEYS);
 const INCOME = new Set<string>(["revenue", "other_income", "interest_income"]);
 
@@ -36,17 +35,8 @@ function VarCell({ income, cur, cmp, text }: { income: boolean; cur: number; cmp
   );
 }
 const cellKey = (k: string, m: string) => `${k}\u0001${m}`;
-
-/** Sends lines (or products) in parts of 5,000; the first part replaces when asked. */
-async function inParts<T>(rows: T[], replace: boolean, send: (part: T[], replace: boolean) => Promise<{ ok: true } | { ok: false; error: string }>, progress: (n: number) => void) {
-  if (!rows.length && replace) { const r = await send([], true); return r.ok ? null : r.error; }
-  for (let i = 0; i < rows.length; i += PART) {
-    const r = await send(rows.slice(i, i + PART), replace && i === 0);
-    if (!r.ok) return r.error;
-    progress(Math.min(rows.length, i + PART));
-  }
-  return null;
-}
+/** The day the books stop on, when that is inside month `m` (a part month); else undefined. */
+const partDayOf = (asOf: string | null | undefined, m: string) => (asOf && asOf.startsWith(m) ? Number(asOf.slice(8)) : undefined);
 
 export interface BudgetPageProps {
   versions: BudgetVersionInfo[];
@@ -101,21 +91,21 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
   const lastActual = c.months.filter(hasPL).map((m) => m.period).filter((p) => months.includes(p)).pop() ?? null;
   const [end, setEnd] = useState<string | null>(null);
   const upTo = end && months.includes(end) ? end : lastActual;
-  const rows = useMemo(() => (upTo ? varianceRows(c.accounts, budget, months, upTo) : [])
-    .sort((a, b) => PL_KEYS.indexOf(a.cls as never) - PL_KEYS.indexOf(b.cls as never) || a.label.localeCompare(b.label)), [c.accounts, budget, months, upTo]);
+  const rows = useMemo(() => (upTo ? varianceRows(c.accounts, budget, months, upTo, partDayOf(c.asOf, upTo)) : [])
+    .sort((a, b) => PL_KEYS.indexOf(a.cls as never) - PL_KEYS.indexOf(b.cls as never) || a.label.localeCompare(b.label)), [c.accounts, budget, months, upTo, c.asOf]);
   const pv = useMemo(() => (upTo ? productVariance(products, salesProducts, months.filter((m) => m <= upTo)) : []), [products, salesProducts, months, upTo]);
   const fmt = (v: number) => money(v, cur, true);
 
   // Net profit year to date: actual against budget, through the same statements.
   const head = useMemo(() => {
     if (!upTo) return null;
-    const b = budgetComparison(budget, { type: "year", end: upTo }, fyStart, version?.name ?? "").P;
+    const b = budgetComparison(budget, { type: "year", end: upTo }, fyStart, version?.name ?? "", partDayOf(c.asOf, upTo)).P;
     const ytd = months.filter((m) => m <= upTo);
     const pl: PLInput = {};
     for (const a of c.accounts) if (PLS.has(a.cls)) for (const m of ytd) pl[a.cls as keyof PLInput] = (pl[a.cls as keyof PLInput] ?? 0) + (a.amounts[m] ?? 0);
     const a = plCalc(pl);
     return { a: a.net_income, b: b.net_income };
-  }, [budget, upTo, fyStart, version, months, c.accounts]);
+  }, [budget, upTo, fyStart, version, months, c.accounts, c.asOf]);
 
   const go = (id: string) => router.push(`?v=${id}`);
   const say = (ok: boolean, text: string) => setMsg({ ok, text });
@@ -131,9 +121,9 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
         return { key, month, amount: v, cls: (l?.cls ?? x?.cls ?? old?.cls)!, label: l?.label ?? x?.label ?? old?.label ?? null };
       });
       // A cleared cell is saved as 0 (a budget of nothing that month).
-      let err = await inParts(changed, false, (p, r) => saveBudgetLines(c.id, version.id, p, r), (n) => say(true, t.saving(n, changed.length)));
-      if (!err && prodEdits) err = await inParts(prodEdits, true, (p, r) => saveBudgetProducts(c.id, version.id, p, r), () => {});
-      if (err) return say(false, err);
+      // One call: the lines and the products are saved together or not at all.
+      const r = await saveBudget(c.id, version.id, { lines: changed, products: prodEdits, replaceLines: false });
+      if (!r.ok) return say(false, r.error);
       say(true, t.saved);
       router.refresh();
     });
@@ -145,9 +135,9 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
     const r = readBudgetGrids(await readWorkbook(await f.arrayBuffer(), f.name), months);
     if (r.errors.length) return say(false, r.errors.slice(0, 5).join(" "));
     start(async () => {
-      let err = await inParts(r.lines, true, (p, rep) => saveBudgetLines(c.id, version.id, p, rep), (n) => say(true, t.saving(n, r.lines.length)));
-      if (!err) err = await inParts(r.products, true, (p, rep) => saveBudgetProducts(c.id, version.id, p, rep), () => {});
-      if (err) return say(false, err);
+      // Only the parts the file holds are replaced: a file without the Products sheet leaves the products as they are.
+      const res = await saveBudget(c.id, version.id, { lines: r.hasLines ? r.lines : null, products: r.hasProducts ? r.products : null, replaceLines: true });
+      if (!res.ok) return say(false, res.error);
       say(true, t.read(r.lines.length, r.products.length));
       router.refresh();
     });
@@ -230,7 +220,7 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
                     <tbody>
                       {rows.map((r) => (
                         <tr key={r.key} data-testid="budget-vs-row" data-key={r.key} data-tone={r.tone}>
-                          <td>{r.key.startsWith("cls:") ? clsName[r.cls] : r.key === "prod:revenue" || r.key === "prod:cogs" ? `${clsName[r.cls]} · ${t.fromProducts}` : r.label}</td>
+                          <td>{r.key.startsWith("class:") ? clsName[r.cls] : r.label}</td>
                           <td>{fmt(r.month.actual)}</td><td>{fmt(r.month.budget)}</td>
                           <VarCell income={INCOME.has(r.cls)} cur={r.month.actual} cmp={r.month.budget} text={fmt(r.month.diff)} />
                           <td>{fmt(r.ytd.actual)}</td><td>{fmt(r.ytd.budget)}</td>
@@ -316,7 +306,7 @@ function NewBudget({ versions, salesProducts, onCreated, say }: { versions: Budg
     if (from === "ly") {
       seed = seedFromLastYear(c.accounts, ms12, p);
       if (!seed.length) { setBusy(false); return setErr(t.lyNone); }
-      if (withProducts) ({ rows: prods, skipped } = seedProducts(salesProducts, ms12, p));
+      if (withProducts && salesProducts.length) ({ lines: seed, products: prods, skipped } = seedWithProducts(c.accounts, salesProducts, ms12, p));
     } else if (from === "forecast") {
       const f = forecast(c.months, c.settings, { horizon: 24 } as never, c.assumptions ?? {}, c.asOf, lang);
       seed = f.ok ? seedFromForecast(f.months, ms12) : [];
@@ -325,8 +315,8 @@ function NewBudget({ versions, salesProducts, onCreated, say }: { versions: Budg
     const copy = from === "copy" ? copyId || sameYear[0]?.id || null : null;
     const r = await createBudget(c.id, { fy, kind: hasOriginal ? "revision" : "original", name, from: copy });
     if (!r.ok) { setBusy(false); return setErr(r.error); }
-    let e = await inParts(seed, false, (part, rep) => saveBudgetLines(c.id, r.data, part, rep), () => {});
-    if (!e && prods.length) e = await inParts(prods, false, (part, rep) => saveBudgetProducts(c.id, r.data, part, rep), () => {});
+    const saved = seed.length || prods.length ? await saveBudget(c.id, r.data, { lines: seed, products: prods.length ? prods : null, replaceLines: false }) : null;
+    const e = saved && !saved.ok ? saved.error : null;
     setBusy(false);
     if (e) return setErr(e);
     setOpen(false);
@@ -466,7 +456,10 @@ function ProductsGrid({ rows, months, edit, onChange, fmt, ml }: { rows: BudgetP
                 {(["units", "price", "unit_cost"] as const).map((f) => (
                   <td key={f} className="p-0.5">{edit
                     ? <input inputMode="decimal" aria-label={`${r.product} ${r.month} ${f}`} className="w-20 rounded border border-transparent px-1 py-1 text-end hover:border-line" defaultValue={r[f] ?? ""}
-                        data-testid={`budget-product-${f}`} onBlur={(e) => set(i, { [f]: f === "unit_cost" && e.target.value.trim() === "" ? null : num(e.target.value) })} />
+                        data-testid={`budget-product-${f}`} onBlur={(e) => {
+                          const v = f === "unit_cost" && e.target.value.trim() === "" ? null : num(e.target.value);
+                          if (v !== r[f]) set(i, { [f]: v });
+                        }} />
                     : r[f] === null ? "–" : r[f]!.toLocaleString("en-US")}</td>
                 ))}
                 <td>{fmt(r.units * r.price)}</td><td>{r.unit_cost === null ? "–" : fmt(r.units * r.unit_cost)}</td>

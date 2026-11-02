@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedProducts, varianceRows,
+  budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedProducts, seedWithProducts, varianceRows,
   type BudgetLine, type BudgetProduct,
 } from "@/lib/engine/budget";
 import type { AccountLine } from "@/lib/company/types";
@@ -27,21 +27,21 @@ describe("products add up to revenue", () => {
     { product: "Mask", category: "Care", month: "2026-01", units: 10, price: 50, unit_cost: 20 },
     { product: "Bed", category: "Care", month: "2026-01", units: 2, price: 900, unit_cost: 400 },
   ];
-  it("in a month with products, revenue is units × price and cost of sales is units × unit cost", () => {
+  const sum = (accounts: { cls: string; amounts: Record<string, number> }[], cls: string, m: string) => accounts.filter((a) => a.cls === cls).reduce((s, a) => s + (a.amounts[m] ?? 0), 0);
+  it("products add their units × price to revenue and units × unit cost to cost of sales; account lines stay (review I1)", () => {
     const { accounts } = budgetAccounts(lines, products);
-    const sum = (cls: string, m: string) => accounts.filter((a) => a.cls === cls).reduce((s, a) => s + (a.amounts[m] ?? 0), 0);
-    expect(sum("revenue", "2026-01")).toBe(10 * 50 + 2 * 900);
-    expect(sum("cos_variable", "2026-01")).toBe(10 * 20 + 2 * 400);
-    expect(sum("exp_fixed", "2026-01")).toBe(300);
+    expect(sum(accounts, "revenue", "2026-01")).toBe(999 + 10 * 50 + 2 * 900);
+    expect(sum(accounts, "cos_variable", "2026-01")).toBe(111 + 10 * 20 + 2 * 400);
+    expect(sum(accounts, "exp_fixed", "2026-01")).toBe(300);
   });
   it("a month with no products keeps its account lines", () => {
     const { accounts } = budgetAccounts(lines, products);
-    expect(accounts.filter((a) => a.cls === "revenue").reduce((s, a) => s + (a.amounts["2026-02"] ?? 0), 0)).toBe(2000);
+    expect(sum(accounts, "revenue", "2026-02")).toBe(2000);
   });
-  it("when a product has no unit cost, cost of sales stays as entered and a note says why", () => {
+  it("a product with no unit cost adds no cost of sales, and a note names it", () => {
     const { accounts, notes } = budgetAccounts(lines, [{ ...products[0], unit_cost: null }, products[1]]);
-    expect(accounts.filter((a) => a.cls === "cos_variable").reduce((s, a) => s + (a.amounts["2026-01"] ?? 0), 0)).toBe(111);
-    expect(notes.join(" ")).toMatch(/unit cost/i);
+    expect(sum(accounts, "cos_variable", "2026-01")).toBe(111 + 800);
+    expect(notes.join(" ")).toMatch(/Mask/);
   });
 });
 
@@ -63,6 +63,23 @@ describe("seeding", () => {
     const s = seedFromLastYear(ly, fyMonths("2026", 1), { all: 10, exp_fixed: 0 });
     expect(s.find((l) => l.key === "#610000" && l.month === "2026-01")?.amount).toBe(300);
     expect(s.find((l) => l.key === "#410000" && l.month === "2026-01")?.amount).toBe(1100);
+  });
+  it("last year with products: products for what was sold by unit, one line for the rest, totals = last year + % (review I1)", () => {
+    const acc = [
+      acct("410000", "Sales", "revenue", { "2025-01": 1000 }),
+      acct("420000", "Services", "revenue", { "2025-01": 200 }),
+      acct("510000", "Cost of sales", "cos_variable", { "2025-01": 600 }),
+      acct("610000", "Rent", "exp_fixed", { "2025-01": 300 }),
+    ];
+    const sales: SalesProductRow[] = [{ p: "2025-01", r: "Mask", g: "", s: "", a: 500, k: 200, ka: 500, q: 10, n: 1 }];
+    const r = seedWithProducts(acc, sales, fyMonths("2026", 1), 10);
+    const { accounts } = budgetAccounts(r.lines, r.products);
+    const sum2 = (cls: string) => accounts.filter((a) => a.cls === cls).reduce((s, a) => s + (a.amounts["2026-01"] ?? 0), 0);
+    expect(sum2("revenue")).toBe(1320);
+    expect(sum2("cos_variable")).toBe(660);
+    expect(sum2("exp_fixed")).toBe(330);
+    expect(r.lines.find((l) => l.key === "cls:revenue" && l.month === "2026-01")?.amount).toBe(770);
+    expect(r.lines.some((l) => l.key === "#410000" && l.month === "2026-01")).toBe(false);
   });
   it("the forecast seeds one line per class and month inside the year", () => {
     const s = seedFromForecast([{ period: "2025-12", pl: { revenue: 9 } }, { period: "2026-01", pl: { revenue: 500, exp_fixed: 120 } }], fyMonths("2026", 1));
@@ -105,13 +122,31 @@ describe("budget vs actual", () => {
     expect(row("#410000").fullYear).toBe(12000);
   });
   it("a class line is compared with the class's accounts that have no line of their own", () => {
-    expect(row("cls:exp_fixed").ytd).toMatchObject({ actual: 650, budget: 600 });
+    expect(row("class:exp_fixed").ytd).toMatchObject({ actual: 650, budget: 600 });
   });
   it("an account spent with no budget shows with a budget of zero", () => {
     expect(row("#620000").ytd).toMatchObject({ actual: 40, budget: 0, diff: 40 });
   });
+  it("a class with a class line or products is compared as one row, all its accounts together (review I2)", () => {
+    const b = budgetAccounts([
+      ...months.slice(1).map((m) => ({ key: "#410000", cls: "revenue" as const, label: "Revenue", month: m, amount: 1000 })),
+    ], [{ product: "Mask", category: null, month: "2026-01", units: 20, price: 50, unit_cost: null }]).accounts;
+    const act = [acct("410000", "Revenue", "revenue", { "2026-01": 1000 }), acct("420000", "Services", "revenue", { "2026-01": 200 })];
+    const rs = varianceRows(act, b, months, "2026-01");
+    const rev = rs.filter((r) => r.cls === "revenue");
+    expect(rev).toHaveLength(1);
+    expect(rev[0].month).toMatchObject({ actual: 1200, budget: 1000 });
+    expect(rev[0].fullYear).toBe(1000 + 11 * 1000);
+  });
+  it("a part month compares with the same share of its budget; the outlook keeps the rest of that month (review I5)", () => {
+    const rs = varianceRows(actual, budget, months, "2026-02", 14);
+    const r = rs.find((x) => x.key === "#410000")!;
+    expect(r.month.budget).toBe(500);
+    expect(r.ytd.budget).toBe(1500);
+    expect(r.outlook).toBe(2100 + 500 + 10 * 1000);
+  });
   it("cost overruns are worse, revenue above budget is better", () => {
-    expect(row("cls:exp_fixed").tone).toBe("worse");
+    expect(row("class:exp_fixed").tone).toBe("worse");
     expect(row("#410000").tone).toBe("better");
   });
   it("the comparison goes through the same statements as the actual figures", () => {
@@ -162,5 +197,26 @@ describe("budget as KPI targets", () => {
     expect(a.targets.total_revenue).toBe(2000);
     expect(a.targets.gpm).toBe(50);
     expect(a.targets.npat).toBe(15);
+  });
+});
+
+describe("budget targets after the KPI settings were saved once (review I3, I4)", () => {
+  it("a saved target equal to the default counts as not typed; a changed one wins", async () => {
+    const { analyze } = await import("@/lib/engine");
+    const months = [{ period: "2026-01", pl: { revenue: 900 }, bs: {}, has: { pl: true, bs: false } }];
+    // What the KPI form stores on any save: every KPI with its default (null for revenue), one changed by hand.
+    const settings = { currency: "EGP", fyStartMonth: 1, taxRate: 0.225, targets: { total_revenue: null, gpm: 35, profit_ratio: 10, npat: 12 } };
+    const a = analyze(months as never, { type: "month", end: "2026-01" }, settings, { budgetTargets: { total_revenue: 1000, gpm: 40, profit_ratio: 20, npat: 15 } });
+    expect(a.targets.total_revenue).toBe(1000);
+    expect(a.targets.gpm).toBe(40);
+    expect(a.targets.npat).toBe(12);
+  });
+  it("the budget for a window is the version whose financial year covers it; none covers it: no budget", async () => {
+    const { budgetFor } = await import("@/lib/engine/budget");
+    const list = [{ fy: "2026", name: "B26", lines: [], products: [] }, { fy: "2027", name: "B27", lines: [], products: [] }];
+    expect(budgetFor(list, "2026-11", 1)?.name).toBe("B26");
+    expect(budgetFor(list, "2027-02", 1)?.name).toBe("B27");
+    expect(budgetFor(list, "2025-06", 1)).toBeNull();
+    expect(budgetFor(list, "2026-03", 7)).toBeNull(); // FY from July: March 2026 is in the year that started in 2025
   });
 });

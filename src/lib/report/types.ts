@@ -65,8 +65,8 @@ export interface ReportInput {
   periodGone?: boolean;
   /** Expense lines by supplier and account per month, for the Expenses page (suppliers are left out when there are none). */
   expenses?: ExpensesData;
-  /** The approved budget: the P&L page gets a Budget column (left out when there is none). */
-  budget?: { name: string; lines: BudgetLine[]; products: BudgetProduct[] } | null;
+  /** The approved budget of each financial year: the P&L page gets a Budget column when one covers the report's period. */
+  budgets?: { fy: string; name: string; lines: BudgetLine[]; products: BudgetProduct[] }[];
 }
 
 export interface AcceptedIssue { title: string; period?: string; reason: string }

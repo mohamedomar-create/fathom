@@ -17,8 +17,8 @@ const Product = z.object({
   units: z.number().finite().refine((v) => Math.abs(v) < 1e12), price: z.number().finite().refine((v) => Math.abs(v) < 1e12),
   unit_cost: z.number().finite().refine((v) => Math.abs(v) < 1e12).nullable(),
 });
-/** One save at most; the page sends bigger budgets in parts. */
-const MAX = 5000;
+/** At most this many lines and product rows in one save (the database's own limit). */
+const MAX = 20000;
 
 async function begin() {
   const { supabase, user } = await getUser();
@@ -29,7 +29,8 @@ async function begin() {
   return { supabase } as const;
 }
 
-const done = (companyId: string) => revalidatePath(`/company/${companyId}/analysis/budget`);
+// The budget shows on Financials, KPIs and reports too.
+const done = (companyId: string) => revalidatePath(`/company/${companyId}`, "layout");
 
 export async function createBudget(companyId: string, input: { fy: string; kind: "original" | "revision"; name: string; from: string | null }): Promise<Result<string>> {
   const p = z.object({ fy: z.string().regex(/^\d{4}$/), kind: z.enum(["original", "revision"]), name: z.string().max(80), from: Id.nullable() }).safeParse(input);
@@ -42,26 +43,22 @@ export async function createBudget(companyId: string, input: { fy: string; kind:
   return { ok: true, data: data as string };
 }
 
-export async function saveBudgetLines(companyId: string, versionId: string, lines: unknown, replace: boolean): Promise<Result<number>> {
-  const p = z.array(Line).max(MAX).safeParse(lines);
-  if (!Id.safeParse(companyId).success || !Id.safeParse(versionId).success || !p.success) return { ok: false, error: "A budget line isn't valid." };
+/**
+ * One save, all or nothing: lines (added or changed; with replaceLines they replace all of the draft's lines) and
+ * products (when given, they replace the draft's products). A part left null is left as it is.
+ */
+export async function saveBudget(companyId: string, versionId: string, input: { lines: unknown; products: unknown; replaceLines: boolean }): Promise<Result<undefined>> {
+  const l = z.array(Line).max(MAX).nullable().safeParse(input.lines);
+  const p = z.array(Product).max(MAX).nullable().safeParse(input.products);
+  if (!Id.safeParse(companyId).success || !Id.safeParse(versionId).success) return { ok: false, error: "That value isn't valid." };
+  if (!l.success) return { ok: false, error: "A budget line isn't valid." };
+  if (!p.success) return { ok: false, error: "A product row isn't valid." };
   const s = await begin();
   if ("error" in s) return { ok: false, error: s.error! };
-  const { data, error } = await s.supabase.rpc("budget_save_lines", { p_version: versionId, p_lines: p.data, p_replace: !!replace });
-  if (error) return { ok: false, error: dbError(error, "budget_save_lines") };
+  const { error } = await s.supabase.rpc("budget_save", { p_version: versionId, p_lines: l.data, p_products: p.data, p_replace_lines: !!input.replaceLines });
+  if (error) return { ok: false, error: dbError(error, "budget_save") };
   done(companyId);
-  return { ok: true, data: data as number };
-}
-
-export async function saveBudgetProducts(companyId: string, versionId: string, rows: unknown, replace: boolean): Promise<Result<number>> {
-  const p = z.array(Product).max(MAX).safeParse(rows);
-  if (!Id.safeParse(companyId).success || !Id.safeParse(versionId).success || !p.success) return { ok: false, error: "A product row isn't valid." };
-  const s = await begin();
-  if ("error" in s) return { ok: false, error: s.error! };
-  const { data, error } = await s.supabase.rpc("budget_save_products", { p_version: versionId, p_rows: p.data, p_replace: !!replace });
-  if (error) return { ok: false, error: dbError(error, "budget_save_products") };
-  done(companyId);
-  return { ok: true, data: data as number };
+  return { ok: true, data: undefined };
 }
 
 export async function approveBudget(companyId: string, versionId: string): Promise<Result> {

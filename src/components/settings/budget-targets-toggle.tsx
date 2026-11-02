@@ -24,7 +24,7 @@ export function BudgetTargetsToggle() {
         <span className="font-medium">{t.useAsTargets}</span>
       </div>
       <p className="mt-1 text-sm text-mute">{t.useAsTargetsHint}</p>
-      {on && !c.budget && <p className="mt-1 text-sm text-mute" data-testid="budget-targets-none">{t.noApproved}</p>}
+      {on && !c.budgets?.length && <p className="mt-1 text-sm text-mute" data-testid="budget-targets-none">{t.noApproved}</p>}
       {err && <p role="alert" className="mt-1 text-sm text-red-d">{err}</p>}
     </div>
   );

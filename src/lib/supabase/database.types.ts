@@ -140,6 +140,7 @@ export type Database = {
       budget_create: { Args: { p_company: string; p_fy: string; p_kind: string; p_name: string; p_from?: string | null }; Returns: string };
       budget_save_lines: { Args: { p_version: string; p_lines: Json; p_replace?: boolean }; Returns: number };
       budget_save_products: { Args: { p_version: string; p_rows: Json; p_replace?: boolean }; Returns: number };
+      budget_save: { Args: { p_version: string; p_lines?: Json | null; p_products?: Json | null; p_replace_lines?: boolean }; Returns: Json };
       budget_approve: { Args: { p_version: string }; Returns: undefined };
       budget_delete: { Args: { p_version: string }; Returns: undefined };
       update_company_settings: { Args: { p_company: string; p_patch: Json; p_replace_kpis?: boolean }; Returns: Json };

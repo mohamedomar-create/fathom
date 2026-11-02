@@ -2,14 +2,15 @@ import { addMonths, bsCalc, PL_KEYS, plCalc, type ClassKey, type PLCalc, type PL
 import { buildMonths } from "@/lib/company/build";
 import type { AccountLine } from "@/lib/company/types";
 import { accountMarkKey } from "./statement-rows";
-import { compareWeight, windowFor, type PeriodSel } from "./period";
+import { compareWeight, fyStartOf, windowFor, type PeriodSel } from "./period";
 import type { SalesProductRow } from "./sales";
 
 /**
  * Budgets. A budget is kept by account (or whole class) and month, in the sign the statements show (income and costs
- * both positive), plus optional product rows (units × price, and the budget unit cost). Products add up to revenue: in a
- * month that has product rows, revenue is Σ units × price and replaces the revenue lines entered by account; cost of
- * sales (variable) is Σ units × unit cost when every product row of that month has a unit cost. Everything here is pure.
+ * both positive), plus optional product rows (units × price, and the budget unit cost). Product rows ADD to the budget:
+ * Σ units × price to revenue and Σ units × unit cost to cost of sales (variable); account lines are never dropped. A
+ * budget seeded from last year with products budgets what was sold by unit as products and the rest of revenue and cost
+ * of sales as one line per class, so nothing is counted twice. Everything here is pure.
  */
 
 export interface BudgetLine { key: string; cls: ClassKey; label: string | null; month: string; amount: number }
@@ -25,32 +26,22 @@ export function fyMonths(fy: string, fyStart: number): string[] {
   return Array.from({ length: 12 }, (_, i) => addMonths(first, i));
 }
 
-/** Budget lines and products as accounts the statements can read (one account per budget key). */
+/** Budget lines and products as accounts the statements can read (one account per budget key, plus the product totals). */
 export function budgetAccounts(lines: BudgetLine[], products: BudgetProduct[]): { accounts: AccountLine[]; notes: string[] } {
-  const notes: string[] = [];
-  const byMonth = new Map<string, BudgetProduct[]>();
-  for (const p of products) byMonth.set(p.month, [...(byMonth.get(p.month) ?? []), p]);
-  const revByProducts = new Set(byMonth.keys());
-  const cogsByProducts = new Set<string>();
-  for (const [m, ps] of byMonth) {
-    if (ps.every((p) => p.unit_cost !== null)) cogsByProducts.add(m);
-    else notes.push(`${m}: some products have no unit cost, so cost of sales is the amount entered by account.`);
-  }
   const acc = new Map<string, AccountLine>();
   const put = (key: string, cls: ClassKey, label: string, month: string, amount: number) => {
     const a = acc.get(key) ?? { id: key, code: key.startsWith("#") ? key.slice(1) : "", name: label, cls, amounts: {} };
     a.amounts[month] = r2((a.amounts[month] ?? 0) + amount);
     acc.set(key, a);
   };
-  for (const l of lines) {
-    if (l.cls === "revenue" && revByProducts.has(l.month)) continue;
-    if (l.cls === "cos_variable" && cogsByProducts.has(l.month)) continue;
-    put(l.key, l.cls, l.label ?? l.key, l.month, l.amount);
+  for (const l of lines) put(l.key, l.cls, l.label ?? l.key, l.month, l.amount);
+  const noCost = new Set<string>();
+  for (const p of products) {
+    put("prod:revenue", "revenue", "Sales (products)", p.month, p.units * p.price);
+    if (p.unit_cost === null) noCost.add(p.product);
+    else put("prod:cogs", "cos_variable", "Cost of sales (products)", p.month, p.units * p.unit_cost);
   }
-  for (const [m, ps] of byMonth) {
-    put("prod:revenue", "revenue", "Sales (products)", m, ps.reduce((s, p) => s + p.units * p.price, 0));
-    if (cogsByProducts.has(m)) put("prod:cogs", "cos_variable", "Cost of sales (products)", m, ps.reduce((s, p) => s + p.units * (p.unit_cost ?? 0), 0));
-  }
+  const notes = noCost.size ? [`No unit cost, so no cost of sales budgeted for: ${[...noCost].slice(0, 10).join(", ")}${noCost.size > 10 ? "…" : ""}`] : [];
   return { accounts: [...acc.values()], notes };
 }
 
@@ -88,46 +79,46 @@ const cell = (actual: number, budget: number): VarianceCell =>
 
 /**
  * Budget against actual, by budget line, for the month `end` and the year to it. An account budget ('#code' or '@name')
- * is compared with that account; a class line ('cls:…' or a product total) with the class's accounts that have no
- * budget line of their own. P&L accounts spent with no budget are listed with a budget of zero.
+ * is compared with that account. A class that has a class line ('cls:…') or product totals is compared as ONE row: all
+ * its budget against all its accounts, so no account is counted on two rows. P&L accounts spent with no budget are
+ * listed with a budget of zero. partDay: the books stop on that day of `end`, whose budget then counts the same share
+ * of its days (the rest of that month joins the outlook).
  */
-export function varianceRows(actual: AccountLine[], budget: AccountLine[], months: string[], end: string): VarianceRow[] {
+export function varianceRows(actual: AccountLine[], budget: AccountLine[], months: string[], end: string, partDay?: number): VarianceRow[] {
+  const share = compareWeight(partDay, end);
   const toDate = months.filter((m) => m <= end);
   const rest = months.filter((m) => m > end);
-  const sum = (a: AccountLine | undefined, ms: string[]) => ms.reduce((s, m) => s + (a?.amounts[m] ?? 0), 0);
+  const bsum = (a: AccountLine | undefined, ms: string[]) => ms.reduce((s, m) => s + (a?.amounts[m] ?? 0) * (m === end ? share : 1), 0);
+  const asum = (a: AccountLine | undefined, ms: string[]) => ms.reduce((s, m) => s + (a?.amounts[m] ?? 0), 0);
+  const isKey = (id: string) => id.startsWith("#") || id.startsWith("@");
   const actualPL = actual.filter((a) => PL_SET.has(a.cls));
-  const byKey = new Map(actualPL.map((a) => [accountMarkKey(a), a]));
-  const keyed = new Set(budget.filter((b) => b.id.startsWith("#") || b.id.startsWith("@")).map((b) => b.id));
+  const classWide = new Set(budget.filter((b) => !isKey(b.id)).map((b) => b.cls));
   const rows: VarianceRow[] = [];
-  const add = (key: string, label: string, cls: ClassKey, act: (ms: string[]) => number, bud: AccountLine | undefined) => {
-    const ytd = cell(act(toDate), sum(bud, toDate));
-    const diff = ytd.diff;
-    const good = INCOME.has(cls) ? diff > 0 : diff < 0;
+  const add = (key: string, label: string, cls: ClassKey, acts: AccountLine[], buds: AccountLine[]) => {
+    const act = (ms: string[]) => acts.reduce((s, a) => s + asum(a, ms), 0);
+    const bud = (ms: string[]) => buds.reduce((s, b) => s + bsum(b, ms), 0);
+    const ytd = cell(act(toDate), bud(toDate));
+    const good = INCOME.has(cls) ? ytd.diff > 0 : ytd.diff < 0;
+    const endLeft = buds.reduce((s, b) => s + (b.amounts[end] ?? 0), 0) * (1 - share);
     rows.push({
       key, label, cls,
-      month: cell(act([end]), sum(bud, [end])), ytd,
-      outlook: r2(act(toDate) + sum(bud, rest)), fullYear: r2(sum(bud, months)),
-      tone: Math.abs(diff) < 0.5 ? "neutral" : good ? "better" : "worse",
+      month: cell(act([end]), bud([end])), ytd,
+      outlook: r2(act(toDate) + endLeft + buds.reduce((s, b) => s + asum(b, rest), 0)),
+      fullYear: r2(buds.reduce((s, b) => s + asum(b, months), 0)),
+      tone: Math.abs(ytd.diff) < 0.5 ? "neutral" : good ? "better" : "worse",
     });
   };
+  for (const cls of classWide) add(`class:${cls}`, cls, cls, actualPL.filter((a) => a.cls === cls), budget.filter((b) => b.cls === cls));
+  const keyed = new Set<string>();
   for (const b of budget) {
-    if (b.id.startsWith("#") || b.id.startsWith("@")) {
-      const a = byKey.get(b.id);
-      add(b.id, b.name, b.cls, (ms) => sum(a, ms), b);
-    } else {
-      const pool = actualPL.filter((a) => a.cls === b.cls && !keyed.has(accountMarkKey(a)));
-      const shared = budget.filter((x) => !(x.id.startsWith("#") || x.id.startsWith("@")) && x.cls === b.cls);
-      // Two class-level lines for one class (a product total and a class line) share its actual: the first takes it.
-      const act = shared[0] === b ? (ms: string[]) => pool.reduce((s, a) => s + sum(a, ms), 0) : () => 0;
-      add(b.id, b.name, b.cls, act, b);
-    }
+    if (!isKey(b.id) || classWide.has(b.cls)) continue;
+    keyed.add(b.id);
+    add(b.id, b.name, b.cls, actualPL.filter((a) => accountMarkKey(a) === b.id), [b]);
   }
-  const classCovered = new Set(budget.filter((b) => !(b.id.startsWith("#") || b.id.startsWith("@"))).map((b) => b.cls));
   for (const a of actualPL) {
     const k = accountMarkKey(a);
-    if (keyed.has(k) || classCovered.has(a.cls)) continue;
-    if (!sum(a, toDate)) continue;
-    add(k, a.code ? `${a.code} ${a.name}` : a.name, a.cls, (ms) => sum(a, ms), undefined);
+    if (keyed.has(k) || classWide.has(a.cls) || !asum(a, toDate)) continue;
+    add(k, a.code ? `${a.code} ${a.name}` : a.name, a.cls, [a], []);
   }
   return rows;
 }
@@ -189,6 +180,35 @@ export function seedProducts(rows: SalesProductRow[], months: string[], pct: num
   return { rows: out.sort((a, b) => a.product.localeCompare(b.product) || a.month.localeCompare(b.month)), skipped: [...skipped].sort() };
 }
 
+/**
+ * Seeds a budget from last year with products: what was sold by unit becomes product rows (units grown by pct, last
+ * year's price and unit cost), and in each month with products the rest of revenue (and of variable cost of sales, when
+ * every product has a unit cost) is one class line, so the month's totals are last year's grown by pct. Other P&L
+ * accounts, and months without products, are seeded by account as seedFromLastYear does.
+ */
+export function seedWithProducts(actual: AccountLine[], sales: SalesProductRow[], months: string[], pct: number): { lines: BudgetLine[]; products: BudgetProduct[]; skipped: string[] } {
+  const { rows: products, skipped } = seedProducts(sales, months, pct);
+  const byAccount = seedFromLastYear(actual, months, pct);
+  const prodMonths = new Map<string, BudgetProduct[]>();
+  for (const p of products) prodMonths.set(p.month, [...(prodMonths.get(p.month) ?? []), p]);
+  const lines: BudgetLine[] = [];
+  const total = (cls: ClassKey, m: string) => byAccount.filter((l) => l.cls === cls && l.month === m).reduce((s, l) => s + l.amount, 0);
+  for (const [m, ps] of prodMonths) {
+    const rev = r2(total("revenue", m) - ps.reduce((s, p) => s + p.units * p.price, 0));
+    if (Math.abs(rev) >= 0.01) lines.push({ key: "cls:revenue", cls: "revenue", label: "Revenue not budgeted by product", month: m, amount: rev });
+    if (ps.every((p) => p.unit_cost !== null)) {
+      const cogs = r2(total("cos_variable", m) - ps.reduce((s, p) => s + p.units * (p.unit_cost ?? 0), 0));
+      if (Math.abs(cogs) >= 0.01) lines.push({ key: "cls:cos_variable", cls: "cos_variable", label: "Cost of sales not budgeted by product", month: m, amount: cogs });
+    }
+  }
+  for (const l of byAccount) {
+    const ps = prodMonths.get(l.month);
+    if (ps && (l.cls === "revenue" || (l.cls === "cos_variable" && ps.every((p) => p.unit_cost !== null)))) continue;
+    lines.push(l);
+  }
+  return { lines, products, skipped };
+}
+
 export interface ProductVariance {
   product: string; budgetUnits: number; actualUnits: number | null; budget: number; actual: number;
   /** (actual units − budget units) × budget price; null when the actual units aren't known. */
@@ -229,4 +249,10 @@ export function budgetTargets(P: PLCalc): Record<string, number | null> {
   const R = P.revenue;
   const m = (x: number) => (R ? r2((x / R) * 100) : null);
   return { total_revenue: r2(R), gpm: m(P.gross_profit), profit_ratio: m(P.ebit), npat: m(P.eat) };
+}
+
+/** The budget whose financial year holds month `end` (each list entry is one year's chosen version), else null. */
+export function budgetFor<T extends { fy: string }>(budgets: T[] | null | undefined, end: string, fyStart: number): T | null {
+  const fy = fyStartOf(end, fyStart).slice(0, 4);
+  return budgets?.find((b) => b.fy === fy) ?? null;
 }

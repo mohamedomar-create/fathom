@@ -27,7 +27,7 @@ import { useT } from "@/lib/i18n/use-t";
 import { dirOf, htmlLang, monthNames } from "@/lib/i18n";
 import { DEMO_NOTE } from "@/lib/company/demo-note";
 import { inLang } from "@/lib/i18n/script";
-import { budgetAccounts, budgetComparison } from "@/lib/engine/budget";
+import { budgetAccounts, budgetComparison, budgetFor } from "@/lib/engine/budget";
 
 type TT = ReturnType<typeof useT>;
 
@@ -50,9 +50,10 @@ export function ReportDocument({ input }: { input: ReportInput }) {
   const wl = T.pl(a.view.window.label);
   const cur = input.settings.currency;
   // The approved budget for the report's window (a part month counts the same share of its month), when there is one.
-  const bud = useMemo(() => (input.budget
-    ? budgetComparison(budgetAccounts(input.budget.lines, input.budget.products).accounts, input.sel, input.settings.fyStartMonth, input.budget.name, a.view.partDay)
-    : null), [input.budget, input.sel, input.settings.fyStartMonth, a.view.partDay]);
+  const bud = useMemo(() => {
+    const b = budgetFor(input.budgets, input.sel.end, input.settings.fyStartMonth);
+    return b ? budgetComparison(budgetAccounts(b.lines, b.products).accounts, input.sel, input.settings.fyStartMonth, b.name, a.view.partDay) : null;
+  }, [input.budgets, input.sel, input.settings.fyStartMonth, a.view.partDay]);
   const brand = input.org.brandColour ?? "#0B6E70";
   // The Sales and Expenses pages are left out when there is nothing to show, rather than printed empty.
   const enabled = input.sections.filter((s) => s.enabled && (s.key !== "sales" || canPrintSales(input)) && (s.key !== "expenses" || hasExpenses(input))).map((s) => s.key);

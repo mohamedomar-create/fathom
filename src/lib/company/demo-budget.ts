@@ -1,5 +1,5 @@
 import { fyStartOf, hasPL, PL_KEYS, type MonthData } from "@/lib/engine";
-import { fyMonths, seedFromLastYear, seedProducts, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
+import { fyMonths, seedFromLastYear, seedWithProducts, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
 import { accountMarkKey } from "@/lib/engine/statement-rows";
 import type { SalesProductRow } from "@/lib/engine/sales";
 import type { AccountLine } from "./types";
@@ -17,7 +17,9 @@ export function demoBudget(accounts: AccountLine[], months: MonthData[], fyStart
   const ms = fyMonths(fy, fyStart);
   const ly = seedFromLastYear(accounts, ms, 10);
   const have = new Set(ly.map((l) => `${l.key}|${l.month}`));
-  const lines = [...ly];
+  // Months with last year: by product where sold by unit, by account for the rest.
+  const seeded = seedWithProducts(accounts, sales, ms, 10);
+  const lines = [...seeded.lines];
   accounts.forEach((a, i) => {
     if (!PL.has(a.cls)) return;
     for (const m of ms) {
@@ -26,5 +28,5 @@ export function demoBudget(accounts: AccountLine[], months: MonthData[], fyStart
       lines.push({ key: accountMarkKey(a), cls: a.cls, label: a.code ? `${a.code} ${a.name}` : a.name, month: m, amount: Math.round(v * (i % 3 === 0 ? 0.94 : i % 3 === 1 ? 1.05 : 1.01)) });
     }
   });
-  return { fy, name: `Budget FY ${fy}`, lines, products: seedProducts(sales, ms, 10).rows };
+  return { fy, name: `Budget FY ${fy}`, lines, products: seeded.products };
 }
