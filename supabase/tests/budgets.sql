@@ -44,7 +44,7 @@ select pg_temp.check('the budget functions are there',
    and to_regprocedure('public.budget_save_products(uuid, jsonb, boolean)') is not null
    and to_regprocedure('public.budget_approve(uuid)') is not null
    and to_regprocedure('public.budget_delete(uuid)') is not null)::text, 'true');
-select pg_temp.check('schema version 52', public.schema_version()::text, '52');
+select pg_temp.check('schema version 52 or later', (public.schema_version() >= 52)::text, 'true');
 
 -- Who may create.
 select pg_temp.login('buv@x.test');

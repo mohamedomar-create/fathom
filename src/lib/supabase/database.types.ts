@@ -11,9 +11,14 @@ type Table<Row, Required extends keyof Row> = {
 
 export type BudgetVersionRow = {
   id: string; company_id: string; fy: string; name: string; kind: "original" | "revision"; status: "draft" | "approved";
-  based_on: string | null; created_by: string | null; approved_by: string | null; approved_at: string | null; created_at: string; updated_at: string;
+  based_on: string | null; setup: Json | null; created_by: string | null; approved_by: string | null; approved_at: string | null; created_at: string; updated_at: string;
 }
 export type BudgetLineRow = { version_id: string; company_id: string; key: string; cls: string; label: string | null; month: string; amount: number }
+export type BudgetSetupRow = { company_id: string; setup: Json; updated_at: string; updated_by: string | null }
+export type BudgetRowRow = {
+  version_id: string; company_id: string; view: "revenue" | "customer" | "expense"; key: string; label: string | null; mode: "year" | "months";
+  basis: Json | null; cost: Json | null; months: number[]; updated_at: string;
+}
 export type BudgetProductRow = { version_id: string; company_id: string; product: string; category: string | null; month: string; units: number; price: number; unit_cost: number | null }
 export type OrganizationRow = { id: string; name: string; logo_url: string | null; brand_colour: string | null; disclaimer: string; report_footer: string | null; created_by: string | null; created_at: string; owner_id: string | null; deleted_at: string | null; ai_monthly_usd: number }
 export type MembershipRow = { org_id: string; user_id: string; role: MemberRole; created_at: string }
@@ -97,6 +102,8 @@ export type Database = {
       budget_versions: Table<BudgetVersionRow, "company_id" | "fy" | "name" | "kind">;
       budget_lines: Table<BudgetLineRow, "version_id" | "company_id" | "key" | "cls" | "month" | "amount">;
       budget_products: Table<BudgetProductRow, "version_id" | "company_id" | "product" | "month" | "units" | "price">;
+      budget_setups: Table<BudgetSetupRow, "company_id" | "setup">;
+      budget_rows: Table<BudgetRowRow, "version_id" | "company_id" | "view" | "key" | "mode" | "months">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
       aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
       sales_lines: Table<SalesLineRow, "company_id" | "batch_id" | "source" | "period" | "amount">;
@@ -141,6 +148,8 @@ export type Database = {
       budget_save_lines: { Args: { p_version: string; p_lines: Json; p_replace?: boolean }; Returns: number };
       budget_save_products: { Args: { p_version: string; p_rows: Json; p_replace?: boolean }; Returns: number };
       budget_save: { Args: { p_version: string; p_lines?: Json | null; p_products?: Json | null; p_replace_lines?: boolean }; Returns: Json };
+      budget_setup_save: { Args: { p_company: string; p_setup: Json }; Returns: undefined };
+      budget_rows_save: { Args: { p_version: string; p_rows: Json; p_views: string[]; p_lines?: Json | null; p_setup?: Json | null }; Returns: undefined };
       budget_approve: { Args: { p_version: string }; Returns: undefined };
       budget_delete: { Args: { p_version: string }; Returns: undefined };
       update_company_settings: { Args: { p_company: string; p_patch: Json; p_replace_kpis?: boolean }; Returns: Json };
