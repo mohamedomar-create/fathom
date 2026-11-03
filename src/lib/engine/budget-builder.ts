@@ -316,3 +316,20 @@ export function actualByItem(rows: SalesProductRow[], setup: BudgetSetup, months
   }
   return out;
 }
+
+const ARABIC_DIGITS = /[٠-٩۰-۹]/g;
+
+/**
+ * What a typed cell means: "120000", "120,000" or Arabic-Indic digits are an amount; "+10%", "-5 %", "10%" (or "٪") a
+ * change on this year's estimate. Empty or anything else is null: no change.
+ */
+export function parseBudgetInput(text: string): Basis | null {
+  const t = text
+    .replace(ARABIC_DIGITS, (ch) => String(ch.charCodeAt(0) & 0xf))
+    .replace(/٫/g, ".").replace(/[,٬\s]/g, "").replace(/٪/g, "%");
+  const m = /^([+-]?)(\d+(?:\.\d+)?|\.\d+)(%?)$/.exec(t);
+  if (!m) return null;
+  const value = Number(`${m[1]}${m[2]}`);
+  if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return null;
+  return m[3] ? { kind: "pct", value } : { kind: "amount", value };
+}
