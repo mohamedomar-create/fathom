@@ -28,7 +28,7 @@ export function BandChip({ band }: { band: Band }) {
   return <span className={cn("inline-block rounded px-1.5 py-0.5 text-[11px] font-medium", BAND[band])}>{d.bank.band[band]}</span>;
 }
 
-const H2 = ({ children, id }: { children: React.ReactNode; id?: string }) => <h2 id={id} className="mb-1 mt-12 text-xl font-light">{children}</h2>;
+const H2 = ({ children, id }: { children: React.ReactNode; id?: string }) => <h2 id={id} className="mb-1 mt-12 text-lg font-semibold">{children}</h2>;
 
 export function BankPage() {
   const c = useCompany();
@@ -141,7 +141,7 @@ export function BankPage() {
         </div>
       ) : <p className="mt-3 text-sm text-mute">{t.noQuestions}</p>}
 
-      <h2 className="mb-3 mt-12 flex items-center gap-2 text-xl font-light"><Landmark className="h-5 w-5 text-brand-d" strokeWidth={1.6} />{t.documents}</h2>
+      <h2 className="mb-3 mt-12 flex items-center gap-2 text-lg font-semibold"><Landmark className="h-5 w-5 text-brand-d" strokeWidth={1.6} />{t.documents}</h2>
       <ul className="mb-6 grid gap-3 sm:grid-cols-2" data-testid="bank-checklist">
         {(lang === "ar" ? BANK_CHECKLIST_AR : BANK_CHECKLIST).map((d) => (
           <li key={d.item} className="rounded-md border border-line p-3 text-[13px]"><div className="font-medium">{d.item}</div><div className="mt-0.5 text-mute">{d.why}</div></li>

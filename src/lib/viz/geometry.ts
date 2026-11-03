@@ -66,3 +66,40 @@ export function bulletScale(value: number, target: number | null | undefined) {
   const clamp = (x: number) => Math.max(0, Math.min(100, x));
   return { max, valuePct: clamp((Math.max(0, value) / max) * 100), targetPct: target === null || target === undefined ? null : clamp((target / max) * 100) };
 }
+
+export interface TreeTile { key: string; value: number; label?: string; x: number; y: number; w: number; h: number }
+
+/** Squarified treemap: tiles in a w x h box, areas in proportion to value (positive values only), largest first. */
+export function treemap(items: { key: string; value: number; label?: string }[], w: number, h: number): TreeTile[] {
+  const list = items.filter((i) => i.value > 0).sort((a, b) => b.value - a.value);
+  const total = list.reduce((s, i) => s + i.value, 0);
+  if (!total) return [];
+  const scale = (w * h) / total;
+  const out: TreeTile[] = [];
+  let x = 0, y = 0, bw = w, bh = h;
+  let row: typeof list = [];
+  const worst = (r: typeof list, side: number) => {
+    const s = r.reduce((t, i) => t + i.value * scale, 0);
+    const mx = Math.max(...r.map((i) => i.value * scale)), mn = Math.min(...r.map((i) => i.value * scale));
+    return Math.max((side * side * mx) / (s * s), (s * s) / (side * side * mn));
+  };
+  const lay = (r: typeof list) => {
+    const s = r.reduce((t, i) => t + i.value * scale, 0);
+    if (bw >= bh) {
+      const cw = s / bh; let yy = y;
+      for (const i of r) { const ih = (i.value * scale) / cw; out.push({ ...i, x, y: yy, w: cw, h: ih }); yy += ih; }
+      x += cw; bw -= cw;
+    } else {
+      const ch = s / bw; let xx = x;
+      for (const i of r) { const iw = (i.value * scale) / ch; out.push({ ...i, x: xx, y, w: iw, h: ch }); xx += iw; }
+      y += ch; bh -= ch;
+    }
+  };
+  for (const i of list) {
+    const side = Math.min(bw, bh);
+    if (!row.length || worst([...row, i], side) <= worst(row, side)) row.push(i);
+    else { lay(row); row = [i]; }
+  }
+  if (row.length) lay(row);
+  return out;
+}

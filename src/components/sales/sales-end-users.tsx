@@ -90,11 +90,11 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
 
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
-          <h2 className="mb-3 text-xl font-light">{t.hospitalsH}</h2>
+          <h2 className="mb-3 text-lg font-semibold">{t.hospitalsH}</h2>
           <BarList items={a.hospitals.map((h) => ({ key: h.key, label: h.name, value: h.amount, share: share(h.amount) }))} cur={cur} max={15} testId="eu-bars" />
         </div>
         <div>
-          <h2 className="mb-3 text-xl font-light">{t.howH}</h2>
+          <h2 className="mb-3 text-lg font-semibold">{t.howH}</h2>
           <div tabIndex={0} className="overflow-x-auto">
             <table className="w-full text-[13px]" data-testid="eu-months">
               <thead><tr className="label text-start"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.byOrder}</th><th className="text-end">{t.byContact}</th><th className="text-end">{t.byShipping}</th><th className="text-end">{t.byStatement}</th><th className="text-end">{t.byRegister}</th><th className="text-end">{t.unmapped}</th></tr></thead>
@@ -113,7 +113,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
         </div>
       </div>
 
-      <h2 className="mb-3 mt-10 text-xl font-light">{t.allH}</h2>
+      <h2 className="mb-3 mt-10 text-lg font-semibold">{t.allH}</h2>
       <div tabIndex={0} className="overflow-x-auto">
         <table className="w-full text-[13px]" data-testid="eu-table">
           <thead><tr className="label"><th className="py-1 text-start">{t.hospital}</th>{hasEarlier && <th className="text-end">{t.earlier}</th>}{years.map((y) => <th key={y} className="text-end">{y}</th>)}<th className="text-end">{t.total2}</th><th className="text-end">{t.share}</th><th className="text-start ps-4">{t.topCategory}</th><th className="text-start ps-4">{t.region}</th></tr></thead>
@@ -139,12 +139,12 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
       {funding.length > 0 && (
         <div className="mt-10 grid gap-10 lg:grid-cols-2">
           <div>
-            <h2 className="mb-1 text-xl font-light">{t.fundingH}</h2>
+            <h2 className="mb-1 text-lg font-semibold">{t.fundingH}</h2>
             <p className="mb-3 text-[13px] text-mute">{t.fundingNote}</p>
             <BarList items={funding.map(([k, v]) => ({ key: k, label: k, value: v, share: share(v) }))} cur={cur} max={12} testId="eu-funding" />
           </div>
           <div>
-            <h2 className="mb-1 text-xl font-light">{t.regionH}</h2>
+            <h2 className="mb-1 text-lg font-semibold">{t.regionH}</h2>
             <p className="mb-3 text-[13px] text-mute">{t.fundingNote}</p>
             <BarList items={regions.map(([k, v]) => ({ key: k, label: k, value: v, share: share(v) }))} cur={cur} max={12} testId="eu-regions" />
           </div>
@@ -152,7 +152,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
       )}
       {match.unmatchedLines.length > 0 && data.statement.length > 0 && (
         <>
-          <h2 className="mb-1 mt-10 text-xl font-light">{t.notInvoicedH}</h2>
+          <h2 className="mb-1 mt-10 text-lg font-semibold">{t.notInvoicedH}</h2>
           <p className="mb-3 text-[13px] text-mute" data-testid="eu-not-invoiced">{t.notInvoicedText(money(match.unmatchedLines.reduce((x, l) => x + l.value, 0), cur, true), match.unmatchedLines.length)}</p>
           <table className="w-full text-[13px]">
             <thead><tr className="label"><th className="py-1 text-start">{t.month}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.lines}</th></tr></thead>
@@ -163,7 +163,7 @@ export function SalesEndUsers({ data }: { data: EndUserData }) {
 
       {a.unmapped.length > 0 && (
         <>
-          <h2 className="mb-1 mt-10 text-xl font-light">{t.unmappedH}</h2>
+          <h2 className="mb-1 mt-10 text-lg font-semibold">{t.unmappedH}</h2>
           <p className="mb-3 text-[13px] text-mute">{t.unmappedText} {!c.readOnly && <Link className="underline" href={`${c.basePath}/data/end-users`}>{t.fix}</Link>}</p>
           <table className="w-full text-[13px]" data-testid="eu-unmapped-list">
             <thead><tr className="label"><th className="py-1 text-start">{t.description}</th><th className="text-end">{t.total2}</th><th className="text-end">{t.lines}</th><th className="text-start ps-4">{t.months}</th></tr></thead>

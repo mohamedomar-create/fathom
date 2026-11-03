@@ -235,12 +235,12 @@ export function PaymentsOverview() {
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
           <Findings findings={a.findings} />
-          {rec && <><h3 className="mb-2 text-lg font-normal">{t.byAge}</h3><AgeBar v={rec} cur={cur} /></>}
+          {rec && <><h3 className="mb-2 text-lg font-semibold">{t.byAge}</h3><AgeBar v={rec} cur={cur} /></>}
         </div>
         <div>
-          {rec && <><h3 className="mb-2 text-lg font-normal">{t.mostOverdue}</h3>
+          {rec && <><h3 className="mb-2 text-lg font-semibold">{t.mostOverdue}</h3>
             <BarList items={rec.partners.filter((p) => p.overdue > 0).map((p) => ({ key: p.name, label: p.name, value: p.overdue, share: rec.overdue ? p.overdue / rec.overdue : 0 }))} cur={cur} max={8} testId="overdue-bars" /></>}
-          {pay && <><h3 className="mb-2 mt-8 text-lg font-normal">{t.largestOwed}</h3>
+          {pay && <><h3 className="mb-2 mt-8 text-lg font-semibold">{t.largestOwed}</h3>
             <BarList items={pay.partners.filter((p) => p.total > 0).sort((x, y) => y.total - x.total).map((p) => ({ key: p.name, label: p.name, value: p.total, share: pay.owed ? p.total / pay.owed : 0 }))} cur={cur} max={8} testId="payable-bars" /></>}
         </div>
       </div>
@@ -334,7 +334,7 @@ export function PaymentsFlows() {
       </div>
       {f.byKind.length > 0 && (
         <div className="mb-10">
-          <h3 className="mb-2 text-lg font-normal">{t.whatItWas}</h3>
+          <h3 className="mb-2 text-lg font-semibold">{t.whatItWas}</h3>
           <table className="w-full max-w-3xl text-[13px]" data-testid="flows-kinds"><thead><tr className="text-mute"><th className="text-start">{t.kindCol}</th><th className="num">{t.in}</th><th className="num">{t.out}</th></tr></thead><tbody>
             {f.byKind.map((k) => (
               <tr key={`${k.kind}|${k.counter}`} className="row border-b border-line/50">
@@ -348,17 +348,17 @@ export function PaymentsFlows() {
       )}
       <div className="grid gap-10 lg:grid-cols-2">
         <div>
-          <h3 className="mb-2 text-lg font-normal">{f.basis === "ledger" ? t.byAccount : t.byJournal}</h3>
+          <h3 className="mb-2 text-lg font-semibold">{f.basis === "ledger" ? t.byAccount : t.byJournal}</h3>
           <table className="w-full text-[13px]" data-testid="flows-journals"><tbody>
             {f.byJournal.map((j) => <tr key={j.journal} className="row border-b border-line/50"><td className="py-1.5 text-start">{T.tl(j.journal)} <span className="text-mute">· {j.count}</span></td><td className={cn("num", j.amount < 0 && "text-red")}>{money(j.amount, cur)}</td></tr>)}
           </tbody></table>
-          <h3 className="mb-2 mt-8 text-lg font-normal">{t.byMonth}</h3>
+          <h3 className="mb-2 mt-8 text-lg font-semibold">{t.byMonth}</h3>
           <table className="w-full text-[13px]" data-testid="flows-months"><thead><tr className="text-mute"><th className="text-start">{t.month}</th><th className="num">{t.received}</th><th className="num">{t.paid}</th></tr></thead><tbody>
             {f.byMonth.map((m) => <tr key={m.p} className="row border-b border-line/50"><td className="py-1.5 text-start">{monthIn(m.p, T)}</td><td className="num">{money(m.received, cur)}</td><td className="num">{money(m.paid, cur)}</td></tr>)}
           </tbody></table>
         </div>
         <div>
-          <h3 className="mb-2 text-lg font-normal">{t.byPartner}</h3>
+          <h3 className="mb-2 text-lg font-semibold">{t.byPartner}</h3>
           <table className="w-full text-[13px]" data-testid="flows-partners"><tbody>
             {f.byPartner.slice(0, 40).map((p) => <tr key={p.partner} className="row border-b border-line/50"><td className="py-1.5 text-start">{p.partner} <span className="text-mute">· {p.count}</span></td><td className={cn("num", p.amount < 0 && "text-red")}>{money(p.amount, cur)}</td></tr>)}
           </tbody></table>

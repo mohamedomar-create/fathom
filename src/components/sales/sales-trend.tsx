@@ -8,6 +8,9 @@ import { cn } from "@/lib/cn";
 import { balanced } from "@/lib/tolerance";
 import { DataNotes, NoSales, useSalesAnalysis, SalesPicker } from "./common";
 import { useT } from "@/lib/i18n/use-t";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { HeatCalendar } from "@/components/viz/heat-calendar";
+import { compact } from "@/lib/engine/format";
 
 export function SalesTrend() {
   const c = useCompany();
@@ -24,11 +27,16 @@ export function SalesTrend() {
   return (
     <>
       <PageHeader title={title} right={<SalesPicker s={s} mode="upto" />} />
-      <h2 className="mb-1 text-xl font-light">{t.byCategoryMonthly}</h2>
-      <p className="mb-2 text-xs text-mute">{t.trendNote(T.ml(s.window.end))}</p>
+      <CardGrid>
+      <ChartCard title={t.byCategoryMonthly} sub={t.trendNote(T.ml(s.window.end))} wide testId="card-category-trend">
       <LineChart labels={rows.map((x) => T.ms(x.period))} cur={cur} height={300} testId="category-trend"
-        series={cats.map((k, i) => ({ name: T.tl(k), values: rows.map((x) => (x.sales === null ? null : x.categories[k] ?? 0)), color: k === "Other" ? C.mute : C.s[i % 5], dashed: k === "Other" }))} />
-      <h2 className="mb-3 mt-10 text-xl font-light">{t.vsRevenue}</h2>
+        series={cats.map((k, i) => ({ name: T.tl(k), values: rows.map((x) => (x.sales === null ? null : x.categories[k] ?? 0)), color: k === "Other" ? C.mute : C.s[i % C.s.length], dashed: k === "Other" }))} />
+      </ChartCard>
+      <ChartCard title={T.d.viz.mod.salesByMonth} sub={T.d.viz.mod.salesByMonthSub} wide testId="card-trend-heat">
+        <HeatCalendar periods={rows.map((x) => x.period)} values={rows.map((x) => x.sales)} fmt={(v) => compact(v, T.lang === "ar" ? "ar" : "en")} label={T.d.viz.mod.salesByMonth} />
+      </ChartCard>
+      </CardGrid>
+      <h2 className="mb-3 mt-10 text-lg font-semibold">{t.vsRevenue}</h2>
       <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[560px]" data-testid="reconciliation-table">
           <thead><tr><th className="text-start">{t.month}</th><th>{t.salesLines}</th><th>{t.plRevenue}</th><th>{t.difference}</th></tr></thead>

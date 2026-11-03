@@ -36,9 +36,9 @@ export function InventoryValuation() {
     <>
       <PageHeader title={title} right={<InventoryPicker s={s} />} />
       <TieBanner s={s} />
-      <h3 className="mb-2 text-lg font-normal">{t.tieTitle}</h3>
+      <h3 className="mb-2 text-lg font-semibold">{t.tieTitle}</h3>
       <TieTable tieouts={s.tieouts} cur={cur} />
-      <h3 className="mb-2 mt-10 text-lg font-normal">{t.layersTitle}</h3>
+      <h3 className="mb-2 mt-10 text-lg font-semibold">{t.layersTitle}</h3>
       {s.hasValue ? (
         <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="tbl min-w-[760px]" data-testid="inv-layers">
@@ -59,7 +59,7 @@ export function InventoryValuation() {
         </div>
       ) : <p className="text-mute" data-testid="inv-layers-empty">{t.noValuation}</p>}
       {prices.length > 0 && <>
-        <h3 className="mb-2 mt-10 text-lg font-normal">{t.priceTitle}</h3>
+        <h3 className="mb-2 mt-10 text-lg font-semibold">{t.priceTitle}</h3>
         <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
           <table className="tbl min-w-[560px]" data-testid="inv-unit-cost">
             <thead><tr><th className="!text-start">{t.product}</th><th>{t.firstCost}</th><th>{t.lastCost}</th><th>{t.change}</th><th className="!text-start">{t.twelveMonths}</th></tr></thead>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bridgeSteps, bulletScale, heatGrid, heatLevel, pareto } from "@/lib/viz/geometry";
+import { bridgeSteps, bulletScale, heatGrid, heatLevel, pareto, treemap } from "@/lib/viz/geometry";
 
 describe("bridgeSteps", () => {
   it("runs from the opening total through each step to the closing total", () => {
@@ -63,5 +63,19 @@ describe("bulletScale", () => {
     const b = bulletScale(150, null);
     expect(b.valuePct).toBeLessThanOrEqual(100);
     expect(b.targetPct).toBeNull();
+  });
+});
+
+describe("treemap", () => {
+  it("fills the box exactly and keeps each tile's area in proportion", () => {
+    const t = treemap([{ key: "a", value: 6 }, { key: "b", value: 3 }, { key: "c", value: 1 }], 100, 50);
+    const area = t.reduce((s, r) => s + r.w * r.h, 0);
+    expect(area).toBeCloseTo(5000, 3);
+    const a = t.find((r) => r.key === "a")!;
+    expect((a.w * a.h) / 5000).toBeCloseTo(0.6, 3);
+    for (const r of t) { expect(r.x).toBeGreaterThanOrEqual(-1e-9); expect(r.x + r.w).toBeLessThanOrEqual(100 + 1e-6); expect(r.y + r.h).toBeLessThanOrEqual(50 + 1e-6); }
+  });
+  it("leaves out zero and negative items", () => {
+    expect(treemap([{ key: "a", value: 0 }, { key: "b", value: -2 }], 10, 10)).toEqual([]);
   });
 });

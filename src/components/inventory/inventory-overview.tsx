@@ -39,13 +39,13 @@ export function InventoryOverview() {
           <Findings title={T.d.sales.risk} kind="risk" findings={s.findings} />
           <Findings title={T.d.sales.watch} kind="watch" findings={s.findings} />
           {s.bridge && <>
-            <h3 className="mb-2 mt-2 text-lg font-normal">{t.howMoved}</h3>
+            <h3 className="mb-2 mt-2 text-lg font-semibold">{t.howMoved}</h3>
             <StockBridge b={s.bridge} cur={cur} />
           </>}
         </div>
         <div className="min-w-0">
           {monthly.length > 0 && <>
-            <h3 className="mb-1 text-lg font-normal">{t.valueVsCogs}</h3>
+            <h3 className="mb-1 text-lg font-semibold">{t.valueVsCogs}</h3>
             <LineChart labels={monthly.map((x) => T.ms(x.p))} cur={cur} height={260} testId="inv-trend"
               series={[
                 { name: t.value, values: monthly.map((x) => x.closing), color: C.s[0], fill: true },
@@ -53,7 +53,7 @@ export function InventoryOverview() {
               ]} />
           </>}
           {s.position && <div className="mb-8" data-testid="inv-position">
-            <h3 className="mb-2 text-lg font-normal">{t.whereTitle} <span className="text-sm text-mute" data-testid="inv-position-at">· {T.ml(s.position.at)}</span></h3>
+            <h3 className="mb-2 text-lg font-semibold">{t.whereTitle} <span className="text-sm text-mute" data-testid="inv-position-at">· {T.ml(s.position.at)}</span></h3>
             <BarList items={[
               { key: "warehouse", label: t.inWarehouses, value: s.position.warehouse, share: tl.value ? (s.position.warehouse / tl.value) * 100 : undefined },
               { key: "rental", label: t.onRental, value: s.position.rental, share: tl.value ? (s.position.rental / tl.value) * 100 : undefined },
@@ -62,7 +62,7 @@ export function InventoryOverview() {
             <p className="mt-1 text-xs text-mute">{t.whereNote}</p>
           </div>}
           {s.products.length > 0 && <>
-            <h3 className="mb-2 mt-8 text-lg font-normal">{t.largest}</h3>
+            <h3 className="mb-2 mt-8 text-lg font-semibold">{t.largest}</h3>
             <BarList items={s.products.filter((p) => p.value > 0).map((p) => ({ key: p.code || p.product, label: p.product, value: p.value, share: tl.value ? (p.value / tl.value) * 100 : undefined }))} cur={cur} max={8} testId="inv-top-products" />
           </>}
         </div>

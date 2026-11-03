@@ -12,6 +12,7 @@ import { cn } from "@/lib/cn";
 import { useLang } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/use-t";
 import { UnreadInline, useUnread } from "@/components/shell/module-state";
+import { KpiTile } from "@/components/viz/kpi";
 
 /**
  * The sales analysis for the period in the URL, with P&L revenue for the reconciliation. Without invoice lines, the P&L's
@@ -71,14 +72,9 @@ export function FromAccountsNote({ page }: { page?: "customers" | "products" }) 
   );
 }
 
-export function SalesTile({ label, value, sub, neg, testId }: { label: string; value: React.ReactNode; sub?: React.ReactNode; neg?: boolean; testId?: string }) {
-  return (
-    <div className={cn("fade-up border-t-[3px] pt-2.5", neg ? "border-red" : "border-green")} data-testid={testId}>
-      <div className="label">{label}</div>
-      <div className="num my-0.5 whitespace-nowrap text-[21px]">{value}</div>
-      {sub && <div className="text-xs">{sub}</div>}
-    </div>
-  );
+/** A KPI tile for the module pages (sales, expenses, stock): the card look, with a green or red top edge. */
+export function SalesTile({ label, value, sub, neg, testId, now, last }: { label: string; value: React.ReactNode; sub?: React.ReactNode; neg?: boolean; testId?: string; now?: (number | null)[]; last?: (number | null)[] }) {
+  return <KpiTile label={label} value={value} sub={sub} accent={neg ? "bad" : "good"} testId={testId} now={now} last={last} />;
 }
 
 export function Vs({ growth, label }: { growth: number | null; label: string }) {
@@ -92,9 +88,9 @@ export function Findings({ title, kind, findings }: { title: string; kind: Sales
   if (!list.length) return null;
   return (
     <div className="mb-6">
-      <h3 className="mb-2 text-lg font-normal">{title}</h3>
+      <h3 className="t-card mb-2">{title}</h3>
       {list.map((f) => (
-        <div key={f.title} className={cn("mb-2 border-s-[3px] bg-band px-4 py-2.5 text-[13px]", kind === "risk" ? "border-red" : kind === "watch" ? "border-amber" : "border-green")}>
+        <div key={f.title} className={cn("mb-2 rounded-lg border border-line border-s-[3px] bg-white px-4 py-2.5 text-[13px]", kind === "risk" ? "border-s-red" : kind === "watch" ? "border-s-amber" : "border-s-green")}>
           <b className="font-semibold">{f.title}.</b> {f.text}
         </div>
       ))}
@@ -134,7 +130,7 @@ export function SalesTable({ rows, cur, nameLabel, compareLabel, max = 25, abc, 
               {group && <td className="max-w-[180px] truncate text-start text-mute" title={r.group}>{r.group ? T.tl(r.group) : r.group}</td>}
               {abc && <td>{r.abc && <span className={cn("rounded px-1.5 text-[11px] font-semibold", r.abc === "A" ? "bg-brand-bg text-brand-d" : r.abc === "B" ? "bg-band" : "text-mute")}>{r.abc}</span>}</td>}
               <td className={cn("num", r.amount < 0 && "text-red")}>{money(r.amount, cur)}</td>
-              <td className="num">{pct(r.share, 1)}</td>
+              <td className="num"><span className="inline-flex items-center justify-end gap-1.5"><span dir="ltr" className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-band sm:inline-block" aria-hidden><span className="block h-full rounded-full bg-brand" style={{ width: `${Math.max(0, Math.min(100, r.share))}%` }} /></span>{pct(r.share, 1)}</span></td>
               {compareLabel && <td className="num text-mute">{r.compare === null ? "–" : money(r.compare, cur)}</td>}
               {compareLabel && <td><Delta value={r.growth} /></td>}
               {showQty && <td className="num">{r.qty === null ? "–" : r.qty.toLocaleString("en-US", { maximumFractionDigits: 1 })}</td>}

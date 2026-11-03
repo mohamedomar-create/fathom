@@ -23,6 +23,13 @@ export const viz = area(
       collection: "Collection", fxBox: "In US dollars", lowPoint: "Lowest cash", fcRange: "Range", backtest: "Forecast accuracy",
       backtestSub: "Average error when the method forecast months we already know.", drivers: "What the forecast assumes", statement: "Cash flow statement, line by line",
     },
+    mod: {
+      customerPareto: "Who buys: customers ranked", customerParetoSub: "The dashed rule is where 80% of sales is reached.",
+      mix: "Sales mix", mixSub: "Each tile's size is its share of sales.", salesByMonth: "Sales by month", salesByMonthSub: "Each row is a year; darker months sold more.",
+      productPareto: "Products ranked", supplierPareto: "Suppliers ranked", supplierParetoSub: "The dashed rule is where 80% of spend is reached.",
+      costMix: "Where the money goes", costMixSub: "Each tile's size is its share of costs.", costByMonth: "Costs by month", costByMonthSub: "Each row is a year; darker months cost more.",
+      fixedVariable: "Fixed vs variable costs", ofRevenue: (p: string) => `${p} of revenue`,
+    },
   },
   {
     table: "الأرقام", chart: "الرسم", showTable: "عرض الأرقام وراء هذا الرسم", showChart: "عرض الرسم",
@@ -44,6 +51,13 @@ export const viz = area(
       byActivity: "التدفق النقدي حسب النشاط، شهرًا بشهر", realBridge: "من الربح الدفتري إلى الربح الحقيقي", realTrend: "الربح الدفتري مقابل الحقيقي",
       collection: "التحصيل", fxBox: "بالدولار الأمريكي", lowPoint: "أدنى نقدية", fcRange: "النطاق", backtest: "دقة التوقع",
       backtestSub: "متوسط الخطأ عندما توقعت الطريقة أشهرًا نعرفها بالفعل.", drivers: "افتراضات التوقع", statement: "قائمة التدفقات النقدية، بندًا بندًا",
+    },
+    mod: {
+      customerPareto: "من يشتري: العملاء مرتبون", customerParetoSub: "الخط المتقطع هو حيث تبلغ المبيعات ٨٠٪.",
+      mix: "مزيج المبيعات", mixSub: "حجم كل مربع هو نصيبه من المبيعات.", salesByMonth: "المبيعات حسب الشهر", salesByMonthSub: "كل صف سنة؛ الأشهر الأغمق باعت أكثر.",
+      productPareto: "المنتجات مرتبة", supplierPareto: "الموردون مرتبون", supplierParetoSub: "الخط المتقطع هو حيث يبلغ الإنفاق ٨٠٪.",
+      costMix: "أين تذهب الأموال", costMixSub: "حجم كل مربع هو نصيبه من التكاليف.", costByMonth: "التكاليف حسب الشهر", costByMonthSub: "كل صف سنة؛ الأشهر الأغمق كلفت أكثر.",
+      fixedVariable: "التكاليف الثابتة مقابل المتغيرة", ofRevenue: (p: string) => `${p} من الإيرادات`,
     },
   },
 );

@@ -8,6 +8,9 @@ import { cn } from "@/lib/cn";
 import { balanced } from "@/lib/tolerance";
 import { DataNotes, ExpensesPicker, NoExpenses, useExpensesAnalysis } from "./common";
 import { useT } from "@/lib/i18n/use-t";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { HeatCalendar } from "@/components/viz/heat-calendar";
+import { compact } from "@/lib/engine/format";
 
 export function ExpensesTrend() {
   const c = useCompany();
@@ -23,14 +26,20 @@ export function ExpensesTrend() {
   return (
     <>
       <PageHeader title={title} right={<ExpensesPicker s={s} mode="upto" />} />
-      <h2 className="mb-1 text-xl font-light">{t.byTypeMonthly}</h2>
-      <p className="mb-2 text-xs text-mute">{t.monthsTo(T.ml(s.window.end))}</p>
+      <CardGrid>
+      <ChartCard title={t.byTypeMonthly} sub={t.monthsTo(T.ml(s.window.end))} wide testId="card-group-trend">
       <LineChart labels={rows.map((x) => T.ms(x.period))} cur={cur} height={300} testId="group-trend"
-        series={groups.map((g, i) => ({ name: T.tl(g.name), values: rows.map((x) => (x.total === null ? null : x.groups[g.key] ?? 0)), color: C.s[i % 5] }))} />
-      <h2 className="mb-1 mt-10 text-xl font-light">{t.asPctSales}</h2>
+        series={groups.map((g, i) => ({ name: T.tl(g.name), values: rows.map((x) => (x.total === null ? null : x.groups[g.key] ?? 0)), color: C.s[i % C.s.length] }))} />
+      </ChartCard>
+      <ChartCard title={t.asPctSales} testId="card-of-sales">
       <LineChart labels={rows.map((x) => T.ms(x.period))} unit="%" height={220} testId="of-sales-trend"
         series={[{ name: t.costsPct, values: rows.map((x) => x.ofSales), color: C.s[1], fill: true }]} />
-      <h2 className="mb-3 mt-10 text-xl font-light">{t.monthByMonth}</h2>
+      </ChartCard>
+      <ChartCard title={T.d.viz.mod.costByMonth} sub={T.d.viz.mod.costByMonthSub} testId="card-exp-heat">
+        <HeatCalendar periods={rows.map((x) => x.period)} values={rows.map((x) => x.total)} fmt={(v) => compact(v, T.lang === "ar" ? "ar" : "en")} label={T.d.viz.mod.costByMonth} />
+      </ChartCard>
+      </CardGrid>
+      <h2 className="mb-3 mt-10 text-lg font-semibold">{t.monthByMonth}</h2>
       <div tabIndex={0} className="-mx-4 overflow-x-auto sm:mx-0">
         <table className="tbl min-w-[620px]" data-testid="expenses-month-table">
           <thead><tr><th className="text-start">{t.month}</th><th>{t.plCosts}</th><th>{t.pctSales}</th><th>{t.expenseLines}</th><th>{t.difference}</th></tr></thead>

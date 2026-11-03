@@ -73,12 +73,14 @@ export function HeroKpi({ label, value, delta, deltaLabel, cost, pp, story, now,
 }
 
 /** A supporting KPI tile for the cockpit band. */
-export function KpiTile({ label, value, sub, delta, cost, pp, now, last, neg, testId, children }: {
+export function KpiTile({ label, value, sub, delta, cost, pp, now, last, neg, accent, testId, children }: {
   label: string; value: React.ReactNode; sub?: React.ReactNode; delta?: number | null; cost?: boolean; pp?: boolean;
-  now?: (number | null)[]; last?: (number | null)[]; neg?: boolean; testId?: string; children?: React.ReactNode;
+  now?: (number | null)[]; last?: (number | null)[]; neg?: boolean;
+  /** A thin top edge saying whether the figure reads well (green) or needs attention (red), beside its words. */
+  accent?: "good" | "bad"; testId?: string; children?: React.ReactNode;
 }) {
   return (
-    <div className="fade-up flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-white p-4" data-testid={testId}>
+    <div className={cn("fade-up flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-white p-4", accent === "good" && "border-t-[3px] border-t-green", accent === "bad" && "border-t-[3px] border-t-red")} data-testid={testId}>
       <div className="label truncate">{label}</div>
       <div className="flex items-end justify-between gap-2">
         <div className={cn("t-kpi whitespace-nowrap", neg && "text-red")}>{value}</div>
