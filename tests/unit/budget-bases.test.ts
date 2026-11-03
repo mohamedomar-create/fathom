@@ -172,4 +172,10 @@ describe("cost of sales is fixed in the version", () => {
     expect(b.expense.map((e) => e.key)).toContain("exp:500 COGS");
     expect(startRows(b).filter((r) => r.view === "revenue").every((r) => r.cost === null)).toBe(true);
   });
+  it("leaves balance-sheet accounts out of the expense rows (stock bought into stock interim is not a cost)", () => {
+    const rows = [...expenses, er("2026-02", "210500 Stock Interim (Received)", 900, "other_cl")];
+    const b = builderBases({ products, customers, expenses: rows }, setup, "2027", 1);
+    expect(b.expense.map((e) => e.key)).not.toContain("exp:210500 Stock Interim (Received)");
+    expect(b.expense.map((e) => e.key)).toContain("exp:700 Fees"); // no class: kept
+  });
 });

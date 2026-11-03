@@ -3,7 +3,7 @@ import { fyMonths } from "./budget";
 import { daysIn } from "./format";
 import type { ClassKey } from "./index";
 import type { SalesCustomerRow, SalesProductRow } from "./sales";
-import type { ExpenseAccountRow } from "./expenses";
+import { isCostLine, type ExpenseAccountRow } from "./expenses";
 import {
   baseYears, customerSeries, customerView, expenseSeries, itemOf, revenueItems, rowMonths,
   type BaseCol, type BudgetRow, type BudgetSetup, type Cost,
@@ -126,7 +126,8 @@ export function builderBases(d: BuilderData, setup: BudgetSetup, fy: string, fyS
     && costed.every((r) => r.unitCost != null || r.costRatio != null);
   if (!byUnitCost) for (const r of revenue) { r.unitCost = null; r.costRatio = null; }
   const excluded = byUnitCost ? present : [];
-  const kept = byUnitCost ? d.expenses.filter((r) => !stock.has(r.t)) : d.expenses;
+  // Only costs are budgeted: a balance-sheet account (stock bought into stock interim, say) is never an expense row.
+  const kept = d.expenses.filter((r) => isCostLine(r.c) && !(byUnitCost && stock.has(r.t)));
 
   // Expense rows and their class: an account's own class; a merged group takes its largest member's (this year).
   const clsOf = new Map<string, ClassKey>();

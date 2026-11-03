@@ -8,7 +8,7 @@ import {
 } from "@/lib/engine/budget";
 import { accountMarkKey } from "@/lib/engine/statement-rows";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
-import type { ExpenseAccountRow } from "@/lib/engine/expenses";
+import { isCostLine, type ExpenseAccountRow } from "@/lib/engine/expenses";
 import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
@@ -75,7 +75,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
     const cust = new Map<string, number>();
     for (const r of salesCustomers) if (inFy(r.p) && r.c && r.c !== "No customer") cust.set(r.c, (cust.get(r.c) ?? 0) + r.a);
     const exp = new Map<string, number>();
-    for (const r of expenseAccounts) if (inFy(r.p)) exp.set(r.t, (exp.get(r.t) ?? 0) + r.a);
+    for (const r of expenseAccounts) if (inFy(r.p) && isCostLine(r.c)) exp.set(r.t, (exp.get(r.t) ?? 0) + r.a);
     return {
       rows,
       customers: [...cust].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([n]) => n),

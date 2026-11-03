@@ -27,7 +27,12 @@ test("the demo budget page is a budget builder version, read-only, with budget a
 // The visual pass: summary cards, compact amounts with the exact one on hover, one chart per tab, sort and search.
 test("the demo budget: cards, compact amounts, a chart on every tab, sort by amount and search", async ({ page }) => {
   await page.goto("/demo/analysis/budget");
+  await expect(page.getByTestId("budget-demo")).toHaveText("Demo: a budget built from this year's figures with a few changes. Sign up to build your own.");
   for (const k of ["revenue", "gp", "exp", "np"]) await expect(page.getByTestId(`bcards-${k}`)).toBeVisible();
+  // A credible story: the revenue changed on this year's estimate and the year makes a profit.
+  await expect(page.getByTestId("bcards-revenue").locator("[data-dir]")).toHaveAttribute("data-dir", /up|down/);
+  await expect(page.getByTestId("bcards-revenue").locator("[data-dir]")).not.toContainText(/^▬?0%$/);
+  expect(Number((await page.getByTestId("bsheet-strip-np").getAttribute("title"))!.replace(/,/g, ""))).toBeGreaterThan(0);
   await expect(page.getByTestId("bcards-revenue")).toContainText(/\d(\.\d)?(K|M)/);
   // Every amount of 1,000 or more reads compact; its title holds the exact figure.
   const total = page.getByTestId("bsheet-total-new");

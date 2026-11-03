@@ -16,8 +16,9 @@ export function DemoBudget() {
     return {
       versions: [{ id: "demo", fy: b.fy, name: b.name, kind: "original" as const, status: "approved" as const, basedOn: null, approvedAt: `${b.fy}-01-05`, createdAt: `${b.fy}-01-01`, updatedAt: `${b.fy}-01-05` }],
       current: { id: "demo", lines: b.lines, products: [], rows: b.rows, setup: b.setup },
-      salesProducts: data.products, salesCustomers: data.customers, expenseAccounts: expenses.accounts, setup: b.setup,
+      // The data as it stood when the budget was built (see demoBudgetData): the base columns read the same as the rows.
+      salesProducts: b.data.products, salesCustomers: b.data.customers, expenseAccounts: b.data.expenses, setup: b.setup,
     };
-  }, [c.accounts, c.months, c.settings.fyStartMonth]);
+  }, [c.months, c.settings.fyStartMonth]);
   return <BudgetPage {...props} demo />;
 }
