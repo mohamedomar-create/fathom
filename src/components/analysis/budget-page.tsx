@@ -2,49 +2,35 @@
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
 import { CheckCircle2, Download, Lock, Plus, Settings2, Target, Upload } from "lucide-react";
-import { forecast, fyStartOf, hasPL, money, pct, plCalc, PL_KEYS, type ClassKey, type PLInput } from "@/lib/engine";
+import { forecast, fyStartOf, hasPL, money, PL_KEYS, type ClassKey } from "@/lib/engine";
 import {
-  budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedWithProducts, varianceRows,
-  type BudgetLine, type BudgetProduct,
+  budgetAccounts, fyMonths, seedFromForecast, seedFromLastYear, seedWithProducts, type BudgetLine, type BudgetProduct,
 } from "@/lib/engine/budget";
 import { accountMarkKey } from "@/lib/engine/statement-rows";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
 import type { ExpenseAccountRow } from "@/lib/engine/expenses";
-import type { BudgetSetup } from "@/lib/engine/budget-builder";
+import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
-import { approveBudget, createBudget, deleteBudget, saveBudget } from "@/app/company/[id]/analysis/budget-actions";
+import { approveBudget, createBudget, deleteBudget, saveBudget, saveBudgetRows } from "@/app/company/[id]/analysis/budget-actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "./common";
 import { BudgetSetupWizard } from "./budget-setup-wizard";
+import { BudgetBuilderView, buildFromSetup } from "./budget-builder-view";
+import { BudgetVs } from "./budget-vs";
 import { suggestSetup } from "@/lib/engine/budget-setup";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
 
 const PLS = new Set<string>(PL_KEYS);
-const INCOME = new Set<string>(["revenue", "other_income", "interest_income"]);
-
-/** A difference against budget: income above it and costs below it are better (green), the other way worse (red). */
-function VarCell({ income, cur, cmp, text }: { income: boolean; cur: number; cmp: number; text: string }) {
-  const { d } = useT();
-  const diff = cur - cmp;
-  const tone = Math.abs(diff) < 1 ? "neutral" : (income ? diff > 0 : diff < 0) ? "better" : "worse";
-  return (
-    <td className={cn(tone !== "neutral" && `tone-${tone}`)} data-tone={tone}>
-      {diff !== 0 && <span aria-hidden className="me-1 text-[10px]">{diff > 0 ? "▲" : "▼"}</span>}{text}
-      {tone !== "neutral" && <span className="sr-only"> ({tone === "better" ? d.hl.better : d.hl.worse})</span>}
-    </td>
-  );
-}
 const cellKey = (k: string, m: string) => `${k}\u0001${m}`;
-/** The day the books stop on, when that is inside month `m` (a part month); else undefined. */
-const partDayOf = (asOf: string | null | undefined, m: string) => (asOf && asOf.startsWith(m) ? Number(asOf.slice(8)) : undefined);
 
 export interface BudgetPageProps {
   versions: BudgetVersionInfo[];
-  current: { id: string; lines: BudgetLine[]; products: BudgetProduct[] } | null;
+  /** The version shown; `rows` and `setup` (the budget builder) are there for versions read on the budget page. */
+  current: { id: string; lines: BudgetLine[]; products: BudgetProduct[]; rows?: BudgetRow[]; setup?: BudgetSetup | null } | null;
   /** Last year's and this year's sales by product and month (for seeding and the volume/price split). */
   salesProducts: SalesProductRow[];
   demo?: boolean;
@@ -58,7 +44,7 @@ export interface BudgetPageProps {
 export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [] }: BudgetPageProps) {
   const c = useCompany();
   const router = useRouter();
-  const { lang, d, ml, ms } = useT();
+  const { d, ml, ms } = useT();
   const t = d.bud;
   const clsName = d.setx.coa.cls as Record<string, string>;
   const cur = c.settings.currency;
@@ -69,6 +55,9 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
   const canApprove = !demo && (c.role === "admin" || c.role === "owner") && version?.status === "draft";
   const [tab, setTab] = useState<"vs" | "accounts" | "products">("vs");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // A version built with the budget builder (it has a setup or rows) shows the builder; older versions keep the grids.
+  const builder = !!current && (!!current.setup || (current.rows?.length ?? 0) > 0);
+  const [builderDirty, setBuilderDirty] = useState(0);
   const [pending, start] = useTransition();
 
   // The setup wizard: this year is the latest financial year in the sales rows.
@@ -115,27 +104,10 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
     return [...m.values()].filter((l) => l.amount !== 0);
   }, [current, edits, extra]);
   const products = useMemo(() => prodEdits ?? current?.products ?? [], [prodEdits, current]);
-  const dirty = Object.keys(edits).length + (prodEdits ? 1 : 0);
+  const dirty = builder ? builderDirty : Object.keys(edits).length + (prodEdits ? 1 : 0);
 
   const { accounts: budget, notes } = useMemo(() => budgetAccounts(lines, products), [lines, products]);
-  const lastActual = c.months.filter(hasPL).map((m) => m.period).filter((p) => months.includes(p)).pop() ?? null;
-  const [end, setEnd] = useState<string | null>(null);
-  const upTo = end && months.includes(end) ? end : lastActual;
-  const rows = useMemo(() => (upTo ? varianceRows(c.accounts, budget, months, upTo, partDayOf(c.asOf, upTo)) : [])
-    .sort((a, b) => PL_KEYS.indexOf(a.cls as never) - PL_KEYS.indexOf(b.cls as never) || a.label.localeCompare(b.label)), [c.accounts, budget, months, upTo, c.asOf]);
-  const pv = useMemo(() => (upTo ? productVariance(products, salesProducts, months.filter((m) => m <= upTo)) : []), [products, salesProducts, months, upTo]);
   const fmt = (v: number) => money(v, cur, true);
-
-  // Net profit year to date: actual against budget, through the same statements.
-  const head = useMemo(() => {
-    if (!upTo) return null;
-    const b = budgetComparison(budget, { type: "year", end: upTo }, fyStart, version?.name ?? "", partDayOf(c.asOf, upTo)).P;
-    const ytd = months.filter((m) => m <= upTo);
-    const pl: PLInput = {};
-    for (const a of c.accounts) if (PLS.has(a.cls)) for (const m of ytd) pl[a.cls as keyof PLInput] = (pl[a.cls as keyof PLInput] ?? 0) + (a.amounts[m] ?? 0);
-    const a = plCalc(pl);
-    return { a: a.net_income, b: b.net_income };
-  }, [budget, upTo, fyStart, version, months, c.accounts, c.asOf]);
 
   const go = (id: string) => router.push(`?v=${id}`);
   const say = (ok: boolean, text: string) => setMsg({ ok, text });
@@ -190,7 +162,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
     <div>
       <PageHeader title={t.title} right={!demo && !c.readOnly ? <div className="flex items-center gap-2">
         {canSetup && <button type="button" onClick={() => setSetupOpen(true)} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="bsetup-open"><Settings2 aria-hidden className="h-4 w-4" />{t.wiz.open}</button>}
-        <NewBudget versions={versions} salesProducts={salesProducts} onCreated={go} say={say} />
+        <NewBudget versions={versions} salesProducts={salesProducts} setup={setup} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} onCreated={go} say={say} />
       </div> : undefined}>
       {canSetup && (
         <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
@@ -219,8 +191,10 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
             <div className="ms-auto flex flex-wrap gap-2">
               <button type="button" onClick={downloadTemplate} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="budget-download"><Download aria-hidden className="h-4 w-4" />{t.download}</button>
               {canEdit && <>
+                {!builder && <>
                 <input ref={fileRef} type="file" accept=".xlsx,.xls" className="sr-only" aria-label={t.upload} data-testid="budget-upload-input" onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadTemplate(f); e.target.value = ""; }} />
                 <button type="button" onClick={() => fileRef.current?.click()} title={t.uploadText} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="budget-upload"><Upload aria-hidden className="h-4 w-4" />{t.upload}</button>
+                </>}
                 <ConfirmDialog testId="budget-delete" trigger={<button type="button" className="rounded border border-line px-3 py-1.5 text-sm text-red-d">{t.del}</button>} title={t.delTitle} confirmLabel={t.del}
                   onConfirm={async () => { const r = await deleteBudget(c.id, version.id); if (!r.ok) return r.error; router.push("?"); router.refresh(); }}>{t.delText}</ConfirmDialog>
               </>}
@@ -232,6 +206,11 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
           </div>
           {version.status === "approved" && <p className="mb-3 text-sm text-mute">{t.locked}</p>}
           {msg && <p role="status" className={cn("mb-3 text-sm", msg.ok ? "text-green-d" : "text-red-d")} data-testid="budget-msg">{msg.text}</p>}
+          {builder ? (
+            <BudgetBuilderView key={`${version.id}:${version.updatedAt}`} version={version} current={{ rows: current!.rows ?? [], setup: current!.setup ?? null }} companySetup={setup}
+              salesProducts={salesProducts} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} editable={canEdit} say={say} onDirty={setBuilderDirty}
+              renderVs={(l) => <BudgetVs lines={l} products={products} months={months} versionName={version.name} salesProducts={salesProducts} />} />
+          ) : <>
           <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
             {(["vs", "accounts", "products"] as const).map((k) => (
               <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)} data-testid={`budget-tab-${k}`}
@@ -239,61 +218,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
             ))}
           </div>
 
-          {tab === "vs" && (
-            !upTo ? <p className="text-sm text-mute" data-testid="budget-no-actual">{t.noActual}</p> : (
-              <div data-testid="budget-vs">
-                <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-                  <label htmlFor="budget-upto">{t.upTo}</label>
-                  <select id="budget-upto" className="rounded border border-line bg-white px-2 py-1" value={upTo} onChange={(e) => setEnd(e.target.value)}>
-                    {months.filter((m) => !lastActual || m <= lastActual).map((m) => <option key={m} value={m}>{ml(m)}</option>)}
-                  </select>
-                </div>
-                {head && head.b !== 0 && (
-                  <p className="mb-3 text-lg" data-testid="budget-headline">
-                    {t.headline(pct(Math.abs(((head.a - head.b) / Math.abs(head.b)) * 100), 1), head.a >= head.b ? t.above : t.below)}
-                  </p>
-                )}
-                <div className="overflow-x-auto">
-                  <table className="tbl text-[13px]">
-                    <thead>
-                      <tr><th>{t.account}</th><th>{t.monthCol} · {t.actual}</th><th>{t.budget}</th><th>{t.diff}</th><th>{t.ytdCol} · {t.actual}</th><th>{t.budget}</th><th>{t.diff}</th><th>%</th><th title={t.outlookHint}>{t.outlook}</th><th>{t.fullYear}</th></tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <tr key={r.key} data-testid="budget-vs-row" data-key={r.key} data-tone={r.tone}>
-                          <td>{r.key.startsWith("class:") ? clsName[r.cls] : r.label}</td>
-                          <td>{fmt(r.month.actual)}</td><td>{fmt(r.month.budget)}</td>
-                          <VarCell income={INCOME.has(r.cls)} cur={r.month.actual} cmp={r.month.budget} text={fmt(r.month.diff)} />
-                          <td>{fmt(r.ytd.actual)}</td><td>{fmt(r.ytd.budget)}</td>
-                          <VarCell income={INCOME.has(r.cls)} cur={r.ytd.actual} cmp={r.ytd.budget} text={fmt(r.ytd.diff)} />
-                          <VarCell income={INCOME.has(r.cls)} cur={r.ytd.actual} cmp={r.ytd.budget} text={r.ytd.pct === null ? "–" : pct(r.ytd.pct)} />
-                          <td>{fmt(r.outlook)}</td><td>{fmt(r.fullYear)}</td>
-                        </tr>
-                      ))}
-                      {head && <tr className="tot"><td>{t.profit}</td><td /><td /><td /><td>{fmt(head.a)}</td><td>{fmt(head.b)}</td><VarCell income cur={head.a} cmp={head.b} text={fmt(head.a - head.b)} /><VarCell income cur={head.a} cmp={head.b} text={head.b ? pct(((head.a - head.b) / Math.abs(head.b)) * 100) : "–"} /><td /><td /></tr>}
-                    </tbody>
-                  </table>
-                </div>
-                {pv.length > 0 && (
-                  <section className="mt-6" data-testid="budget-pv">
-                    <h2 className="mb-1 text-lg font-light">{t.productsVs}</h2>
-                    <p className="mb-2 text-xs text-mute">{t.volumeHint}</p>
-                    <div className="overflow-x-auto">
-                      <table className="tbl text-[13px]">
-                        <thead><tr><th>{t.product}</th><th>{t.units} · {t.budget}</th><th>{t.units} · {t.actual}</th><th>{t.budget}</th><th>{t.actual}</th><th>{t.volume}</th><th>{t.priceEff}</th></tr></thead>
-                        <tbody>
-                          {pv.slice(0, 50).map((p) => (
-                            <tr key={p.product}><td>{p.product}</td><td>{p.budgetUnits.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td><td>{p.actualUnits === null ? "–" : p.actualUnits.toLocaleString(lang === "ar" ? "ar-EG" : "en-US")}</td>
-                              <td>{fmt(p.budget)}</td><td>{fmt(p.actual)}</td><td>{p.volume === null ? t.unexplained : fmt(p.volume)}</td><td>{p.price === null ? "–" : fmt(p.price)}</td></tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </section>
-                )}
-              </div>
-            )
-          )}
+          {tab === "vs" && <BudgetVs lines={lines} products={products} months={months} versionName={version.name} salesProducts={salesProducts} />}
 
           {tab === "accounts" && (
             <AccountsGrid key={`${version.id}:${version.updatedAt}`} lines={lines} months={months} edit={canEdit} clsName={clsName} ms={ms} fmt={fmt} productMonths={new Set(products.map((p) => p.month))}
@@ -310,6 +235,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
               <button type="button" disabled={pending} onClick={saveEdits} className="ms-auto rounded bg-brand-d px-4 py-2 text-sm font-medium text-white disabled:opacity-50" data-testid="budget-save">{t.save}</button>
             </div>
           )}
+          </>}
         </>
       )}
     </div>
@@ -317,7 +243,10 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
 
 }
 
-function NewBudget({ versions, salesProducts, onCreated, say }: { versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; onCreated: (id: string) => void; say: (ok: boolean, text: string) => void }) {
+function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAccounts, onCreated, say }: {
+  versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; setup: BudgetSetup | null; salesCustomers: SalesCustomerRow[]; expenseAccounts: ExpenseAccountRow[];
+  onCreated: (id: string) => void; say: (ok: boolean, text: string) => void;
+}) {
   const c = useCompany();
   const { lang, d } = useT();
   const t = d.bud;
@@ -329,7 +258,7 @@ function NewBudget({ versions, salesProducts, onCreated, say }: { versions: Budg
   const [fy, setFy] = useState(years[0]);
   const hasOriginal = versions.some((v) => v.fy === fy && v.kind === "original");
   const [name, setName] = useState("");
-  const [from, setFrom] = useState<"ly" | "forecast" | "copy" | "blank">("ly");
+  const [from, setFrom] = useState<"setup" | "ly" | "forecast" | "copy" | "blank">(setup ? "setup" : "ly");
   const [pctV, setPct] = useState("10");
   const [withProducts, setWithProducts] = useState(true);
   const sameYear = versions.filter((v) => v.fy === fy);
@@ -344,6 +273,18 @@ function NewBudget({ versions, salesProducts, onCreated, say }: { versions: Budg
     let prods: BudgetProduct[] = [];
     let skipped: string[] = [];
     const p = Number(pctV) || 0;
+    if (from === "setup") {
+      // Every row starts at this year's estimate; the version keeps a copy of the setup it was built with.
+      const built = buildFromSetup({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts }, setup!, fy, fyStart);
+      if (built.empty) { setBusy(false); return setErr(t.b.noData); }
+      const r = await createBudget(c.id, { fy, kind: hasOriginal ? "revision" : "original", name, from: null });
+      if (!r.ok) { setBusy(false); return setErr(r.error); }
+      const saved = await saveBudgetRows(c.id, r.data, { rows: built.rows, views: ["revenue", "customer", "expense"], lines: built.lines, setup });
+      setBusy(false);
+      if (!saved.ok) return setErr(saved.error);
+      setOpen(false);
+      return onCreated(r.data);
+    }
     if (from === "ly") {
       seed = seedFromLastYear(c.accounts, ms12, p);
       if (!seed.length) { setBusy(false); return setErr(t.lyNone); }
@@ -377,7 +318,7 @@ function NewBudget({ versions, salesProducts, onCreated, say }: { versions: Budg
           <p className="text-mute">{t.type}: <b>{t.kind[hasOriginal ? "revision" : "original"]}</b></p>
           <label className="grid gap-1">{t.name}<input className="rounded border border-line px-2 py-1.5" maxLength={80} placeholder={t.namePh} value={name} onChange={(e) => setName(e.target.value)} data-testid="budget-name" /></label>
           <fieldset className="grid gap-1"><legend className="mb-1">{t.from}</legend>
-            {([["ly", t.fromLy], ["forecast", t.fromForecast], ...(sameYear.length ? [["copy", t.fromCopy]] : []), ["blank", t.fromBlank]] as [typeof from, string][]).map(([k, label]) => (
+            {([...(setup ? [["setup", t.b.fromSetup]] : []), ["ly", t.fromLy], ["forecast", t.fromForecast], ...(sameYear.length ? [["copy", t.fromCopy]] : []), ["blank", t.fromBlank]] as [typeof from, string][]).map(([k, label]) => (
               <label key={k} className="flex items-center gap-2"><input type="radio" name="budget-from" checked={from === k} onChange={() => setFrom(k)} data-testid={`budget-from-${k}`} />{label}</label>
             ))}
           </fieldset>
