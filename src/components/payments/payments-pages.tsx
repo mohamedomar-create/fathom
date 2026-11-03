@@ -16,6 +16,11 @@ import { BarList } from "@/components/charts/bar-list";
 import { saveControlAccounts } from "@/app/company/[id]/settings/payments-actions";
 import { cn } from "@/lib/cn";
 import { UnreadInline, useUnread } from "@/components/shell/module-state";
+import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { AgeingStack } from "@/components/viz/ageing-stack";
+import { ColumnChart } from "@/components/charts/column-chart";
+import { SERIES } from "@/components/viz/palette";
 
 /** The Payments analysis for the period chosen (payments months, else the ageing's month). */
 function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPayments: boolean } | null {
@@ -110,13 +115,7 @@ function NoPaymentsList() {
 }
 
 function Tile({ label, value, sub, neg, testId }: { label: string; value: React.ReactNode; sub?: React.ReactNode; neg?: boolean; testId?: string }) {
-  return (
-    <div className={cn("fade-up border-t-[3px] pt-2.5", neg ? "border-red" : "border-green")} data-testid={testId}>
-      <div className="label">{label}</div>
-      <div className="num my-0.5 whitespace-nowrap text-[21px]">{value}</div>
-      {sub && <div className="text-xs text-mute">{sub}</div>}
-    </div>
-  );
+  return <KpiTile label={label} value={value} sub={sub} accent={neg ? "bad" : "good"} testId={testId} />;
 }
 
 function Findings({ findings }: { findings: PaymentsFinding[] }) {
@@ -124,7 +123,7 @@ function Findings({ findings }: { findings: PaymentsFinding[] }) {
   return (
     <div className="mb-6" data-testid="payments-findings">
       {findings.map((f) => (
-        <div key={f.title} className={cn("mb-2 border-s-[3px] bg-band px-4 py-2.5 text-[13px]", f.kind === "risk" ? "border-red" : f.kind === "watch" ? "border-amber" : "border-green")}>
+        <div key={f.title} className={cn("mb-2 rounded-lg border border-line border-s-[3px] bg-white px-4 py-2.5 text-[13px]", f.kind === "risk" ? "border-s-red" : f.kind === "watch" ? "border-s-amber" : "border-s-green")}>
           <b className="font-semibold">{f.title}.</b> {f.text}
         </div>
       ))}
@@ -186,22 +185,8 @@ function ControlChoice({ side }: { side: Side }) {
 
 function AgeBar({ v, cur }: { v: SideView; cur: string }) {
   const T = useT();
-  const max = Math.max(...v.buckets.map((_, i) => Math.abs(v.partners.reduce((s, p) => s + Math.max(p.amounts[i], 0), 0))), 1);
-  return (
-    <div className="mb-6" data-testid={`age-${v.side}`}>
-      {v.buckets.map((b, i) => {
-        const owed = v.partners.reduce((s, p) => s + Math.max(p.amounts[i], 0), 0);
-        return (
-          <div key={b} className="mb-1.5 flex items-center gap-3 text-[13px]">
-            <span className="w-20 shrink-0 text-mute">{bucketIn(b, T)}</span>
-            <span className="h-3 rounded-sm bg-brand" style={{ width: `${Math.max((owed / max) * 60, owed ? 1 : 0)}%` }} />
-            <span className="num">{money(owed, cur)}</span>
-          </div>
-        );
-      })}
-      <p className="mt-2 text-[12px] text-mute">{T.d.pay.debitNote}</p>
-    </div>
-  );
+  const buckets = v.buckets.map((b, i) => ({ label: bucketIn(b, T), value: v.partners.reduce((s, p) => s + Math.max(p.amounts[i], 0), 0) }));
+  return <AgeingStack buckets={buckets} cur={cur} testId={`age-${v.side}`} note={T.d.pay.debitNote} />;
 }
 
 export function PaymentsOverview() {
@@ -222,28 +207,39 @@ export function PaymentsOverview() {
   return (
     <>
       <PageHeader title={t.title} right={<PeriodPicker own={months} />} />
-      <p className="fade-up mb-6 max-w-4xl text-[17px] leading-relaxed" data-testid="payments-headline">{headline}</p>
-      <div className="mb-8 grid grid-cols-2 gap-x-6 gap-y-6 lg:grid-cols-3 xl:grid-cols-6">
-        <Tile label={t.customersOwe} value={rec ? money(rec.owed, cur) : "–"} sub={rec ? t.netCredits(money(rec.total, cur)) : t.noAgeing} testId="tile-owed" />
-        <Tile label={t.overdue} value={rec ? money(rec.overdue, cur) : "–"} sub={rec?.days !== null && rec?.days !== undefined ? t.dso(rec.days) : undefined} neg={!!rec && rec.overdue > rec.notDue} testId="tile-overdue" />
-        <Tile label={t.over90} value={rec ? money(rec.over90, cur) : "–"} neg={!!rec && rec.owed > 0 && rec.over90 / rec.owed > 0.2} testId="tile-over90" />
-        <Tile label={t.owedSuppliers} value={pay ? money(pay.owed, cur) : "–"} sub={pay ? t.netAdvances(money(pay.total, cur)) : t.noAgeing} testId="tile-payables" />
+      <Cockpit hero={
+        <HeroKpi label={t.customersOwe} testId="tile-owed" value={rec ? money(rec.owed, cur) : "–"} deltaLabel={rec ? t.netCredits(money(rec.total, cur)) : t.noAgeing}
+          story={<span data-testid="payments-headline">{headline}</span>}>
+          {rec && rec.owed > 0 && <AgeingStack cur={cur} buckets={rec.buckets.map((b, i) => ({ label: bucketIn(b, T), value: rec.partners.reduce((s, p) => s + Math.max(p.amounts[i], 0), 0) }))} compact />}
+        </HeroKpi>
+      }>
+        <Tile label={t.overdue} value={rec ? money(rec.overdue, cur, true) : "–"} sub={rec?.days !== null && rec?.days !== undefined ? t.dso(rec.days) : undefined} neg={!!rec && rec.overdue > rec.notDue} testId="tile-overdue" />
+        <Tile label={t.over90} value={rec ? money(rec.over90, cur, true) : "–"} neg={!!rec && rec.owed > 0 && rec.over90 / rec.owed > 0.2} testId="tile-over90" />
+        <Tile label={t.owedSuppliers} value={pay ? money(pay.owed, cur, true) : "–"} sub={pay ? t.netAdvances(money(pay.total, cur)) : t.noAgeing} testId="tile-payables" />
         <Tile label={t.received} value={noList ? t.notLoaded : money(a.flows.received, cur)} sub={noList ? t.uploadCustomer : a.flows.inProcess ? t.inProcess(money(a.flows.inProcess, cur)) : T.pl(a.label)} testId="tile-received" />
         <Tile label={t.paid} value={noList ? t.notLoaded : money(a.flows.paid, cur)} sub={noList ? t.uploadVendor : t.net(money(a.flows.net, cur))} neg={!noList && a.flows.net < 0} testId="tile-paid" />
-      </div>
+      </Cockpit>
       <Tieouts a={a} />
-      <div className="grid gap-10 lg:grid-cols-2">
-        <div>
-          <Findings findings={a.findings} />
-          {rec && <><h3 className="mb-2 text-lg font-semibold">{t.byAge}</h3><AgeBar v={rec} cur={cur} /></>}
-        </div>
-        <div>
-          {rec && <><h3 className="mb-2 text-lg font-semibold">{t.mostOverdue}</h3>
-            <BarList items={rec.partners.filter((p) => p.overdue > 0).map((p) => ({ key: p.name, label: p.name, value: p.overdue, share: rec.overdue ? p.overdue / rec.overdue : 0 }))} cur={cur} max={8} testId="overdue-bars" /></>}
-          {pay && <><h3 className="mb-2 mt-8 text-lg font-semibold">{t.largestOwed}</h3>
-            <BarList items={pay.partners.filter((p) => p.total > 0).sort((x, y) => y.total - x.total).map((p) => ({ key: p.name, label: p.name, value: p.total, share: pay.owed ? p.total / pay.owed : 0 }))} cur={cur} max={8} testId="payable-bars" /></>}
-        </div>
-      </div>
+      <CardGrid>
+        {rec && <ChartCard title={t.receivables} sub={t.byAge} testId="card-age-rec"><AgeBar v={rec} cur={cur} /></ChartCard>}
+        {pay && <ChartCard title={t.payables} sub={t.byAge} testId="card-age-pay"><AgeBar v={pay} cur={cur} /></ChartCard>}
+        {!noList && a.flows.byMonth.length > 1 && (
+          <ChartCard title={t.byMonth} wide testId="card-pay-months"
+            table={{ head: [t.month, t.received, t.paid], rows: a.flows.byMonth.map((m) => [monthIn(m.p, T), money(m.received, cur), money(m.paid, cur)]) }}>
+            <ColumnChart cur={cur} height={240} labels={a.flows.byMonth.map((m) => (/^\d{4}-\d{2}$/.test(m.p) ? T.ms(m.p) : m.p))} series={[
+              { name: t.received, values: a.flows.byMonth.map((m) => m.received), color: SERIES[0] },
+              { name: t.paid, values: a.flows.byMonth.map((m) => m.paid), color: SERIES[1] },
+            ]} />
+          </ChartCard>
+        )}
+        {rec && <ChartCard title={t.mostOverdue} testId="card-overdue">
+          <BarList items={rec.partners.filter((p) => p.overdue > 0).map((p) => ({ key: p.name, label: p.name, value: p.overdue, share: rec.overdue ? p.overdue / rec.overdue : 0 }))} cur={cur} max={8} testId="overdue-bars" />
+        </ChartCard>}
+        {pay && <ChartCard title={t.largestOwed} testId="card-payable">
+          <BarList items={pay.partners.filter((p) => p.total > 0).sort((x, y) => y.total - x.total).map((p) => ({ key: p.name, label: p.name, value: p.total, share: pay.owed ? p.total / pay.owed : 0 }))} cur={cur} max={8} testId="payable-bars" />
+        </ChartCard>}
+      </CardGrid>
+      <Findings findings={a.findings} />
     </>
   );
 }
@@ -277,6 +273,7 @@ export function AgeingPage({ side }: { side: Side }) {
           sub={v.kpiDays != null ? t.bsDays(v.kpiDays, v.days != null && Math.abs(v.days - v.kpiDays) > 15) : t.netVat} testId="side-days" />
         {side === "payable" && <Tile label={t.dueSoon} value={v.dueSoon === null ? "–" : money(v.dueSoon, cur)} sub={v.dueSoon === null ? t.noNotDue : t.notYetDue} testId="side-due-soon" />}
       </div>
+      <div className="mb-6 rounded-xl border border-line p-4 sm:p-5"><h3 className="t-card mb-3">{t.byAge}</h3><AgeBar v={v} cur={cur} /></div>
       {v.findings.length > 0 && <ul className="mb-6 list-disc ps-5 text-[13px]" data-testid="side-findings">{v.findings.map((f) => <li key={f.id}>{f.message}</li>)}</ul>}
       <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t.find} className="mb-3 w-full max-w-sm rounded border border-line px-3 py-2" data-testid="partner-search" />
       <div tabIndex={0} className="overflow-x-auto">
@@ -332,6 +329,14 @@ export function PaymentsFlows() {
           ? <Tile label={t.between} value={money(f.transfers, cur)} sub={t.notInOut} />
           : <Tile label={t.stillInProcess} value={money(f.inProcess, cur)} sub={t.notCleared} />}
       </div>
+      {f.byMonth.length > 1 && (
+        <div className="mb-8"><ChartCard title={t.byMonth} testId="card-flows-months">
+          <ColumnChart cur={cur} height={240} labels={f.byMonth.map((m) => (/^\d{4}-\d{2}$/.test(m.p) ? T.ms(m.p) : m.p))} series={[
+            { name: t.received, values: f.byMonth.map((m) => m.received), color: SERIES[0] },
+            { name: t.paid, values: f.byMonth.map((m) => m.paid), color: SERIES[1] },
+          ]} />
+        </ChartCard></div>
+      )}
       {f.byKind.length > 0 && (
         <div className="mb-10">
           <h3 className="mb-2 text-lg font-semibold">{t.whatItWas}</h3>

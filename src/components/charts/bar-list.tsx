@@ -35,10 +35,10 @@ export function BarList({ items, cur, max = 10, testId, onSelect, fmt }: {
     <div dir="ltr" className="space-y-1.5" data-testid={testId} role="list">
       {rows.map((r) => {
         const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100);
-        // With a custom label (fmt) and no negatives, the bars share the width left after room for a label (56px), so
-        // even the longest bar's label sits beside it at any width.
-        const roomy = !!fmt && !anyNeg;
-        const barW = roomy ? `calc((100% - 56px) * ${w / 100})` : `${w}%`;
+        // With no negatives, the bars share the width left after room for the label (76px), so even the longest bar's label
+        // sits beside it, never on top of the bar.
+        const roomy = !anyNeg;
+        const barW = roomy ? `calc((100% - 76px) * ${w / 100})` : `${w}%`;
         const click = onSelect && r.key !== "__other";
         return (
           <div key={r.key} role="listitem" className={`grid grid-cols-[minmax(0,38%)_1fr] items-center gap-3 rounded px-1 py-0.5 text-[13px] ${hover === r.key ? "bg-band" : ""} ${click ? "cursor-pointer" : ""}`}

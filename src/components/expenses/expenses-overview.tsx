@@ -41,7 +41,7 @@ export function ExpensesOverview() {
       <PageHeader title={title} right={<ExpensesPicker s={s} />} />
       <ReadinessCard sector="expenses" />
       <Cockpit hero={
-        <HeroKpi label={t.totalCosts} testId="tile-costs" value={money(s.total, cur, true)} cost
+        <HeroKpi label={t.totalCosts} testId="tile-costs" value={money(s.total, cur)} cost
           delta={s.growth} deltaLabel={s.compareLabel ? T.d.sales.vs(T.d.sales.word[s.compareLabel] ?? s.compareLabel) : T.d.sales.noComparison}
           now={last12.map((x) => x.total)} last={prev12.map((x) => x.total)}
           story={<span data-testid="expenses-headline">{headline}</span>} />

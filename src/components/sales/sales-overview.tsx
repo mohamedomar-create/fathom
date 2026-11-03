@@ -39,7 +39,7 @@ export function SalesOverview() {
       <ReadinessCard sector="sales" />
       {s.fromAccounts && <FromAccountsNote />}
       <Cockpit hero={
-        <HeroKpi label={t.netSales} testId="tile-sales" value={money(s.total, cur, true)} neg={s.total < 0}
+        <HeroKpi label={t.netSales} testId="tile-sales" value={money(s.total, cur)} neg={s.total < 0}
           delta={s.growth} deltaLabel={s.compareLabel ? t.vs(t.word[s.compareLabel] ?? s.compareLabel) : t.noComparison}
           now={last12.map((x) => x.sales)} last={prev12.map((x) => x.sales)}
           story={<span data-testid="sales-headline">{headline}</span>} />

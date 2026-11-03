@@ -11,7 +11,8 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { cn } from "@/lib/cn";
 import { AssumptionsPanel, fmtX, useAssumptions } from "./assumptions";
 import { breakingPoints, ProFormaTable, StressTable, TrendTable } from "./bank-tables";
-import { Tile } from "./common";
+import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
+import { Bullet } from "@/components/viz/bullet";
 import { MemoBox } from "./memo-box";
 import { ReadinessCard } from "@/components/setup/readiness-view";
 
@@ -48,20 +49,33 @@ export function BankPage() {
       </PageHeader>
       <ReadinessCard sector="banking" />
 
-      <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-        <span className="flex items-center gap-1.5"><BandChip band="strong" /> {res.counts.strong}</span>
-        <span className="flex items-center gap-1.5"><BandChip band="watch" /> {res.counts.watch}</span>
-        <span className="flex items-center gap-1.5"><BandChip band="weak" /> {res.counts.weak}</span>
-        <Link href={`${c.basePath}/data`} className="ms-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />{t.uploadAudited}</Link>
-      </div>
-
-      <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label={t.dscr} value={fmtX(r("dscr").value)} sub={<><BandChip band={r("dscr").band} /> <span className="text-mute">{t.target(`${BANK_LIMITS.dscr}x`)}</span></>} testId="tile-dscr" />
-        <Tile label={t.debtEbitda} value={fmtX(r("debt_ebitda").value)} sub={<><BandChip band={r("debt_ebitda").band} /> <span className="text-mute">{t.targetOrLess(`${BANK_LIMITS.debtEbitda}x`)}</span></>} />
-        <Tile label={t.room} value={cap.headroom === null ? "–" : money(cap.headroom, cur, true)} sub={<span className="text-mute">{cap.rate === null ? t.enterRate : t.atRate(pct(cap.rate, 1), cap.tenor)}</span>} testId="tile-headroom" />
-        <Tile label={t.request} value={pf ? money(pf.amount, cur, true) : "–"} testId="tile-request"
+      <Cockpit hero={
+        <HeroKpi label={t.dscr} testId="tile-dscr" value={fmtX(r("dscr").value)} neg={r("dscr").band === "weak"}
+          deltaLabel={t.target(`${BANK_LIMITS.dscr}x`)}>
+          <div className="mt-1">
+            <div dir="ltr" className="flex h-3 overflow-hidden rounded-full bg-band" aria-hidden>
+              {(["strong", "watch", "weak"] as const).map((b) => res.counts[b] ? <span key={b} className={cn("h-full border-e-2 border-white last:border-e-0", b === "strong" ? "bg-green" : b === "watch" ? "bg-amber" : "bg-red")} style={{ flex: res.counts[b] }} /> : null)}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+              <span className="flex items-center gap-1.5"><BandChip band="strong" /> {res.counts.strong}</span>
+              <span className="flex items-center gap-1.5"><BandChip band="watch" /> {res.counts.watch}</span>
+              <span className="flex items-center gap-1.5"><BandChip band="weak" /> {res.counts.weak}</span>
+              <Link href={`${c.basePath}/data`} className="ms-auto inline-flex items-center gap-1.5 text-brand-d hover:underline"><FileUp className="h-4 w-4" />{t.uploadAudited}</Link>
+            </div>
+          </div>
+        </HeroKpi>
+      }>
+        <KpiTile label={t.debtEbitda} value={fmtX(r("debt_ebitda").value)} accent={r("debt_ebitda").band === "weak" ? "bad" : "good"} sub={<><BandChip band={r("debt_ebitda").band} /> {t.targetOrLess(`${BANK_LIMITS.debtEbitda}x`)}</>} />
+        <KpiTile label={t.room} value={cap.headroom === null ? "–" : money(cap.headroom, cur, true)} accent={(cap.headroom ?? 0) > 0 ? "good" : "bad"} sub={cap.rate === null ? t.enterRate : t.atRate(pct(cap.rate, 1), cap.tenor)} testId="tile-headroom" />
+        <KpiTile label={t.request} value={pf ? money(pf.amount, cur, true) : "–"} testId="tile-request"
           sub={pf ? <span className={pf.fits === true ? "text-green-d" : pf.fits === false ? "text-red" : "text-mute"}>{pf.fits === true ? t.fits : pf.fits === false ? t.beyond : pf.type === "lc_guarantee" ? t.nonCash : t.enterRateShort}</span> : <a href="#request" className="text-brand-d hover:underline">{t.enterAmount}</a>} />
-      </div>
+        <div className="rounded-xl border border-line bg-white p-4" data-testid="bank-bullets">
+          {([["dscr", BANK_LIMITS.dscr, false], ["debt_ebitda", BANK_LIMITS.debtEbitda, true], ["int_cover", BANK_LIMITS.intCover, false]] as const).map(([k, lim, low]) => {
+            const x = res.ratios.find((y) => y.key === k);
+            return x ? <Bullet key={k} label={x.name} value={x.value} target={lim} lowerIsBetter={low} fmt={(v) => `${v.toFixed(2)}x`} /> : null;
+          })}
+        </div>
+      </Cockpit>
 
       <MemoBox section="bank" title={t.memoTitle} fallback={pack.memo} testId="bank-memo" />
 
@@ -87,14 +101,14 @@ export function BankPage() {
 
       <H2>{t.threeYear}</H2>
       <p className="mb-4 text-sm text-mute">{t.threeYearText}</p>
-      <div tabIndex={0} className="overflow-x-auto"><TrendTable trend={trend} cur={cur} /></div>
+      <div className="rounded-xl border border-line p-4" data-testid="card-bank-trend"><div tabIndex={0} className="overflow-x-auto"><TrendTable trend={trend} cur={cur} /></div></div>
       {trend.years.length < 3 && <p className="mt-2 text-sm text-mute" data-testid="trend-note">{t.onlyYears(trend.years.length)}<Link href={`${c.basePath}/data`} className="text-brand-d underline">{t.uploadEarlier}</Link>{t.toShow}</p>}
       {trend.years.length > 1 && <p className="mt-2 text-xs text-mute">{t.earlierEstimated}</p>}
 
       <H2>{t.stress}</H2>
       <p className="mb-2 text-sm text-mute">{t.stressText}</p>
       <p className="mb-4 rounded bg-brand-bg px-3 py-2 text-[13px]" data-testid="breaking-points">{breakingPoints(stress, t)}</p>
-      <div tabIndex={0} className="overflow-x-auto"><StressTable stress={stress} cur={cur} /></div>
+      <div className="rounded-xl border border-line p-4" data-testid="card-bank-stress"><div tabIndex={0} className="overflow-x-auto"><StressTable stress={stress} cur={cur} /></div></div>
       {stress.notes.map((n) => <p key={n} className="mt-2 text-xs text-mute">{n}</p>)}
 
       <H2>{t.checks}</H2>
@@ -132,7 +146,7 @@ export function BankPage() {
       {res.flags.length ? (
         <div className="mt-3 space-y-3" data-testid="bank-flags">
           {res.flags.map((f) => (
-            <div key={f.key} className={cn("rounded-md border-s-[3px] bg-band px-4 py-3 text-[13px]", f.severity === "high" ? "border-red" : "border-amber")}>
+            <div key={f.key} className={cn("rounded-lg border border-line border-s-[3px] bg-white px-4 py-3 text-[13px]", f.severity === "high" ? "border-s-red" : "border-s-amber")}>
               <div className="flex items-center gap-2 font-medium"><AlertTriangle className={cn("h-4 w-4", f.severity === "high" ? "text-red" : "text-amber")} />{f.title}</div>
               <p className="mt-1 text-mute">{f.detail}</p>
               <p className="mt-1">{f.advice}</p>
