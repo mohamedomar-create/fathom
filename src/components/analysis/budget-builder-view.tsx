@@ -208,7 +208,7 @@ function ViewTable({ testId, note, months, rows, total }: { testId: string; note
   return (
     <div data-testid={testId}>
       <p className="mb-2 text-xs text-mute">{note}</p>
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="tbl text-[13px]">
           <thead><tr><th className="text-start">{b.name}</th>{months.map((m) => <th key={m}>{ms(m)}</th>)}<th>{b.newYear}</th></tr></thead>
           <tbody>

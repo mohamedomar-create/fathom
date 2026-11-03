@@ -68,7 +68,7 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
           {t.headline(pct(Math.abs(((head.a - head.b) / Math.abs(head.b)) * 100), 1), head.a >= head.b ? t.above : t.below)}
         </p>
       )}
-      <div className="overflow-x-auto">
+      <div tabIndex={0} className="overflow-x-auto">
         <table className="tbl text-[13px]">
           <thead>
             <tr><th>{t.account}</th><th>{t.monthCol} · {t.actual}</th><th>{t.budget}</th><th>{t.diff}</th><th>{t.ytdCol} · {t.actual}</th><th>{t.budget}</th><th>{t.diff}</th><th>%</th><th title={t.outlookHint}>{t.outlook}</th><th>{t.fullYear}</th></tr>
@@ -93,7 +93,7 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
         <section className="mt-6" data-testid="budget-pv">
           <h2 className="mb-1 text-lg font-light">{t.productsVs}</h2>
           <p className="mb-2 text-xs text-mute">{t.volumeHint}</p>
-          <div className="overflow-x-auto">
+          <div tabIndex={0} className="overflow-x-auto">
             <table className="tbl text-[13px]">
               <thead><tr><th>{t.product}</th><th>{t.units} · {t.budget}</th><th>{t.units} · {t.actual}</th><th>{t.budget}</th><th>{t.actual}</th><th>{t.volume}</th><th>{t.priceEff}</th></tr></thead>
               <tbody>
