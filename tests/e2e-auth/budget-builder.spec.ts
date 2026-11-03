@@ -111,6 +111,41 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   // The new year starts equal to this year's estimate (CPAP: 52,000 + 81,000 in Jan-Feb 2026).
   expect(yearOf("prod:CPAP Machine")).toBe(133000);
 
+  // The cards, compact amounts (exact on hover and while typing), the chart, sort and the search box.
+  for (const k of ["revenue", "gp", "exp", "np"]) await expect(page.getByTestId(`bcards-${k}`)).toBeVisible();
+  await expect(page.getByTestId("bcards-revenue")).toContainText("This year's estimate");
+  await expect(page.getByTestId("bchart-revenue")).toBeVisible();
+  const cpap = page.getByTestId("bsheet-input-prod:CPAP Machine");
+  await expect(cpap).toHaveValue("133K");
+  await cpap.focus();
+  await expect(cpap).toHaveValue("133,000");
+  await cpap.blur();
+  await expect(cpap).toHaveValue("133K");
+  await expect(page.getByTestId("bsheet-total-new")).toHaveText(/^[\d.]+(K|M)$/);
+  expect(await page.getByTestId("bsheet-total-new").getAttribute("title")).toMatch(/^[\d,]+$/);
+  await page.getByTestId("bsheet-sort-amount").click();
+  const order = await page.locator("[data-testid^=bsheet-row-]").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")!.replace("bsheet-row-", "")));
+  const amounts = await Promise.all(order.map(async (k) => Number((await page.getByTestId(`bsheet-input-${k}`).getAttribute("title"))!.split(" ")[0].replace(/,/g, ""))));
+  expect(amounts[0]).toBe(Math.max(...amounts));
+  await page.getByTestId("bsheet-sort-name").click();
+  await expect(page.locator("[data-testid^=bsheet-row-]").first()).toHaveAttribute("data-testid", "bsheet-row-grp:cons"); // Consumables, CPAP Machine, Pulse Oximeter
+  await expect(page.getByTestId("bsheet-search")).toHaveCount(0); // 3 rows: no search box
+  await page.getByTestId("btab-expenses").click();
+  await expect(page.getByTestId("bchart-expenses")).toBeVisible();
+  const expRows = page.locator("[data-testid^=bsheet-row-]");
+  const nExp = await expRows.count();
+  if (nExp > 15) {
+    const label = (await expRows.nth(3).locator("td").first().innerText()).trim().split("\n")[0];
+    await page.getByTestId("bsheet-search").fill(label);
+    await expect.poll(() => expRows.count()).toBeLessThan(nExp);
+    await expect(expRows.first()).toContainText(label);
+  } else await expect(page.getByTestId("bsheet-search")).toHaveCount(0);
+  for (const k of ["customers", "streams", "groups", "vs"]) {
+    await page.getByTestId(`btab-${k}`).click();
+    await expect(page.getByTestId(`bchart-${k}`)).toBeVisible();
+  }
+  await page.getByTestId("btab-revenue").click();
+
   // +10% on a revenue row; units × price on a product; a month edit on a group.
   await expect(page.getByTestId("bsheet-strip")).toBeVisible();
   const stripBefore = await page.getByTestId("bsheet-strip-revenue").textContent();
@@ -168,7 +203,9 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   // The customer group holds its customer's budget (Hilltop Hospital's saved year).
   const hilltop = Math.round(yearOf("cust:Hilltop Hospital", "customer"));
   expect(hilltop).toBeGreaterThan(0);
-  await expect(page.getByTestId("bgroups-customers-row").filter({ hasText: "Hospitals" }).locator("td").last()).toHaveText(hilltop.toLocaleString("en-US"));
+  const hosp = page.getByTestId("bgroups-customers-row").filter({ hasText: "Hospitals" }).locator("td").last().locator("span");
+  await expect(hosp).toHaveAttribute("title", hilltop.toLocaleString("en-US"));
+  await expect(hosp).toHaveText(/^[\d.]+(K|M)$/);
   await page.getByTestId("btab-expenses").click();
   expect(await page.locator("[data-testid^=bsheet-row-]").count()).toBeGreaterThan(0);
 

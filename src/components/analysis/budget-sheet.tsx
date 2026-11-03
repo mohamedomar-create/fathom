@@ -1,16 +1,17 @@
 "use client";
-import { Fragment, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import * as D from "@radix-ui/react-dialog";
-import { ChevronDown, ChevronRight, X } from "lucide-react";
-import { num, pct } from "@/lib/engine/format";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Search, X } from "lucide-react";
+import { changeBadge, sortRows, type Sort, type SortKey } from "@/lib/engine/budget-visual";
+import { Sparkline } from "@/components/charts/spark";
 import { parseBudgetInput, rowMonths, type BaseCol, type Basis, type BudgetRow } from "@/lib/engine/budget-builder";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
+import { amt, Amt, ChangeBadge, ShareBar, useCompact } from "./budget-visuals";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 export const sumOf = (m: number[]) => r2(m.reduce((t, v) => t + v, 0));
-/** A whole amount with thousands commas (the app's number format, the same in both languages). */
-export const amt = (v: number) => num(Math.round(v), "num").replace(/\.00$/, "");
+export { amt };
 const zeros = () => Array<number>(12).fill(0);
 export const baseOf = (bases: Map<string, BaseCol>, r: { key: string; label: string }): BaseCol =>
   bases.get(r.key) ?? { key: r.key, label: r.label, years: [], ytd: 0, estimate: 0, months: zeros(), lastYear: zeros() };
@@ -20,6 +21,9 @@ const isPhone = () => typeof window !== "undefined" && window.matchMedia("(max-w
 const onEnter = (e: React.KeyboardEvent<HTMLInputElement>) => { if (e.key === "Enter") e.currentTarget.blur(); };
 const box = "rounded border border-line bg-white px-1.5 py-1 text-end text-[13px] focus:border-brand-d";
 const cell = `${box} w-24 sm:w-28`;
+const SORTS: SortKey[] = ["name", "amount", "change"];
+/** Inputs show the compact amount at rest and the exact one while focused; `same` tells an untouched box. */
+const focusExact = (v: number) => (e: React.FocusEvent<HTMLInputElement>) => { e.target.value = amt(v); e.target.select(); };
 
 export interface BudgetSheetProps {
   rows: BudgetRow[];
@@ -35,12 +39,19 @@ export interface BudgetSheetProps {
   units?: boolean;
   /** "Back to auto" for this view (default: the row's basis spread again). */
   auto?: (row: BudgetRow, base: BaseCol) => BudgetRow;
+  /** Cost rows (expenses): an increase is bad. */
+  cost?: boolean;
+  /** Show each row's share of the total (revenue rows). */
+  share?: boolean;
 }
 
 /** One view of the budget: prior years, this year to date, this year's estimate, change and the new year per row. */
-export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, members, units, auto }: BudgetSheetProps) {
+export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, members, units, auto, cost, share }: BudgetSheetProps) {
   const { d, ms } = useT();
   const b = d.bud.b;
+  const fmt = useCompact();
+  const [sort, setSort] = useState<Sort | null>(null);
+  const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [shown, setShown] = useState<Set<string>>(new Set());
   const [uxp, setUxp] = useState<Set<string>>(new Set());
@@ -53,7 +64,6 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
   const set = (next: BudgetRow) => onChange(rows.map((r) => (r.key === next.key ? next : r)));
   const years = [...new Set(rows.flatMap((r) => baseOf(bases, r).years.map((y) => y.fy)))].sort();
   const yearOf = (base: BaseCol, fy: string) => base.years.find((y) => y.fy === fy)?.amount ?? 0;
-  const change = (now: number, est: number) => (est !== 0 ? pct(((now - est) / Math.abs(est)) * 100, 1) : "–");
   const tot = {
     years: years.map((fy) => rows.reduce((t, r) => t + yearOf(baseOf(bases, r), fy), 0)),
     ytd: rows.reduce((t, r) => t + baseOf(bases, r).ytd, 0),
@@ -74,6 +84,18 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
   }
   const phoneRow = rows.find((r) => r.key === phoneKey) ?? null;
   const hideSm = "hidden sm:table-cell";
+  const hideMd = "hidden md:table-cell";
+  const searchable = rows.length > 15;
+  const list = useMemo(() => {
+    const q = searchable ? query.trim().toLocaleLowerCase() : "";
+    const hit = q ? rows.filter((r) => (labelOf?.(r) ?? r.label).toLocaleLowerCase().includes(q)) : rows;
+    return sortRows(hit, sort, {
+      name: (r) => labelOf?.(r) ?? r.label,
+      amount: (r) => sumOf(r.months),
+      change: (r) => changeBadge(sumOf(r.months), baseOf(bases, r).estimate).pct,
+    });
+  }, [rows, sort, query, searchable, labelOf, bases]);
+  const pick = (by: SortKey) => setSort((s) => (s?.by === by ? { by, desc: !s.desc } : { by, desc: by !== "name" }));
 
   return (
     <div data-testid="bsheet">
@@ -87,6 +109,24 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
           <span className="text-xs text-mute sm:ms-auto">{b.inputHint}</span>
         </div>
       )}
+      <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
+        <span className="text-mute" id="bsheet-sortby">{b.sortBy}</span>
+        <div role="group" aria-labelledby="bsheet-sortby" className="flex gap-1">
+          {SORTS.map((k) => (
+            <button key={k} type="button" aria-pressed={sort?.by === k} onClick={() => pick(k)} data-testid={`bsheet-sort-${k}`}
+              className={cn("inline-flex items-center gap-1 rounded border px-2 py-1", sort?.by === k ? "border-brand-d bg-band font-medium" : "border-line")}>
+              {b.sort[k]}{sort?.by === k && (sort.desc ? <ArrowDown aria-hidden className="h-3 w-3" /> : <ArrowUp aria-hidden className="h-3 w-3" />)}
+            </button>
+          ))}
+        </div>
+        {searchable && (
+          <label className="relative ms-auto flex items-center">
+            <span className="sr-only">{b.search}</span>
+            <Search aria-hidden className="pointer-events-none absolute start-2 h-3.5 w-3.5 text-mute" />
+            <input type="search" className="w-44 rounded border border-line py-1 pe-2 ps-7 text-[13px]" placeholder={b.search} value={query} onChange={(e) => setQuery(e.target.value)} data-testid="bsheet-search" />
+          </label>
+        )}
+      </div>
       <p className="mb-1 text-xs text-mute sm:hidden">{b.phoneHint}</p>
       <div className="max-h-[70vh] overflow-auto rounded border border-line">
         <table className="tbl w-full text-[13px]">
@@ -94,21 +134,22 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
             <tr>
               <th>{b.name}</th>
               {years.map((fy) => <th key={fy} className={hideSm}>{d.bud.fy(fy)}</th>)}
-              <th className={hideSm}>{b.ytd}</th><th className="!whitespace-normal">{b.estimate}</th><th className={hideSm}>{b.change}</th><th className="!whitespace-normal">{b.newYear}</th>
+              <th className={hideMd}>{b.ytd}</th><th className="!whitespace-normal">{b.estimate}</th><th className="!whitespace-normal">{b.newYear}</th><th className={hideSm}>{b.change}</th>
+              <th className={hideMd}>{b.trend}</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
+            {list.map((r) => {
               const base = baseOf(bases, r);
               const now = sumOf(r.months);
-              const list = members?.get(r.key) ?? [];
+              const inside = members?.get(r.key) ?? [];
               const priced = units && !!base.price && base.price > 0;
               const showUxp = priced && (r.basis?.kind === "units" || uxp.has(r.key));
-              const span = 1 + years.length + 4;
+              const span = 1 + years.length + 5;
               return (
                 <Fragment key={r.key}>
                   <tr data-testid={`bsheet-row-${r.key}`}>
-                    <td className="min-w-[7rem] sm:min-w-[12rem]">
+                    <td className="min-w-[7rem] max-w-[10rem] sm:min-w-[12rem] sm:max-w-none">
                       <div className="flex items-center gap-1">
                         {editable && <input type="checkbox" className="h-4 w-4 shrink-0 accent-brand-d" aria-label={b.select(label(r))} checked={sel.has(r.key)}
                           onChange={() => setSel((s) => toggle(s, r.key))} data-testid={`bsheet-select-${r.key}`} />}
@@ -117,35 +158,40 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
                           {open.has(r.key) ? <ChevronDown aria-hidden className="h-4 w-4" /> : <ChevronRight aria-hidden className="h-4 w-4 rtl:rotate-180" />}
                         </button>
                         <span className="min-w-0 flex-1 truncate sm:cursor-auto" onClick={() => { if (isPhone()) setPhoneKey(r.key); }}>{label(r)}</span>
-                        {r.mode === "months" && <span className="rounded bg-band px-1.5 text-[11px] text-mute">{b.byMonths}</span>}
-                        {list.length > 0 && <button type="button" className="hidden text-xs text-brand-d underline sm:inline" onClick={() => setShown((s) => toggle(s, r.key))} data-testid={`bsheet-members-${r.key}`}>{b.showMembers}</button>}
+                        {r.mode === "months" && <span className="hidden whitespace-nowrap rounded bg-band px-1.5 text-[11px] text-mute sm:inline">{b.byMonths}</span>}
+                        {inside.length > 0 && <button type="button" className="hidden text-xs text-brand-d underline sm:inline" onClick={() => setShown((s) => toggle(s, r.key))} data-testid={`bsheet-members-${r.key}`}>{b.showMembers}</button>}
                       </div>
+                      {share && tot.now > 0 && <ShareBar share={now / tot.now} />}
                     </td>
-                    {years.map((fy) => <td key={fy} className={hideSm}>{amt(yearOf(base, fy))}</td>)}
-                    <td className={hideSm}>{amt(base.ytd)}</td>
-                    <td>{amt(base.estimate)}</td>
-                    <td className={hideSm} data-testid={`bsheet-change-${r.key}`}>{change(now, base.estimate)}</td>
+                    {years.map((fy) => <td key={fy} className={hideSm}><Amt v={yearOf(base, fy)} /></td>)}
+                    <td className={hideMd}><Amt v={base.ytd} /></td>
+                    <td><Amt v={base.estimate} /></td>
                     <td className="p-0.5">
                       {editable ? (
                         <div className="flex flex-col items-end gap-1">
-                          <input key={`${r.key}:${now}`} inputMode="decimal" className={cell} defaultValue={amt(now)} aria-label={b.newYearOf(label(r))} title={b.inputHint}
-                            onKeyDown={onEnter} data-testid={`bsheet-input-${r.key}`}
+                          <input key={`${r.key}:${now}`} inputMode="decimal" className={cell} defaultValue={fmt(now)} aria-label={b.newYearOf(label(r))} title={`${amt(now)} · ${b.inputHint}`}
+                            onKeyDown={onEnter} onFocus={focusExact(now)} data-testid={`bsheet-input-${r.key}`}
                             onBlur={(e) => {
-                              if (e.target.value === e.target.defaultValue) return;
-                              const basis = parseBudgetInput(e.target.value);
-                              if (!basis) { e.target.value = e.target.defaultValue; return; }
-                              set(withBasis(r, basis, base));
+                              const text = e.target.value;
+                              e.target.value = fmt(now);
+                              if (text === amt(now) || text === fmt(now)) return;
+                              const basis = parseBudgetInput(text);
+                              if (basis) set(withBasis(r, basis, base));
                             }} />
                           {priced && !showUxp && <button type="button" className="text-[11px] text-brand-d underline" onClick={() => setUxp((s) => toggle(s, r.key))} data-testid={`bsheet-uxp-${r.key}`}>{b.uxp}</button>}
                           {showUxp && <UnitsPrice row={r} base={base} onSet={set} />}
                         </div>
                       ) : (
-                        <span data-testid={`bsheet-value-${r.key}`}>{amt(now)}{r.basis?.kind === "units" && <span className="block text-[11px] text-mute">{amt(r.basis.units)} × {amt(r.basis.price)}</span>}</span>
+                        <span className="flex flex-col items-end"><Amt v={now} testId={`bsheet-value-${r.key}`} />{r.basis?.kind === "units" && <span className="block text-[11px] text-mute">{amt(r.basis.units)} × {amt(r.basis.price)}</span>}
+                          <ChangeBadge now={now} est={base.estimate} cost={cost} className="mt-0.5 sm:hidden" /></span>
                       )}
+                      {editable && <div className="mt-0.5 flex justify-end sm:hidden"><ChangeBadge now={now} est={base.estimate} cost={cost} /></div>}
                     </td>
+                    <td className={hideSm} data-testid={`bsheet-change-${r.key}`}><ChangeBadge now={now} est={base.estimate} cost={cost} /></td>
+                    <td className={cn(hideMd, "py-0.5")} title={b.trendOf(label(r))}><Sparkline values={r.months} color="#2a78d6" w={76} h={22} /></td>
                   </tr>
                   {shown.has(r.key) && (
-                    <tr data-testid={`bsheet-memberlist-${r.key}`}><td colSpan={span} className="bg-band/50 text-xs text-mute">{list.join(" · ")}</td></tr>
+                    <tr data-testid={`bsheet-memberlist-${r.key}`}><td colSpan={span} className="bg-band/50 text-xs text-mute">{inside.join(" · ")}</td></tr>
                   )}
                   {open.has(r.key) && (
                     <tr className="hidden sm:table-row"><td colSpan={span} className="bg-band/40">
@@ -155,14 +201,16 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
                 </Fragment>
               );
             })}
-            {!rows.length && <tr><td colSpan={5 + years.length} className="text-mute">{b.empty}</td></tr>}
+            {!list.length && <tr><td colSpan={6 + years.length} className="text-mute">{rows.length ? b.noMatch : b.empty}</td></tr>}
           </tbody>
           <tfoot className="sticky bottom-0 z-10 bg-white">
             <tr className="tot" data-testid="bsheet-total">
               <td>{b.total}</td>
-              {tot.years.map((v, i) => <td key={years[i]} className={hideSm}>{amt(v)}</td>)}
-              <td className={hideSm}>{amt(tot.ytd)}</td><td>{amt(tot.est)}</td><td className={hideSm}>{change(tot.now, tot.est)}</td>
-              <td data-testid="bsheet-total-new">{amt(tot.now)}</td>
+              {tot.years.map((v, i) => <td key={years[i]} className={hideSm}><Amt v={v} /></td>)}
+              <td className={hideMd}><Amt v={tot.ytd} /></td><td><Amt v={tot.est} /></td>
+              <td><Amt v={tot.now} testId="bsheet-total-new" /></td>
+              <td className={hideSm}><ChangeBadge now={tot.now} est={tot.est} cost={cost} /></td>
+              <td className={hideMd} />
             </tr>
           </tfoot>
         </table>
@@ -178,7 +226,8 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
             {phoneRow && (() => {
               const base = baseOf(bases, phoneRow);
               return <>
-                <p className="mb-2 text-sm text-mute">{b.estimate}: {amt(base.estimate)} · {b.newYear}: {amt(sumOf(phoneRow.months))}</p>
+                <p className="mb-2 flex flex-wrap items-center gap-1 text-sm text-mute">{b.estimate}: <Amt v={base.estimate} /> · {b.newYear}: <Amt v={sumOf(phoneRow.months)} className="text-ink" />
+                  <ChangeBadge now={sumOf(phoneRow.months)} est={base.estimate} cost={cost} /></p>
                 <Months row={phoneRow} months={months} ms={ms} editable={editable} onSet={set} onAuto={() => backToAuto(phoneRow)} />
               </>;
             })()}
@@ -196,6 +245,7 @@ function Months({ row, months, ms, editable, onSet, onAuto }: {
 }) {
   const { d } = useT();
   const b = d.bud.b;
+  const fmt = useCompact();
   return (
     <div className="flex flex-col gap-2 py-1">
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
@@ -203,16 +253,18 @@ function Months({ row, months, ms, editable, onSet, onAuto }: {
           <label key={i} className="grid gap-0.5 text-[11px] text-mute">
             {months[i] ? ms(months[i]) : i + 1}
             {editable ? (
-              <input key={`${i}:${v}`} inputMode="decimal" className={cn(box, "w-full")} defaultValue={amt(v)} onKeyDown={onEnter} data-testid={`bsheet-month-${row.key}-${i}`}
+              <input key={`${i}:${v}`} inputMode="decimal" className={cn(box, "w-full")} defaultValue={fmt(v)} title={amt(v)} onKeyDown={onEnter} onFocus={focusExact(v)} data-testid={`bsheet-month-${row.key}-${i}`}
                 onBlur={(e) => {
-                  if (e.target.value === e.target.defaultValue) return;
-                  const p = parseBudgetInput(e.target.value);
-                  if (!p || p.kind === "units") { e.target.value = e.target.defaultValue; return; }
+                  const text = e.target.value;
+                  e.target.value = fmt(v);
+                  if (text === amt(v) || text === fmt(v)) return;
+                  const p = parseBudgetInput(text);
+                  if (!p || p.kind === "units") return;
                   const next = row.months.slice();
                   next[i] = r2(p.kind === "amount" ? p.value : v * (1 + p.value / 100));
                   onSet({ ...row, mode: "months", basis: { kind: "amount", value: sumOf(next) }, months: next });
                 }} />
-            ) : <span className="text-end text-[13px] text-ink" data-testid={`bsheet-mval-${row.key}-${i}`}>{amt(v)}</span>}
+            ) : <Amt v={v} className="text-end text-[13px] text-ink" testId={`bsheet-mval-${row.key}-${i}`} />}
           </label>
         ))}
       </div>

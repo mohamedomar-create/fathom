@@ -1,8 +1,8 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
-import { CheckCircle2, Download, Lock, Plus, Settings2, Target, Upload } from "lucide-react";
-import { forecast, fyStartOf, hasPL, money, PL_KEYS, type ClassKey } from "@/lib/engine";
+import { CheckCircle2, ChevronDown, ChevronRight, Download, Lock, Plus, Settings2, Target, Upload } from "lucide-react";
+import { forecast, fyStartOf, hasPL, PL_KEYS, type ClassKey } from "@/lib/engine";
 import {
   budgetAccounts, fyMonths, seedFromForecast, seedFromLastYear, seedWithProducts, type BudgetLine, type BudgetProduct,
 } from "@/lib/engine/budget";
@@ -23,6 +23,8 @@ import { BudgetVs } from "./budget-vs";
 import { suggestSetup } from "@/lib/engine/budget-setup";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
+import { Sparkline } from "@/components/charts/spark";
+import { amt, Amt, ShareBar, useCompact } from "./budget-visuals";
 
 const PLS = new Set<string>(PL_KEYS);
 const cellKey = (k: string, m: string) => `${k}\u0001${m}`;
@@ -51,7 +53,6 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
   const { d, ml, ms } = useT();
   const t = d.bud;
   const clsName = d.setx.coa.cls as Record<string, string>;
-  const cur = c.settings.currency;
   const fyStart = c.settings.fyStartMonth ?? 1;
   const version = versions.find((v) => v.id === current?.id) ?? null;
   const months = useMemo(() => (version ? fyMonths(version.fy, fyStart) : []), [version, fyStart]);
@@ -111,7 +112,6 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
   const dirty = builder ? builderDirty : Object.keys(edits).length + (prodEdits ? 1 : 0);
 
   const { accounts: budget, notes } = useMemo(() => budgetAccounts(lines, products), [lines, products]);
-  const fmt = (v: number) => money(v, cur, true);
 
   const go = (id: string) => router.push(`?v=${id}`);
   const say = (ok: boolean, text: string) => setMsg({ ok, text });
@@ -225,13 +225,13 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
           {tab === "vs" && <BudgetVs lines={lines} products={products} months={months} versionName={version.name} salesProducts={salesProducts} />}
 
           {tab === "accounts" && (
-            <AccountsGrid key={`${version.id}:${version.updatedAt}`} lines={lines} months={months} edit={canEdit} clsName={clsName} ms={ms} fmt={fmt} productMonths={new Set(products.map((p) => p.month))}
+            <AccountsGrid key={`${version.id}:${version.updatedAt}`} lines={lines} months={months} edit={canEdit} clsName={clsName} ms={ms} productMonths={new Set(products.map((p) => p.month))}
               onCell={(k, m, v) => setEdits((e) => ({ ...e, [cellKey(k, m)]: v }))}
               addable={canEdit ? c.accounts.filter((a) => PLS.has(a.cls) && !lines.some((l) => l.key === accountMarkKey(a)) && !extra.some((x) => x.key === accountMarkKey(a))) : []}
               onAdd={(a) => setExtra((x) => [...x, { key: accountMarkKey(a), cls: a.cls, label: a.code ? `${a.code} ${a.name}` : a.name }])}
               extra={extra} notes={notes} fromProducts={budget.filter((a) => a.id.startsWith("prod:"))} />
           )}
-          {tab === "products" && <ProductsGrid key={`${version.id}:${version.updatedAt}`} rows={products} months={months} edit={canEdit} onChange={setProdEdits} fmt={fmt} ml={ml} />}
+          {tab === "products" && <ProductsGrid key={`${version.id}:${version.updatedAt}`} rows={products} months={months} edit={canEdit} onChange={setProdEdits} ml={ml} />}
 
           {canEdit && dirty > 0 && (
             <div className="sticky bottom-16 mt-4 flex items-center gap-3 rounded border border-line bg-white p-3 shadow md:bottom-2">
@@ -343,8 +343,9 @@ function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAcco
   );
 }
 
-function AccountsGrid({ lines, months, edit, clsName, ms, fmt, onCell, addable, onAdd, extra, notes, productMonths, fromProducts }: {
-  lines: BudgetLine[]; months: string[]; edit: boolean; clsName: Record<string, string>; ms: (p: string) => string; fmt: (v: number) => string;
+/** By account: one row per account with its year and a sparkline; its 12 months (editable in a draft) on demand. */
+function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd, extra, notes, productMonths, fromProducts }: {
+  lines: BudgetLine[]; months: string[]; edit: boolean; clsName: Record<string, string>; ms: (p: string) => string;
   onCell: (k: string, m: string, v: number) => void; addable: { code: string; name: string; cls: ClassKey; id: string }[];
   onAdd: (a: { code: string; name: string; cls: ClassKey; id: string; amounts: Record<string, number> }) => void;
   extra: { key: string; cls: ClassKey; label: string }[]; notes: string[]; productMonths: Set<string>;
@@ -353,6 +354,10 @@ function AccountsGrid({ lines, months, edit, clsName, ms, fmt, onCell, addable, 
 }) {
   const { d } = useT();
   const t = d.bud;
+  const b = t.b;
+  const short = useCompact();
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const byKey = new Map<string, { cls: ClassKey; label: string; v: Record<string, number> }>();
   for (const l of lines) {
     const r = byKey.get(l.key) ?? { cls: l.cls, label: l.label ?? (l.key.startsWith("cls:") ? clsName[l.cls] : l.key), v: {} };
@@ -367,8 +372,8 @@ function AccountsGrid({ lines, months, edit, clsName, ms, fmt, onCell, addable, 
       {productMonths.size > 0 && <p className="mb-2 text-xs text-mute">{t.fromProductsNote}</p>}
       {notes.length > 0 && <ul className="mb-2 text-xs text-mute">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
       <div className="overflow-x-auto">
-        <table className="tbl text-[13px]">
-          <thead><tr><th>{t.account}</th>{months.map((m) => <th key={m}>{ms(m)}</th>)}<th>{t.total}</th></tr></thead>
+        <table className="tbl w-full text-[13px]">
+          <thead><tr><th className="text-start">{t.account}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.total}</th></tr></thead>
           <tbody>
             {groups.map((g) => (
               <Fragment key={g.cls}>{Rows({ title: clsName[g.cls], rows: g.rows })}</Fragment>
@@ -391,72 +396,152 @@ function AccountsGrid({ lines, months, edit, clsName, ms, fmt, onCell, addable, 
   function Rows({ title, rows }: { title: string; rows: [string, { cls: ClassKey; label: string; v: Record<string, number> }][] }) {
     return (
       <>
-        <tr className="cat"><td colSpan={months.length + 2}>{title}</td></tr>
-        {rows.map(([key, r]) => (
-          <tr key={key} data-testid="budget-row" data-key={key}>
-            <td>{r.label}</td>
-            {months.map((m) => (
-              <td key={m} className="p-0.5">
-                {edit && !key.startsWith("prod:") ? (
-                  <input inputMode="decimal" aria-label={`${r.label} ${m}`} className="w-24 rounded border border-transparent bg-transparent px-1 py-1 text-end hover:border-line focus:border-brand-d"
-                    defaultValue={r.v[m] ?? ""} data-testid={`budget-cell-${key}-${m}`}
-                    onBlur={(e) => { const raw = e.target.value.replace(/,/g, "").trim(); const n = raw === "" ? 0 : Number(raw); if (Number.isFinite(n) && n !== (r.v[m] ?? 0)) onCell(key, m, Math.round(n * 100) / 100); }} />
-                ) : (r.v[m] ? fmt(r.v[m]) : "–")}
-              </td>
-            ))}
-            <td className="font-medium">{fmt(months.reduce((s, m) => s + (r.v[m] ?? 0), 0))}</td>
-          </tr>
-        ))}
+        <tr className="cat"><td colSpan={3}>{title}</td></tr>
+        {rows.map(([key, r]) => {
+          const year = months.reduce((s, m) => s + (r.v[m] ?? 0), 0);
+          const isOpen = open.has(key);
+          const editable = edit && !key.startsWith("prod:");
+          return (
+            <Fragment key={key}>
+              <tr data-testid="budget-row" data-key={key}>
+                <td className="min-w-[10rem]">
+                  <button type="button" className="me-1 inline-flex items-center gap-1 rounded p-0.5 text-start hover:bg-band" aria-expanded={isOpen} onClick={() => toggle(key)} data-testid={`budget-open-${key}`}>
+                    {isOpen ? <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-mute" /> : <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-mute rtl:rotate-180" />}
+                    <span>{r.label}</span><span className="sr-only"> · {isOpen ? b.closeMonths : b.openMonths}</span>
+                  </button>
+                </td>
+                <td className="hidden py-0.5 sm:table-cell" title={b.trendOf(r.label)}><Sparkline values={months.map((m) => r.v[m] ?? 0)} color="#2a78d6" w={96} h={22} /></td>
+                <td className="font-medium"><Amt v={year} /></td>
+              </tr>
+              {isOpen && (
+                <tr><td colSpan={3} className="bg-band/40">
+                  <div className="grid grid-cols-3 gap-2 py-1 sm:grid-cols-6 lg:grid-cols-12">
+                    {months.map((m) => (
+                      <label key={m} className="grid gap-0.5 text-[11px] text-mute">{ms(m)}
+                        {editable ? (
+                          <input key={`${m}:${r.v[m] ?? 0}`} inputMode="decimal" aria-label={`${r.label} ${m}`} title={r.v[m] ? amt(r.v[m]) : undefined}
+                            className="w-full rounded border border-line bg-white px-1.5 py-1 text-end text-[13px] text-ink focus:border-brand-d"
+                            defaultValue={r.v[m] ? short(r.v[m]) : ""} data-testid={`budget-cell-${key}-${m}`}
+                            onFocus={(e) => { e.target.value = r.v[m] ? amt(r.v[m]) : ""; e.target.select(); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                            onBlur={(e) => {
+                              const text = e.target.value;
+                              e.target.value = r.v[m] ? short(r.v[m]) : "";
+                              if (r.v[m] && (text === amt(r.v[m]) || text === short(r.v[m]))) return;
+                              const raw = text.replace(/,/g, "").trim(); const n = raw === "" ? 0 : Number(raw);
+                              if (Number.isFinite(n) && n !== (r.v[m] ?? 0)) onCell(key, m, Math.round(n * 100) / 100);
+                            }} />
+                        ) : <span className="text-end text-[13px] text-ink">{r.v[m] ? <Amt v={r.v[m]} /> : "–"}</span>}
+                      </label>
+                    ))}
+                  </div>
+                </td></tr>
+              )}
+            </Fragment>
+          );
+        })}
       </>
     );
   }
 }
 
-function ProductsGrid({ rows, months, edit, onChange, fmt, ml }: { rows: BudgetProduct[]; months: string[]; edit: boolean; onChange: (r: BudgetProduct[]) => void; fmt: (v: number) => string; ml: (p: string) => string }) {
+type ProductRow = { r: BudgetProduct; i: number };
+
+/** Products: one row per product with its year (units, average price, revenue, cost) and its 12 months on demand. */
+function ProductsGrid({ rows, months, edit, onChange, ml }: { rows: BudgetProduct[]; months: string[]; edit: boolean; onChange: (r: BudgetProduct[]) => void; ml: (p: string) => string }) {
   const { d } = useT();
   const t = d.bud;
-  const [filter, setFilter] = useState("");
-  const names = [...new Set(rows.map((r) => r.product))].sort();
-  const shown = rows.map((r, i) => ({ r, i })).filter(({ r }) => !filter || r.product === filter);
+  const b = t.b;
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const byProduct = new Map<string, ProductRow[]>();
+  rows.forEach((r, i) => { const l = byProduct.get(r.product) ?? []; l.push({ r, i }); byProduct.set(r.product, l); });
+  const q = query.trim().toLocaleLowerCase();
+  const list = [...byProduct].filter(([n]) => !q || n.toLocaleLowerCase().includes(q))
+    .map(([name, items]) => {
+      const units = items.reduce((s, x) => s + x.r.units, 0);
+      const revenue = items.reduce((s, x) => s + x.r.units * x.r.price, 0);
+      const costed = items.some((x) => x.r.unit_cost !== null);
+      const cost = items.reduce((s, x) => s + x.r.units * (x.r.unit_cost ?? 0), 0);
+      const byMonth = months.map((m) => items.filter((x) => x.r.month === m).reduce((s, x) => s + x.r.units * x.r.price, 0));
+      return { name, items: items.slice().sort((a, b2) => (a.r.month < b2.r.month ? -1 : a.r.month > b2.r.month ? 1 : 0)), units, revenue, cost: costed ? cost : null, price: units ? revenue / units : null, byMonth };
+    })
+    .sort((a, b2) => b2.revenue - a.revenue || a.name.localeCompare(b2.name));
   const set = (i: number, patch: Partial<BudgetProduct>) => onChange(rows.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const num = (v: string) => { const n = Number(v.replace(/,/g, "")); return Number.isFinite(n) ? n : 0; };
   const [newName, setNewName] = useState("");
+  const total = list.reduce((s, p) => s + p.revenue, 0);
   return (
     <div data-testid="budget-products">
       <div className="mb-2 flex flex-wrap items-center gap-2 text-sm">
-        <select aria-label={t.product} className="min-w-0 max-w-[16rem] rounded border border-line bg-white px-2 py-1" value={filter} onChange={(e) => setFilter(e.target.value)}>
-          <option value="">{t.allProducts}</option>{names.map((n) => <option key={n} value={n}>{n}</option>)}
-        </select>
+        {byProduct.size > 15 && (
+          <label className="flex items-center"><span className="sr-only">{b.search}</span>
+            <input type="search" className="w-48 rounded border border-line px-2 py-1" placeholder={b.search} value={query} onChange={(e) => setQuery(e.target.value)} data-testid="budget-product-search" />
+          </label>
+        )}
         {edit && <>
           <input className="min-w-0 rounded border border-line px-2 py-1" placeholder={t.productPh} value={newName} onChange={(e) => setNewName(e.target.value)} data-testid="budget-product-name" />
           <button type="button" className="inline-flex items-center gap-1 rounded border border-line px-2 py-1" data-testid="budget-product-add"
-            onClick={() => { const n = newName.trim(); if (!n) return; onChange([...rows, ...months.map((m) => ({ product: n, category: null, month: m, units: 0, price: 0, unit_cost: null }))]); setNewName(""); setFilter(n); }}>
+            onClick={() => { const n = newName.trim(); if (!n) return; onChange([...rows, ...months.map((m) => ({ product: n, category: null, month: m, units: 0, price: 0, unit_cost: null }))]); setNewName(""); setOpen((s) => new Set(s).add(n)); }}>
             <Plus aria-hidden className="h-4 w-4" />{t.addProduct}</button>
         </>}
       </div>
-      <div className="overflow-x-auto">
-        <table className="tbl text-[13px]">
-          <thead><tr><th>{t.product}</th><th>{t.month}</th><th>{t.units}</th><th>{t.price}</th><th>{t.unitCost}</th><th>{t.revenue}</th><th>{t.cost}</th></tr></thead>
+      <div tabIndex={0} className="overflow-x-auto">
+        <table className="tbl w-full text-[13px]">
+          <thead><tr><th className="text-start">{t.product}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.units}</th><th className="hidden sm:table-cell">{t.price}</th><th>{t.revenue}</th><th className="hidden sm:table-cell">{t.cost}</th></tr></thead>
           <tbody>
-            {shown.slice(0, 600).map(({ r, i }) => (
-              <tr key={`${r.product}-${r.month}-${i}`} data-testid="budget-product-row">
-                <td>{r.product}</td><td>{ml(r.month)}</td>
-                {(["units", "price", "unit_cost"] as const).map((f) => (
-                  <td key={f} className="p-0.5">{edit
-                    ? <input inputMode="decimal" aria-label={`${r.product} ${r.month} ${f}`} className="w-20 rounded border border-transparent px-1 py-1 text-end hover:border-line" defaultValue={r[f] ?? ""}
-                        data-testid={`budget-product-${f}`} onBlur={(e) => {
-                          const v = f === "unit_cost" && e.target.value.trim() === "" ? null : num(e.target.value);
-                          if (v !== r[f]) set(i, { [f]: v });
-                        }} />
-                    : r[f] === null ? "–" : r[f]!.toLocaleString("en-US")}</td>
-                ))}
-                <td>{fmt(r.units * r.price)}</td><td>{r.unit_cost === null ? "–" : fmt(r.units * r.unit_cost)}</td>
-              </tr>
-            ))}
+            {list.map((p) => {
+              const isOpen = open.has(p.name);
+              return (
+                <Fragment key={p.name}>
+                  <tr data-testid="budget-product-row" data-product={p.name}>
+                    <td className="min-w-[10rem]">
+                      <button type="button" className="inline-flex items-center gap-1 rounded p-0.5 text-start hover:bg-band" aria-expanded={isOpen} onClick={() => toggle(p.name)} data-testid={`budget-product-open-${p.name}`}>
+                        {isOpen ? <ChevronDown aria-hidden className="h-4 w-4 shrink-0 text-mute" /> : <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-mute rtl:rotate-180" />}
+                        <span>{p.name}</span><span className="sr-only"> · {isOpen ? b.closeMonths : b.openMonths}</span>
+                      </button>
+                      {total > 0 && <ShareBar share={p.revenue / total} />}
+                    </td>
+                    <td className="hidden py-0.5 sm:table-cell" title={b.trendOf(p.name)}><Sparkline values={p.byMonth} color="#2a78d6" w={96} h={22} /></td>
+                    <td><Amt v={p.units} /></td>
+                    <td className="hidden sm:table-cell">{p.price === null ? "–" : <Amt v={p.price} />}</td>
+                    <td className="font-medium"><Amt v={p.revenue} /></td>
+                    <td className="hidden sm:table-cell">{p.cost === null ? "–" : <Amt v={p.cost} />}</td>
+                  </tr>
+                  {isOpen && (
+                    <tr><td colSpan={6} className="bg-band/40 p-1">
+                      <div className="overflow-x-auto">
+                        <table className="tbl text-[13px]" data-testid="budget-product-months">
+                          <thead><tr><th>{t.month}</th><th>{t.units}</th><th>{t.price}</th><th>{t.unitCost}</th><th>{t.revenue}</th><th>{t.cost}</th></tr></thead>
+                          <tbody>
+                            {p.items.map(({ r, i }) => (
+                              <tr key={`${r.month}-${i}`}>
+                                <td>{ml(r.month)}</td>
+                                {(["units", "price", "unit_cost"] as const).map((f) => (
+                                  <td key={f} className="p-0.5">{edit
+                                    ? <input inputMode="decimal" aria-label={`${r.product} ${r.month} ${f}`} className="w-20 rounded border border-line bg-white px-1 py-1 text-end" defaultValue={r[f] ?? ""}
+                                        data-testid={`budget-product-${f}`} onBlur={(e) => {
+                                          const v = f === "unit_cost" && e.target.value.trim() === "" ? null : num(e.target.value);
+                                          if (v !== r[f]) set(i, { [f]: v });
+                                        }} />
+                                    : r[f] === null ? "–" : r[f]!.toLocaleString("en-US")}</td>
+                                ))}
+                                <td><Amt v={r.units * r.price} /></td><td>{r.unit_cost === null ? "–" : <Amt v={r.units * r.unit_cost} />}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </td></tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            {!list.length && <tr><td colSpan={6} className="text-mute">{rows.length ? b.noMatch : b.empty}</td></tr>}
           </tbody>
         </table>
       </div>
-      {months.length === 0 && null}
     </div>
   );
 }

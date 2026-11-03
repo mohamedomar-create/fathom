@@ -6,6 +6,7 @@ import type { SalesProductRow } from "@/lib/engine/sales";
 import { saveBudgetSetup } from "@/app/company/[id]/analysis/budget-actions";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
+import { Amt } from "./budget-visuals";
 
 const IGNORED = new Set(["", "No product"]);
 export interface ExpenseChoice { key: string; label: string; amount: number }
@@ -112,7 +113,7 @@ export function BudgetSetupWizard({ companyId, products, customers, expenses, hi
                 <input type="checkbox" className={box} checked={picked.has(p.name)} data-testid={`bsetup-product-${p.i}`}
                   onChange={(e) => set((s) => ({ ...s, products: toggle(s.products, p.name, e.target.checked) }))} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                <span className="tabular-nums text-mute">{Math.round(p.amount).toLocaleString("en-US")}</span>
+                <Amt v={p.amount} className="text-mute" />
               </label>
             ))}
           </div>
@@ -207,7 +208,7 @@ export function BudgetSetupWizard({ companyId, products, customers, expenses, hi
                     onChange={(ev) => setSel((s) => toggle(s, e.key, ev.target.checked))} />
                   <span className="min-w-0 flex-1 truncate">{e.label}</span>
                   {into && <span className="text-xs text-mute no-underline">{w.mergedInto(into.name)}</span>}
-                  <span className="tabular-nums text-mute">{Math.round(e.amount).toLocaleString("en-US")}</span>
+                  <Amt v={e.amount} className="text-mute" />
                   {!into && (
                     <label className="flex cursor-pointer items-center gap-1 text-xs">
                       <input type="checkbox" className={box} checked={excluded.has(e.key)} data-testid={`bsetup-exp-exclude-${i}`}

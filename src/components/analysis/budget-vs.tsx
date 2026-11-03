@@ -1,17 +1,20 @@
 "use client";
 import { useMemo, useState } from "react";
-import { hasPL, money, pct, plCalc, PL_KEYS, type PLInput } from "@/lib/engine";
+import { hasPL, pct, plCalc, PL_KEYS, type PLInput } from "@/lib/engine";
 import { budgetAccounts, budgetComparison, productVariance, varianceRows, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
 import type { SalesProductRow } from "@/lib/engine/sales";
 import { useCompany } from "@/lib/company/context";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
+import { LineChart } from "@/components/charts/line-chart";
+import { C } from "@/components/charts/util";
+import { Amt, ChartCard, useCompact } from "./budget-visuals";
 
 const PLS = new Set<string>(PL_KEYS);
 const INCOME = new Set<string>(["revenue", "other_income", "interest_income"]);
 
 /** A difference against budget: income above it and costs below it are better (green), the other way worse (red). */
-function VarCell({ income, cur, cmp, text }: { income: boolean; cur: number; cmp: number; text: string }) {
+function VarCell({ income, cur, cmp, text }: { income: boolean; cur: number; cmp: number; text: React.ReactNode }) {
   const { d } = useT();
   const diff = cur - cmp;
   const tone = Math.abs(diff) < 1 ? "neutral" : (income ? diff > 0 : diff < 0) ? "better" : "worse";
@@ -30,7 +33,8 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
   lines: BudgetLine[]; products: BudgetProduct[]; months: string[]; versionName: string; salesProducts: SalesProductRow[];
 }) {
   const c = useCompany();
-  const { lang, d, ml } = useT();
+  const { lang, d, ml, ms } = useT();
+  const short = useCompact();
   const t = d.bud;
   const clsName = d.setx.coa.cls as Record<string, string>;
   const fyStart = c.settings.fyStartMonth ?? 1;
@@ -41,7 +45,13 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
   const rows = useMemo(() => (upTo ? varianceRows(c.accounts, budget, months, upTo, partDayOf(c.asOf, upTo)) : [])
     .sort((a, b) => PL_KEYS.indexOf(a.cls as never) - PL_KEYS.indexOf(b.cls as never) || a.label.localeCompare(b.label)), [c.accounts, budget, months, upTo, c.asOf]);
   const pv = useMemo(() => (upTo ? productVariance(products, salesProducts, months.filter((m) => m <= upTo)) : []), [products, salesProducts, months, upTo]);
-  const fmt = (v: number) => money(v, c.settings.currency, true);
+  const fmt = (v: number) => <Amt v={v} />;
+  // Revenue by month: the budget for every month, the actual up to the month chosen.
+  const revenue = useMemo(() => {
+    const bud = months.map((m) => budget.filter((a) => a.cls === "revenue").reduce((s, a) => s + (a.amounts[m] ?? 0), 0));
+    const act = months.map((m) => (upTo && m <= upTo ? c.accounts.filter((a) => a.cls === "revenue").reduce((s, a) => s + (a.amounts[m] ?? 0), 0) : null));
+    return { bud, act };
+  }, [budget, months, upTo, c.accounts]);
 
   // Net profit year to date: actual against budget, through the same statements.
   const head = useMemo(() => {
@@ -63,6 +73,10 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
           {months.filter((m) => !lastActual || m <= lastActual).map((m) => <option key={m} value={m}>{ml(m)}</option>)}
         </select>
       </div>
+      <ChartCard testId="bchart-vs" title={t.b.charts.vs} summary={months.map((m, i) => `${ms(m)}: ${t.budget} ${short(revenue.bud[i])}${revenue.act[i] === null ? "" : `, ${t.actual} ${short(revenue.act[i]!)}`}`).join("; ")}>
+        <LineChart labels={months.map(ms)} cur={c.settings.currency} height={220}
+          series={[{ name: t.budget, values: revenue.bud, color: C.s[0], dashed: true, dots: false }, { name: t.actual, values: revenue.act, color: C.s[1] }]} />
+      </ChartCard>
       {head && head.b !== 0 && (
         <p className="mb-3 text-lg" data-testid="budget-headline">
           {t.headline(pct(Math.abs(((head.a - head.b) / Math.abs(head.b)) * 100), 1), head.a >= head.b ? t.above : t.below)}
@@ -81,7 +95,7 @@ export function BudgetVs({ lines, products, months, versionName, salesProducts }
                 <VarCell income={INCOME.has(r.cls)} cur={r.month.actual} cmp={r.month.budget} text={fmt(r.month.diff)} />
                 <td>{fmt(r.ytd.actual)}</td><td>{fmt(r.ytd.budget)}</td>
                 <VarCell income={INCOME.has(r.cls)} cur={r.ytd.actual} cmp={r.ytd.budget} text={fmt(r.ytd.diff)} />
-                <VarCell income={INCOME.has(r.cls)} cur={r.ytd.actual} cmp={r.ytd.budget} text={r.ytd.pct === null ? "–" : pct(r.ytd.pct)} />
+                <VarCell income={INCOME.has(r.cls)} cur={r.ytd.actual} cmp={r.ytd.budget} text={r.ytd.pct === null ? "–" : pct(r.ytd.pct, 1)} />
                 <td>{fmt(r.outlook)}</td><td>{fmt(r.fullYear)}</td>
               </tr>
             ))}

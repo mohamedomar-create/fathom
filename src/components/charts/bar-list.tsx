@@ -17,7 +17,11 @@ export interface BarItem { key: string; label: string; value: number; share?: nu
  * Ranked horizontal bars: one hue, thin bars with rounded ends anchored at zero, the value written at the end of each bar
  * (text in ink, never the bar colour) and a hover line with the share. Negative values (refunds) are drawn in red to the left.
  */
-export function BarList({ items, cur, max = 10, testId, onSelect }: { items: BarItem[]; cur: string; max?: number; testId?: string; onSelect?: (key: string) => void }) {
+export function BarList({ items, cur, max = 10, testId, onSelect, fmt }: {
+  items: BarItem[]; cur: string; max?: number; testId?: string; onSelect?: (key: string) => void;
+  /** The value label at the bar end (default: the short money form). */
+  fmt?: (v: number) => string;
+}) {
   const [hover, setHover] = useState<string | null>(null);
   const T = useT();
   // Rows with nothing in the period (they exist only in the comparison period) are neither drawn nor counted in "+N more".
@@ -30,7 +34,8 @@ export function BarList({ items, cur, max = 10, testId, onSelect }: { items: Bar
   return (
     <div dir="ltr" className="space-y-1.5" data-testid={testId} role="list">
       {rows.map((r) => {
-        const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100);
+        // With a custom label (fmt) the longest bar leaves room for its label beside it.
+        const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100) * (fmt ? 0.85 : 1);
         const click = onSelect && r.key !== "__other";
         return (
           <div key={r.key} role="listitem" className={`grid grid-cols-[minmax(0,38%)_1fr] items-center gap-3 rounded px-1 py-0.5 text-[13px] ${hover === r.key ? "bg-band" : ""} ${click ? "cursor-pointer" : ""}`}
@@ -44,7 +49,7 @@ export function BarList({ items, cur, max = 10, testId, onSelect }: { items: Bar
                 ...(anyNeg ? (r.value < 0 ? { right: "50%" } : { left: "50%" }) : { left: 0 }),
               }} />
               <span className="num absolute whitespace-nowrap text-[12px] text-ink" style={labelStyle(w, r.value, anyNeg)}>
-                {money(r.value, cur, true)}{r.share !== undefined && hover === r.key ? ` · ${pct(r.share, 1)}` : ""}
+                {fmt ? fmt(r.value) : money(r.value, cur, true)}{r.share !== undefined && hover === r.key ? ` · ${pct(r.share, 1)}` : ""}
               </span>
             </div>
           </div>

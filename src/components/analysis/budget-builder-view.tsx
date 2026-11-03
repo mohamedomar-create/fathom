@@ -1,7 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
-import { money } from "@/lib/engine";
 import { fyMonths, type BudgetLine } from "@/lib/engine/budget";
 import {
   balanceCustomers, budgetToLines, customerView, groupView, streamView, type BaseCol, type BudgetRow, type BudgetSetup,
@@ -13,7 +12,12 @@ import type { ExpenseAccountRow } from "@/lib/engine/expenses";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
 import { saveBudgetRows } from "@/app/company/[id]/analysis/budget-actions";
-import { amt, baseOf, BudgetSheet, sumOf } from "./budget-sheet";
+import { baseOf, BudgetSheet, sumOf } from "./budget-sheet";
+import { Amt, BudgetCards, ChartCard, SplitBar, useCompact } from "./budget-visuals";
+import { BarList, type BarItem } from "@/components/charts/bar-list";
+import { ColumnChart } from "@/components/charts/column-chart";
+import { C } from "@/components/charts/util";
+import { pct } from "@/lib/engine/format";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -35,7 +39,10 @@ export function buildFromSetup(data: BuilderData, setup: BudgetSetup, fy: string
   return { rows, lines: budgetToLines(rows, fyMonths(fy, fyStart)), empty: !bb.revenue.length && !bb.expense.length };
 }
 
-/** Revenue, gross profit and net profit of the new year from the lines (cost of sales classes come off gross profit). */
+/**
+ * Revenue, gross profit, expenses (the costs below gross profit, net of other income) and net profit from the lines
+ * (cost of sales classes come off gross profit).
+ */
 function stripOf(lines: BudgetLine[]) {
   let revenue = 0, cos = 0, rest = 0;
   for (const l of lines) {
@@ -43,8 +50,14 @@ function stripOf(lines: BudgetLine[]) {
     else if (l.cls.startsWith("cos_")) cos += l.amount;
     else rest += INCOME.has(l.cls) ? -l.amount : l.amount;
   }
-  return { revenue, gp: revenue - cos, np: revenue - cos - rest };
+  return { revenue, gp: revenue - cos, exp: rest, np: revenue - cos - rest };
 }
+/** Ranked bars with each item's share of `total` (Others, when there, last). */
+const ranked = (items: { key: string; label: string; value: number }[], total: number): BarItem[] =>
+  items.slice().sort((a, b) => (a.key === "others" ? 1 : b.key === "others" ? -1 : b.value - a.value))
+    .map((x) => { const share = total ? (x.value / total) * 100 : 0; return { ...x, share, sub: pct(share, 1) }; });
+/** A fixed colour per expense class (by the class, never its rank). */
+const CLS_COLOR: Record<string, string> = { exp_fixed: C.s[0], exp_variable: C.s[1], cos_variable: C.s[2], cos_fixed: C.s[3], other_expense: C.s[4] };
 
 export interface BuilderViewProps {
   version: BudgetVersionInfo;
@@ -69,9 +82,11 @@ export interface BuilderViewProps {
 export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, stockCogs, mixedCogs, editable, say, onDirty, renderVs }: BuilderViewProps) {
   const c = useCompany();
   const router = useRouter();
-  const { d } = useT();
+  const { d, ms } = useT();
   const t = d.bud;
   const b = t.b;
+  const fmt = useCompact();
+  const clsName = d.setx.coa.cls as Record<string, string>;
   const fyStart = c.settings.fyStartMonth ?? 1;
   const months = useMemo(() => fyMonths(version.fy, fyStart), [version.fy, fyStart]);
   const setup = current.setup ?? companySetup ?? emptySetup();
@@ -100,6 +115,9 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   // Until something is edited, the strip and Budget vs actual show the lines as saved (an approved version's own).
   const shown = dirty === 0 && current.rows.length && current.lines?.length ? current.lines : lines;
   const strip = useMemo(() => stripOf(shown), [shown]);
+  // This year's estimate through the same lines: every row at its base months (product costs work out the same way).
+  const est = useMemo(() => stripOf(budgetToLines([...rows.revenue, ...rows.expense].map((r) => ({ ...r, months: baseOf(bases, r).months })), months)), [rows, bases, months]);
+  const margin = (v: number, rev: number) => (rev ? (v / rev) * 100 : null);
   const difference = useMemo(() => { const cs = monthsSum(rows.customer); return revenueMonths.map((v, i) => r2(v - cs[i])); }, [rows.customer, revenueMonths]);
   const diffYear = r2(difference.reduce((t, v) => t + v, 0));
   const off = difference.some((v) => Math.abs(v) >= 0.005);
@@ -150,14 +168,28 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
     return stockCogs.filter((a) => !have.has(`exp:${a}`) && !inGroups.has(a) && !setup.expenses.excluded.includes(a));
   }, [rows, stockCogs, setup]);
 
+  const revTotal = sumOf(revenueMonths);
+  const revenueMix = ranked(rows.revenue.map((r) => ({ key: r.key, label: labelOf(r), value: sumOf(r.months) })), revTotal);
+  const custItems = ranked(rows.customer.map((r) => ({ key: r.key, label: r.label, value: sumOf(r.months) })), revTotal);
+  const custTotal = custItems.reduce((x, i) => x + i.value, 0);
+  const custMix = { items: custItems, total: custTotal, top5: custTotal ? (custItems.slice(0, 5).reduce((x, i) => x + i.value, 0) / custTotal) * 100 : 0 };
+  const groupMix = ranked(groups.filter((g) => g.by === "products").map((g) => ({ key: g.id, label: g.id === "others" ? b.others : g.name, value: sumOf(g.months) })), revTotal);
+  const expBy = new Map<string, number>();
+  for (const r of rows.expense) { const k = r.cls ?? "exp_fixed"; expBy.set(k, (expBy.get(k) ?? 0) + sumOf(r.months)); }
+  const order = Object.keys(CLS_COLOR);
+  const rank = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
+  const expMix = [...expBy].sort((x, y) => rank(x[0]) - rank(y[0]) || (x[0] < y[0] ? -1 : 1))
+    .map(([k, v]) => ({ key: k, label: clsName[k] ?? k, value: v, color: CLS_COLOR[k] ?? "#8a9494" }));
+
   return (
     <div data-testid="budget-builder">
       {drift && <p className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm" data-testid="bsetup-drift">{b.drift}</p>}
-      <div className="mb-3 grid grid-cols-3 gap-2 rounded border border-line p-3 text-sm" data-testid="bsheet-strip" title={b.stripNote}>
-        {([["revenue", strip.revenue], ["gp", strip.gp], ["np", strip.np]] as const).map(([k, v]) => (
-          <div key={k}><div className="text-xs text-mute">{b.strip[k]} · {t.fy(version.fy)}</div><div className={cn("text-lg tabular-nums", v < 0 && "text-red-d")} data-testid={`bsheet-strip-${k}`}>{money(v, c.settings.currency)}</div></div>
-        ))}
-      </div>
+      <BudgetCards fy={version.fy} note={b.stripNote} figures={[
+        { key: "revenue", now: strip.revenue, est: est.revenue, testId: "bsheet-strip-revenue" },
+        { key: "gp", now: strip.gp, est: est.gp, margin: margin(strip.gp, strip.revenue), testId: "bsheet-strip-gp" },
+        { key: "exp", now: strip.exp, est: est.exp, cost: true },
+        { key: "np", now: strip.np, est: est.np, margin: margin(strip.np, strip.revenue), testId: "bsheet-strip-np" },
+      ]} />
       <div role="tablist" className="mb-4 flex gap-1 overflow-x-auto border-b border-line">
         {TABS.map((k) => (
           <button key={k} role="tab" aria-selected={tab === k} type="button" onClick={() => setTab(k)} data-testid={`btab-${k}`}
@@ -165,21 +197,37 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
         ))}
       </div>
 
-      {tab === "revenue" && <BudgetSheet {...sheet} rows={rows.revenue} onChange={onRevenue} labelOf={labelOf} members={members} units />}
+      {tab === "revenue" && <>
+        <ChartCard testId="bchart-revenue" title={b.charts.revenue} note={b.chartNote} summary={revenueMix.slice(0, 8).map((x) => `${x.label} ${fmt(x.value)} (${pct(x.share ?? 0, 1)})`).join(", ")}>
+          <BarList items={revenueMix} cur={c.settings.currency} max={8} fmt={fmt} />
+        </ChartCard>
+        <BudgetSheet {...sheet} rows={rows.revenue} onChange={onRevenue} labelOf={labelOf} members={members} units share />
+      </>}
       {tab === "customers" && <>
+        <ChartCard testId="bchart-customers" title={b.charts.customers} note={b.chartNote} summary={custMix.items.slice(0, 10).map((x) => `${x.label} ${fmt(x.value)}`).join(", ")}
+          extra={custMix.total > 0 && <span className="rounded bg-band px-2 py-0.5 text-xs font-medium" data-testid="bchart-top5">{b.top5(pct(custMix.top5, 1))}</span>}>
+          <BarList items={custMix.items.slice(0, 10)} cur={c.settings.currency} max={10} fmt={fmt} />
+        </ChartCard>
         {off && (
           <div className="mb-3 flex flex-wrap items-center gap-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm" data-testid="customer-diff" role="status">
-            <span>{diffYear >= 0 ? b.custDiff(amt(Math.abs(diffYear))) : b.custDiffOver(amt(Math.abs(diffYear)))}</span>
+            <span>{diffYear >= 0 ? b.custDiff(fmt(Math.abs(diffYear))) : b.custDiffOver(fmt(Math.abs(diffYear)))}</span>
             {editable && <button type="button" className="ms-auto rounded bg-brand-d px-3 py-1 text-white" title={b.balanceHint} onClick={balance} data-testid="customer-balance">{b.balance}</button>}
           </div>
         )}
-        <BudgetSheet {...sheet} rows={rows.customer} onChange={onCustomers}
+        <BudgetSheet {...sheet} rows={rows.customer} onChange={onCustomers} share
           auto={(r) => ({ ...r, mode: "year", basis: null })} />
       </>}
-      {tab === "streams" && (
+      {tab === "streams" && <>
+        <ChartCard testId="bchart-streams" title={b.charts.streams} summary={`${b.sales} ${fmt(sumOf(streams.sales))}, ${b.rental} ${fmt(sumOf(streams.rental))}`}>
+          <ColumnChart stacked labels={months.map(ms)} cur={c.settings.currency} height={240} ariaLabel={b.charts.streams}
+            series={[{ name: b.sales, values: streams.sales, color: C.s[0] }, { name: b.rental, values: streams.rental, color: C.s[1] }]} />
+        </ChartCard>
         <ViewTable testId="bstreams" note={b.streamsNote} months={months} rows={[{ id: "sales", name: b.sales, months: streams.sales }, { id: "rental", name: b.rental, months: streams.rental }]} total={revenueMonths} />
-      )}
+      </>}
       {tab === "groups" && <>
+        <ChartCard testId="bchart-groups" title={b.charts.groups} note={b.chartNote} summary={groupMix.map((x) => `${x.label} ${fmt(x.value)} (${pct(x.share ?? 0, 1)})`).join(", ")}>
+          <BarList items={groupMix} cur={c.settings.currency} max={10} fmt={fmt} />
+        </ChartCard>
         <ViewTable testId="bgroups" note={b.groupsNote} months={months} rows={groups.filter((g) => g.by === "products").map((g) => ({ ...g, name: g.id === "others" ? b.others : g.name }))} total={revenueMonths} />
         {groups.some((g) => g.by === "customers") && (
           <div className="mt-6">
@@ -189,7 +237,12 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
         )}
       </>}
       {tab === "expenses" && excluded.length > 0 && <p className="mb-2 text-xs text-mute" data-testid="bexp-cos-note">{b.cosNote(excluded.join(", "))}</p>}
-      {tab === "expenses" && <BudgetSheet {...sheet} rows={rows.expense} onChange={(next) => { setRows((r) => ({ ...r, expense: next })); changed(); }} />}
+      {tab === "expenses" && <>
+        <ChartCard testId="bchart-expenses" title={b.charts.expenses} note={b.chartNote} summary={expMix.map((x) => `${x.label} ${fmt(x.value)}`).join(", ")}>
+          <SplitBar parts={expMix} />
+        </ChartCard>
+        <BudgetSheet {...sheet} rows={rows.expense} cost onChange={(next) => { setRows((r) => ({ ...r, expense: next })); changed(); }} />
+      </>}
       {tab === "vs" && renderVs(shown)}
 
       {editable && dirty > 0 && (
@@ -214,9 +267,9 @@ function ViewTable({ testId, note, months, rows, total }: { testId: string; note
           <thead><tr><th className="text-start">{b.name}</th>{months.map((m) => <th key={m}>{ms(m)}</th>)}<th>{b.newYear}</th></tr></thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.id} data-testid={`${testId}-row`}><td className="text-start">{r.name}</td>{r.months.map((v, i) => <td key={i}>{amt(v)}</td>)}<td className="font-medium">{amt(sumOf(r.months))}</td></tr>
+              <tr key={r.id} data-testid={`${testId}-row`}><td className="text-start">{r.name}</td>{r.months.map((v, i) => <td key={i}><Amt v={v} /></td>)}<td className="font-medium"><Amt v={sumOf(r.months)} /></td></tr>
             ))}
-            {total && <tr className="tot"><td className="text-start">{b.total}</td>{total.map((v, i) => <td key={i}>{amt(v)}</td>)}<td>{amt(sumOf(total))}</td></tr>}
+            {total && <tr className="tot"><td className="text-start">{b.total}</td>{total.map((v, i) => <td key={i}><Amt v={v} /></td>)}<td><Amt v={sumOf(total)} /></td></tr>}
           </tbody>
         </table>
       </div>

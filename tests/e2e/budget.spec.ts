@@ -24,6 +24,38 @@ test("the demo budget page is a budget builder version, read-only, with budget a
   expect(await page.locator("[data-testid^=bsheet-row-]").count()).toBeGreaterThan(5);
 });
 
+// The visual pass: summary cards, compact amounts with the exact one on hover, one chart per tab, sort and search.
+test("the demo budget: cards, compact amounts, a chart on every tab, sort by amount and search", async ({ page }) => {
+  await page.goto("/demo/analysis/budget");
+  for (const k of ["revenue", "gp", "exp", "np"]) await expect(page.getByTestId(`bcards-${k}`)).toBeVisible();
+  await expect(page.getByTestId("bcards-revenue")).toContainText(/\d(\.\d)?(K|M)/);
+  // Every amount of 1,000 or more reads compact; its title holds the exact figure.
+  const total = page.getByTestId("bsheet-total-new");
+  await expect(total).toHaveText(/^-?[\d.]+(K|M|B)$/);
+  expect(await total.getAttribute("title")).toMatch(/^[\d,]+$/);
+  for (const k of ["revenue", "customers", "streams", "groups", "expenses", "vs"]) {
+    await page.getByTestId(`btab-${k}`).click();
+    await expect(page.getByTestId(`bchart-${k}`)).toBeVisible();
+  }
+  await page.getByTestId("btab-customers").click();
+  await expect(page.getByTestId("bchart-top5")).toContainText("%");
+  // Sort by the new year: the largest row first.
+  await page.getByTestId("bsheet-sort-amount").click();
+  const values = await page.locator("[data-testid^=bsheet-value-]").evaluateAll((els) => els.map((e) => Number((e.getAttribute("title") ?? "").replace(/,/g, ""))));
+  expect(values.length).toBeGreaterThan(2);
+  expect(values[0]).toBe(Math.max(...values));
+  expect(values).toEqual([...values].sort((a, b) => b - a));
+  // Search (a list of more than 15 rows) filters them.
+  const rows = page.locator("[data-testid^=bsheet-row-]");
+  const before = await rows.count();
+  if (before > 15) {
+    const name = (await rows.first().locator("td").first().innerText()).trim().split("\n")[0];
+    await page.getByTestId("bsheet-search").fill(name.slice(0, 6));
+    await expect.poll(() => rows.count()).toBeLessThan(before);
+    await expect(rows.first()).toContainText(name.slice(0, 6));
+  }
+});
+
 const nonZero = (t: string | null) => /[1-9]/.test(t ?? "");
 
 test("the demo builder: groups Hospitals and Homecare, a rental stream, customers that add up", async ({ page }) => {

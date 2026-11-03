@@ -38,16 +38,44 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   expect(Number(n)).toBeGreaterThan(0);
   expect(bad).toBe("0");
 
-  // Edit one cell and save it.
+  // By account: one row per account (its year, compact, the exact figure on hover); the months open under it.
   await page.getByTestId("budget-tab-accounts").click();
+  const keys = await page.getByTestId("budget-row").evaluateAll((els) => els.map((e) => e.getAttribute("data-key")));
+  expect(new Set(keys).size).toBe(keys.length);
+  const firstTotal = page.getByTestId("budget-row").first().locator("td").last().locator("span");
+  expect(await firstTotal.getAttribute("title")).toMatch(/^-?[\d,]+$/);
+  await expect(page.locator("[data-testid^=budget-cell-]")).toHaveCount(0);
+  await page.locator("[data-testid^=budget-open-]").first().click();
+  // Edit one cell and save it.
   const cell = page.locator("[data-testid^=budget-cell-]").first();
   const tid = (await cell.getAttribute("data-testid"))!;
   const [key, month] = tid.replace("budget-cell-", "").split(/-(?=\d{4}-\d{2}$)/);
   await cell.fill("12345");
   await cell.blur();
+  await expect(cell).toHaveValue("12.3K"); // compact at rest
+  await cell.focus();
+  await expect(cell).toHaveValue("12,345"); // exact while focused
+  await cell.blur();
   await page.getByTestId("budget-save").click();
   await expect(page.getByTestId("budget-msg")).toContainText("Saved", { timeout: 15_000 });
   expect(sql(`select amount from public.budget_lines where version_id = '${v}' and key = '${key}' and month = '${month}'`)).toBe("12345");
+
+  // By product: two products over the 12 months show once each (no product × month rows); a month edit saves.
+  const ms = JSON.parse(sql(`select json_agg(distinct month order by month) from public.budget_lines where version_id = '${v}'`)) as string[];
+  const vals = ms.flatMap((m, i) => [`('${v}', '${id}', 'Widget A', '${m}', ${10 + i}, 200, 120)`, `('${v}', '${id}', 'Widget B', '${m}', ${5 + i}, 1000, null)`]);
+  sql(`insert into public.budget_products (version_id, company_id, product, month, units, price, unit_cost) values ${vals.join(",")}`);
+  await page.reload();
+  await page.getByTestId("budget-tab-products").click();
+  const names = await page.getByTestId("budget-product-row").evaluateAll((els) => els.map((e) => e.getAttribute("data-product")));
+  expect(names.sort()).toEqual(["Widget A", "Widget B"]);
+  await expect(page.getByTestId("budget-product-units")).toHaveCount(0);
+  await page.getByTestId("budget-product-open-Widget A").click();
+  await expect(page.getByTestId("budget-product-units")).toHaveCount(ms.length);
+  await page.getByTestId("budget-product-units").first().fill("99");
+  await page.getByTestId("budget-product-units").first().blur();
+  await page.getByTestId("budget-save").click();
+  await expect(page.getByTestId("budget-msg")).toContainText("Saved", { timeout: 15_000 });
+  expect(sql(`select units from public.budget_products where version_id = '${v}' and product = 'Widget A' and month = '${ms[0]}'`)).toBe("99");
 
   // The template: download it, then upload it back (it replaces the draft's lines with the same lines).
   const [dl] = await Promise.all([page.waitForEvent("download"), page.getByTestId("budget-download").click()]);
