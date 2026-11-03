@@ -242,18 +242,30 @@ export function streamView(
   return { sales, rental };
 }
 
-/** Months per group (its `grp:` row, standalone rows of its products, or its customers when it has no products), plus "others" for the rest. */
-export function groupView(revenue: BudgetRow[], customers: BudgetRow[], setup: BudgetSetup): { id: string; name: string; months: number[] }[] {
-  const used = new Set<string>();
-  const out = setup.groups.map((g) => {
+/**
+ * Months per group. Product groups (`by: "products"`) take their `grp:` row plus standalone `prod:` rows of their
+ * products (each standalone row only for the first matching group in setup order). Customer-only groups (no products,
+ * some customers; `by: "customers"`) take their customer rows and are not part of the reconciliation. "others"
+ * = revenue - the product groups, so the `by: "products"` entries always add up to the revenue.
+ */
+export function groupView(
+  revenue: BudgetRow[], customers: BudgetRow[], setup: BudgetSetup,
+): { id: string; name: string; months: number[]; by: "products" | "customers" }[] {
+  const taken = new Set<string>();
+  const out: { id: string; name: string; months: number[]; by: "products" | "customers" }[] = setup.groups.map((g) => {
+    if (!g.products.length && g.customers.length) {
+      return { id: g.id, name: g.name, by: "customers" as const, months: sumTo(customers.filter((c) => g.customers.includes(c.key)).map((c) => c.months)) };
+    }
     const parts: number[][] = [];
     for (const r of revenue) {
-      if (r.key === `grp:${g.id}` || (r.key.startsWith("prod:") && g.products.includes(r.key.slice(5)))) { parts.push(r.months); used.add(r.key); }
+      if (r.key === `grp:${g.id}`) parts.push(r.months);
+      else if (r.key.startsWith("prod:") && !taken.has(r.key) && g.products.includes(r.key.slice(5))) { parts.push(r.months); taken.add(r.key); }
     }
-    if (!g.products.length) for (const c of customers) if (g.customers.includes(c.key)) parts.push(c.months);
-    return { id: g.id, name: g.name, months: sumTo(parts) };
+    return { id: g.id, name: g.name, by: "products" as const, months: sumTo(parts) };
   });
-  out.push({ id: "others", name: "Others", months: sumTo(revenue.filter((r) => !used.has(r.key)).map((r) => r.months)) });
+  const total = sumTo(revenue.map((r) => r.months));
+  const inGroups = sumTo(out.filter((g) => g.by === "products").map((g) => g.months));
+  out.push({ id: "others", name: "Others", by: "products", months: total.map((t, i) => r2(t - inGroups[i])) });
   return out;
 }
 

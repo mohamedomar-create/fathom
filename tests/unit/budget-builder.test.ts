@@ -256,9 +256,23 @@ describe("budget builder: stream and group views", () => {
     expect(g[2].months[0]).toBe(50);
     expect(sum(g.map((x) => x.months[0]))).toBe(150);
     const cust = [row({ view: "customer", key: "Cu", months: Array(12).fill(7) })];
-    expect(groupView(revenue, cust, s)[1].months[0]).toBe(7);
+    const gv = groupView(revenue, cust, s);
+    expect(gv[1]).toMatchObject({ by: "customers", months: Array(12).fill(7) });
+    expect(gv[0].by).toBe("products");
+    for (let i = 0; i < 12; i++) expect(sum(gv.filter((x) => x.by === "products").map((x) => x.months[i]))).toBe(150);
+    expect(gv[2].months[0]).toBe(50);
     const s2 = setupOf({ products: ["P"], groups: [{ id: "1", name: "One", products: ["P"], customers: [] }] });
     expect(groupView(revenue, [], s2)[0].months[0]).toBe(140);
+  });
+});
+
+describe("budget builder: group first match", () => {
+  it("group-view-first-match", () => {
+    const s = setupOf({ products: ["P"], groups: [{ id: "1", name: "One", products: ["P"], customers: [] }, { id: "2", name: "Two", products: ["P"], customers: [] }] });
+    const revenue = [row({ key: "prod:P", months: Array(12).fill(40) }), row({ key: "others", months: Array(12).fill(5) })];
+    const g = groupView(revenue, [], s);
+    expect(g.map((x) => x.months[0])).toEqual([40, 0, 5]);
+    expect(sum(g.map((x) => x.months[0]))).toBe(45);
   });
 });
 
