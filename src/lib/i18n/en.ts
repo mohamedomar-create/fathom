@@ -11,6 +11,7 @@ import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
+import { viz } from "./areas/viz";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
 import { plan } from "./areas/plan";
@@ -139,6 +140,7 @@ export const en = {
   cash: cash.en,
   hl: hl.en,
   bud: bud.en,
+  viz: viz.en,
   bank: bank.en,
   state: state.en,
   access: access.en,

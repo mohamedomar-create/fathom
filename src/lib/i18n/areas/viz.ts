@@ -1,0 +1,49 @@
+import { area } from "../types";
+
+/** Shared chart kit words: table toggle, legends, bridges, heat maps, bullets. */
+export const viz = area(
+  {
+    table: "Figures", chart: "Chart", showTable: "Show the figures behind this chart", showChart: "Show the chart",
+    item: "Item", value: "Value", share: "Share", cum: "Running share", month: "Month", year: "Year",
+    target: "Target", actual: "Actual", lastYear: "Last year", thisYear: "This year", other: (n: number) => `Other (${n})`,
+    low: "Low", high: "High", noData: "No figures", start: "Start", end: "End", up: "Increase", down: "Decrease",
+    gap: (v: string) => `Does not add up by ${v}`, reach80: "80% of the total",
+    better: "better", worse: "worse", onTarget: "On target", offTarget: "Below target", ofTarget: (p: string) => `${p} of target`,
+    trend: "Trend", vsPrior: (p: string) => `vs ${p}`,
+    fin: {
+      netProfit: "Net profit", margin: (p: string) => `${p} of revenue`, profitBridge: "From revenue to net profit",
+      profitBridgeSub: "What each layer of cost takes out of the period's revenue.", costOfSales: "Cost of sales", grossProfit: "Gross profit",
+      opex: "Operating costs", opProfit: "Operating profit", interestTax: "Interest, tax and other", kpiTargets: "KPIs against target",
+      kpiTargetsSub: "The bar is the result, the black mark is the target.", seasonality: "Revenue by month", seasonalitySub: "Each row is a year; darker months sold more.",
+      revLastYear: "Revenue last year", findings: "What the figures say", kpiScore: "KPIs on track",
+      cashLine: "Cash at month end", cashVsProfit: "Cash made vs profit made", cashVsProfitSub: "Operating cash flow and net profit each month.",
+      fcf: "Free cash flow", fcfSub: "Operating cash flow less investment, each month.", cashBridge: "Where the cash went",
+      cashBridgeSub: "From opening cash to closing cash, IAS 7 sections.", opening: "Opening cash", closing: "Closing cash",
+      byActivity: "Cash flow by activity, month by month", realBridge: "From book profit to real profit", realTrend: "Book vs real profit",
+      collection: "Collection", fxBox: "In US dollars", lowPoint: "Lowest cash", fcRange: "Range", backtest: "Forecast accuracy",
+      backtestSub: "Average error when the method forecast months we already know.", drivers: "What the forecast assumes", statement: "Cash flow statement, line by line",
+    },
+  },
+  {
+    table: "الأرقام", chart: "الرسم", showTable: "عرض الأرقام وراء هذا الرسم", showChart: "عرض الرسم",
+    item: "البند", value: "القيمة", share: "النسبة", cum: "النسبة التراكمية", month: "الشهر", year: "السنة",
+    target: "المستهدف", actual: "الفعلي", lastYear: "العام الماضي", thisYear: "هذا العام", other: (n: number) => `أخرى (${n})`,
+    low: "منخفض", high: "مرتفع", noData: "لا توجد أرقام", start: "البداية", end: "النهاية", up: "زيادة", down: "نقص",
+    gap: (v: string) => `لا يتطابق بفارق ${v}`, reach80: "٨٠٪ من الإجمالي",
+    better: "أفضل", worse: "أسوأ", onTarget: "على المستهدف", offTarget: "أقل من المستهدف", ofTarget: (p: string) => `${p} من المستهدف`,
+    trend: "الاتجاه", vsPrior: (p: string) => `مقارنة بـ ${p}`,
+    fin: {
+      netProfit: "صافي الربح", margin: (p: string) => `${p} من الإيرادات`, profitBridge: "من الإيرادات إلى صافي الربح",
+      profitBridgeSub: "ما تقتطعه كل طبقة من التكاليف من إيرادات الفترة.", costOfSales: "تكلفة المبيعات", grossProfit: "مجمل الربح",
+      opex: "التكاليف التشغيلية", opProfit: "الربح التشغيلي", interestTax: "الفوائد والضرائب وغيرها", kpiTargets: "المؤشرات مقابل المستهدف",
+      kpiTargetsSub: "الشريط هو النتيجة، والعلامة السوداء هي المستهدف.", seasonality: "الإيرادات حسب الشهر", seasonalitySub: "كل صف سنة؛ الأشهر الأغمق باعت أكثر.",
+      revLastYear: "إيرادات العام الماضي", findings: "ما تقوله الأرقام", kpiScore: "المؤشرات على المسار",
+      cashLine: "النقدية في نهاية الشهر", cashVsProfit: "النقد المحقق مقابل الربح المحقق", cashVsProfitSub: "التدفق النقدي التشغيلي وصافي الربح كل شهر.",
+      fcf: "التدفق النقدي الحر", fcfSub: "التدفق النقدي التشغيلي ناقص الاستثمار، كل شهر.", cashBridge: "أين ذهبت النقدية",
+      cashBridgeSub: "من نقدية أول المدة إلى نقدية آخر المدة، حسب أقسام معيار المحاسبة الدولي 7.", opening: "نقدية أول المدة", closing: "نقدية آخر المدة",
+      byActivity: "التدفق النقدي حسب النشاط، شهرًا بشهر", realBridge: "من الربح الدفتري إلى الربح الحقيقي", realTrend: "الربح الدفتري مقابل الحقيقي",
+      collection: "التحصيل", fxBox: "بالدولار الأمريكي", lowPoint: "أدنى نقدية", fcRange: "النطاق", backtest: "دقة التوقع",
+      backtestSub: "متوسط الخطأ عندما توقعت الطريقة أشهرًا نعرفها بالفعل.", drivers: "افتراضات التوقع", statement: "قائمة التدفقات النقدية، بندًا بندًا",
+    },
+  },
+);

@@ -5,9 +5,11 @@ import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
 import { PeriodPicker } from "@/components/shell/period-picker";
-import { CashWaterfall } from "@/components/charts/waterfall";
 import { AssumptionsPanel, useAssumptions } from "./assumptions";
-import { Tile } from "./common";
+import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { Bridge } from "@/components/viz/bridge";
+import { Bullet } from "@/components/viz/bullet";
 import { MemoBox } from "./memo-box";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -20,7 +22,8 @@ export function RealProfitPage() {
   const { sel } = usePeriod();
   const cur = c.settings.currency;
   const { a, setA, saved } = useAssumptions();
-  const { lang, d: { rp: t }, pl } = useT();
+  const { lang, d: { rp: t, viz: T_viz }, pl } = useT();
+  const T_fin = T_viz.fin;
   const target = c.settings.targets?.ar_days ?? 45;
   const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate]);
   const x = useMemo(() => (basis ? realProfit(basis, a, cur, target ?? 45, lang) : null), [basis, a, cur, target, lang]);
@@ -39,12 +42,16 @@ export function RealProfitPage() {
         <p className="text-sm text-mute" data-testid="real-basis">{t.basis[0]}<b className="text-ink">{pl(basis.label)}</b>{t.basis[1]}</p>
       </PageHeader>
 
-      <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label={t.reported} value={money(x.reported, cur, true)} neg={x.reported < 0} sub={<span className="text-mute">{t.asBooks}</span>} testId="tile-reported" />
-        <Tile label={t.cashOps} value={x.cashProfit === null ? "–" : money(x.cashProfit, cur, true)} neg={(x.cashProfit ?? 0) < 0} sub={<span className="text-mute">{x.cashProfit === null ? t.needsBefore : t.ocfSub}</span>} />
-        <Tile label={t.real} value={inf ? money(inf.real, cur, true) : "–"} neg={!!inf && inf.real < 0} sub={<span className="text-mute">{inf ? t.afterInf(pct(inf.periodRate, 1)) : t.enterInf}</span>} testId="tile-real" />
-        <Tile label={t.usd} value={x.fx ? usd(x.fx.reportedUsd) : "–"} neg={!!x.fx && x.fx.reportedUsd < 0} sub={<span className="text-mute">{x.fx ? t.pound(x.fx.devaluation >= 0, pct(Math.abs(x.fx.poundChange), 1)) : t.enterFx}</span>} />
-      </div>
+      <Cockpit hero={
+        <HeroKpi label={inf ? t.real : t.reported} testId="hero-real" value={money(inf ? inf.real : x.reported, cur, true)} neg={(inf ? inf.real : x.reported) < 0}
+          delta={inf && x.reported ? ((inf.real - x.reported) / Math.abs(x.reported)) * 100 : undefined}
+          deltaLabel={inf ? `${t.reported}: ${money(x.reported, cur, true)} · ${t.afterInf(pct(inf.periodRate, 1))}` : t.asBooks} />
+      }>
+        <KpiTile label={t.reported} value={money(x.reported, cur, true)} neg={x.reported < 0} sub={t.asBooks} testId="tile-reported" />
+        <KpiTile label={t.cashOps} value={x.cashProfit === null ? "–" : money(x.cashProfit, cur, true)} neg={(x.cashProfit ?? 0) < 0} sub={x.cashProfit === null ? t.needsBefore : t.ocfSub} />
+        <KpiTile label={t.real} value={inf ? money(inf.real, cur, true) : "–"} neg={!!inf && inf.real < 0} sub={inf ? t.afterInf(pct(inf.periodRate, 1)) : t.enterInf} testId="tile-real" />
+        <KpiTile label={t.usd} value={x.fx ? usd(x.fx.reportedUsd) : "–"} neg={!!x.fx && x.fx.reportedUsd < 0} sub={x.fx ? t.pound(x.fx.devaluation >= 0, pct(Math.abs(x.fx.poundChange), 1)) : t.enterFx} />
+      </Cockpit>
 
       <div className="mb-8"><MemoBox section="realprofit" title={t.memoTitle} fallback={realProfitSummary(x, cur, lang)} testId="real-memo" /></div>
 
@@ -52,36 +59,41 @@ export function RealProfitPage() {
         <AssumptionsPanel fields={["inflation", "fxStart", "fxEnd", "importShare", "assetAge", "rate"]} a={a} setA={setA} saved={saved} />
       </div>
 
-      <h2 className="mb-1 text-xl font-light">{t.h1}</h2>
-      <p className="mb-4 text-sm text-mute">{t.h1Text}</p>
-      <div className="mb-10 grid gap-6 lg:grid-cols-2" data-testid="collection">
-        <table className="tbl"><tbody>
-          <tr className="row"><td>{t.invoiced}</td><td>{m(col.revenue)}</td></tr>
-          <tr className="row"><td>{t.owedUp}</td><td>{col.stuck === null ? t.needsBefore : m(-col.stuck)}</td></tr>
-          <tr className="tot"><td>{t.collected}</td><td>{m(col.collected)}</td></tr>
-          <tr className="row"><td>{t.rate}</td><td>{col.rate === null ? "–" : pct(col.rate, 1)}</td></tr>
-          <tr className="row"><td>{t.dso}</td><td>{col.dso === null ? "–" : t.days(Math.round(col.dso))}</td></tr>
-        </tbody></table>
-        <div className="space-y-3 text-[13px]">
-          {col.dso !== null && <p>{bold(t.takes(Math.round(col.dso), m(col.avgAR)))}</p>}
-          {col.creditCost !== null ? (
-            <>
-              <p>{bold(t.credit(pct(a.rate ?? 0, 1), m(col.creditCost), m(col.perDay)))}</p>
-              {col.release !== null && <p className="rounded bg-brand-bg px-3 py-2">{bold(t.release(Math.round(col.targetDso), m(col.release), m(col.saving)))}</p>}
-            </>
-          ) : <p className="text-mute">{t.enterRate}</p>}
-        </div>
-      </div>
+      <CardGrid>
+        <ChartCard title={t.h1} sub={t.h1Text} testId="collection">
+          <Bullet label={t.rate} value={col.rate} target={100} fmt={(v) => pct(v, 1)} testId="bullet-collect-rate" />
+          <Bullet label={t.dso} value={col.dso} target={target} lowerIsBetter fmt={(v) => t.days(Math.round(v))} testId="bullet-dso" />
+          <table className="tbl mt-3 text-[13px]"><tbody>
+            <tr className="row"><td>{t.invoiced}</td><td>{m(col.revenue)}</td></tr>
+            <tr className="row"><td>{t.owedUp}</td><td>{col.stuck === null ? t.needsBefore : m(-col.stuck)}</td></tr>
+            <tr className="tot"><td>{t.collected}</td><td>{m(col.collected)}</td></tr>
+          </tbody></table>
+        </ChartCard>
+        <ChartCard title={T_fin.collection} testId="collection-cost">
+          <div className="space-y-3 text-[13px]">
+            {col.dso !== null && <p>{bold(t.takes(Math.round(col.dso), m(col.avgAR)))}</p>}
+            {col.creditCost !== null ? (
+              <>
+                <p>{bold(t.credit(pct(a.rate ?? 0, 1), m(col.creditCost), m(col.perDay)))}</p>
+                {col.release !== null && <p className="rounded-lg bg-brand-bg px-3 py-2">{bold(t.release(Math.round(col.targetDso), m(col.release), m(col.saving)))}</p>}
+              </>
+            ) : <p className="text-mute">{t.enterRate}</p>}
+          </div>
+        </ChartCard>
+      </CardGrid>
 
-      <h2 className="mb-1 text-xl font-light">{t.h2}</h2>
+      <h2 className="mb-1 text-lg font-semibold">{t.h2}</h2>
       <p className="mb-4 text-sm text-mute">{t.h2Text}</p>
       {inf ? (
-        <div className="mb-10" data-testid="real-bridge">
-          <CashWaterfall rows={rows} cur={cur} />
+        <div className="mb-10">
+          <ChartCard title={T_fin.realBridge} testId="card-real-bridge"
+            table={{ head: [T_viz.item, T_viz.value], rows: rows.map((r) => [r.label, m(r.value)]) }}>
+            <div data-testid="real-bridge"><Bridge rows={rows.map((r) => ({ label: r.label, value: r.value, total: r.sign === "TOTAL", info: r.info }))} cur={cur} height={300} /></div>
+          </ChartCard>
           <div className="mt-6 grid gap-4 text-[13px] sm:grid-cols-3">
-            <div className="rounded-md bg-band p-3"><div className="label">{t.roe}</div><div className="num mt-1 text-xl">{inf.roe === null ? "–" : pct(inf.roe, 1)}</div><div className="text-mute">{t.roeSub}</div></div>
-            <div className="rounded-md bg-band p-3"><div className="label">{t.afterInfl}</div><div className={`num mt-1 text-xl ${inf.realRoe !== null && inf.realRoe < 0 ? "text-red" : ""}`}>{inf.realRoe === null ? "–" : pct(inf.realRoe, 1)}</div><div className="text-mute">{t.afterInflSub}</div></div>
-            <div className="rounded-md bg-band p-3"><div className="label">{t.standStill}</div><div className="num mt-1 text-xl">{m(inf.keepUp)}</div><div className="text-mute">{t.standStillSub}</div></div>
+            <div className="rounded-xl border border-line p-4"><div className="label">{t.roe}</div><div className="t-kpi mt-1">{inf.roe === null ? "–" : pct(inf.roe, 1)}</div><div className="text-mute">{t.roeSub}</div></div>
+            <div className="rounded-xl border border-line p-4"><div className="label">{t.afterInfl}</div><div className={`t-kpi mt-1 ${inf.realRoe !== null && inf.realRoe < 0 ? "text-red" : ""}`}>{inf.realRoe === null ? "–" : pct(inf.realRoe, 1)}</div><div className="text-mute">{t.afterInflSub}</div></div>
+            <div className="rounded-xl border border-line p-4"><div className="label">{t.standStill}</div><div className="t-kpi mt-1">{m(inf.keepUp)}</div><div className="text-mute">{t.standStillSub}</div></div>
           </div>
           <ul className="mt-6 space-y-2 text-[13px]">
             {inf.steps.map((s) => <li key={s.key}><b className="font-medium">{s.label}: {m(s.value)}.</b> {s.explain}</li>)}
@@ -89,7 +101,7 @@ export function RealProfitPage() {
         </div>
       ) : <p className="mb-10 rounded bg-band px-4 py-3 text-sm">{t.enterInfText}</p>}
 
-      <h2 className="mb-1 text-xl font-light">{t.h3}</h2>
+      <h2 className="mb-1 text-lg font-semibold">{t.h3}</h2>
       <p className="mb-4 text-sm text-mute">{t.h3Text}</p>
       {x.fx ? (
         <table className="tbl mb-10 max-w-2xl" data-testid="fx"><tbody>

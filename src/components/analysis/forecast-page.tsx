@@ -13,7 +13,11 @@ import { PageHeader } from "@/components/shell/page-header";
 import { SentenceSelect } from "@/components/ui/sentence-select";
 import { LineChart } from "@/components/charts/line-chart";
 import { cn } from "@/lib/cn";
-import { EmptyState, Legend, Tile } from "./common";
+import { EmptyState, Legend } from "./common";
+import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { Bullet } from "@/components/viz/bullet";
+import { GHOST, SERIES } from "@/components/viz/palette";
 import { ReadinessCard } from "@/components/setup/readiness-view";
 import { useT } from "@/lib/i18n/use-t";
 import type { Dict } from "@/lib/i18n";
@@ -56,7 +60,7 @@ export function ForecastPage() {
   const [tab, setTab] = useState<"pl" | "cf" | "bs">("pl");
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const { lang, d: { plan: { fc: t } }, ml, ms } = useT();
+  const { lang, d: { plan: { fc: t }, viz: { fin: T_fin } }, ml, ms } = useT();
   const f = useMemo(() => forecast(c.months, c.settings, d, c.assumptions ?? {}, c.asOf, lang), [c.months, c.settings, d, c.assumptions, c.asOf, lang]);
   const LABEL = lang === "ar" ? METHOD_LABEL_AR : METHOD_LABEL;
   const canSave = !c.readOnly && c.source !== "demo";
@@ -96,14 +100,19 @@ export function ForecastPage() {
       </PageHeader>
       <ReadinessCard sector="forecast" />
 
-      <div className="mb-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile label={t.rev12} value={money(s.revenue12, cur, true)} testId="tile-fc-revenue"
-          sub={<span className="text-mute">{s.growth12 === null ? t.noYear : t.onLast(`${s.growth12 >= 0 ? "+" : ""}${pct(s.growth12, 1)}`)}</span>} />
-        <Tile label={t.profit12} value={money(s.netIncome12, cur, true)} neg={s.netIncome12 < 0} testId="tile-fc-profit"
-          sub={<span className="text-mute">{s.netIncomeLast12 === null ? "" : t.last12(money(s.netIncomeLast12, cur, true))}</span>} />
-        <Tile label={t.lowCash} value={money(s.lowCash, cur, true)} neg={s.lowCash < 0} testId="tile-fc-lowcash" sub={<span className="text-mute">{t.inMonth(ml(s.lowCashMonth))}</span>} />
-        <Tile label={t.cashAt(ms(f.end))} value={money(s.closingCash, cur, true)} neg={s.closingCash < 0} testId="tile-fc-closing" />
-      </div>
+      <Cockpit hero={
+        <HeroKpi label={t.rev12} testId="tile-fc-revenue" value={money(s.revenue12, cur, true)}
+          delta={s.growth12} deltaLabel={s.growth12 === null ? t.noYear : t.onLast("").trim()}
+          now={[...histRev.slice(-12), ...f.months.slice(0, 12).map((m) => m.P.revenue)]} />
+      }>
+        <KpiTile label={t.profit12} value={money(s.netIncome12, cur, true)} neg={s.netIncome12 < 0} testId="tile-fc-profit"
+          sub={s.netIncomeLast12 === null ? undefined : t.last12(money(s.netIncomeLast12, cur, true))}
+          delta={s.netIncomeLast12 ? ((s.netIncome12 - s.netIncomeLast12) / Math.abs(s.netIncomeLast12)) * 100 : undefined} />
+        <KpiTile label={t.lowCash} value={money(s.lowCash, cur, true)} neg={s.lowCash < 0} testId="tile-fc-lowcash" sub={t.inMonth(ml(s.lowCashMonth))} now={f.months.map((m) => m.B.cash)} />
+        <KpiTile label={t.cashAt(ms(f.end))} value={money(s.closingCash, cur, true)} neg={s.closingCash < 0} testId="tile-fc-closing"
+          delta={histCash.length && histCash[H - 1] ? ((s.closingCash - histCash[H - 1]) / Math.abs(histCash[H - 1])) * 100 : undefined} />
+        {bt && <KpiTile label={T_fin.backtest} value={pct(bt.revenueMape, 1)} sub={bt.revenueMape <= 5 ? t.close : bt.revenueMape <= 15 ? t.fair : t.loose} />}
+      </Cockpit>
 
       <div className={cn("mb-8 flex items-start gap-3 rounded-md px-4 py-3 text-[13.5px]", s.cashNegativeFrom ? "bg-red-bg text-red" : "bg-brand-bg text-ink")} data-testid="fc-cash-verdict">
         {s.cashNegativeFrom ? <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /> : <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-brand-d" />}
@@ -112,31 +121,33 @@ export function ForecastPage() {
           : bold(t.staysPositive(money(s.lowCash, cur), ml(s.lowCashMonth)))}</p>
       </div>
 
-      <div className="mb-10 grid gap-8 lg:grid-cols-2">
-        <section>
-          <h2 className="mb-1 text-lg font-normal">{t.revenue}</h2>
-          <Legend items={[{ label: t.actual, color: "#0B6E70" }, { label: t.forecast, color: "#0B6E70", dashed: true }, { label: t.range, color: "#9CC9C9", dashed: true }]} />
+      <CardGrid>
+        <ChartCard title={t.revenue} testId="card-fc-revenue"
+          table={{ head: [t.month, t.forecast, t.rangeLow, t.rangeHigh], rows: f.months.map((m) => [ml(m.period), money(m.P.revenue, cur), money(m.revenueLow, cur), money(m.revenueHigh, cur)]) }}>
+          <Legend items={[{ label: t.actual, color: "#0B6E70" }, { label: t.forecast, color: "#0B6E70", dashed: true }, { label: t.range, color: GHOST, dashed: true }]} />
           <LineChart labels={labels.map(ms)} cur={cur} height={260} testId="fc-revenue-chart" legend={false} series={[
             { name: t.actual, values: [...histRev, ...f.months.map(() => null)], color: "#0B6E70" },
             { name: t.forecast, values: joined(histRev, f.months.map((m) => m.P.revenue)), color: "#0B6E70", dashed: true, dots: false },
-            { name: t.rangeLow, values: joined(histRev, f.months.map((m) => m.revenueLow)), color: "#9CC9C9", dashed: true, dots: false },
-            { name: t.rangeHigh, values: joined(histRev, f.months.map((m) => m.revenueHigh)), color: "#9CC9C9", dashed: true, dots: false },
+            { name: t.rangeLow, values: joined(histRev, f.months.map((m) => m.revenueLow)), color: GHOST, dashed: true, dots: false },
+            { name: t.rangeHigh, values: joined(histRev, f.months.map((m) => m.revenueHigh)), color: GHOST, dashed: true, dots: false },
           ]} />
-        </section>
-        <section>
-          <h2 className="mb-1 text-lg font-normal">{t.cash}</h2>
-          <Legend items={[{ label: t.actual, color: "#2E9E6A" }, { label: t.forecast, color: "#2E9E6A", dashed: true }]} />
+        </ChartCard>
+        <ChartCard title={t.cash} testId="card-fc-cash"
+          table={{ head: [t.month, t.forecast], rows: f.months.map((m) => [ml(m.period), money(m.B.cash, cur)]) }}>
+          <Legend items={[{ label: t.actual, color: SERIES[0] }, { label: t.forecast, color: SERIES[0], dashed: true }]} />
           <LineChart labels={labels.map(ms)} cur={cur} height={260} testId="fc-cash-chart" legend={false} series={[
-            { name: t.actual, values: [...histCash, ...f.months.map(() => null)], color: "#2E9E6A" },
-            { name: t.forecast, values: joined(histCash, f.months.map((m) => m.B.cash)), color: "#2E9E6A", dashed: true, dots: false },
+            { name: t.actual, values: [...histCash, ...f.months.map(() => null)], color: SERIES[0], fill: true },
+            { name: t.forecast, values: joined(histCash, f.months.map((m) => m.B.cash)), color: SERIES[0], dashed: true, dots: false },
           ]} />
-        </section>
-      </div>
+          <p className="mt-2 text-xs text-mute">{T_fin.lowPoint}: <b className={cn("num", s.lowCash < 0 ? "text-red" : "text-ink")}>{money(s.lowCash, cur)}</b> · {ml(s.lowCashMonth)}</p>
+        </ChartCard>
+      </CardGrid>
 
-      <section className="mb-10 rounded-lg border border-line p-4" data-testid="fc-accuracy">
-        <h2 className="mb-1 text-lg font-normal">{t.accuracy}</h2>
+      <section className="mb-8 rounded-xl border border-line p-4 sm:p-5" data-testid="fc-accuracy">
+        <h2 className="t-card mb-1">{t.accuracy}</h2>
         {bt ? (
           <>
+            <div className="mb-3 max-w-xl"><Bullet label={T_fin.backtestSub} value={bt.revenueMape} target={10} lowerIsBetter fmt={(v) => pct(v, 1)} testId="fc-mape" /></div>
             <p className="mb-3 text-[13.5px]">
               {bold(t.hid(bt.months, pct(bt.revenueMape, 1), pct(bt.ebitError, 1)))}{bt.revenueMape <= 5 ? t.close : bt.revenueMape <= 15 ? t.fair : t.loose}
             </p>
@@ -157,9 +168,9 @@ export function ForecastPage() {
         ) : <p className="text-[13.5px] text-mute">{t.tooFew}</p>}
       </section>
 
-      <section className="mb-10 rounded-lg border border-line p-4" data-testid="fc-drivers">
+      <section className="mb-8 rounded-xl border border-line p-4 sm:p-5" data-testid="fc-drivers">
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-lg font-normal">{t.drivers}</h2>
+          <h2 className="t-card">{t.drivers}</h2>
           <span className="text-xs text-mute">{t.emptyUse}</span>
         </div>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

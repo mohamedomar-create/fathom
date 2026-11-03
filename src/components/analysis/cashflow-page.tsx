@@ -8,9 +8,12 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { CashWaterfall } from "@/components/charts/waterfall";
 import { ColumnChart } from "@/components/charts/column-chart";
 import { LineChart } from "@/components/charts/line-chart";
-import { C } from "@/components/charts/util";
-import { Legend, MissingData, MoneyTile, Notes } from "./common";
+import { Legend, MissingData, Notes } from "./common";
 import { useT } from "@/lib/i18n/use-t";
+import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
+import { CardGrid, ChartCard } from "@/components/viz/chart-card";
+import { Bridge } from "@/components/viz/bridge";
+import { SERIES, TONE } from "@/components/viz/palette";
 
 export function CashflowPage() {
   const c = useCompany();
@@ -25,9 +28,21 @@ export function CashflowPage() {
   }, [a, c.months]);
   const T = useT();
   const t = T.d.ana;
+  const v = T.d.viz.fin;
   if (!a) return null;
   const cur = c.settings.currency;
   const W = a.W;
+  const rows = monthly?.rows ?? [];
+  const labels = rows.map((r) => T.ms(r.period));
+  const profitOf = (p: string) => { const i = a.view.series.periods.indexOf(p); return i >= 0 ? a.view.series.P[i].net_income : null; };
+  const bridge = W ? [
+    { label: v.opening, value: W.cash0, total: true },
+    { label: t.operating, value: W.ocf },
+    { label: t.investing, value: W.fcf - W.ocf },
+    { label: t.financing, value: W.ncf - W.fcf },
+    ...(W.unreconciled ? [{ label: t.unexplainedCol, value: W.dcash - W.ncf }] : []),
+    { label: v.closing, value: W.cash1, total: true },
+  ] : [];
   return (
     <>
       <PageHeader title={T.d.nav["analysis/cashflow"][1]} right={<PeriodPicker />} />
@@ -40,38 +55,67 @@ export function CashflowPage() {
               {t.openHealth[0]}<a className="underline" href={`${c.basePath}/data/checks`}>{t.openHealth[1]}</a>{t.openHealth[2]}
             </div>
           )}
-          <div className="mb-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            <MoneyTile label={t.ocf} value={W.ocf} testId="tile-ocf" sub={t.ocfTile} />
-            <MoneyTile label={t.fcf} value={W.fcf} sub={t.fcfTile} />
-            <MoneyTile label={t.ncf} value={W.ncf} testId="tile-ncf" sub={t.ncfTile} />
-            <MoneyTile label={t.dcash} value={W.dcash} testId="tile-dcash" sub={`${money(W.cash0, cur)} → ${money(W.cash1, cur)}`} />
-          </div>
-          <Legend items={[{ label: t.received, color: "#2E9E6A" }, { label: t.spent, color: "#D9343A" }]} />
-          <CashWaterfall rows={W.rows} cur={cur} />
-          <p className="mt-4 text-xs text-mute" data-testid="ncf-check">
-            {(() => { const [h, rest] = t.ncfCheck(money(W.dcash, cur), money(W.cash0, cur), money(W.cash1, cur), money(W.ddebt, cur), money(W.debt0, cur), money(W.debt1, cur)); return <><b className="text-ink">{h}</b>{rest}</>; })()}
-          </p>
+          <Cockpit hero={
+            <HeroKpi label={t.dcash} testId="tile-dcash" value={money(W.dcash, cur)} neg={W.dcash < 0}
+              deltaLabel={`${money(W.cash0, cur, true)} → ${money(W.cash1, cur, true)}`}
+              now={rows.length > 1 ? rows.map((r) => r.cash) : undefined}
+              story={(() => { const [h, rest] = t.ncfCheck(money(W.dcash, cur), money(W.cash0, cur), money(W.cash1, cur), money(W.ddebt, cur), money(W.debt0, cur), money(W.debt1, cur)); return <span data-testid="ncf-check"><b>{h}</b>{rest}</span>; })()} />
+          }>
+            <KpiTile label={t.ocf} value={money(W.ocf, cur, true)} neg={W.ocf < 0} testId="tile-ocf" sub={t.ocfTile} now={rows.length > 1 ? rows.map((r) => r.cfo) : undefined} />
+            <KpiTile label={t.fcf} value={money(W.fcf, cur, true)} neg={W.fcf < 0} sub={t.fcfTile} now={rows.length > 1 ? rows.map((r) => r.cfo + r.cfi) : undefined} />
+            <KpiTile label={t.ncf} value={money(W.ncf, cur, true)} neg={W.ncf < 0} testId="tile-ncf" sub={t.ncfTile} />
+            <KpiTile label={v.closing} value={money(W.cash1, cur, true)} neg={W.cash1 < 0} delta={W.cash0 ? ((W.cash1 - W.cash0) / Math.abs(W.cash0)) * 100 : null} sub={t.vsOpening} />
+          </Cockpit>
+          <CardGrid>
+            <ChartCard title={v.cashBridge} sub={v.cashBridgeSub} testId="card-cash-bridge"
+              table={{ head: [T.d.viz.item, T.d.viz.value], rows: bridge.map((b) => [b.label, money(b.value, cur)]) }}>
+              <Bridge rows={bridge} cur={cur} height={290} testId="cash-bridge" />
+            </ChartCard>
+            {rows.length > 1 ? (
+              <ChartCard title={v.cashVsProfit} sub={v.cashVsProfitSub} testId="card-cash-profit"
+                table={{ head: [t.month, t.operating, v.netProfit], rows: rows.map((r) => [T.ml(r.period), money(r.cfo, cur), money(profitOf(r.period), cur)]) }}>
+                <LineChart labels={labels} cur={cur} height={270} series={[
+                  { name: t.operating, values: rows.map((r) => r.cfo), color: SERIES[0] },
+                  { name: v.netProfit, values: rows.map((r) => profitOf(r.period)), color: SERIES[1] },
+                ]} />
+              </ChartCard>
+            ) : null}
+            <ChartCard title={v.statement} wide testId="card-cash-statement">
+              <Legend items={[{ label: t.received, color: TONE.good }, { label: t.spent, color: TONE.bad }]} />
+              <CashWaterfall rows={W.rows} cur={cur} />
+            </ChartCard>
+          </CardGrid>
         </>
       )}
-      {monthly && monthly.rows.length > 1 && (
-        <section className="mt-10" data-testid="cash-monthly">
-          <h2 className="mb-1 text-lg font-medium">{t.monthByMonth}</h2>
+      {monthly && rows.length > 1 && (
+        <section data-testid="cash-monthly">
+          <h2 className="mb-1 text-lg font-semibold">{t.monthByMonth}</h2>
           <p className="mb-3 text-sm text-mute">{t.monthByMonthText}{monthly.skipped.length ? t.notShown(monthly.skipped.map(T.ms).join(", ")) : ""}</p>
-          <ColumnChart testId="cash-columns" cur={cur} labels={monthly.rows.map((r) => T.ms(r.period))} series={[
-            { name: t.operating, values: monthly.rows.map((r) => r.cfo), color: C.s[0] },
-            { name: t.investing, values: monthly.rows.map((r) => r.cfi), color: C.s[1] },
-            { name: t.financing, values: monthly.rows.map((r) => r.cff), color: C.s[2] },
-          ]} />
-          <div className="mt-6"><LineChart testId="cash-balance" cur={cur} height={220} labels={monthly.rows.map((r) => T.ms(r.period))} series={[{ name: t.cashAtEnd, values: monthly.rows.map((r) => r.cash), color: C.s[0], fill: true }]} /></div>
-          <div tabIndex={0} className="mt-6 overflow-x-auto">
+          <CardGrid>
+            <ChartCard title={v.byActivity} wide testId="card-cash-activity"
+              table={{ head: [t.month, t.operating, t.investing, t.financing], rows: rows.map((r) => [T.ml(r.period), money(r.cfo, cur), money(r.cfi, cur), money(r.cff, cur)]) }}>
+              <ColumnChart testId="cash-columns" cur={cur} labels={labels} series={[
+                { name: t.operating, values: rows.map((r) => r.cfo), color: SERIES[0] },
+                { name: t.investing, values: rows.map((r) => r.cfi), color: SERIES[1] },
+                { name: t.financing, values: rows.map((r) => r.cff), color: SERIES[2] },
+              ]} />
+            </ChartCard>
+            <ChartCard title={v.cashLine} testId="card-cash-line">
+              <LineChart testId="cash-balance" cur={cur} height={240} labels={labels} series={[{ name: t.cashAtEnd, values: rows.map((r) => r.cash), color: SERIES[0], fill: true }]} />
+            </ChartCard>
+            <ChartCard title={v.fcf} sub={v.fcfSub} testId="card-fcf">
+              <ColumnChart cur={cur} height={240} labels={labels} series={[{ name: v.fcf, values: rows.map((r) => r.cfo + r.cfi), color: "#0b6e70" }]} />
+            </ChartCard>
+          </CardGrid>
+          <div tabIndex={0} className="overflow-x-auto rounded-xl border border-line p-3">
             <table className="tbl text-[13px]" data-testid="cash-monthly-table">
-              <thead><tr><th>{t.month}</th><th>{t.operating}</th><th>{t.investing}</th><th>{t.financing}</th>{monthly.rows.some((r) => r.unreconciled) && <th>{t.unexplainedCol}</th>}<th>{t.dcash}</th><th>{t.cashEnd}</th></tr></thead>
+              <thead><tr><th>{t.month}</th><th>{t.operating}</th><th>{t.investing}</th><th>{t.financing}</th>{rows.some((r) => r.unreconciled) && <th>{t.unexplainedCol}</th>}<th>{t.dcash}</th><th>{t.cashEnd}</th></tr></thead>
               <tbody>
-                {monthly.rows.map((r) => (
-                  <tr key={r.period}>
-                    <td>{T.ms(r.period)}</td><td>{money(r.cfo, cur)}</td><td>{money(r.cfi, cur)}</td><td>{money(r.cff, cur)}</td>
-                    {monthly.rows.some((x) => x.unreconciled) && <td className={r.unreconciled ? "text-red" : ""}>{money(r.unreconciled, cur)}</td>}
-                    <td>{money(r.dcash, cur)}</td><td>{money(r.cash, cur)}</td>
+                {rows.map((r) => (
+                  <tr key={r.period} className="row">
+                    <td>{T.ms(r.period)}</td><td className={r.cfo < 0 ? "text-red" : ""}>{money(r.cfo, cur)}</td><td>{money(r.cfi, cur)}</td><td>{money(r.cff, cur)}</td>
+                    {rows.some((x) => x.unreconciled) && <td className={r.unreconciled ? "text-red" : ""}>{money(r.unreconciled, cur)}</td>}
+                    <td className={r.dcash < 0 ? "text-red" : "text-green-d"}>{money(r.dcash, cur)}</td><td className="font-medium">{money(r.cash, cur)}</td>
                   </tr>
                 ))}
               </tbody>

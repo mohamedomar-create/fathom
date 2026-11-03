@@ -1,4 +1,5 @@
 import { money, num, pct, type Unit } from "@/lib/engine";
+import { INK, SERIES, TONE } from "@/components/viz/palette";
 
 export function niceTicks(lo: number, hi: number, n = 6): number[] {
   if (!Number.isFinite(lo) || !Number.isFinite(hi)) return [0, 1];
@@ -28,4 +29,4 @@ export function valueLabel(v: number | null | undefined, unit: Unit, cur: string
   return num(v, unit, cur);
 }
 
-export const C = { green: "#2E9E6A", greenD: "#1D6B46", red: "#B8242A", ink: "#222", mute: "#66665f", s: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"] };
+export const C = { green: TONE.good, greenD: TONE.goodText, red: TONE.badText, ink: INK.primary, mute: INK.muted, s: [...SERIES] };
