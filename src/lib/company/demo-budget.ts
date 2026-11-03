@@ -46,8 +46,10 @@ export function demoBudgetData(sales: SalesData, expenses: ExpensesData, fy: str
       // Each row its own swing around the season (from its name: the same every time), so the rows don't all look alike.
       let h = 7;
       for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) % 9973;
-      const amp = 0.4 + (h % 100) / 60, shift = h % 3;
-      const own = (p: string) => 1 + (SEASON[(Number(p.slice(5, 7)) - 1 + shift) % 12] - 1) * amp;
+      // A stronger or softer season per row, and a small lean of its own month to month (no phase shift: shifting the
+      // season wraps the strong December into January and back, which ends rows on an artificial drop).
+      const amp = 0.5 + (h % 100) / 80, lean = ((h % 7) - 3) / 300;
+      const own = (p: string) => { const i = Number(p.slice(5, 7)) - 1; return (1 + (SEASON[i] - 1) * amp) * (1 + lean * (i - 5.5)); };
       for (const p of history) {
         const flat = fixed?.(r) ?? false;
         const base = flat ? a / (months.size || 1) : a / seasonSum;

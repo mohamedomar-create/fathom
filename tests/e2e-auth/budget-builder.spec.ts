@@ -111,7 +111,26 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   // The new year starts equal to this year's estimate (CPAP: 52,000 + 81,000 in Jan-Feb 2026).
   expect(yearOf("prod:CPAP Machine")).toBe(133000);
 
-  // The cards, compact amounts (exact on hover and while typing), the chart, sort and the search box.
+  // A version saved before balance-sheet accounts were filtered out: the row is named, left out of the cards, and gone
+  // from the version on the next save.
+  const expBefore = await page.getByTestId("bsheet-strip").getByTestId("bcards-exp").locator("[data-exact]").getAttribute("title");
+  sql(`insert into public.budget_rows (version_id, company_id, view, key, label, mode, basis, cost, months)
+       values ('${v}', '${id}', 'expense', 'exp:210500 Stock Interim (Received)', '210500 Stock Interim (Received)', 'year', '{"kind":"pct","value":0}', '{"kind":"expense","cls":"other_cl"}', array_fill(50000::numeric, array[12]))`);
+  await page.reload();
+  await page.getByTestId("btab-expenses").click();
+  await expect(page.getByTestId("bexp-bs-note")).toContainText("210500 Stock Interim (Received)");
+  await expect(page.locator('[data-testid="bsheet-row-exp:210500 Stock Interim (Received)"]')).toHaveCount(0);
+  await expect(page.getByTestId("bcards-exp").locator("[data-exact]")).toHaveAttribute("title", expBefore!);
+  await page.getByTestId("btab-revenue").click();
+
+  // The cards (with the currency), compact amounts (exact on hover, on Enter and while typing), the chart, sort and search.
+  await expect(page.getByTestId("bcards-revenue")).toContainText("(EGP)");
+  const totalNew = page.getByTestId("bsheet-total-new");
+  await totalNew.focus(); // keyboard focus shows the exact figure; Enter swaps back
+  await expect(totalNew).toHaveText(/^[\d,]+$/);
+  await page.keyboard.press("Enter");
+  await expect(totalNew).toHaveText(/^[\d.]+(K|M)$/);
+  await totalNew.blur();
   for (const k of ["revenue", "gp", "exp", "np"]) await expect(page.getByTestId(`bcards-${k}`)).toBeVisible();
   await expect(page.getByTestId("bcards-revenue")).toContainText("This year's estimate");
   await expect(page.getByTestId("bchart-revenue")).toBeVisible();
@@ -162,6 +181,8 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   await expect(page.getByTestId("bsheet-auto-grp:cons")).toBeVisible();
   await page.getByTestId("budget-save").click();
   await expect(page.getByTestId("budget-msg")).toContainText("Saved", { timeout: 15_000 });
+  expect(sql(`select count(*) from public.budget_rows where version_id = '${v}' and key like '%Stock Interim%'`)).toBe("0");
+  expect(sql(`select count(*) from public.budget_lines where version_id = '${v}' and cls not in ('revenue','cos_variable','cos_fixed','cos_depreciation','exp_variable','exp_fixed','exp_depreciation','other_expenses','interest_expenses','tax_expenses','adjustments','other_income','interest_income')`)).toBe("0");
 
   expect(yearOf("prod:CPAP Machine")).toBe(146300);
   expect(JSON.parse(sql(`select basis from public.budget_rows where version_id = '${v}' and key = 'prod:CPAP Machine'`))).toEqual({ kind: "pct", value: 10 });
@@ -203,7 +224,7 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   // The customer group holds its customer's budget (Hilltop Hospital's saved year).
   const hilltop = Math.round(yearOf("cust:Hilltop Hospital", "customer"));
   expect(hilltop).toBeGreaterThan(0);
-  const hosp = page.getByTestId("bgroups-customers-row").filter({ hasText: "Hospitals" }).locator("td").last().locator("span");
+  const hosp = page.getByTestId("bgroups-customers-row").filter({ hasText: "Hospitals" }).locator("td").last().locator("[data-exact]");
   await expect(hosp).toHaveAttribute("title", hilltop.toLocaleString("en-US"));
   await expect(hosp).toHaveText(/^[\d.]+(K|M)$/);
   await page.getByTestId("btab-expenses").click();

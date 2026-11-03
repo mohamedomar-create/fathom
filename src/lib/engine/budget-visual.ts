@@ -1,4 +1,24 @@
-/** Small pure helpers for the budget page's visuals: the change badge and the sheet's sort. */
+/** Small pure helpers for the budget page's visuals: the cards' totals, the change badge and the sheet's sort. */
+import type { BudgetLine } from "./budget";
+import { isExpenseClass } from "./expenses";
+
+const INCOME = new Set<string>(["other_income", "interest_income"]);
+
+/**
+ * Revenue, gross profit, expenses (every cost below gross profit, interest and tax included, less other income) and net
+ * profit from budget lines. Cost of sales classes come off gross profit; anything that is neither a cost nor income
+ * (a balance-sheet account such as stock interim, dividends) is left out.
+ */
+export function budgetTotals(lines: BudgetLine[]) {
+  let revenue = 0, cos = 0, exp = 0;
+  for (const l of lines) {
+    if (l.cls === "revenue") revenue += l.amount;
+    else if (l.cls.startsWith("cos_")) cos += l.amount;
+    else if (INCOME.has(l.cls)) exp -= l.amount;
+    else if (isExpenseClass(l.cls)) exp += l.amount;
+  }
+  return { revenue, gp: revenue - cos, exp, np: revenue - cos - exp };
+}
 
 export interface Badge { dir: "up" | "down" | "flat"; tone: "good" | "bad" | "neutral"; pct: number | null }
 

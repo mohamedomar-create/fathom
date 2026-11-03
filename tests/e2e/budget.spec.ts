@@ -38,12 +38,26 @@ test("the demo budget: cards, compact amounts, a chart on every tab, sort by amo
   const total = page.getByTestId("bsheet-total-new");
   await expect(total).toHaveText(/^-?[\d.]+(K|M|B)$/);
   expect(await total.getAttribute("title")).toMatch(/^[\d,]+$/);
+  // The exact figure from the keyboard too: focus shows it, Enter swaps back, leaving goes back to compact.
+  await total.focus();
+  await expect(total).toHaveText(/^[\d,]+$/);
+  await page.keyboard.press("Enter");
+  await expect(total).toHaveText(/^[\d.]+(K|M|B)$/);
+  await total.blur();
+  // The cards and the sheet name the currency; the sparkline shows last year against the new year.
+  await expect(page.getByTestId("bcards-revenue")).toContainText("(EGP)");
+  await expect(page.locator("[data-testid^=bsheet-row-]").first().locator("td").last().locator("svg path")).toHaveCount(2);
   for (const k of ["revenue", "customers", "streams", "groups", "expenses", "vs"]) {
     await page.getByTestId(`btab-${k}`).click();
     await expect(page.getByTestId(`bchart-${k}`)).toBeVisible();
   }
   await page.getByTestId("btab-customers").click();
   await expect(page.getByTestId("bchart-top5")).toContainText("%");
+  // Expenses by group, each group its own colour.
+  await page.getByTestId("btab-expenses").click();
+  const swatches = await page.getByTestId("bchart-expenses").locator("li i").evaluateAll((els) => els.map((e) => (e as HTMLElement).style.background));
+  expect(swatches.length).toBeGreaterThan(2);
+  expect(new Set(swatches).size).toBe(swatches.length);
   // Sort by the new year: the largest row first.
   await page.getByTestId("bsheet-sort-amount").click();
   const values = await page.locator("[data-testid^=bsheet-value-]").evaluateAll((els) => els.map((e) => Number((e.getAttribute("title") ?? "").replace(/,/g, ""))));

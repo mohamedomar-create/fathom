@@ -1,5 +1,5 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { compact, num, pct } from "@/lib/engine/format";
 import { changeBadge } from "@/lib/engine/budget-visual";
 import { cn } from "@/lib/cn";
@@ -14,13 +14,45 @@ export function useCompact() {
   return (v: number) => compact(v, lang === "ar" ? "ar" : "en");
 }
 
-/** An amount in compact form; the exact amount on hover (title) and on tap (the text swaps to it). */
-export function Amt({ v, className, testId }: { v: number; className?: string; testId?: string }) {
+/**
+ * An amount in compact form with the exact amount on hover (title), on tap or click (the text swaps to it) and while it has
+ * keyboard focus (Tab reaches it; Enter swaps back), so a screen reader reads the exact figure. A focusable text, not a
+ * button: a table of buttons would fail the target-size rule wherever a sticky total row covers part of a row.
+ * `plain`: text only, not focusable (inside a label or another control).
+ */
+export function Amt({ v, className, testId, plain }: { v: number; className?: string; testId?: string; plain?: boolean }) {
   const fmt = useCompact();
   const [exact, setExact] = useState(false);
+  const pointer = useRef(false);
+  if (plain) return <span className={cn("tabular-nums", className)} title={amt(v)} data-exact={amt(v)} data-testid={testId}>{fmt(v)}</span>;
   return (
-    <span className={cn("tabular-nums", className)} title={amt(v)} data-exact={amt(v)} data-testid={testId}
-      onClick={() => setExact((x) => !x)}>{exact ? amt(v) : fmt(v)}</span>
+    <span tabIndex={0} className={cn("cursor-help rounded tabular-nums decoration-dotted underline-offset-2 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-d", className)}
+      title={amt(v)} data-exact={amt(v)} data-testid={testId}
+      onPointerDown={() => { pointer.current = true; }}
+      onFocus={() => { if (!pointer.current) setExact(true); pointer.current = false; }}
+      onBlur={() => setExact(false)}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExact((x) => !x); } }}
+      onClick={(e) => { e.stopPropagation(); setExact((x) => !x); }}>{exact ? amt(v) : fmt(v)}</span>
+  );
+}
+
+/**
+ * A row's months: last year (muted) and the new year (brand) on one scale, so the shape and the level compare at a glance.
+ */
+export function TwoSpark({ last, now, w = 84, h = 24 }: { last: number[]; now: number[]; w?: number; h?: number }) {
+  const all = [...last, ...now].filter((x) => Number.isFinite(x));
+  const hasLast = last.some((x) => x !== 0);
+  if (!all.length || all.every((x) => x === 0)) return <svg width={w} height={h} aria-hidden />;
+  // One scale for both lines (their own range, not from zero), so the shapes show and the levels still compare.
+  const lo = Math.min(...all), hi = Math.max(...all), rng = hi - lo || 1;
+  const path = (vs: number[]) => "M" + vs.map((x, i) => `${(2 + ((w - 6) * i) / Math.max(1, vs.length - 1)).toFixed(1)},${(h - 3 - (h - 6) * ((x - lo) / rng)).toFixed(1)}`).join(" L");
+  const endY = h - 3 - (h - 6) * ((now[now.length - 1] - lo) / rng);
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden className="block">
+      {hasLast && <path d={path(last)} fill="none" stroke="#b8c4c4" strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />}
+      <path d={path(now)} fill="none" stroke="#2a78d6" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx={w - 4} cy={endY} r={2.5} fill="#2a78d6" stroke="#fff" strokeWidth={1} />
+    </svg>
   );
 }
 
@@ -62,7 +94,7 @@ export function ShareBar({ share }: { share: number }) {
 export interface CardFigure { key: "revenue" | "gp" | "exp" | "np"; now: number; est: number; margin?: number | null; cost?: boolean; testId?: string }
 
 /** The four summary cards: the new year (compact), this year's estimate and the change; margins on the profits. */
-export function BudgetCards({ figures, fy, note }: { figures: CardFigure[]; fy: string; note: string }) {
+export function BudgetCards({ figures, fy, note, cur }: { figures: CardFigure[]; fy: string; note: string; cur: string }) {
   const { d } = useT();
   const fmt = useCompact();
   const b = d.bud.b;
@@ -70,9 +102,9 @@ export function BudgetCards({ figures, fy, note }: { figures: CardFigure[]; fy: 
     <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4" data-testid="bsheet-strip" title={note}>
       {figures.map((f) => (
         <div key={f.key} className="rounded-lg border border-line bg-white p-3" data-testid={`bcards-${f.key}`} title={f.key === "exp" ? b.expHint : undefined}>
-          <div className="text-xs text-mute">{b.cards[f.key]} · {d.bud.fy(fy)}</div>
+          <div className="text-xs text-mute">{b.cards[f.key]} ({cur}) · {d.bud.fy(fy)}</div>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-            <span className={cn("text-2xl font-semibold", f.now < 0 && "text-red-d")} title={amt(f.now)} data-testid={f.testId}>{fmt(f.now)}</span>
+            <Amt v={f.now} className={cn("text-2xl font-semibold [font-variant-numeric:normal]", f.now < 0 && "text-red-d")} testId={f.testId} />
             <ChangeBadge now={f.now} est={f.est} cost={f.cost} />
           </div>
           <div className="mt-1 text-xs text-mute">

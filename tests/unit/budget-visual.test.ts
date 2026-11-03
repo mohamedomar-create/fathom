@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { changeBadge, sortRows } from "@/lib/engine/budget-visual";
+import { budgetTotals, changeBadge, sortRows } from "@/lib/engine/budget-visual";
 
 describe("change badge", () => {
   it("income up is good, down is bad", () => {
@@ -43,5 +43,17 @@ describe("sort rows", () => {
   it("does not change the list it is given", () => {
     sortRows(rows, { by: "amount", desc: true }, v);
     expect(rows[0].key).toBe("b");
+  });
+});
+
+describe("budget totals (the cards)", () => {
+  const l = (cls: string, amount: number) => ({ key: cls, cls, label: null, month: "2026-01", amount }) as never;
+  it("revenue, gross profit, the costs below it net of other income, net profit", () => {
+    expect(budgetTotals([l("revenue", 1000), l("cos_variable", 400), l("exp_fixed", 200), l("tax_expenses", 50), l("other_income", 30)]))
+      .toEqual({ revenue: 1000, gp: 600, exp: 220, np: 380 });
+  });
+  it("leaves out balance-sheet accounts (stock bought into stock interim) and other non-costs", () => {
+    expect(budgetTotals([l("revenue", 1000), l("cos_variable", 400), l("other_cl", 900), l("dividends", 70)]))
+      .toEqual({ revenue: 1000, gp: 600, exp: 0, np: 600 });
   });
 });

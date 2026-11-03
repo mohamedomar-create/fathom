@@ -3,7 +3,7 @@ import { fyMonths, type BudgetLine } from "./budget";
 import type { ClassKey } from "./index";
 import { accountMarkKey } from "./statement-rows";
 import type { SalesCustomerRow, SalesProductRow } from "./sales";
-import type { ExpenseAccountRow } from "./expenses";
+import { isCostLine, type ExpenseAccountRow } from "./expenses";
 
 export interface BudgetSetup {
   products: string[];
@@ -317,6 +317,14 @@ function expenseKey(row: BudgetRow): string {
  * P&L budget lines: revenue rows -> "cls:revenue", their cost of sales -> "cls:cos_variable", expense rows -> their own
  * key and class. Customer-view rows are a breakdown of the revenue and add nothing. Zero months are left out.
  */
+/** An expense row's class: its own, else the one kept in its cost, else running costs (fixed). */
+export const expenseClass = (r: BudgetRow): ClassKey => r.cls ?? (r.cost?.kind === "expense" ? r.cost.cls : "exp_fixed");
+/**
+ * Whether an expense row is budgeted: only cost classes. A balance-sheet account (stock bought into stock interim) or an
+ * income class in a version saved before they were filtered out is left out of the lines and dropped on the next save.
+ */
+export const isBudgetedExpense = (r: BudgetRow) => r.view !== "expense" || isCostLine(expenseClass(r));
+
 export function budgetToLines(rows: BudgetRow[], months: string[]): BudgetLine[] {
   const acc = new Map<string, BudgetLine>();
   const put = (key: string, cls: ClassKey, label: string, i: number, amount: number) => {
@@ -326,14 +334,14 @@ export function budgetToLines(rows: BudgetRow[], months: string[]): BudgetLine[]
     else acc.set(id, { key, cls, label: label.slice(0, 200), month: months[i], amount: r2(amount) });
   };
   for (const r of rows) {
-    if (r.view === "customer") continue;
+    if (r.view === "customer" || !isBudgetedExpense(r)) continue;
     const cost = r.view === "revenue" ? costMonths(r) : null;
     const key = r.view === "expense" ? expenseKey(r) : "";
     for (let i = 0; i < 12; i++) {
       if (r.view === "revenue") {
         put("cls:revenue", "revenue", "Revenue (from the budget builder)", i, r.months[i]);
         put("cls:cos_variable", "cos_variable", "Cost of sales (from the budget builder)", i, cost![i]);
-      } else put(key, r.cls ?? (r.cost?.kind === "expense" ? r.cost.cls : "exp_fixed"), r.label, i, r.months[i]);
+      } else put(key, expenseClass(r), r.label, i, r.months[i]);
     }
   }
   return [...acc.values()].filter((l) => Math.abs(l.amount) >= 0.005);
@@ -363,9 +371,12 @@ export function parseBudgetInput(text: string): Basis | null {
   const t = text
     .replace(ARABIC_DIGITS, (ch) => String(ch.charCodeAt(0) & 0xf))
     .replace(/٫/g, ".").replace(/[,٬\s]/g, "").replace(/٪/g, "%");
-  const m = /^([+-]?)(\d+(?:\.\d+)?|\.\d+)(%?)$/.exec(t);
+  // The compact forms the page shows: 2.8M, 450K, 1.2B (any case) and 2.8 م, 450 ألف, 1.2 مليار.
+  const m = /^([+-]?)(\d+(?:\.\d+)?|\.\d+)(%|[kmb]|ألف|مليون|مليار|م)?$/i.exec(t);
   if (!m) return null;
-  const value = Number(`${m[1]}${m[2]}`);
+  const unit = (m[3] ?? "").toLowerCase();
+  const times = unit === "k" || unit === "ألف" ? 1e3 : unit === "m" || unit === "م" || unit === "مليون" ? 1e6 : unit === "b" || unit === "مليار" ? 1e9 : 1;
+  const value = Math.round(Number(`${m[1]}${m[2]}`) * times * 100) / 100;
   if (!Number.isFinite(value) || Math.abs(value) >= 1e15) return null;
-  return m[3] ? { kind: "pct", value } : { kind: "amount", value };
+  return unit === "%" ? { kind: "pct", value } : { kind: "amount", value };
 }

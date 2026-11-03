@@ -44,5 +44,10 @@ describe("demo budget", () => {
     expect((revenue - cos - rest) / revenue).toBeLessThan(0.15);
     expect(revenue).not.toBeCloseTo(est, -3); // the revenue changed on the estimate
     expect(b.setup.streams.rental.length).toBeGreaterThan(0); // a rental stream to show
+    // No row ends the year on an artefact: the last month is within 15% of the one before.
+    for (const r of b.rows.filter((x) => x.view === "revenue")) {
+      const [a, z] = r.months.slice(10);
+      expect(Math.abs(z - a) / a, r.label).toBeLessThan(0.15);
+    }
   });
 });

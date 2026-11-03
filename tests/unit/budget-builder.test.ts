@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   baseYears, expenseSeries, itemOf, productSeries, revenueItems, spread, customerSeries,
-  rowMonths, costMonths, customerView, balanceCustomers, streamView, groupView, budgetToLines, actualByItem, storedRow,
+  rowMonths, costMonths, customerView, balanceCustomers, streamView, groupView, budgetToLines, actualByItem, storedRow, isBudgetedExpense,
   type BudgetSetup, type BaseCol, type BudgetRow,
 } from "@/lib/engine/budget-builder";
 import type { SalesProductRow, SalesCustomerRow } from "@/lib/engine/sales";
@@ -242,6 +242,14 @@ describe("budget builder: cost of sales", () => {
   it("cost-null-is-no-product-cost", () => {
     expect(costMonths(r(null))).toEqual(Array(12).fill(0));
     expect(costMonths(r({ kind: "expense", cls: "exp_fixed" }))).toEqual(Array(12).fill(0));
+  });
+  it("balance-sheet expense rows are left out of the lines (a version saved before they were filtered)", () => {
+    const stock = storedRow({ view: "expense", key: "exp:210500 Stock Interim", label: "210500 Stock Interim", mode: "year", basis: null, cost: { kind: "expense", cls: "other_cl" as never }, months: Array(12).fill("100") });
+    const rent = storedRow({ view: "expense", key: "exp:620 Rent", label: "620 Rent", mode: "year", basis: null, cost: { kind: "expense", cls: "exp_fixed" }, months: Array(12).fill("10") });
+    expect(isBudgetedExpense(stock)).toBe(false);
+    expect(isBudgetedExpense(rent)).toBe(true);
+    const lines = budgetToLines([stock, rent], MONTHS);
+    expect(lines.map((l) => l.label)).toEqual(Array(12).fill("620 Rent"));
   });
   it("stored-row-class", () => {
     // Expense rows keep their class in the cost object (no column for it): read back as cls.

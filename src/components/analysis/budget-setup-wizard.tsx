@@ -113,7 +113,7 @@ export function BudgetSetupWizard({ companyId, products, customers, expenses, hi
                 <input type="checkbox" className={box} checked={picked.has(p.name)} data-testid={`bsetup-product-${p.i}`}
                   onChange={(e) => set((s) => ({ ...s, products: toggle(s.products, p.name, e.target.checked) }))} />
                 <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                <Amt v={p.amount} className="text-mute" />
+                <Amt plain v={p.amount} className="text-mute" />
               </label>
             ))}
           </div>
@@ -208,7 +208,7 @@ export function BudgetSetupWizard({ companyId, products, customers, expenses, hi
                     onChange={(ev) => setSel((s) => toggle(s, e.key, ev.target.checked))} />
                   <span className="min-w-0 flex-1 truncate">{e.label}</span>
                   {into && <span className="text-xs text-mute no-underline">{w.mergedInto(into.name)}</span>}
-                  <Amt v={e.amount} className="text-mute" />
+                  <Amt plain v={e.amount} className="text-mute" />
                   {!into && (
                     <label className="flex cursor-pointer items-center gap-1 text-xs">
                       <input type="checkbox" className={box} checked={excluded.has(e.key)} data-testid={`bsetup-exp-exclude-${i}`}

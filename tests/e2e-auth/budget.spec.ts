@@ -42,7 +42,7 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   await page.getByTestId("budget-tab-accounts").click();
   const keys = await page.getByTestId("budget-row").evaluateAll((els) => els.map((e) => e.getAttribute("data-key")));
   expect(new Set(keys).size).toBe(keys.length);
-  const firstTotal = page.getByTestId("budget-row").first().locator("td").last().locator("span");
+  const firstTotal = page.getByTestId("budget-row").first().locator("td").last().locator("[data-exact]");
   expect(await firstTotal.getAttribute("title")).toMatch(/^-?[\d,]+$/);
   await expect(page.locator("[data-testid^=budget-cell-]")).toHaveCount(0);
   await page.locator("[data-testid^=budget-open-]").first().click();
@@ -55,10 +55,11 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   await expect(cell).toHaveValue("12.3K"); // compact at rest
   await cell.focus();
   await expect(cell).toHaveValue("12,345"); // exact while focused
+  await cell.fill("12.5K"); // the compact form reads as an exact amount
   await cell.blur();
   await page.getByTestId("budget-save").click();
   await expect(page.getByTestId("budget-msg")).toContainText("Saved", { timeout: 15_000 });
-  expect(sql(`select amount from public.budget_lines where version_id = '${v}' and key = '${key}' and month = '${month}'`)).toBe("12345");
+  expect(sql(`select amount from public.budget_lines where version_id = '${v}' and key = '${key}' and month = '${month}'`)).toBe("12500");
 
   // By product: two products over the 12 months show once each (no product × month rows); a month edit saves.
   const ms = JSON.parse(sql(`select json_agg(distinct month order by month) from public.budget_lines where version_id = '${v}'`)) as string[];

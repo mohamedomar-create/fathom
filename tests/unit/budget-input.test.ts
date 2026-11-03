@@ -28,4 +28,19 @@ describe("parse-input", () => {
     expect(parseBudgetInput("1.2.3")).toBeNull();
     expect(parseBudgetInput("1e400")).toBeNull();
   });
+  it("reads the compact forms the page shows (2.8M, 450K, 2.8 م, 450 ألف)", () => {
+    expect(parseBudgetInput("2.8M")).toEqual({ kind: "amount", value: 2_800_000 });
+    expect(parseBudgetInput("2.8m")).toEqual({ kind: "amount", value: 2_800_000 });
+    expect(parseBudgetInput("450K")).toEqual({ kind: "amount", value: 450_000 });
+    expect(parseBudgetInput("12.5k")).toEqual({ kind: "amount", value: 12_500 });
+    expect(parseBudgetInput("1.2B")).toEqual({ kind: "amount", value: 1_200_000_000 });
+    expect(parseBudgetInput("2.8 م")).toEqual({ kind: "amount", value: 2_800_000 });
+    expect(parseBudgetInput("450 ألف")).toEqual({ kind: "amount", value: 450_000 });
+    expect(parseBudgetInput("1.2 مليار")).toEqual({ kind: "amount", value: 1_200_000_000 });
+    expect(parseBudgetInput("١٫٥ م")).toEqual({ kind: "amount", value: 1_500_000 });
+    expect(parseBudgetInput("-450K")).toEqual({ kind: "amount", value: -450_000 });
+    expect(parseBudgetInput("1.0M")).toEqual({ kind: "amount", value: 1_000_000 });
+    expect(parseBudgetInput("10%K")).toBeNull();
+    expect(parseBudgetInput("K")).toBeNull();
+  });
 });

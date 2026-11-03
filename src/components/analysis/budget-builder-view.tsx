@@ -3,12 +3,13 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { fyMonths, type BudgetLine } from "@/lib/engine/budget";
 import {
-  balanceCustomers, budgetToLines, customerView, groupView, streamView, type BaseCol, type BudgetRow, type BudgetSetup,
+  balanceCustomers, budgetToLines, customerView, expenseClass, groupView, isBudgetedExpense, streamView, type BaseCol, type BudgetRow, type BudgetSetup,
 } from "@/lib/engine/budget-builder";
+import { budgetTotals } from "@/lib/engine/budget-visual";
 import { builderBases, startRows, versionRows, type BuilderData } from "@/lib/engine/budget-bases";
 import { emptySetup, setupDrift } from "@/lib/engine/budget-setup";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
-import type { ExpenseAccountRow } from "@/lib/engine/expenses";
+import { EXPENSE_GROUPS, isCostLine, type ExpenseAccountRow } from "@/lib/engine/expenses";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
 import { saveBudgetRows } from "@/app/company/[id]/analysis/budget-actions";
@@ -25,8 +26,8 @@ const VIEWS = ["revenue", "customer", "expense"] as const;
 const TABS = ["revenue", "customers", "streams", "groups", "expenses", "vs"] as const;
 type Tab = (typeof TABS)[number];
 const r2 = (x: number) => Math.round(x * 100) / 100;
-const monthsSum = (rows: BudgetRow[]) => Array.from({ length: 12 }, (_, i) => r2(rows.reduce((t, r) => t + (r.months[i] ?? 0), 0)));
 const INCOME = new Set<string>(["other_income", "interest_income"]);
+const monthsSum = (rows: BudgetRow[]) => Array.from({ length: 12 }, (_, i) => r2(rows.reduce((t, r) => t + (r.months[i] ?? 0), 0)));
 
 /** Rows as saved (labels within the stored limit; an expense row keeps its class in `cost`: budget_rows has no cls column). */
 const forSave = (r: BudgetRow): BudgetRow =>
@@ -39,25 +40,13 @@ export function buildFromSetup(data: BuilderData, setup: BudgetSetup, fy: string
   return { rows, lines: budgetToLines(rows, fyMonths(fy, fyStart)), empty: !bb.revenue.length && !bb.expense.length };
 }
 
-/**
- * Revenue, gross profit, expenses (the costs below gross profit, net of other income) and net profit from the lines
- * (cost of sales classes come off gross profit).
- */
-function stripOf(lines: BudgetLine[]) {
-  let revenue = 0, cos = 0, rest = 0;
-  for (const l of lines) {
-    if (l.cls === "revenue") revenue += l.amount;
-    else if (l.cls.startsWith("cos_")) cos += l.amount;
-    else rest += INCOME.has(l.cls) ? -l.amount : l.amount;
-  }
-  return { revenue, gp: revenue - cos, exp: rest, np: revenue - cos - rest };
-}
 /** Ranked bars with each item's share of `total` (Others, when there, last). */
 const ranked = (items: { key: string; label: string; value: number }[], total: number): BarItem[] =>
   items.slice().sort((a, b) => (a.key === "others" ? 1 : b.key === "others" ? -1 : b.value - a.value))
     .map((x) => { const share = total ? (x.value / total) * 100 : 0; return { ...x, share, sub: pct(share, 1) }; });
-/** A fixed colour per expense class (by the class, never its rank). */
-const CLS_COLOR: Record<string, string> = { exp_fixed: C.s[0], exp_variable: C.s[1], cos_variable: C.s[2], cos_fixed: C.s[3], other_expense: C.s[4] };
+/** A fixed colour per expense group (by the group, never its rank): the chart tokens, then the target purple. */
+const GROUP_COLOR: Record<string, string> = { cos: C.s[0], fixed: C.s[1], variable: C.s[2], depreciation: C.s[3], finance: C.s[4], other: "#9a6bb0" };
+const GROUP_OF_CLS = new Map(EXPENSE_GROUPS.flatMap((g) => g.classes.map((c) => [c as string, g] as const)));
 
 export interface BuilderViewProps {
   version: BudgetVersionInfo;
@@ -82,18 +71,21 @@ export interface BuilderViewProps {
 export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, stockCogs, mixedCogs, editable, say, onDirty, renderVs }: BuilderViewProps) {
   const c = useCompany();
   const router = useRouter();
-  const { d, ms } = useT();
+  const { d, ms, tl } = useT();
   const t = d.bud;
   const b = t.b;
   const fmt = useCompact();
-  const clsName = d.setx.coa.cls as Record<string, string>;
   const fyStart = c.settings.fyStartMonth ?? 1;
   const months = useMemo(() => fyMonths(version.fy, fyStart), [version.fy, fyStart]);
   const setup = current.setup ?? companySetup ?? emptySetup();
   const bb = useMemo(() => builderBases({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs, mixedCogs, asOfDate: c.asOf }, setup, version.fy, fyStart),
     [salesProducts, salesCustomers, expenseAccounts, stockCogs, mixedCogs, c.asOf, setup, version.fy, fyStart]);
   // Saved rows are the truth (their cost of sales was fixed when the version was built); live data only fills the bases.
-  const [rows, setRows] = useState(() => versionRows(current.rows, bb));
+  // Expense rows that are not costs (a balance-sheet account such as stock interim, in a version saved before they were
+  // filtered out) are left out of the rows: named once below, and gone from the version on the next save.
+  const [initial] = useState(() => versionRows(current.rows, bb));
+  const notCosts = useMemo(() => initial.expense.filter((r) => !isBudgetedExpense(r)), [initial]);
+  const [rows, setRows] = useState(() => ({ ...initial, expense: initial.expense.filter(isBudgetedExpense) }));
   // Customers typed by hand (kept as typed); the others follow the revenue by their share.
   const [edited, setEdited] = useState(() => new Set(rows.customer.filter((r) => r.basis !== null).map((r) => r.key)));
   const [dirty, setDirty] = useState(0);
@@ -113,10 +105,11 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const all = useMemo(() => [...rows.revenue, ...rows.customer, ...rows.expense], [rows]);
   const lines = useMemo(() => budgetToLines(all, months), [all, months]);
   // Until something is edited, the strip and Budget vs actual show the lines as saved (an approved version's own).
-  const shown = dirty === 0 && current.rows.length && current.lines?.length ? current.lines : lines;
-  const strip = useMemo(() => stripOf(shown), [shown]);
+  const shown = useMemo(() => (dirty === 0 && current.rows.length && current.lines?.length ? current.lines.filter((l) => l.cls === "revenue" || INCOME.has(l.cls) || isCostLine(l.cls)) : lines),
+    [dirty, current.rows.length, current.lines, lines]);
+  const strip = useMemo(() => budgetTotals(shown), [shown]);
   // This year's estimate through the same lines: every row at its base months (product costs work out the same way).
-  const est = useMemo(() => stripOf(budgetToLines([...rows.revenue, ...rows.expense].map((r) => ({ ...r, months: baseOf(bases, r).months })), months)), [rows, bases, months]);
+  const est = useMemo(() => budgetTotals(budgetToLines([...rows.revenue, ...rows.expense].map((r) => ({ ...r, months: baseOf(bases, r).months })), months)), [rows, bases, months]);
   const margin = (v: number, rev: number) => (rev ? (v / rev) * 100 : null);
   const difference = useMemo(() => { const cs = monthsSum(rows.customer); return revenueMonths.map((v, i) => r2(v - cs[i])); }, [rows.customer, revenueMonths]);
   const diffYear = r2(difference.reduce((t, v) => t + v, 0));
@@ -172,19 +165,17 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const revenueMix = ranked(rows.revenue.map((r) => ({ key: r.key, label: labelOf(r), value: sumOf(r.months) })), revTotal);
   const custItems = ranked(rows.customer.map((r) => ({ key: r.key, label: r.label, value: sumOf(r.months) })), revTotal);
   const custTotal = custItems.reduce((x, i) => x + i.value, 0);
-  const custMix = { items: custItems, total: custTotal, top5: custTotal ? (custItems.slice(0, 5).reduce((x, i) => x + i.value, 0) / custTotal) * 100 : 0 };
+  // The top five's share of the revenue (what the label says), not of the customers' total.
+  const custMix = { items: custItems, total: custTotal, top5: revTotal ? (custItems.slice(0, 5).reduce((x, i) => x + i.value, 0) / revTotal) * 100 : 0 };
   const groupMix = ranked(groups.filter((g) => g.by === "products").map((g) => ({ key: g.id, label: g.id === "others" ? b.others : g.name, value: sumOf(g.months) })), revTotal);
   const expBy = new Map<string, number>();
-  for (const r of rows.expense) { const k = r.cls ?? "exp_fixed"; expBy.set(k, (expBy.get(k) ?? 0) + sumOf(r.months)); }
-  const order = Object.keys(CLS_COLOR);
-  const rank = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
-  const expMix = [...expBy].sort((x, y) => rank(x[0]) - rank(y[0]) || (x[0] < y[0] ? -1 : 1))
-    .map(([k, v]) => ({ key: k, label: clsName[k] ?? k, value: v, color: CLS_COLOR[k] ?? "#8a9494" }));
+  for (const r of rows.expense) { const g = GROUP_OF_CLS.get(expenseClass(r))?.key ?? "other"; expBy.set(g, (expBy.get(g) ?? 0) + sumOf(r.months)); }
+  const expMix = EXPENSE_GROUPS.filter((g) => expBy.has(g.key)).map((g) => ({ key: g.key, label: tl(g.name), value: expBy.get(g.key)!, color: GROUP_COLOR[g.key] }));
 
   return (
     <div data-testid="budget-builder">
       {drift && <p className="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm" data-testid="bsetup-drift">{b.drift}</p>}
-      <BudgetCards fy={version.fy} note={b.stripNote} figures={[
+      <BudgetCards fy={version.fy} note={b.stripNote} cur={c.settings.currency} figures={[
         { key: "revenue", now: strip.revenue, est: est.revenue, testId: "bsheet-strip-revenue" },
         { key: "gp", now: strip.gp, est: est.gp, margin: margin(strip.gp, strip.revenue), testId: "bsheet-strip-gp" },
         { key: "exp", now: strip.exp, est: est.exp, cost: true },
@@ -236,6 +227,9 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
           </div>
         )}
       </>}
+      {tab === "expenses" && editable && notCosts.length > 0 && (
+        <p className="mb-2 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm" role="status" data-testid="bexp-bs-note">{b.bsNote(notCosts.map((r) => r.label).join(", "))}</p>
+      )}
       {tab === "expenses" && excluded.length > 0 && <p className="mb-2 text-xs text-mute" data-testid="bexp-cos-note">{b.cosNote(excluded.join(", "))}</p>}
       {tab === "expenses" && <>
         <ChartCard testId="bchart-expenses" title={b.charts.expenses} note={b.chartNote} summary={expMix.map((x) => `${x.label} ${fmt(x.value)}`).join(", ")}>

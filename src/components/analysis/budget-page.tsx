@@ -9,7 +9,7 @@ import {
 import { accountMarkKey } from "@/lib/engine/statement-rows";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
 import { isCostLine, type ExpenseAccountRow } from "@/lib/engine/expenses";
-import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
+import { parseBudgetInput, type BudgetRow, type BudgetSetup } from "@/lib/engine/budget-builder";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
 import { approveBudget, createBudget, deleteBudget, saveBudget, saveBudgetRows } from "@/app/company/[id]/analysis/budget-actions";
@@ -356,6 +356,7 @@ function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd
   const t = d.bud;
   const b = t.b;
   const short = useCompact();
+  const cur = useCompany().settings.currency;
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   const byKey = new Map<string, { cls: ClassKey; label: string; v: Record<string, number> }>();
@@ -373,7 +374,7 @@ function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd
       {notes.length > 0 && <ul className="mb-2 text-xs text-mute">{notes.map((n) => <li key={n}>{n}</li>)}</ul>}
       <div className="overflow-x-auto">
         <table className="tbl w-full text-[13px]">
-          <thead><tr><th className="text-start">{t.account}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.total}</th></tr></thead>
+          <thead><tr><th className="text-start">{t.account}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.total} <span className="normal-case">({cur})</span></th></tr></thead>
           <tbody>
             {groups.map((g) => (
               <Fragment key={g.cls}>{Rows({ title: clsName[g.cls], rows: g.rows })}</Fragment>
@@ -417,7 +418,7 @@ function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd
                 <tr><td colSpan={3} className="bg-band/40">
                   <div className="grid grid-cols-3 gap-2 py-1 sm:grid-cols-6 lg:grid-cols-12">
                     {months.map((m) => (
-                      <label key={m} className="grid gap-0.5 text-[11px] text-mute">{ms(m)}
+                      <MonthBox key={m} editable={editable}>{ms(m)}
                         {editable ? (
                           <input key={`${m}:${r.v[m] ?? 0}`} inputMode="decimal" aria-label={`${r.label} ${m}`} title={r.v[m] ? amt(r.v[m]) : undefined}
                             className="w-full rounded border border-line bg-white px-1.5 py-1 text-end text-[13px] text-ink focus:border-brand-d"
@@ -428,11 +429,12 @@ function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd
                               const text = e.target.value;
                               e.target.value = r.v[m] ? short(r.v[m]) : "";
                               if (r.v[m] && (text === amt(r.v[m]) || text === short(r.v[m]))) return;
-                              const raw = text.replace(/,/g, "").trim(); const n = raw === "" ? 0 : Number(raw);
-                              if (Number.isFinite(n) && n !== (r.v[m] ?? 0)) onCell(key, m, Math.round(n * 100) / 100);
+                              // Plain or compact amounts (12345, 12.3K, 2.8M, 2.8 م); an empty box is 0.
+                              const p = text.trim() === "" ? { kind: "amount" as const, value: 0 } : parseBudgetInput(text);
+                              if (p?.kind === "amount" && p.value !== (r.v[m] ?? 0)) onCell(key, m, Math.round(p.value * 100) / 100);
                             }} />
                         ) : <span className="text-end text-[13px] text-ink">{r.v[m] ? <Amt v={r.v[m]} /> : "–"}</span>}
-                      </label>
+                      </MonthBox>
                     ))}
                   </div>
                 </td></tr>
@@ -445,6 +447,12 @@ function AccountsGrid({ lines, months, edit, clsName, ms, onCell, addable, onAdd
   }
 }
 
+/** A month box: a label around its input when editable, else a plain box (its amount is a button of its own). */
+function MonthBox({ editable, children }: { editable: boolean; children: React.ReactNode }) {
+  const cls = "grid gap-0.5 text-[11px] text-mute";
+  return editable ? <label className={cls}>{children}</label> : <div className={cls}>{children}</div>;
+}
+
 type ProductRow = { r: BudgetProduct; i: number };
 
 /** Products: one row per product with its year (units, average price, revenue, cost) and its 12 months on demand. */
@@ -452,6 +460,7 @@ function ProductsGrid({ rows, months, edit, onChange, ml }: { rows: BudgetProduc
   const { d } = useT();
   const t = d.bud;
   const b = t.b;
+  const cur = useCompany().settings.currency;
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
   const toggle = (k: string) => setOpen((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
@@ -489,7 +498,7 @@ function ProductsGrid({ rows, months, edit, onChange, ml }: { rows: BudgetProduc
       </div>
       <div tabIndex={0} className="overflow-x-auto">
         <table className="tbl w-full text-[13px]">
-          <thead><tr><th className="text-start">{t.product}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.units}</th><th className="hidden sm:table-cell">{t.price}</th><th>{t.revenue}</th><th className="hidden sm:table-cell">{t.cost}</th></tr></thead>
+          <thead><tr><th className="text-start">{t.product}</th><th className="hidden sm:table-cell">{b.trend}</th><th>{t.units}</th><th className="hidden sm:table-cell">{t.price}</th><th>{t.revenue} <span className="normal-case">({cur})</span></th><th className="hidden sm:table-cell">{t.cost} <span className="normal-case">({cur})</span></th></tr></thead>
           <tbody>
             {list.map((p) => {
               const isOpen = open.has(p.name);

@@ -3,11 +3,11 @@ import { Fragment, useMemo, useState } from "react";
 import * as D from "@radix-ui/react-dialog";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Search, X } from "lucide-react";
 import { changeBadge, sortRows, type Sort, type SortKey } from "@/lib/engine/budget-visual";
-import { Sparkline } from "@/components/charts/spark";
+import { useCompany } from "@/lib/company/context";
 import { parseBudgetInput, rowMonths, type BaseCol, type Basis, type BudgetRow } from "@/lib/engine/budget-builder";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
-import { amt, Amt, ChangeBadge, ShareBar, useCompact } from "./budget-visuals";
+import { amt, Amt, ChangeBadge, ShareBar, TwoSpark, useCompact } from "./budget-visuals";
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
 export const sumOf = (m: number[]) => r2(m.reduce((t, v) => t + v, 0));
@@ -50,6 +50,8 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
   const { d, ms } = useT();
   const b = d.bud.b;
   const fmt = useCompact();
+  const cur = useCompany().settings.currency;
+  const withCur = (label: string) => <>{label} <span className="normal-case">({cur})</span></>;
   const [sort, setSort] = useState<Sort | null>(null);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -119,6 +121,10 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
             </button>
           ))}
         </div>
+        <span className="hidden items-center gap-1.5 text-mute md:inline-flex" data-testid="bsheet-trend-legend">
+          <i aria-hidden className="inline-block h-0.5 w-3 rounded bg-[#b8c4c4]" />{b.trendLast}
+          <i aria-hidden className="ms-2 inline-block h-0.5 w-3 rounded bg-[#2a78d6]" />{b.trendNew}
+        </span>
         {searchable && (
           <label className="relative ms-auto flex items-center">
             <span className="sr-only">{b.search}</span>
@@ -133,9 +139,9 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
           <thead className="sticky top-0 z-10 bg-white">
             <tr>
               <th>{b.name}</th>
-              {years.map((fy) => <th key={fy} className={hideSm}>{d.bud.fy(fy)}</th>)}
-              <th className={hideMd}>{b.ytd}</th><th className="!whitespace-normal">{b.estimate}</th><th className="!whitespace-normal">{b.newYear}</th><th className={hideSm}>{b.change}</th>
-              <th className={hideMd}>{b.trend}</th>
+              {years.map((fy) => <th key={fy} className={hideSm}>{withCur(d.bud.fy(fy))}</th>)}
+              <th className={hideMd}>{withCur(b.ytd)}</th><th className="!whitespace-normal">{withCur(b.estimate)}</th><th className="!whitespace-normal">{withCur(b.newYear)}</th><th className={hideSm}>{b.change}</th>
+              <th className={hideMd} title={b.trendLegend}>{b.trend}</th>
             </tr>
           </thead>
           <tbody>
@@ -188,7 +194,7 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
                       {editable && <div className="mt-0.5 flex justify-end sm:hidden"><ChangeBadge now={now} est={base.estimate} cost={cost} /></div>}
                     </td>
                     <td className={hideSm} data-testid={`bsheet-change-${r.key}`}><ChangeBadge now={now} est={base.estimate} cost={cost} /></td>
-                    <td className={cn(hideMd, "py-0.5")} title={b.trendOf(label(r))}><Sparkline values={r.months} color="#2a78d6" w={76} h={22} /></td>
+                    <td className={cn(hideMd, "py-0.5")} title={b.trendOf(label(r))}><TwoSpark last={base.lastYear} now={r.months} /></td>
                   </tr>
                   {shown.has(r.key) && (
                     <tr data-testid={`bsheet-memberlist-${r.key}`}><td colSpan={span} className="bg-band/50 text-xs text-mute">{inside.join(" · ")}</td></tr>
@@ -239,6 +245,10 @@ export function BudgetSheet({ rows, bases, editable, onChange, months, labelOf, 
   );
 }
 
+/** A month box: a label around its input when editable, else a plain box (its amount is a button of its own). */
+const Cell = ({ editable, className, children }: { editable: boolean; className: string; children: React.ReactNode }) =>
+  editable ? <label className={className}>{children}</label> : <div className={className}>{children}</div>;
+
 /** The 12 months of one row; typing in one sets the row to months (the year is their sum). */
 function Months({ row, months, ms, editable, onSet, onAuto }: {
   row: BudgetRow; months: string[]; ms: (p: string) => string; editable: boolean; onSet: (r: BudgetRow) => void; onAuto: () => void;
@@ -250,7 +260,7 @@ function Months({ row, months, ms, editable, onSet, onAuto }: {
     <div className="flex flex-col gap-2 py-1">
       <div className="grid grid-cols-3 gap-2 sm:grid-cols-6 lg:grid-cols-12">
         {row.months.map((v, i) => (
-          <label key={i} className="grid gap-0.5 text-[11px] text-mute">
+          <Cell key={i} editable={editable} className="grid gap-0.5 text-[11px] text-mute">
             {months[i] ? ms(months[i]) : i + 1}
             {editable ? (
               <input key={`${i}:${v}`} inputMode="decimal" className={cn(box, "w-full")} defaultValue={fmt(v)} title={amt(v)} onKeyDown={onEnter} onFocus={focusExact(v)} data-testid={`bsheet-month-${row.key}-${i}`}
@@ -264,8 +274,8 @@ function Months({ row, months, ms, editable, onSet, onAuto }: {
                   next[i] = r2(p.kind === "amount" ? p.value : v * (1 + p.value / 100));
                   onSet({ ...row, mode: "months", basis: { kind: "amount", value: sumOf(next) }, months: next });
                 }} />
-            ) : <Amt v={v} className="text-end text-[13px] text-ink" testId={`bsheet-mval-${row.key}-${i}`} />}
-          </label>
+            ) : <Amt v={v} className="justify-self-end text-[13px] text-ink" testId={`bsheet-mval-${row.key}-${i}`} />}
+          </Cell>
         ))}
       </div>
       {editable && row.mode === "months" && (

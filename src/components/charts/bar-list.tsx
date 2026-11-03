@@ -34,8 +34,11 @@ export function BarList({ items, cur, max = 10, testId, onSelect, fmt }: {
   return (
     <div dir="ltr" className="space-y-1.5" data-testid={testId} role="list">
       {rows.map((r) => {
-        // With a custom label (fmt) the longest bar leaves room for its label beside it.
-        const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100) * (fmt ? 0.85 : 1);
+        const w = (Math.abs(r.value) / top) * (anyNeg ? 50 : 100);
+        // With a custom label (fmt) and no negatives, the bars share the width left after room for a label (56px), so
+        // even the longest bar's label sits beside it at any width.
+        const roomy = !!fmt && !anyNeg;
+        const barW = roomy ? `calc((100% - 56px) * ${w / 100})` : `${w}%`;
         const click = onSelect && r.key !== "__other";
         return (
           <div key={r.key} role="listitem" className={`grid grid-cols-[minmax(0,38%)_1fr] items-center gap-3 rounded px-1 py-0.5 text-[13px] ${hover === r.key ? "bg-band" : ""} ${click ? "cursor-pointer" : ""}`}
@@ -45,10 +48,10 @@ export function BarList({ items, cur, max = 10, testId, onSelect, fmt }: {
             <div className="relative flex h-5 items-center">
               {anyNeg && <span className="absolute left-1/2 top-0 h-full w-px bg-line" aria-hidden="true" />}
               <span className="absolute h-2.5 rounded-[4px]" style={{
-                width: `${w}%`, background: r.value < 0 ? C.red : r.key === "__other" ? "#b8c4c4" : C.s[0],
+                width: barW, background: r.value < 0 ? C.red : r.key === "__other" ? "#b8c4c4" : C.s[0],
                 ...(anyNeg ? (r.value < 0 ? { right: "50%" } : { left: "50%" }) : { left: 0 }),
               }} />
-              <span className="num absolute whitespace-nowrap text-[12px] text-ink" style={labelStyle(w, r.value, anyNeg)}>
+              <span className="num absolute whitespace-nowrap text-[12px] text-ink" style={roomy ? { left: `calc(${barW} + 6px)` } : labelStyle(w, r.value, anyNeg)}>
                 {fmt ? fmt(r.value) : money(r.value, cur, true)}{r.share !== undefined && hover === r.key ? ` · ${pct(r.share, 1)}` : ""}
               </span>
             </div>
