@@ -1,7 +1,7 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { Fragment, useMemo, useRef, useState, useTransition } from "react";
-import { CheckCircle2, Download, Lock, Plus, Target, Upload } from "lucide-react";
+import { CheckCircle2, Download, Lock, Plus, Settings2, Target, Upload } from "lucide-react";
 import { forecast, fyStartOf, hasPL, money, pct, plCalc, PL_KEYS, type ClassKey, type PLInput } from "@/lib/engine";
 import {
   budgetAccounts, budgetComparison, fyMonths, productVariance, seedFromForecast, seedFromLastYear, seedWithProducts, varianceRows,
@@ -18,6 +18,8 @@ import { PageHeader } from "@/components/shell/page-header";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "./common";
+import { BudgetSetupWizard } from "./budget-setup-wizard";
+import { suggestSetup } from "@/lib/engine/budget-setup";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
 
@@ -46,14 +48,14 @@ export interface BudgetPageProps {
   /** Last year's and this year's sales by product and month (for seeding and the volume/price split). */
   salesProducts: SalesProductRow[];
   demo?: boolean;
-  /** For the builder (not used yet): the company's setup, sales customers, expense accounts and financial-year start month. */
+  /** For the builder: the company's setup, sales customers, expense accounts and financial-year start month. */
   setup?: BudgetSetup | null;
   salesCustomers?: SalesCustomerRow[];
   expenseAccounts?: ExpenseAccountRow[];
   fyStart?: number;
 }
 
-export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPageProps) {
+export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [] }: BudgetPageProps) {
   const c = useCompany();
   const router = useRouter();
   const { lang, d, ml, ms } = useT();
@@ -68,6 +70,27 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
   const [tab, setTab] = useState<"vs" | "accounts" | "products">("vs");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
+
+  // The setup wizard: this year is the latest financial year in the sales rows.
+  const wiz = useMemo(() => {
+    const latest = salesProducts.reduce((m, r) => (r.p > m ? r.p : m), "");
+    if (!latest) return { rows: [] as SalesProductRow[], customers: [] as string[], expenses: [] as { key: string; label: string; amount: number }[], hints: [] as ReturnType<typeof suggestSetup>["hints"] };
+    const thisFy = fyStartOf(latest, fyStart);
+    const inFy = (p: string) => fyStartOf(p, fyStart) === thisFy;
+    const rows = salesProducts.filter((r) => inFy(r.p));
+    const cust = new Map<string, number>();
+    for (const r of salesCustomers) if (inFy(r.p) && r.c && r.c !== "No customer") cust.set(r.c, (cust.get(r.c) ?? 0) + r.a);
+    const exp = new Map<string, number>();
+    for (const r of expenseAccounts) if (inFy(r.p)) exp.set(r.t, (exp.get(r.t) ?? 0) + r.a);
+    return {
+      rows,
+      customers: [...cust].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([n]) => n),
+      expenses: [...exp].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).map(([key, amount]) => ({ key, label: key, amount })),
+      hints: suggestSetup(rows).hints,
+    };
+  }, [salesProducts, salesCustomers, expenseAccounts, fyStart]);
+  const canSetup = !demo && !c.readOnly;
+  const [setupOpen, setSetupOpen] = useState(canSetup && setup === null && wiz.rows.length > 0);
 
   // The edits not yet saved: account × month → amount, and product rows.
   // Edits belong to the figures they were made on: once a save brings new figures (a new `current`), they are dropped.
@@ -165,7 +188,18 @@ export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPag
 
   return (
     <div>
-      <PageHeader title={t.title} right={!demo && !c.readOnly ? <NewBudget versions={versions} salesProducts={salesProducts} onCreated={go} say={say} /> : undefined}>
+      <PageHeader title={t.title} right={!demo && !c.readOnly ? <div className="flex items-center gap-2">
+        {canSetup && <button type="button" onClick={() => setSetupOpen(true)} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="bsetup-open"><Settings2 aria-hidden className="h-4 w-4" />{t.wiz.open}</button>}
+        <NewBudget versions={versions} salesProducts={salesProducts} onCreated={go} say={say} />
+      </div> : undefined}>
+      {canSetup && (
+        <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
+          <DialogContent title={t.wiz.title} className="w-[min(720px,calc(100vw-24px))]">
+            <BudgetSetupWizard companyId={c.id} products={wiz.rows} customers={wiz.customers} expenses={wiz.expenses} hints={wiz.hints} initial={setup}
+              onDone={() => { setSetupOpen(false); router.refresh(); }} />
+          </DialogContent>
+        </Dialog>
+      )}
         <p className="text-sm text-mute">{t.intro}</p>
       </PageHeader>
       {demo && <p className="mb-4 rounded bg-band px-3 py-2 text-sm" data-testid="budget-demo">{t.demo}</p>}
