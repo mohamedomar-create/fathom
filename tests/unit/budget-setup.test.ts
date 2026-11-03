@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestSetup, emptySetup, setupDrift } from "@/lib/engine/budget-setup";
+import { suggestSetup, emptySetup, setupDrift, cleanSetup } from "@/lib/engine/budget-setup";
 import type { SalesProductRow } from "@/lib/engine/sales";
 
 const row = (p: string, r: string, g: string, a: number): SalesProductRow =>
@@ -144,5 +144,13 @@ describe("budget setup suggestions", () => {
     expect(setupDrift(a, { ...a, products: [...a.products, "Extra"] })).toBe(true);
     expect(setupDrift(a, { ...a, groups: a.groups.map((g) => ({ ...g, customers: ["Acme"] })) })).toBe(true);
     expect(setupDrift(a, emptySetup())).toBe(true);
+  });
+});
+
+describe("cleanSetup", () => {
+  it("trims names and refuses a group without one", () => {
+    const s = { ...emptySetup(), groups: [{ id: "g1", name: "  Hospitals ", products: [], customers: [] }] };
+    expect(cleanSetup(s)!.groups[0].name).toBe("Hospitals");
+    expect(cleanSetup({ ...s, groups: [...s.groups, { id: "g2", name: "   ", products: [], customers: [] }] })).toBeNull();
   });
 });

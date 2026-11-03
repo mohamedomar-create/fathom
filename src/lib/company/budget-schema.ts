@@ -33,15 +33,15 @@ export const RowSchema = z.object({
 });
 
 const Month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const Line = z.object({ key: z.string().min(1).max(220), cls: z.enum(PL_KEYS), label: z.string().max(200).nullable(), month: Month, amount: Num });
+export const LineSchema = z.object({ key: z.string().min(1).max(220), cls: z.enum(PL_KEYS), label: z.string().max(200).nullable(), month: Month, amount: Num });
 
-/** At most this many rows and lines in one save (the database's own limit). */
+/** At most this many rows, lines or product rows in one save (the database's own limit). */
 export const MAX_ROWS = 20000;
 
 export const SaveRowsSchema = z.object({
   rows: z.array(RowSchema).max(MAX_ROWS),
   views: z.array(View).min(1).refine((v) => new Set(v).size === v.length),
-  lines: z.array(Line).max(MAX_ROWS).nullable(),
+  lines: z.array(LineSchema).max(MAX_ROWS).nullable(),
   setup: SetupSchema.nullable(),
 });
 

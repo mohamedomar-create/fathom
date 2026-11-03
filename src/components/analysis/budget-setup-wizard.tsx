@@ -1,6 +1,6 @@
 "use client";
 import { useMemo, useState, useTransition } from "react";
-import { suggestSetup, type RentalHint } from "@/lib/engine/budget-setup";
+import { cleanSetup, suggestSetup, type RentalHint } from "@/lib/engine/budget-setup";
 import type { BudgetSetup } from "@/lib/engine/budget-builder";
 import type { SalesProductRow } from "@/lib/engine/sales";
 import { saveBudgetSetup } from "@/app/company/[id]/analysis/budget-actions";
@@ -78,10 +78,12 @@ export function BudgetSetupWizard({ companyId, products, customers, expenses, hi
 
   function save() {
     setError(null);
+    const clean = cleanSetup(setup);
+    if (!clean) return setError(w.nameEmpty);
     start(async () => {
-      const r = await saveBudgetSetup(companyId, setup);
+      const r = await saveBudgetSetup(companyId, clean);
       if (!r.ok) return setError(r.error);
-      onDone(setup);
+      onDone(clean);
     });
   }
 

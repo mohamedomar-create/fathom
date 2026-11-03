@@ -1,10 +1,9 @@
 "use server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { PL_KEYS } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
-import { SaveRowsSchema, SetupSchema, linesMatchRows } from "@/lib/company/budget-schema";
+import { LineSchema as Line, MAX_ROWS as MAX, SaveRowsSchema, SetupSchema, linesMatchRows } from "@/lib/company/budget-schema";
 import { fyMonths } from "@/lib/engine/budget";
 import { BUSY, checkLimit, TOO_MANY } from "@/lib/rate-limit";
 
@@ -12,15 +11,11 @@ type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string 
 
 const Id = z.string().uuid();
 const Month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
-const Amount = z.number().finite().refine((v) => Math.abs(v) < 1e15);
-const Line = z.object({ key: z.string().min(1).max(220), cls: z.enum(PL_KEYS), label: z.string().max(200).nullable(), month: Month, amount: Amount });
 const Product = z.object({
   product: z.string().trim().min(1).max(200), category: z.string().max(200).nullable(), month: Month,
   units: z.number().finite().refine((v) => Math.abs(v) < 1e12), price: z.number().finite().refine((v) => Math.abs(v) < 1e12),
   unit_cost: z.number().finite().refine((v) => Math.abs(v) < 1e12).nullable(),
 });
-/** At most this many lines and product rows in one save (the database's own limit). */
-const MAX = 20000;
 
 async function begin() {
   const { supabase, user } = await getUser();

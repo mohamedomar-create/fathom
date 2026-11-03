@@ -10,7 +10,11 @@ export interface BudgetVersionInfo {
   id: string; fy: string; name: string; kind: "original" | "revision"; status: "draft" | "approved";
   basedOn: string | null; approvedAt: string | null; createdAt: string; updatedAt: string;
 }
-export interface BudgetSet { versions: BudgetVersionInfo[]; current: { id: string; lines: BudgetLine[]; products: BudgetProduct[] } | null; error?: string }
+export interface BudgetSet {
+  versions: BudgetVersionInfo[];
+  current: { id: string; lines: BudgetLine[]; products: BudgetProduct[]; rows: BudgetRow[]; setup: BudgetSetup | null } | null;
+  error?: string;
+}
 
 const PAGE = 1000;
 
@@ -37,7 +41,7 @@ export async function loadBudgets(supabase: Supa, companyId: string, versionId?:
   const pick = versions.find((v) => v.id === versionId) ?? versions.find((v) => v.status === "approved") ?? versions[0];
   if (!pick) return { versions, current: null };
   try {
-    return { versions, current: { id: pick.id, ...(await loadBudgetRows(supabase, pick.id)) } };
+    return { versions, current: { id: pick.id, ...(await loadBudgetRows(supabase, pick.id, { builder: true })) } };
   } catch {
     return { versions, current: null, error: "read" };
   }
@@ -73,16 +77,25 @@ export async function loadBudgetSetup(supabase: Supa, companyId: string): Promis
   return data.setup as unknown as BudgetSetup;
 }
 
-/** One version's lines, products, builder rows and setup, every row (paged). Throws when they can't be read. */
-export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[]; rows: BudgetRow[]; setup: BudgetSetup | null }> {
+/**
+ * One version's lines and products, every row (paged); with `builder`, also its builder rows and setup (the budget page
+ * only: Financials, reports and the export read the lines). Throws when they can't be read.
+ */
+export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[] }>;
+export async function loadBudgetRows(supabase: Supa, versionId: string, opts: { builder: true }): Promise<{ lines: BudgetLine[]; products: BudgetProduct[]; rows: BudgetRow[]; setup: BudgetSetup | null }>;
+export async function loadBudgetRows(supabase: Supa, versionId: string, opts: { builder?: boolean } = {}): Promise<{ lines: BudgetLine[]; products: BudgetProduct[]; rows?: BudgetRow[]; setup?: BudgetSetup | null }> {
   const lines = await all((a, b) => supabase.from("budget_lines").select("key, cls, label, month, amount").eq("version_id", versionId).order("key").order("month").range(a, b));
   const products = await all((a, b) => supabase.from("budget_products").select("product, category, month, units, price, unit_cost").eq("version_id", versionId).order("product").order("month").range(a, b));
+  const out = {
+    lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
+    products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
+  };
+  if (!opts.builder) return out;
   const rows = await all((a, b) => supabase.from("budget_rows").select("view, key, label, mode, basis, cost, months").eq("version_id", versionId).order("view").order("key").range(a, b));
   const { data: ver, error } = await supabase.from("budget_versions").select("setup").eq("id", versionId).maybeSingle();
   if (error) throw new Error(error.message);
   return {
-    lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
-    products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
+    ...out,
     rows: rows.map((r) => ({ view: r.view as BudgetRow["view"], key: r.key, label: r.label ?? "", mode: r.mode as BudgetRow["mode"], basis: r.basis as BudgetRow["basis"], cost: r.cost as BudgetRow["cost"], months: (r.months ?? []).map(Number) })),
     setup: (ver?.setup ?? null) as unknown as BudgetSetup | null,
   };

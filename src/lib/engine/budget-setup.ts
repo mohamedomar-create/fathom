@@ -98,3 +98,10 @@ export function setupDrift(versionSetup: BudgetSetup | null, current: BudgetSetu
   if (!versionSetup) return false;
   return JSON.stringify(normalise(versionSetup)) !== JSON.stringify(normalise(current));
 }
+
+/** The setup as saved: group and merged-expense names trimmed; null when a group has no name left. */
+export function cleanSetup(s: BudgetSetup): BudgetSetup | null {
+  const groups = s.groups.map((g) => ({ ...g, name: g.name.trim() }));
+  if (groups.some((g) => !g.name)) return null;
+  return { ...s, groups, expenses: { ...s.expenses, merged: s.expenses.merged.map((m) => ({ ...m, name: m.name.trim() })) } };
+}
