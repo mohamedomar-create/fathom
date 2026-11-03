@@ -23,6 +23,23 @@ export function money(v: number | null | undefined, cur = "$", short = false): s
   return (neg ? "-" : "") + `${cur} ` + s;
 }
 
+/**
+ * A short amount for the budget page: 2.8M / 450K / 12.5K / 950 (Arabic 2.8 م / 450 ألف / 12.5 ألف / 950).
+ * One decimal for millions and below 100K, whole thousands from 100K; never "1000K" or "100.0K".
+ */
+export function compact(v: number | null | undefined, lang: "en" | "ar" = "en"): string {
+  if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  const a = Math.abs(v);
+  const ar = lang === "ar";
+  let s: string;
+  if (a >= 999_950_000) s = `${(a / 1e9).toFixed(1)}${ar ? " مليار" : "B"}`;
+  else if (a >= 999_500) s = `${(a / 1e6).toFixed(1)}${ar ? " م" : "M"}`;
+  else if (a >= 99_950) s = `${Math.round(a / 1e3)}${ar ? " ألف" : "K"}`;
+  else if (a >= 999.5) s = `${(a / 1e3).toFixed(1)}${ar ? " ألف" : "K"}`;
+  else s = String(Math.round(a));
+  return s === "0" ? "0" : (v < 0 ? "-" : "") + s;
+}
+
 /** An amount exactly as typed (a confirmation): whole amounts without decimals, others to two places, never rounded away. */
 export function moneyExact(v: number, cur = "$"): string {
   const a = Math.abs(v);
