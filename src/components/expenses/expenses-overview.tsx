@@ -33,6 +33,7 @@ export function ExpensesOverview() {
   // The largest cost groups over the last 12 months, in a fixed order, so each keeps its colour from month to month.
   const groupTotals = new Map<string, number>();
   for (const x of last12) for (const [g, v] of Object.entries(x.groups)) groupTotals.set(g, (groupTotals.get(g) ?? 0) + v);
+  const positiveGroups = [...groupTotals.values()].filter((v) => v > 0).length;
   const groupName = new Map(s.byGroup.map((r) => [r.key, r.name]));
   const gl = (g: string) => T.tl(groupName.get(g) ?? g);
   const groups = [...groupTotals.entries()].filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([g]) => g);
@@ -76,7 +77,7 @@ export function ExpensesOverview() {
             <ColumnChart stacked cur={cur} height={260} labels={last12.map((x) => T.ms(x.period))}
               series={[
                 ...groups.map((g, i) => ({ name: gl(g), values: last12.map((x) => (x.total === null ? null : x.groups[g] ?? 0)), color: C.s[i % C.s.length] })),
-                ...(groupTotals.size > groups.length ? [{ name: V.other(groupTotals.size - groups.length), values: last12.map((x) => (x.total === null ? null : Math.max(0, x.total - groups.reduce((t, g) => t + (x.groups[g] ?? 0), 0)))), color: C.mute }] : []),
+                ...(positiveGroups > groups.length ? [{ name: V.other(positiveGroups - groups.length), values: last12.map((x) => (x.total === null ? null : Math.max(0, x.total - groups.reduce((t, g) => t + (x.groups[g] ?? 0), 0)))), color: C.mute }] : []),
               ]} />
           </ChartCard>
         )}

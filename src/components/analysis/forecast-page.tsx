@@ -147,7 +147,7 @@ export function ForecastPage() {
         <h2 className="t-card mb-1">{t.accuracy}</h2>
         {bt ? (
           <>
-            <div className="mb-3 max-w-xl"><Bullet label={T_fin.backtestSub} value={bt.revenueMape} target={10} lowerIsBetter fmt={(v) => pct(v, 1)} testId="fc-mape" /></div>
+            <div className="mb-3 max-w-xl"><Bullet label={T_fin.backtestSub} value={bt.revenueMape} target={15} lowerIsBetter fmt={(v) => pct(v, 1)} testId="fc-mape" /></div>
             <p className="mb-3 text-[13.5px]">
               {bold(t.hid(bt.months, pct(bt.revenueMape, 1), pct(bt.ebitError, 1)))}{bt.revenueMape <= 5 ? t.close : bt.revenueMape <= 15 ? t.fair : t.loose}
             </p>

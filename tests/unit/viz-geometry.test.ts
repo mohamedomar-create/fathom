@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bridgeSteps, bulletScale, heatGrid, heatLevel, pareto, treemap } from "@/lib/viz/geometry";
+import { bridgeSteps, bulletScale, heatGrid, heatLevel, pareto, sameMonthLastYear, treemap } from "@/lib/viz/geometry";
 
 describe("bridgeSteps", () => {
   it("runs from the opening total through each step to the closing total", () => {
@@ -77,5 +77,13 @@ describe("treemap", () => {
   });
   it("leaves out zero and negative items", () => {
     expect(treemap([{ key: "a", value: 0 }, { key: "b", value: -2 }], 10, 10)).toEqual([]);
+  });
+});
+
+describe("sameMonthLastYear", () => {
+  it("puts each month's value from a year before under it, null where there is none", () => {
+    const periods = ["2025-07", "2025-08", "2026-07", "2026-08"];
+    expect(sameMonthLastYear(periods, [1, 2, 3, 4], ["2026-07", "2026-08"])).toEqual([1, 2]);
+    expect(sameMonthLastYear(periods, [1, 2, 3, 4], ["2025-08", "2026-08"])).toEqual([null, 2]);
   });
 });

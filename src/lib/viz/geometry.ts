@@ -103,3 +103,9 @@ export function treemap(items: { key: string; value: number; label?: string }[],
   if (row.length) lay(row);
   return out;
 }
+
+/** For each target month, the value of the same calendar month a year before (null when that month is not held). */
+export function sameMonthLastYear<T>(periods: string[], values: T[], targets: string[]): (T | null)[] {
+  const at = new Map(periods.map((p, i) => [p, values[i]]));
+  return targets.map((p) => at.get(`${Number(p.slice(0, 4)) - 1}${p.slice(4)}`) ?? null);
+}

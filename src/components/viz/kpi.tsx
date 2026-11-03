@@ -14,7 +14,7 @@ export function DeltaBadge({ value, cost, pp, className, label }: { value: numbe
   const flat = Math.abs(value) < 0.05;
   const good = flat ? null : (value > 0) !== !!cost;
   const tone = good === null ? "bg-band text-mute" : good ? "bg-green-bg text-green-d" : "bg-red-bg text-red";
-  const text = `${value > 0 ? "+" : ""}${pp ? `${value.toFixed(1)} pp` : pct(value, 1)}`;
+  const text = `${!flat && value > 0 ? "+" : ""}${pp ? `${(flat ? 0 : value).toFixed(1)} pp` : pct(flat ? 0 : value, 1)}`;
   return (
     <span className={cn("inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2 py-0.5 text-[11.5px] font-semibold tabular-nums", tone, className)}
       data-tone={good === null ? "neutral" : good ? "good" : "bad"}>
@@ -82,8 +82,8 @@ export function KpiTile({ label, value, sub, delta, cost, pp, now, last, neg, ac
   return (
     <div className={cn("fade-up flex min-w-0 flex-col gap-1 rounded-xl border border-line bg-white p-4", accent === "good" && "border-t-[3px] border-t-green", accent === "bad" && "border-t-[3px] border-t-red")} data-testid={testId}>
       <div className="label truncate">{label}</div>
-      <div className="flex items-end justify-between gap-2">
-        <div className={cn("t-kpi whitespace-nowrap", neg && "text-red")}>{value}</div>
+      <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-1">
+        <div className={cn("t-kpi min-w-0 max-w-full whitespace-nowrap", neg && "text-red")}>{value}</div>
         {now && <TrendSpark now={now} last={last} w={84} h={28} color={neg ? TONE.badText : "#0b6e70"} />}
       </div>
       {(delta !== undefined || sub) && <div className="flex flex-wrap items-center gap-1.5 text-xs">{delta !== undefined && <DeltaBadge value={delta} cost={cost} pp={pp} />}{sub && <span className="text-mute">{sub}</span>}</div>}

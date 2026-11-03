@@ -18,6 +18,7 @@ import { Bridge } from "@/components/viz/bridge";
 import { Bullet } from "@/components/viz/bullet";
 import { HeatCalendar } from "@/components/viz/heat-calendar";
 import { GHOST, SERIES } from "@/components/viz/palette";
+import { sameMonthLastYear } from "@/lib/viz/geometry";
 
 const RANK: Record<string, number> = { Critical: 0, High: 1, Medium: 2, Low: 3 };
 
@@ -36,7 +37,9 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   const { P, B, B0, prior, series } = a.view;
   const n = series.P.length;
   const win = (k: number, from: number) => series.P.slice(Math.max(0, n - from), Math.max(0, n - from + k));
-  const now12 = win(12, 12), last12 = n > 12 ? win(Math.min(12, n - 12), Math.min(24, n)) : [];
+  const now12 = win(12, 12);
+  // Last year's same months, under the months they compare with (null where that month isn't held).
+  const last12 = sameMonthLastYear(series.periods, series.P, series.periods.slice(-12));
   const B12 = series.B.slice(Math.max(0, n - 12));
   const gpm = a.K.gpm, tg = a.targets.gpm ?? 35;
   const ch = (x: number, y: number | null | undefined) => (y ? ((x - y) / Math.abs(y)) * 100 : null);
@@ -52,17 +55,14 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
   );
   const m12 = series.periods.slice(-12);
   const labels = m12.map(T.ms);
-  const lyRev = m12.map((p) => {
-    const ly = `${Number(p.slice(0, 4)) - 1}${p.slice(4)}`;
-    const i = series.periods.indexOf(ly);
-    return i >= 0 ? series.P[i].revenue : null;
-  });
+  const lyRev = last12.map((p) => p?.revenue ?? null);
   const bridge = [
     { label: t.revenue, value: P.revenue, total: true },
     { label: v.costOfSales, value: P.gross_profit - P.revenue },
     { label: v.grossProfit, value: P.gross_profit, total: true },
-    { label: v.opex, value: P.ebit - P.gross_profit },
-    { label: v.opProfit, value: P.ebit, total: true },
+    { label: v.opex, value: P.operating_profit - P.gross_profit },
+    { label: v.opProfit, value: P.operating_profit, total: true },
+    ...(Math.abs(P.ebit - P.operating_profit) >= 0.5 ? [{ label: v.otherItems, value: P.ebit - P.operating_profit }] : []),
     { label: v.interestTax, value: P.net_income - P.ebit },
     { label: v.netProfit, value: P.net_income, total: true },
   ];
@@ -77,11 +77,11 @@ export function SummaryPage({ commentarySlot }: { commentarySlot?: React.ReactNo
       <Cockpit hero={
         <HeroKpi label={v.netProfit} testId="hero-net" value={trace("net_income", v.netProfit, "PL", money(P.net_income, cur, true))} neg={P.net_income < 0}
           delta={ch(P.net_income, prior?.P.net_income)} deltaLabel={`${t.vs(prevLabel)} · ${v.margin(P.revenue ? pct((P.net_income / P.revenue) * 100, 1) : "–")}`}
-          now={now12.map((p) => p.net_income)} last={last12.map((p) => p.net_income)}
+          now={now12.map((p) => p.net_income)} last={last12.map((p) => p?.net_income ?? null)}
           story={<span className="whitespace-pre-line" data-testid="headline">{headline}</span>} />
       }>
         <KpiTile label={t.revenue} value={trace("revenue", t.revenue, "PL", money(P.revenue, cur, true))} delta={ch(P.revenue, prior?.P.revenue)} sub={t.vs(prevLabel)}
-          now={now12.map((p) => p.revenue)} last={last12.map((p) => p.revenue)} neg={P.revenue < 0} />
+          now={now12.map((p) => p.revenue)} last={last12.map((p) => p?.revenue ?? null)} neg={P.revenue < 0} />
         <KpiTile label={t.grossMargin} value={gpm === null ? "–" : pct(gpm, 1)} neg={gpm !== null && gpm < tg} pp
           delta={gpm !== null && prior ? (() => { const pm = margin(prior.P); return pm === null ? null : gpm - pm; })() : undefined}
           sub={t.target(pct(tg, 0))} now={now12.map(margin)} />

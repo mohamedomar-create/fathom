@@ -61,7 +61,7 @@ export function RealProfitPage() {
 
       <CardGrid>
         <ChartCard title={t.h1} sub={t.h1Text} testId="collection">
-          <Bullet label={t.rate} value={col.rate} target={100} fmt={(v) => pct(v, 1)} testId="bullet-collect-rate" />
+          <Bullet label={t.rate} value={col.rate} target={null} fmt={(v) => pct(v, 1)} testId="bullet-collect-rate" />
           <Bullet label={t.dso} value={col.dso} target={target} lowerIsBetter fmt={(v) => t.days(Math.round(v))} testId="bullet-dso" />
           <table className="tbl mt-3 text-[13px]"><tbody>
             <tr className="row"><td>{t.invoiced}</td><td>{m(col.revenue)}</td></tr>

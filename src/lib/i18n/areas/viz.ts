@@ -13,7 +13,7 @@ export const viz = area(
     fin: {
       netProfit: "Net profit", margin: (p: string) => `${p} of revenue`, profitBridge: "From revenue to net profit",
       profitBridgeSub: "What each layer of cost takes out of the period's revenue.", costOfSales: "Cost of sales", grossProfit: "Gross profit",
-      opex: "Operating costs", opProfit: "Operating profit", interestTax: "Interest, tax and other", kpiTargets: "KPIs against target",
+      opex: "Operating costs", opProfit: "Operating profit", otherItems: "Other income less other expenses", interestTax: "Interest and tax", kpiTargets: "KPIs against target",
       kpiTargetsSub: "The bar is the result, the black mark is the target.", seasonality: "Revenue by month", seasonalitySub: "Each row is a year; darker months sold more.",
       revLastYear: "Revenue last year", findings: "What the figures say", kpiScore: "KPIs on track",
       cashLine: "Cash at month end", cashVsProfit: "Cash made vs profit made", cashVsProfitSub: "Operating cash flow and net profit each month.",
@@ -42,7 +42,7 @@ export const viz = area(
     fin: {
       netProfit: "صافي الربح", margin: (p: string) => `${p} من الإيرادات`, profitBridge: "من الإيرادات إلى صافي الربح",
       profitBridgeSub: "ما تقتطعه كل طبقة من التكاليف من إيرادات الفترة.", costOfSales: "تكلفة المبيعات", grossProfit: "مجمل الربح",
-      opex: "التكاليف التشغيلية", opProfit: "الربح التشغيلي", interestTax: "الفوائد والضرائب وغيرها", kpiTargets: "المؤشرات مقابل المستهدف",
+      opex: "التكاليف التشغيلية", opProfit: "الربح التشغيلي", otherItems: "الإيرادات الأخرى ناقص المصروفات الأخرى", interestTax: "الفوائد والضرائب", kpiTargets: "المؤشرات مقابل المستهدف",
       kpiTargetsSub: "الشريط هو النتيجة، والعلامة السوداء هي المستهدف.", seasonality: "الإيرادات حسب الشهر", seasonalitySub: "كل صف سنة؛ الأشهر الأغمق باعت أكثر.",
       revLastYear: "إيرادات العام الماضي", findings: "ما تقوله الأرقام", kpiScore: "المؤشرات على المسار",
       cashLine: "النقدية في نهاية الشهر", cashVsProfit: "النقد المحقق مقابل الربح المحقق", cashVsProfitSub: "التدفق النقدي التشغيلي وصافي الربح كل شهر.",

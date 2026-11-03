@@ -6,8 +6,8 @@ import { treemap } from "@/lib/viz/geometry";
 import { SERIES } from "./palette";
 
 const OTHER = "#a9a9a3";
-/** Label ink inside a categorical fill: dark on the light slots (yellow, aqua, magenta), white on the rest. */
-const inkOn = (i: number) => ([2, 3, 4].includes(i) ? "#0b0b0b" : "#ffffff");
+/** Label ink inside a categorical fill, the one that clears 4.5:1: white on green and violet, near-black on the rest. */
+const inkOn = (i: number) => ([5, 6].includes(i) ? "#ffffff" : "#0b0b0b");
 
 /** Share of a whole as tiles: at most 8 named tiles in the fixed series order, the rest folded into one grey Other. */
 export function Treemap({ items, cur, height = 260, testId }: { items: { key: string; label: string; value: number }[]; cur: string; height?: number; testId?: string }) {
@@ -43,7 +43,7 @@ export function Treemap({ items, cur, height = 260, testId }: { items: { key: st
           <div key={t.key} title={label} aria-label={label} role="img" className="absolute overflow-hidden rounded-md p-1.5 text-[11px] leading-tight"
             style={{ left: t.x + 1, top: t.y + 1, width: Math.max(0, t.w - 2), height: Math.max(0, t.h - 2), background: bg, color: fg }}>
             {big && <div className="truncate font-semibold">{it.label}</div>}
-            {mid && <div className="tabular-nums opacity-90">{big ? `${compact(t.value, lang)} · ` : ""}{pct(share, 0)}</div>}
+            {mid && <div className="tabular-nums">{big ? `${compact(t.value, lang)} · ` : ""}{pct(share, 0)}</div>}
           </div>
         );
       })}

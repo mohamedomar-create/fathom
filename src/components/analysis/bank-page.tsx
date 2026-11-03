@@ -65,8 +65,8 @@ export function BankPage() {
           </div>
         </HeroKpi>
       }>
-        <KpiTile label={t.debtEbitda} value={fmtX(r("debt_ebitda").value)} accent={r("debt_ebitda").band === "weak" ? "bad" : "good"} sub={<><BandChip band={r("debt_ebitda").band} /> {t.targetOrLess(`${BANK_LIMITS.debtEbitda}x`)}</>} />
-        <KpiTile label={t.room} value={cap.headroom === null ? "–" : money(cap.headroom, cur, true)} accent={(cap.headroom ?? 0) > 0 ? "good" : "bad"} sub={cap.rate === null ? t.enterRate : t.atRate(pct(cap.rate, 1), cap.tenor)} testId="tile-headroom" />
+        <KpiTile label={t.debtEbitda} value={fmtX(r("debt_ebitda").value)} accent={r("debt_ebitda").band === "weak" ? "bad" : r("debt_ebitda").band === "strong" ? "good" : undefined} sub={<><BandChip band={r("debt_ebitda").band} /> {t.targetOrLess(`${BANK_LIMITS.debtEbitda}x`)}</>} />
+        <KpiTile label={t.room} value={cap.headroom === null ? "–" : money(cap.headroom, cur, true)} accent={cap.headroom === null ? undefined : cap.headroom > 0 ? "good" : "bad"} sub={cap.rate === null ? t.enterRate : t.atRate(pct(cap.rate, 1), cap.tenor)} testId="tile-headroom" />
         <KpiTile label={t.request} value={pf ? money(pf.amount, cur, true) : "–"} testId="tile-request"
           sub={pf ? <span className={pf.fits === true ? "text-green-d" : pf.fits === false ? "text-red" : "text-mute"}>{pf.fits === true ? t.fits : pf.fits === false ? t.beyond : pf.type === "lc_guarantee" ? t.nonCash : t.enterRateShort}</span> : <a href="#request" className="text-brand-d hover:underline">{t.enterAmount}</a>} />
         <div className="rounded-xl border border-line bg-white p-4" data-testid="bank-bullets">

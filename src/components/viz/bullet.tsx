@@ -26,8 +26,8 @@ export function Bullet({ label, value, target, fmt, lowerIsBetter, sub, testId }
         <span className="flex shrink-0 items-center gap-1.5">
           <b className="num font-semibold">{fmt(value)}</b>
           {ok !== null && (ok
-            ? <CheckCircle2 className="h-3.5 w-3.5 text-green-d" aria-label={d.viz.onTarget} />
-            : <AlertTriangle className="h-3.5 w-3.5 text-red" aria-label={d.viz.offTarget} />)}
+            ? <CheckCircle2 className="h-3.5 w-3.5 text-green-d" role="img" aria-label={d.viz.onTarget} />
+            : <AlertTriangle className="h-3.5 w-3.5 text-red" role="img" aria-label={d.viz.offTarget} />)}
         </span>
       </div>
       <div dir="ltr" className="relative h-2.5 rounded-full bg-band" aria-hidden>
