@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   baseYears, expenseSeries, itemOf, productSeries, revenueItems, spread, customerSeries,
-  type BudgetSetup,
+  rowMonths, costMonths, customerView, balanceCustomers, streamView, groupView, budgetToLines, actualByItem,
+  type BudgetSetup, type BaseCol, type BudgetRow,
 } from "@/lib/engine/budget-builder";
 import type { SalesProductRow, SalesCustomerRow } from "@/lib/engine/sales";
 import type { ExpenseAccountRow } from "@/lib/engine/expenses";
@@ -119,5 +120,176 @@ describe("budget builder: spread", () => {
     expect(spread(100, zero, fb)[5]).toBe(0);
     expect(spread(120, zero, zero)).toEqual(Array(12).fill(10));
     expect(spread(120, zero)).toEqual(Array(12).fill(10));
+  });
+});
+
+const base = (key: string, over: Partial<BaseCol> = {}): BaseCol => ({
+  key, label: key, years: [], ytd: 0, estimate: 1200, months: Array(12).fill(100), lastYear: Array(12).fill(100), ...over,
+});
+const row = (over: Partial<BudgetRow> & { key: string }): BudgetRow => ({
+  view: "revenue", label: over.key, mode: "year", basis: null, cost: null, months: Array(12).fill(0), ...over,
+});
+const MONTHS = Array.from({ length: 12 }, (_, i) => `2027-${String(i + 1).padStart(2, "0")}`);
+const sum = (a: number[]) => Math.round(a.reduce((t, v) => t + v, 0) * 100) / 100;
+
+describe("budget builder: fixes to base and spread", () => {
+  it("actual-months-rounded", () => {
+    const s = new Map([["x", merge(mk(2025, () => 10), mk(2026, () => 10.005, 1, 2))]]);
+    const b = baseYears(s, "2027", 1, "2026-02");
+    expect(b.months[0]).toBe(10.01);
+    expect(b.months[1]).toBe(10.01);
+    expect(sum(b.months)).toBe(b.estimate);
+    const t = new Map([["x", mk(2025, (m) => m + 0.004)]]);
+    expect(baseYears(t, "2027", 1, "2026-01").lastYear[0]).toBe(1);
+  });
+
+  it("spread-no-negative-zero", () => {
+    const out = spread(-100, [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(out.some((v) => Object.is(v, -0))).toBe(false);
+    expect(out[1]).toBe(0);
+    expect(out[0]).toBe(-100);
+  });
+});
+
+describe("budget builder: row months", () => {
+  const b = base("prod:a", { estimate: 1200, lastYear: [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 0, 200] });
+  it("amount-basis", () => {
+    const m = rowMonths({ kind: "amount", value: 1200 }, b);
+    expect(m[0]).toBe(100);
+    expect(m[10]).toBe(0);
+    expect(m[11]).toBe(200);
+    expect(sum(m)).toBe(1200);
+  });
+  it("pct-basis", () => {
+    const m = rowMonths({ kind: "pct", value: 10 }, b);
+    expect(sum(m)).toBe(1320);
+    expect(m[0]).toBe(110);
+    expect(m[11]).toBe(220);
+  });
+  it("units-basis", () => {
+    const m = rowMonths({ kind: "units", units: 50, price: 24 }, b);
+    expect(sum(m)).toBe(1200);
+    expect(m[0]).toBe(100);
+  });
+  it("months-mode", () => {
+    const typed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    const r = row({ key: "prod:a", mode: "months", basis: { kind: "amount", value: 999 }, months: typed });
+    expect(r.months).toEqual(typed);
+    expect(budgetToLines([r], new Map(), MONTHS).map((l) => l.amount)).toEqual(typed);
+  });
+});
+
+describe("budget builder: cost of sales", () => {
+  const b = base("prod:a", { price: 20, unitCost: 8 });
+  const r = (cost: BudgetRow["cost"], basis: BudgetRow["basis"] = { kind: "units", units: 60, price: 20 }) =>
+    row({ key: "prod:a", basis, cost, months: Array(12).fill(100) });
+  it("cost-unit", () => {
+    // 100 per month at price 20 = 5 units x 7.5
+    expect(costMonths(r({ kind: "unit", value: 7.5 }), b)).toEqual(Array(12).fill(37.5));
+    // unit without a units basis falls back to the default (unitCost/price = 0.4)
+    expect(costMonths(r({ kind: "unit", value: 7.5 }, { kind: "amount", value: 1200 }), b)).toEqual(Array(12).fill(40));
+  });
+  it("cost-margin", () => {
+    expect(costMonths(r({ kind: "margin", pct: 70 }), b)).toEqual(Array(12).fill(30));
+  });
+  it("cost-default-last-year", () => {
+    expect(costMonths(r(null), b)).toEqual(Array(12).fill(40));
+    expect(costMonths(r(null), base("prod:a"))).toEqual(Array(12).fill(0));
+  });
+});
+
+describe("budget builder: customer view", () => {
+  const cs = [base("A", { estimate: 600 }), base("B", { estimate: 300 }), base("C", { estimate: 100 })];
+  const rev = Array(12).fill(1000);
+  it("customer-shares", () => {
+    const v = customerView(rev, cs, []);
+    expect(v.rows.map((x) => x.months[0])).toEqual([600, 300, 100]);
+    expect(v.difference).toEqual(Array(12).fill(0));
+    const odd = customerView(Array(12).fill(100), [base("A", { estimate: 1 }), base("B", { estimate: 1 }), base("C", { estimate: 1 })], []);
+    expect(odd.difference).toEqual(Array(12).fill(0));
+    expect(odd.rows.every((x) => x.view === "customer")).toBe(true);
+    expect(sum(odd.rows.map((x) => x.months[0]))).toBe(100);
+  });
+  it("customer-edit-difference", () => {
+    const edited = [row({ view: "customer", key: "A", months: Array(12).fill(500) })];
+    const v = customerView(rev, cs, edited);
+    expect(v.rows[0].months[0]).toBe(500);
+    expect(v.rows[1].months[0]).toBe(300);
+    expect(v.difference[0]).toBe(100);
+    const b = balanceCustomers(v, new Set(["A"]));
+    expect(b.map((x) => x.months[0])).toEqual([500, 375, 125]);
+  });
+  it("balance-floor", () => {
+    const edited = [row({ view: "customer", key: "A", months: Array(12).fill(1200) })];
+    const v = customerView(rev, cs, edited);
+    expect(v.difference[0]).toBe(-600);
+    const b = balanceCustomers(v, new Set(["A"]));
+    expect(b[1].months[0]).toBe(0);
+    expect(b[2].months[0]).toBe(0);
+    expect(b[0].months[0]).toBe(1200);
+    const left = rev[0] - sum(b.map((x) => x.months[0]));
+    expect(left).toBe(-200);
+  });
+});
+
+describe("budget builder: stream and group views", () => {
+  const setup = setupOf({ streams: { rental: ["R"] } });
+  it("stream-split", () => {
+    const g = row({ key: "grp:1", months: Array(12).fill(100) });
+    const p = row({ key: "prod:S", months: Array(12).fill(50) });
+    const members = new Map([["grp:1", [{ product: "R", estimate: 300 }, { product: "T", estimate: 900 }]]]);
+    const v = streamView([g, p], setup, members);
+    expect(v.rental).toEqual(Array(12).fill(25));
+    expect(v.sales).toEqual(Array(12).fill(125));
+    expect(streamView([row({ key: "prod:R", months: Array(12).fill(10) })], setup, new Map()).rental[0]).toBe(10);
+  });
+  it("group-view-sum", () => {
+    const s = setupOf({ products: ["P"], groups: [{ id: "1", name: "One", products: ["X"], customers: [] }, { id: "2", name: "Two", products: [], customers: ["Cu"] }] });
+    const revenue = [
+      row({ key: "grp:1", months: Array(12).fill(100) }), row({ key: "prod:P", months: Array(12).fill(40) }),
+      row({ key: "others", months: Array(12).fill(10) }),
+    ];
+    const g = groupView(revenue, [], s);
+    expect(g.map((x) => x.id)).toEqual(["1", "2", "others"]);
+    expect(g[0].months[0]).toBe(100);
+    expect(g[1].months[0]).toBe(0);
+    expect(g[2].months[0]).toBe(50);
+    expect(sum(g.map((x) => x.months[0]))).toBe(150);
+    const cust = [row({ view: "customer", key: "Cu", months: Array(12).fill(7) })];
+    expect(groupView(revenue, cust, s)[1].months[0]).toBe(7);
+    const s2 = setupOf({ products: ["P"], groups: [{ id: "1", name: "One", products: ["P"], customers: [] }] });
+    expect(groupView(revenue, [], s2)[0].months[0]).toBe(140);
+  });
+});
+
+describe("budget builder: lines and actuals", () => {
+  it("lines-total", () => {
+    const rev = row({ key: "prod:a", basis: { kind: "amount", value: 1200 }, cost: { kind: "margin", pct: 60 }, months: Array(12).fill(100) });
+    rev.months[3] = 0;
+    const e1 = row({ view: "expense", key: "exp:522021 Installation", label: "522021 Installation", cls: "exp_variable", months: Array(12).fill(5) });
+    const e2 = row({ view: "expense", key: "exp:Petty cash", label: "Petty cash", months: Array(12).fill(2) });
+    const e3 = row({ view: "expense", key: "expgrp:7", label: "Rent & Co", cls: "exp_fixed", months: Array(12).fill(3) });
+    const cust = row({ view: "customer", key: "A", months: Array(12).fill(100) });
+    const lines = budgetToLines([rev, e1, e2, e3, cust], new Map([["prod:a", base("prod:a")]]), MONTHS);
+    const tot = (k: string) => sum(lines.filter((l) => l.key === k).map((l) => l.amount));
+    expect(tot("cls:revenue")).toBe(1100);
+    expect(tot("cls:cos_variable")).toBe(440);
+    expect(tot("#522021")).toBe(60);
+    expect(tot("@petty cash")).toBe(24);
+    expect(tot("@rent & co")).toBe(36);
+    expect(lines.find((l) => l.key === "#522021")).toMatchObject({ cls: "exp_variable", label: "522021 Installation", month: "2027-01", amount: 5 });
+    expect(lines.find((l) => l.key === "@petty cash")?.cls).toBe("exp_fixed");
+    expect(lines.filter((l) => l.key === "cls:revenue")).toHaveLength(11);
+    expect(lines.find((l) => l.key === "cls:revenue")?.label).toBe("Revenue (from the budget builder)");
+  });
+  it("actual-by-item", () => {
+    const s = setupOf({ products: ["P"], groups: [{ id: "1", name: "One", products: ["X"], customers: [] }] });
+    const rows = [{ ...pr("P", "P", 10), p: "2027-01" }, { ...pr("X", "X", 5), p: "2027-01" }, { ...pr("X", "X", 7), p: "2027-03" }, { ...pr("Z", "Z", 2), p: "2027-03" }, { ...pr("P", "P", 99), p: "2026-12" }];
+    const m = actualByItem(rows, s, MONTHS);
+    expect(m.get("prod:P")?.[0]).toBe(10);
+    expect(m.get("grp:1")?.[0]).toBe(5);
+    expect(m.get("grp:1")?.[2]).toBe(7);
+    expect(m.get("others")?.[2]).toBe(2);
+    expect(sum(m.get("prod:P")!)).toBe(10);
   });
 });
