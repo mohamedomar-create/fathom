@@ -255,7 +255,8 @@ describe("budget builder: stream and group views", () => {
     expect(g[1].months[0]).toBe(0);
     expect(g[2].months[0]).toBe(50);
     expect(sum(g.map((x) => x.months[0]))).toBe(150);
-    const cust = [row({ view: "customer", key: "Cu", months: Array(12).fill(7) })];
+    // Customer rows are keyed "cust:<name>"; the setup lists bare customer names.
+    const cust = [row({ view: "customer", key: "cust:Cu", months: Array(12).fill(7) }), row({ view: "customer", key: "cust:Other", months: Array(12).fill(3) })];
     const gv = groupView(revenue, cust, s);
     expect(gv[1]).toMatchObject({ by: "customers", months: Array(12).fill(7) });
     expect(gv[0].by).toBe("products");
@@ -305,5 +306,15 @@ describe("budget builder: lines and actuals", () => {
     expect(m.get("grp:1")?.[2]).toBe(7);
     expect(m.get("others")?.[2]).toBe(2);
     expect(sum(m.get("prod:P")!)).toBe(10);
+  });
+});
+
+describe("budget builder: long labels", () => {
+  it("line labels are cut to 200 characters", () => {
+    const long = "x".repeat(250);
+    const e = row({ view: "expense", key: `exp:${long}`, label: long, months: Array(12).fill(10) });
+    const lines = budgetToLines([e], new Map(), MONTHS);
+    expect(lines).toHaveLength(12);
+    expect(lines.every((l) => (l.label ?? "").length === 200)).toBe(true);
   });
 });

@@ -8,7 +8,11 @@ import {
   type BaseCol, type BudgetRow, type BudgetSetup,
 } from "./budget-builder";
 
-export interface BuilderData { products: SalesProductRow[]; customers: SalesCustomerRow[]; expenses: ExpenseAccountRow[] }
+export interface BuilderData {
+  products: SalesProductRow[]; customers: SalesCustomerRow[]; expenses: ExpenseAccountRow[];
+  /** Cost-of-sales accounts whose expense lines are all stock cost-of-goods postings (supplier COGS_SUPPLIER). */
+  stockCogs?: string[];
+}
 export interface BuilderBases {
   asOf: string | null;
   revenue: BaseCol[];
@@ -17,10 +21,11 @@ export interface BuilderBases {
   /** Per revenue item, its products with this year's estimate (for the sales vs rental split and the Others list). */
   members: Map<string, { product: string; estimate: number }[]>;
   byKey: Map<string, BaseCol>;
+  /** Stock cost-of-goods accounts left out of the expenses because the revenue rows budget that cost by unit cost. */
+  excluded: string[];
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
-const isCos = (c: string) => c.startsWith("cos_");
 
 /** The latest month ("YYYY-MM") in the sales and expense figures; null when there are none. */
 export function latestMonth(d: BuilderData): string | null {
@@ -38,12 +43,15 @@ function base(series: Map<string, Map<string, number>>, key: string, label: stri
 /**
  * Base columns for budget year `fy` ("this year" is fy-1): revenue items as the setup groups them (standalone products,
  * groups, Others), customers (`cust:<name>`) and expenses (`exp:<account>`, `expgrp:<id>`). Revenue items whose sales
- * this year all have quantities get `units` and `price`; when they all have a cost too, `unitCost`. When the sales carry
- * cost, expense accounts classed as cost of sales are left out (the revenue rows already budget that cost).
+ * this year all have quantities get `units` and `price`.
+ * Cost of sales is budgeted one way only: when every revenue item with an estimate has a unit cost (its sales this year
+ * all carry quantity and cost) and the expenses hold stock cost-of-goods accounts (`stockCogs`), those accounts are left
+ * out (`excluded`) and the revenue rows budget the cost by unit cost. Otherwise every cost-of-sales account stays in the
+ * expenses and no revenue row has a unit cost. Other cost-of-sales accounts (freight in, direct labour) always stay.
  */
 export function builderBases(d: BuilderData, setup: BudgetSetup, fy: string, fyStart: number): BuilderBases {
   const asOf = latestMonth(d);
-  const empty: BuilderBases = { asOf, revenue: [], customer: [], expense: [], members: new Map(), byKey: new Map() };
+  const empty: BuilderBases = { asOf, revenue: [], customer: [], expense: [], members: new Map(), byKey: new Map(), excluded: [] };
   if (!asOf) return empty;
   const thisYear = new Set(fyMonths(String(Number(fy) - 1), fyStart).filter((p) => p <= asOf));
 
@@ -90,15 +98,23 @@ export function builderBases(d: BuilderData, setup: BudgetSetup, fy: string, fyS
     return { ...b, key: `cust:${c}` };
   }).sort(bigFirst);
 
+  // Cost of sales: by unit cost (leaving out the stock cost-of-goods accounts) only when every item has one.
+  const stock = new Set(d.stockCogs ?? []);
+  const present = [...new Set(d.expenses.filter((r) => stock.has(r.t)).map((r) => r.t))].sort();
+  const costed = revenue.filter((r) => r.estimate !== 0);
+  const byUnitCost = present.length > 0 && costed.length > 0 && costed.every((r) => r.unitCost != null);
+  if (!byUnitCost) for (const r of revenue) r.unitCost = null;
+  const excluded = byUnitCost ? present : [];
+  const kept = byUnitCost ? d.expenses.filter((r) => !stock.has(r.t)) : d.expenses;
+
   // Expense rows and their class: an account's own class; a merged group takes its largest member's (this year).
-  const salesCost = revenue.some((r) => r.unitCost != null);
   const clsOf = new Map<string, ClassKey>();
   const size = new Map<string, number>();
-  for (const r of d.expenses) {
+  for (const r of kept) {
     if (r.c && !clsOf.has(r.t)) clsOf.set(r.t, r.c);
     if (thisYear.has(r.p)) size.set(r.t, (size.get(r.t) ?? 0) + r.a);
   }
-  const es = expenseSeries(d.expenses, setup);
+  const es = expenseSeries(kept, setup);
   const expense = [...es.keys()].map((k) => {
     let label = k.slice(4);
     let cls: ClassKey = "exp_fixed";
@@ -109,10 +125,10 @@ export function builderBases(d: BuilderData, setup: BudgetSetup, fy: string, fyS
       cls = clsOf.get(top) ?? "exp_fixed";
     } else cls = clsOf.get(label) ?? "exp_fixed";
     return { ...base(es, k, label, fy, fyStart, asOf), cls };
-  }).filter((e) => !(salesCost && isCos(e.cls))).sort(bigFirst);
+  }).sort(bigFirst);
 
   const byKey = new Map<string, BaseCol>([...revenue, ...customer, ...expense].map((b) => [b.key, b]));
-  return { asOf, revenue, customer, expense, members, byKey };
+  return { asOf, revenue, customer, expense, members, byKey, excluded };
 }
 
 /** The rows a version built from the setup starts with: every row at this year's estimate (customers as shares of it). */

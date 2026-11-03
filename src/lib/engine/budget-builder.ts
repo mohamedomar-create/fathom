@@ -245,7 +245,8 @@ export function streamView(
 /**
  * Months per group. Product groups (`by: "products"`) take their `grp:` row plus standalone `prod:` rows of their
  * products (each standalone row only for the first matching group in setup order). Customer-only groups (no products,
- * some customers; `by: "customers"`) take their customer rows and are not part of the reconciliation. "others"
+ * some customers; `by: "customers"`) take their customer rows (`cust:<name>` for each name the group lists) and are not
+ * part of the reconciliation. "others"
  * = revenue - the product groups, so the `by: "products"` entries always add up to the revenue.
  */
 export function groupView(
@@ -254,7 +255,7 @@ export function groupView(
   const taken = new Set<string>();
   const out: { id: string; name: string; months: number[]; by: "products" | "customers" }[] = setup.groups.map((g) => {
     if (!g.products.length && g.customers.length) {
-      return { id: g.id, name: g.name, by: "customers" as const, months: sumTo(customers.filter((c) => g.customers.includes(c.key)).map((c) => c.months)) };
+      return { id: g.id, name: g.name, by: "customers" as const, months: sumTo(customers.filter((c) => g.customers.some((name) => c.key === `cust:${name}`)).map((c) => c.months)) };
     }
     const parts: number[][] = [];
     for (const r of revenue) {
@@ -287,7 +288,7 @@ export function budgetToLines(rows: BudgetRow[], bases: Map<string, BaseCol>, mo
     const id = `${key}|${i}`;
     const cur = acc.get(id);
     if (cur) cur.amount = r2(cur.amount + amount);
-    else acc.set(id, { key, cls, label, month: months[i], amount: r2(amount) });
+    else acc.set(id, { key, cls, label: label.slice(0, 200), month: months[i], amount: r2(amount) });
   };
   for (const r of rows) {
     if (r.view === "customer") continue;

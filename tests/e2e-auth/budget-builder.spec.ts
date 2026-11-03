@@ -165,6 +165,10 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   await page.getByTestId("btab-groups").click();
   await expect(page.getByTestId("bgroups")).toContainText("Consumables");
   await expect(page.getByTestId("bgroups-customers")).toContainText("Hospitals");
+  // The customer group holds its customer's budget (Hilltop Hospital's saved year).
+  const hilltop = Math.round(yearOf("cust:Hilltop Hospital", "customer"));
+  expect(hilltop).toBeGreaterThan(0);
+  await expect(page.getByTestId("bgroups-customers-row").filter({ hasText: "Hospitals" }).locator("td").last()).toHaveText(hilltop.toLocaleString("en-US"));
   await page.getByTestId("btab-expenses").click();
   expect(await page.locator("[data-testid^=bsheet-row-]").count()).toBeGreaterThan(0);
 

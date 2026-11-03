@@ -38,10 +38,12 @@ export interface BudgetPageProps {
   setup?: BudgetSetup | null;
   salesCustomers?: SalesCustomerRow[];
   expenseAccounts?: ExpenseAccountRow[];
+  /** Cost-of-sales accounts that hold only stock cost-of-goods postings (left out when products carry unit costs). */
+  stockCogs?: string[];
   fyStart?: number;
 }
 
-export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [] }: BudgetPageProps) {
+export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [], stockCogs = [] }: BudgetPageProps) {
   const c = useCompany();
   const router = useRouter();
   const { d, ml, ms } = useT();
@@ -162,7 +164,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
     <div>
       <PageHeader title={t.title} right={!demo && !c.readOnly ? <div className="flex items-center gap-2">
         {canSetup && <button type="button" onClick={() => setSetupOpen(true)} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="bsetup-open"><Settings2 aria-hidden className="h-4 w-4" />{t.wiz.open}</button>}
-        <NewBudget versions={versions} salesProducts={salesProducts} setup={setup} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} onCreated={go} say={say} />
+        <NewBudget versions={versions} salesProducts={salesProducts} setup={setup} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} onCreated={go} say={say} />
       </div> : undefined}>
       {canSetup && (
         <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
@@ -208,7 +210,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
           {msg && <p role="status" className={cn("mb-3 text-sm", msg.ok ? "text-green-d" : "text-red-d")} data-testid="budget-msg">{msg.text}</p>}
           {builder ? (
             <BudgetBuilderView key={`${version.id}:${version.updatedAt}`} version={version} current={{ rows: current!.rows ?? [], setup: current!.setup ?? null }} companySetup={setup}
-              salesProducts={salesProducts} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} editable={canEdit} say={say} onDirty={setBuilderDirty}
+              salesProducts={salesProducts} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} editable={canEdit} say={say} onDirty={setBuilderDirty}
               renderVs={(l) => <BudgetVs lines={l} products={products} months={months} versionName={version.name} salesProducts={salesProducts} />} />
           ) : <>
           <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
@@ -243,8 +245,8 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
 
 }
 
-function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAccounts, onCreated, say }: {
-  versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; setup: BudgetSetup | null; salesCustomers: SalesCustomerRow[]; expenseAccounts: ExpenseAccountRow[];
+function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAccounts, stockCogs, onCreated, say }: {
+  versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; setup: BudgetSetup | null; salesCustomers: SalesCustomerRow[]; expenseAccounts: ExpenseAccountRow[]; stockCogs: string[];
   onCreated: (id: string) => void; say: (ok: boolean, text: string) => void;
 }) {
   const c = useCompany();
@@ -275,11 +277,13 @@ function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAcco
     const p = Number(pctV) || 0;
     if (from === "setup") {
       // Every row starts at this year's estimate; the version keeps a copy of the setup it was built with.
-      const built = buildFromSetup({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts }, setup!, fy, fyStart);
+      const built = buildFromSetup({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs }, setup!, fy, fyStart);
       if (built.empty) { setBusy(false); return setErr(t.b.noData); }
       const r = await createBudget(c.id, { fy, kind: hasOriginal ? "revision" : "original", name, from: null });
       if (!r.ok) { setBusy(false); return setErr(r.error); }
       const saved = await saveBudgetRows(c.id, r.data, { rows: built.rows, views: ["revenue", "customer", "expense"], lines: built.lines, setup });
+      // No empty version left behind: when the rows can't be saved, the new version goes again.
+      if (!saved.ok) await deleteBudget(c.id, r.data);
       setBusy(false);
       if (!saved.ok) return setErr(saved.error);
       setOpen(false);

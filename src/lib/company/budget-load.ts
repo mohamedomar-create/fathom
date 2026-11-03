@@ -3,6 +3,7 @@ import type { getUser } from "@/lib/supabase/server";
 import type { ClassKey } from "@/lib/engine";
 import type { BudgetLine, BudgetProduct } from "@/lib/engine/budget";
 import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
+import { COGS_SUPPLIER } from "@/lib/engine/expenses";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 
@@ -99,4 +100,19 @@ export async function loadBudgetRows(supabase: Supa, versionId: string, opts: { 
     rows: rows.map((r) => ({ view: r.view as BudgetRow["view"], key: r.key, label: r.label ?? "", mode: r.mode as BudgetRow["mode"], basis: r.basis as BudgetRow["basis"], cost: r.cost as BudgetRow["cost"], months: (r.months ?? []).map(Number) })),
     setup: (ver?.setup ?? null) as unknown as BudgetSetup | null,
   };
+}
+
+/**
+ * Of the given cost-of-sales accounts, those whose expense lines are all stock cost-of-goods postings (supplier
+ * COGS_SUPPLIER): the budget builder may leave them out when products carry unit costs. Two counts per account (at most
+ * 20 accounts); an account with any other line, or a failed read, is not listed.
+ */
+export async function loadStockCogsAccounts(supabase: Supa, companyId: string, accounts: string[]): Promise<string[]> {
+  const out: string[] = [];
+  await Promise.all(accounts.slice(0, 20).map(async (account) => {
+    const q = () => supabase.from("expense_lines").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("account", account);
+    const [stock, other] = await Promise.all([q().eq("supplier", COGS_SUPPLIER), q().neq("supplier", COGS_SUPPLIER)]);
+    if (!stock.error && !other.error && (stock.count ?? 0) > 0 && other.count === 0) out.push(account);
+  }));
+  return out.sort();
 }

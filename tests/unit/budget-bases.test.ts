@@ -31,7 +31,7 @@ describe("builder bases", () => {
     expect(a.estimate).toBe(400);
     expect(a.price).toBe(50); // 400 / 8 units
     expect(a.units).toBe(8);
-    expect(a.unitCost).toBe(30); // 240 / 8
+    expect(a.unitCost).toBeNull(); // no stock cost-of-goods rows to replace: revenue rows budget no cost
     expect(b.revenue[1].label).toBe("Group one");
     expect(b.revenue[1].price).toBeUndefined(); // no quantities
     expect(b.customer.map((c) => c.key)).toEqual(["cust:X", "cust:Y"]);
@@ -41,11 +41,31 @@ describe("builder bases", () => {
     expect(b.members.get("grp:g1")).toEqual([{ product: "B", estimate: 50 }]);
   });
 
-  it("expense accounts classed as cost of sales are left out when the sales carry their cost", () => {
-    const withCogs = [...expenses, er("2026-01", "500 COGS", 70, "cos_variable")];
-    expect(builderBases({ products, customers, expenses: withCogs }, setup, "2027", 1).expense.some((e) => e.key === "exp:500 COGS")).toBe(false);
-    const noCost = products.map((p) => ({ ...p, k: null, ka: null }));
-    expect(builderBases({ products: noCost, customers, expenses: withCogs }, setup, "2027", 1).expense.some((e) => e.key === "exp:500 COGS")).toBe(true);
+  const withCogs = [...expenses, er("2026-01", "500 COGS", 70, "cos_variable"), er("2026-02", "510 Freight in", 9, "cos_variable")];
+  const stockCogs = ["500 COGS"];
+  const keys = (b: ReturnType<typeof builderBases>) => b.expense.map((e) => e.key);
+
+  it("cost of sales: an item without a unit cost means nothing is left out and no revenue row budgets cost", () => {
+    // A and B have no quantities (B) -> not every item with an estimate has a unit cost.
+    const b = builderBases({ products, customers, expenses: withCogs, stockCogs }, setup, "2027", 1);
+    expect(keys(b)).toEqual(expect.arrayContaining(["exp:500 COGS", "exp:510 Freight in"]));
+    expect(b.excluded).toEqual([]);
+    expect(b.revenue.every((r) => r.unitCost == null)).toBe(true);
+    expect(b.revenue.find((r) => r.key === "prod:A")!.price).toBe(50); // units × price still offered
+  });
+
+  it("cost of sales: every item with a unit cost leaves out only the stock cost-of-goods rows", () => {
+    const costed = [pr("2026-01", "A", 100, 2, 60), pr("2026-02", "A", 300, 6, 180), pr("2026-01", "B", 50, 5, 20), pr("2026-02", "C", 10, 1, 4)];
+    const b = builderBases({ products: costed, customers, expenses: withCogs, stockCogs }, setup, "2027", 1);
+    expect(keys(b)).not.toContain("exp:500 COGS");
+    expect(keys(b)).toContain("exp:510 Freight in");
+    expect(b.excluded).toEqual(["500 COGS"]);
+    expect(b.revenue.find((r) => r.key === "prod:A")!.unitCost).toBe(30);
+    // No stock cost-of-goods rows: nothing to leave out, so the revenue rows budget no cost (no double counting).
+    const none = builderBases({ products: costed, customers, expenses: withCogs }, setup, "2027", 1);
+    expect(keys(none)).toContain("exp:500 COGS");
+    expect(none.excluded).toEqual([]);
+    expect(none.revenue.every((r) => r.unitCost == null)).toBe(true);
   });
 
   it("start rows equal this year's estimate and their lines add up to them", () => {

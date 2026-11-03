@@ -6,7 +6,7 @@ import { fyMonths, type BudgetLine } from "@/lib/engine/budget";
 import {
   balanceCustomers, budgetToLines, customerView, groupView, streamView, type BaseCol, type BudgetRow, type BudgetSetup,
 } from "@/lib/engine/budget-builder";
-import { builderBases, startRows, type BuilderBases } from "@/lib/engine/budget-bases";
+import { builderBases, startRows, type BuilderBases, type BuilderData } from "@/lib/engine/budget-bases";
 import { emptySetup, setupDrift } from "@/lib/engine/budget-setup";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
 import type { ExpenseAccountRow } from "@/lib/engine/expenses";
@@ -42,7 +42,7 @@ function initialRows(saved: BudgetRow[], bb: BuilderBases): Record<(typeof VIEWS
 }
 
 /** Builds the lines and a version's first rows from the setup (used when a version is made "From the setup"). */
-export function buildFromSetup(data: { products: SalesProductRow[]; customers: SalesCustomerRow[]; expenses: ExpenseAccountRow[] }, setup: BudgetSetup, fy: string, fyStart: number) {
+export function buildFromSetup(data: BuilderData, setup: BudgetSetup, fy: string, fyStart: number) {
   const bb = builderBases(data, setup, fy, fyStart);
   const rows = startRows(bb).map(forSave);
   return { rows, lines: budgetToLines(rows, bb.byKey, fyMonths(fy, fyStart)), empty: !bb.revenue.length && !bb.expense.length };
@@ -66,6 +66,8 @@ export interface BuilderViewProps {
   salesProducts: SalesProductRow[];
   salesCustomers: SalesCustomerRow[];
   expenseAccounts: ExpenseAccountRow[];
+  /** Cost-of-sales accounts that hold only stock cost-of-goods postings. */
+  stockCogs: string[];
   editable: boolean;
   say: (ok: boolean, text: string) => void;
   onDirty: (n: number) => void;
@@ -74,7 +76,7 @@ export interface BuilderViewProps {
 }
 
 /** The budget builder for one version: Revenue, Customers, Sales vs rental, By group, Expenses and Budget vs actual. */
-export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, editable, say, onDirty, renderVs }: BuilderViewProps) {
+export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, stockCogs, editable, say, onDirty, renderVs }: BuilderViewProps) {
   const c = useCompany();
   const router = useRouter();
   const { d } = useT();
@@ -83,8 +85,8 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const fyStart = c.settings.fyStartMonth ?? 1;
   const months = useMemo(() => fyMonths(version.fy, fyStart), [version.fy, fyStart]);
   const setup = current.setup ?? companySetup ?? emptySetup();
-  const bb = useMemo(() => builderBases({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts }, setup, version.fy, fyStart),
-    [salesProducts, salesCustomers, expenseAccounts, setup, version.fy, fyStart]);
+  const bb = useMemo(() => builderBases({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs }, setup, version.fy, fyStart),
+    [salesProducts, salesCustomers, expenseAccounts, stockCogs, setup, version.fy, fyStart]);
   const [rows, setRows] = useState(() => initialRows(current.rows, bb));
   // Customers typed by hand (kept as typed); the others follow the revenue by their share.
   const [edited, setEdited] = useState(() => new Set(rows.customer.filter((r) => r.basis !== null).map((r) => r.key)));
@@ -185,6 +187,7 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
           </div>
         )}
       </>}
+      {tab === "expenses" && bb.excluded.length > 0 && <p className="mb-2 text-xs text-mute" data-testid="bexp-cos-note">{b.cosNote(bb.excluded.join(", "))}</p>}
       {tab === "expenses" && <BudgetSheet {...sheet} rows={rows.expense} onChange={(next) => { setRows((r) => ({ ...r, expense: next })); changed(); }} />}
       {tab === "vs" && renderVs(lines)}
 

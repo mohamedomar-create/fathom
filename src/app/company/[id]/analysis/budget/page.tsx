@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { isUuid } from "@/lib/ids";
 import { getUser } from "@/lib/supabase/server";
-import { loadBudgets, loadBudgetSetup } from "@/lib/company/budget-load";
+import { loadBudgets, loadBudgetSetup, loadStockCogsAccounts } from "@/lib/company/budget-load";
 import { loadSales } from "@/lib/company/sales-load";
 import { loadExpenses } from "@/lib/company/expenses-load";
 import { BudgetPage } from "@/components/analysis/budget-page";
@@ -15,5 +15,8 @@ export default async function Page({ params, searchParams }: { params: Promise<{
     loadBudgets(supabase, id, v && isUuid(v) ? v : null), loadSales(id), loadExpenses(id), loadBudgetSetup(supabase, id),
     supabase.from("companies").select("fy_start_month").eq("id", id).maybeSingle(),
   ]);
-  return <BudgetPage versions={set.versions} current={set.current} salesProducts={sales.data.products} setup={setup} salesCustomers={sales.data.customers} expenseAccounts={expenses.data.accounts} fyStart={company.data?.fy_start_month ?? 1} />;
+  // Cost-of-sales accounts in the expenses that may hold only stock cost-of-goods postings.
+  const cos = [...new Set(expenses.data.accounts.filter((r) => r.c?.startsWith("cos_")).map((r) => r.t))];
+  const stockCogs = cos.length ? await loadStockCogsAccounts(supabase, id, cos) : [];
+  return <BudgetPage versions={set.versions} current={set.current} salesProducts={sales.data.products} setup={setup} salesCustomers={sales.data.customers} expenseAccounts={expenses.data.accounts} stockCogs={stockCogs} fyStart={company.data?.fy_start_month ?? 1} />;
 }

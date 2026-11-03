@@ -78,6 +78,7 @@ export const bud = area(
       drift: "The setup changed since this version was built. Figures stay as saved; create a revision to use the new setup.",
       empty: "Nothing here yet.", noData: "No sales or expenses to build from yet.",
       phoneHint: "Tap a row to see its months.", close: "Close",
+      cosNote: (names: string) => `Left out here: ${names} (stock cost of goods). It is budgeted through product unit costs on the Revenue tab.`,
     },
   },
   {
@@ -152,6 +153,7 @@ export const bud = area(
       drift: "تغيّر الإعداد منذ بناء هذا الإصدار. تبقى الأرقام كما حُفظت؛ أنشئ تعديلاً لاستخدام الإعداد الجديد.",
       empty: "لا شيء هنا بعد.", noData: "لا توجد مبيعات أو مصروفات للبناء عليها بعد.",
       phoneHint: "اضغط على صف لعرض أشهره.", close: "إغلاق",
+      cosNote: (names: string) => `مستبعد هنا: ${names} (تكلفة البضاعة من المخزون). تُوزَن من خلال تكلفة وحدة المنتجات في تبويب الإيرادات.`,
     },
   },
 );
