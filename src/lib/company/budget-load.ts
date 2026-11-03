@@ -2,6 +2,7 @@ import "server-only";
 import type { getUser } from "@/lib/supabase/server";
 import type { ClassKey } from "@/lib/engine";
 import type { BudgetLine, BudgetProduct } from "@/lib/engine/budget";
+import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
 
@@ -65,12 +66,24 @@ export async function loadYearBudgets(supabase: Supa, companyId: string, opts: {
   }
 }
 
-/** One version's lines and products, every row (paged). Throws when they can't be read. */
-export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[] }> {
+/** The company's budget setup (products, groups, rental streams, merged expenses); null when none is saved or the table is missing. */
+export async function loadBudgetSetup(supabase: Supa, companyId: string): Promise<BudgetSetup | null> {
+  const { data, error } = await supabase.from("budget_setups").select("setup").eq("company_id", companyId).maybeSingle();
+  if (error || !data) return null;
+  return data.setup as unknown as BudgetSetup;
+}
+
+/** One version's lines, products, builder rows and setup, every row (paged). Throws when they can't be read. */
+export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[]; rows: BudgetRow[]; setup: BudgetSetup | null }> {
   const lines = await all((a, b) => supabase.from("budget_lines").select("key, cls, label, month, amount").eq("version_id", versionId).order("key").order("month").range(a, b));
   const products = await all((a, b) => supabase.from("budget_products").select("product, category, month, units, price, unit_cost").eq("version_id", versionId).order("product").order("month").range(a, b));
+  const rows = await all((a, b) => supabase.from("budget_rows").select("view, key, label, mode, basis, cost, months").eq("version_id", versionId).order("view").order("key").range(a, b));
+  const { data: ver, error } = await supabase.from("budget_versions").select("setup").eq("id", versionId).maybeSingle();
+  if (error) throw new Error(error.message);
   return {
     lines: lines.map((l) => ({ key: l.key, cls: l.cls as ClassKey, label: l.label, month: l.month, amount: Number(l.amount) })),
     products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
+    rows: rows.map((r) => ({ view: r.view as BudgetRow["view"], key: r.key, label: r.label ?? "", mode: r.mode as BudgetRow["mode"], basis: r.basis as BudgetRow["basis"], cost: r.cost as BudgetRow["cost"], months: (r.months ?? []).map(Number) })),
+    setup: (ver?.setup ?? null) as unknown as BudgetSetup | null,
   };
 }

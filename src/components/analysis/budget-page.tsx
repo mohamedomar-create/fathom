@@ -8,7 +8,9 @@ import {
   type BudgetLine, type BudgetProduct,
 } from "@/lib/engine/budget";
 import { accountMarkKey } from "@/lib/engine/statement-rows";
-import type { SalesProductRow } from "@/lib/engine/sales";
+import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
+import type { ExpenseAccountRow } from "@/lib/engine/expenses";
+import type { BudgetSetup } from "@/lib/engine/budget-builder";
 import type { BudgetVersionInfo } from "@/lib/company/budget-load";
 import { useCompany } from "@/lib/company/context";
 import { approveBudget, createBudget, deleteBudget, saveBudget } from "@/app/company/[id]/analysis/budget-actions";
@@ -44,6 +46,11 @@ export interface BudgetPageProps {
   /** Last year's and this year's sales by product and month (for seeding and the volume/price split). */
   salesProducts: SalesProductRow[];
   demo?: boolean;
+  /** For the builder (not used yet): the company's setup, sales customers, expense accounts and financial-year start month. */
+  setup?: BudgetSetup | null;
+  salesCustomers?: SalesCustomerRow[];
+  expenseAccounts?: ExpenseAccountRow[];
+  fyStart?: number;
 }
 
 export function BudgetPage({ versions, current, salesProducts, demo }: BudgetPageProps) {

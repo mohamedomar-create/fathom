@@ -4,6 +4,8 @@ import { z } from "zod";
 import { PL_KEYS } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import { dbError } from "@/lib/action-error";
+import { SaveRowsSchema, SetupSchema, linesMatchRows } from "@/lib/company/budget-schema";
+import { fyMonths } from "@/lib/engine/budget";
 import { BUSY, checkLimit, TOO_MANY } from "@/lib/rate-limit";
 
 type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string };
@@ -77,6 +79,38 @@ export async function deleteBudget(companyId: string, versionId: string): Promis
   if ("error" in s) return { ok: false, error: s.error! };
   const { error } = await s.supabase.rpc("budget_delete", { p_version: versionId });
   if (error) return { ok: false, error: dbError(error, "budget_delete") };
+  done(companyId);
+  return { ok: true, data: undefined };
+}
+
+export async function saveBudgetSetup(companyId: string, setup: unknown): Promise<Result> {
+  const p = SetupSchema.safeParse(setup);
+  if (!Id.safeParse(companyId).success || !p.success) return { ok: false, error: "That value isn't valid." };
+  const s = await begin();
+  if ("error" in s) return { ok: false, error: s.error! };
+  const { error } = await s.supabase.rpc("budget_setup_save", { p_company: companyId, p_setup: p.data });
+  if (error) return { ok: false, error: dbError(error, "budget_setup_save") };
+  done(companyId);
+  return { ok: true, data: undefined };
+}
+
+/** Saves the builder's rows (for the views given), optionally replacing the draft's lines and storing the setup, all or nothing. */
+export async function saveBudgetRows(companyId: string, versionId: string, input: unknown): Promise<Result> {
+  const p = SaveRowsSchema.safeParse(input);
+  if (!Id.safeParse(companyId).success || !Id.safeParse(versionId).success) return { ok: false, error: "That value isn't valid." };
+  if (!p.success) return { ok: false, error: "A budget row isn't valid." };
+  const s = await begin();
+  if ("error" in s) return { ok: false, error: s.error! };
+  const { data: v, error: ve } = await s.supabase.from("budget_versions").select("company_id, fy").eq("id", versionId).maybeSingle();
+  if (ve) return { ok: false, error: dbError(ve, "budget_rows_save") };
+  if (!v || v.company_id !== companyId) return { ok: false, error: "That budget wasn't found." };
+  if (p.data.lines) {
+    const { data: c, error: ce } = await s.supabase.from("companies").select("fy_start_month").eq("id", companyId).maybeSingle();
+    if (ce || !c) return { ok: false, error: ce ? dbError(ce, "budget_rows_save") : "That company wasn't found." };
+    if (!linesMatchRows(p.data.rows, p.data.lines, fyMonths(v.fy, c.fy_start_month))) return { ok: false, error: "The budget lines don't add up to the revenue rows. Reload and try again." };
+  }
+  const { error } = await s.supabase.rpc("budget_rows_save", { p_version: versionId, p_rows: p.data.rows, p_views: p.data.views, p_lines: p.data.lines, p_setup: p.data.setup });
+  if (error) return { ok: false, error: dbError(error, "budget_rows_save") };
   done(companyId);
   return { ok: true, data: undefined };
 }
