@@ -6,7 +6,7 @@ import { fyMonths, type BudgetLine } from "@/lib/engine/budget";
 import {
   balanceCustomers, budgetToLines, customerView, groupView, streamView, type BaseCol, type BudgetRow, type BudgetSetup,
 } from "@/lib/engine/budget-builder";
-import { builderBases, startRows, type BuilderBases, type BuilderData } from "@/lib/engine/budget-bases";
+import { builderBases, startRows, versionRows, type BuilderData } from "@/lib/engine/budget-bases";
 import { emptySetup, setupDrift } from "@/lib/engine/budget-setup";
 import type { SalesCustomerRow, SalesProductRow } from "@/lib/engine/sales";
 import type { ExpenseAccountRow } from "@/lib/engine/expenses";
@@ -24,28 +24,15 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 const monthsSum = (rows: BudgetRow[]) => Array.from({ length: 12 }, (_, i) => r2(rows.reduce((t, r) => t + (r.months[i] ?? 0), 0)));
 const INCOME = new Set<string>(["other_income", "interest_income"]);
 
-/** Rows as saved (labels within the stored limit). */
-const forSave = (r: BudgetRow): BudgetRow => ({ ...r, label: r.label.slice(0, 200) });
-
-/** The rows a version starts the screen with: its saved rows per view (expense rows get their class), else from the setup. */
-function initialRows(saved: BudgetRow[], bb: BuilderBases): Record<(typeof VIEWS)[number], BudgetRow[]> {
-  const start = startRows(bb);
-  const cls = new Map(bb.expense.map((e) => [e.key, e.cls]));
-  // Saved rows come back by key; show them in the base order (setup order, then the biggest first), others after.
-  const order = new Map([...bb.revenue, ...bb.customer, ...bb.expense].map((x, i) => [x.key, i]));
-  const at = (k: string) => order.get(k) ?? order.size;
-  const pick = (v: (typeof VIEWS)[number]) => {
-    const s = saved.filter((r) => r.view === v).sort((a, b) => at(a.key) - at(b.key));
-    return s.length ? s : start.filter((r) => r.view === v);
-  };
-  return { revenue: pick("revenue"), customer: pick("customer"), expense: pick("expense").map((r) => ({ ...r, cls: r.cls ?? cls.get(r.key) ?? "exp_fixed" })) };
-}
+/** Rows as saved (labels within the stored limit; an expense row keeps its class in `cost`: budget_rows has no cls column). */
+const forSave = (r: BudgetRow): BudgetRow =>
+  ({ ...r, label: r.label.slice(0, 200), ...(r.view === "expense" ? { cost: { kind: "expense" as const, cls: r.cls ?? "exp_fixed" } } : {}) });
 
 /** Builds the lines and a version's first rows from the setup (used when a version is made "From the setup"). */
 export function buildFromSetup(data: BuilderData, setup: BudgetSetup, fy: string, fyStart: number) {
   const bb = builderBases(data, setup, fy, fyStart);
   const rows = startRows(bb).map(forSave);
-  return { rows, lines: budgetToLines(rows, bb.byKey, fyMonths(fy, fyStart)), empty: !bb.revenue.length && !bb.expense.length };
+  return { rows, lines: budgetToLines(rows, fyMonths(fy, fyStart)), empty: !bb.revenue.length && !bb.expense.length };
 }
 
 /** Revenue, gross profit and net profit of the new year from the lines (cost of sales classes come off gross profit). */
@@ -61,13 +48,16 @@ function stripOf(lines: BudgetLine[]) {
 
 export interface BuilderViewProps {
   version: BudgetVersionInfo;
-  current: { rows: BudgetRow[]; setup: BudgetSetup | null };
+  /** The version's saved rows, setup and lines (the lines are what was saved: shown until something is edited). */
+  current: { rows: BudgetRow[]; setup: BudgetSetup | null; lines?: BudgetLine[] };
   companySetup: BudgetSetup | null;
   salesProducts: SalesProductRow[];
   salesCustomers: SalesCustomerRow[];
   expenseAccounts: ExpenseAccountRow[];
   /** Cost-of-sales accounts that hold only stock cost-of-goods postings. */
   stockCogs: string[];
+  /** Cost-of-sales accounts that mix stock cost-of-goods postings with other lines. */
+  mixedCogs?: string[];
   editable: boolean;
   say: (ok: boolean, text: string) => void;
   onDirty: (n: number) => void;
@@ -76,7 +66,7 @@ export interface BuilderViewProps {
 }
 
 /** The budget builder for one version: Revenue, Customers, Sales vs rental, By group, Expenses and Budget vs actual. */
-export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, stockCogs, editable, say, onDirty, renderVs }: BuilderViewProps) {
+export function BudgetBuilderView({ version, current, companySetup, salesProducts, salesCustomers, expenseAccounts, stockCogs, mixedCogs, editable, say, onDirty, renderVs }: BuilderViewProps) {
   const c = useCompany();
   const router = useRouter();
   const { d } = useT();
@@ -85,9 +75,10 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const fyStart = c.settings.fyStartMonth ?? 1;
   const months = useMemo(() => fyMonths(version.fy, fyStart), [version.fy, fyStart]);
   const setup = current.setup ?? companySetup ?? emptySetup();
-  const bb = useMemo(() => builderBases({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs }, setup, version.fy, fyStart),
-    [salesProducts, salesCustomers, expenseAccounts, stockCogs, setup, version.fy, fyStart]);
-  const [rows, setRows] = useState(() => initialRows(current.rows, bb));
+  const bb = useMemo(() => builderBases({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs, mixedCogs, asOfDate: c.asOf }, setup, version.fy, fyStart),
+    [salesProducts, salesCustomers, expenseAccounts, stockCogs, mixedCogs, c.asOf, setup, version.fy, fyStart]);
+  // Saved rows are the truth (their cost of sales was fixed when the version was built); live data only fills the bases.
+  const [rows, setRows] = useState(() => versionRows(current.rows, bb));
   // Customers typed by hand (kept as typed); the others follow the revenue by their share.
   const [edited, setEdited] = useState(() => new Set(rows.customer.filter((r) => r.basis !== null).map((r) => r.key)));
   const [dirty, setDirty] = useState(0);
@@ -105,8 +96,10 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const reshare = (rev: number[], cust: BudgetRow[], keep: Set<string>) => customerView(rev, custBases(cust), cust.filter((r) => keep.has(r.key))).rows;
 
   const all = useMemo(() => [...rows.revenue, ...rows.customer, ...rows.expense], [rows]);
-  const lines = useMemo(() => budgetToLines(all, bases, months), [all, bases, months]);
-  const strip = useMemo(() => stripOf(lines), [lines]);
+  const lines = useMemo(() => budgetToLines(all, months), [all, months]);
+  // Until something is edited, the strip and Budget vs actual show the lines as saved (an approved version's own).
+  const shown = dirty === 0 && current.rows.length && current.lines?.length ? current.lines : lines;
+  const strip = useMemo(() => stripOf(shown), [shown]);
   const difference = useMemo(() => { const cs = monthsSum(rows.customer); return revenueMonths.map((v, i) => r2(v - cs[i])); }, [rows.customer, revenueMonths]);
   const diffYear = r2(difference.reduce((t, v) => t + v, 0));
   const off = difference.some((v) => Math.abs(v) >= 0.005);
@@ -148,6 +141,14 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const groups = useMemo(() => groupView(rows.revenue, rows.customer, setup), [rows.revenue, rows.customer, setup]);
   const drift = !!companySetup && setupDrift(current.setup, companySetup);
   const sheet = { bases, editable, months };
+  // Stock cost-of-goods accounts this version leaves out: its revenue rows carry the product cost and its expense rows
+  // don't hold them (as built; never re-decided from live data).
+  const excluded = useMemo(() => {
+    if (!rows.revenue.some((r) => r.cost?.kind === "unit" || r.cost?.kind === "margin")) return [];
+    const inGroups = new Set(setup.expenses.merged.flatMap((g) => g.accounts));
+    const have = new Set(rows.expense.map((r) => r.key));
+    return stockCogs.filter((a) => !have.has(`exp:${a}`) && !inGroups.has(a) && !setup.expenses.excluded.includes(a));
+  }, [rows, stockCogs, setup]);
 
   return (
     <div data-testid="budget-builder">
@@ -187,9 +188,9 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
           </div>
         )}
       </>}
-      {tab === "expenses" && bb.excluded.length > 0 && <p className="mb-2 text-xs text-mute" data-testid="bexp-cos-note">{b.cosNote(bb.excluded.join(", "))}</p>}
+      {tab === "expenses" && excluded.length > 0 && <p className="mb-2 text-xs text-mute" data-testid="bexp-cos-note">{b.cosNote(excluded.join(", "))}</p>}
       {tab === "expenses" && <BudgetSheet {...sheet} rows={rows.expense} onChange={(next) => { setRows((r) => ({ ...r, expense: next })); changed(); }} />}
-      {tab === "vs" && renderVs(lines)}
+      {tab === "vs" && renderVs(shown)}
 
       {editable && dirty > 0 && (
         <div className="sticky bottom-16 mt-4 flex items-center gap-3 rounded border border-line bg-white p-3 shadow md:bottom-2">

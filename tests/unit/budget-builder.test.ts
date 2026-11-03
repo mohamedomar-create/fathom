@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   baseYears, expenseSeries, itemOf, productSeries, revenueItems, spread, customerSeries,
-  rowMonths, costMonths, customerView, balanceCustomers, streamView, groupView, budgetToLines, actualByItem,
+  rowMonths, costMonths, customerView, balanceCustomers, streamView, groupView, budgetToLines, actualByItem, storedRow,
   type BudgetSetup, type BaseCol, type BudgetRow,
 } from "@/lib/engine/budget-builder";
 import type { SalesProductRow, SalesCustomerRow } from "@/lib/engine/sales";
@@ -43,6 +43,28 @@ describe("budget builder: base columns", () => {
     const t = new Map([["x", merge(mk(2025, () => 0, 1, 2), mk(2025, () => 50, 3, 12), mk(2026, () => 10, 1, 2))]]);
     const c = baseYears(t, "2027", 1, "2026-02");
     expect(c.months[5]).toBe(50);
+  });
+
+  it("part-month-estimate", () => {
+    // Last year 100 a month; this year Jan and Feb 110, March booked to the 15th (half the month: 55).
+    const s = new Map([["x", merge(mk(2025, () => 100), mk(2026, () => 110, 1, 2), mk(2026, () => 55, 3, 3))]]);
+    const b = baseYears(s, "2027", 1, "2026-03", 0.5);
+    // The ratio uses the complete months only (220 / 200 = 1.1): March = max(55, 100 x 1.1), the rest 110.
+    expect(b.ytd).toBe(275);
+    expect(b.months[2]).toBe(110);
+    expect(b.months[11]).toBe(110);
+    expect(b.estimate).toBe(1320);
+    // A part month above last year's pattern keeps its actual.
+    const hi = new Map([["x", merge(mk(2025, () => 100), mk(2026, () => 110, 1, 2), mk(2026, () => 150, 3, 3))]]);
+    expect(baseYears(hi, "2027", 1, "2026-03", 0.5).months[2]).toBe(150);
+    // No complete month yet: the ratio from the part month scaled up (60 / 0.5 = 120 vs 100 -> 1.2).
+    const first = new Map([["x", merge(mk(2025, () => 100), mk(2026, () => 60, 1, 1))]]);
+    const f = baseYears(first, "2027", 1, "2026-01", 0.5);
+    expect(f.months[0]).toBe(120);
+    expect(f.months[5]).toBe(120);
+    expect(f.estimate).toBe(1440);
+    // A complete last month (partDay 1, the default) is actual as before.
+    expect(baseYears(s, "2027", 1, "2026-03").months[2]).toBe(55);
   });
 
   it("top-n-and-others", () => {
@@ -121,6 +143,29 @@ describe("budget builder: spread", () => {
     expect(spread(120, zero, zero)).toEqual(Array(12).fill(10));
     expect(spread(120, zero)).toEqual(Array(12).fill(10));
   });
+
+  it("spread-positive-weights", () => {
+    // A credit note in one month: only the positive weights spread the year, so no month goes below zero.
+    const out = spread(12000, [5000, -4900, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(out.every((v) => v >= 0)).toBe(true);
+    expect(sum(out)).toBe(12000);
+    expect(out[0]).toBe(12000);
+    // No positive weight at all: the fallback, then equal months.
+    const neg = Array(12).fill(-5);
+    expect(spread(120, neg, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6])[11]).toBe(120);
+    expect(spread(120, neg, neg)).toEqual(Array(12).fill(10));
+  });
+
+  it("spread-company-pattern", () => {
+    // A row with no history of its own: the company's revenue pattern (last year), before equal months.
+    const company = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 3];
+    const b = { key: "prod:new", label: "new", years: [], ytd: 0, estimate: 0, months: Array(12).fill(0), lastYear: Array(12).fill(0), company };
+    const m = rowMonths({ kind: "amount", value: 400 }, b);
+    expect(m[10]).toBe(100);
+    expect(m[11]).toBe(300);
+    expect(m[0]).toBe(0);
+    expect(rowMonths({ kind: "amount", value: 120 }, { ...b, company: undefined })).toEqual(Array(12).fill(10));
+  });
 });
 
 const base = (key: string, over: Partial<BaseCol> = {}): BaseCol => ({
@@ -175,26 +220,40 @@ describe("budget builder: row months", () => {
     const typed = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
     const r = row({ key: "prod:a", mode: "months", basis: { kind: "amount", value: 999 }, months: typed });
     expect(r.months).toEqual(typed);
-    expect(budgetToLines([r], new Map(), MONTHS).map((l) => l.amount)).toEqual(typed);
+    expect(budgetToLines([r], MONTHS).map((l) => l.amount)).toEqual(typed);
   });
 });
 
 describe("budget builder: cost of sales", () => {
-  const b = base("prod:a", { price: 20, unitCost: 8 });
+  // The base's unit cost is live data: cost of sales comes only from the cost stored on the row.
   const r = (cost: BudgetRow["cost"], basis: BudgetRow["basis"] = { kind: "units", units: 60, price: 20 }) =>
     row({ key: "prod:a", basis, cost, months: Array(12).fill(100) });
   it("cost-unit", () => {
     // 100 per month at price 20 = 5 units x 7.5
-    expect(costMonths(r({ kind: "unit", value: 7.5 }), b)).toEqual(Array(12).fill(37.5));
-    // unit without a units basis falls back to the default (unitCost/price = 0.4)
-    expect(costMonths(r({ kind: "unit", value: 7.5 }, { kind: "amount", value: 1200 }), b)).toEqual(Array(12).fill(40));
+    expect(costMonths(r({ kind: "unit", value: 7.5 }))).toEqual(Array(12).fill(37.5));
+    // unit without a units basis: the price stored with the cost (100 / 25 = 4 units x 7.5)
+    expect(costMonths(r({ kind: "unit", value: 7.5, price: 25 }, { kind: "amount", value: 1200 }))).toEqual(Array(12).fill(30));
+    // no price at all: nothing can be worked out
+    expect(costMonths(r({ kind: "unit", value: 7.5 }, { kind: "amount", value: 1200 }))).toEqual(Array(12).fill(0));
   });
   it("cost-margin", () => {
-    expect(costMonths(r({ kind: "margin", pct: 70 }), b)).toEqual(Array(12).fill(30));
+    expect(costMonths(r({ kind: "margin", pct: 70 }))).toEqual(Array(12).fill(30));
   });
-  it("cost-default-last-year", () => {
-    expect(costMonths(r(null), b)).toEqual(Array(12).fill(40));
-    expect(costMonths(r(null), base("prod:a"))).toEqual(Array(12).fill(0));
+  it("cost-null-is-no-product-cost", () => {
+    expect(costMonths(r(null))).toEqual(Array(12).fill(0));
+    expect(costMonths(r({ kind: "expense", cls: "exp_fixed" }))).toEqual(Array(12).fill(0));
+  });
+  it("stored-row-class", () => {
+    // Expense rows keep their class in the cost object (no column for it): read back as cls.
+    const e = storedRow({ view: "expense", key: "exp:500 COGS", label: "500 COGS", mode: "year", basis: null, cost: { kind: "expense", cls: "cos_variable" }, months: Array(12).fill("5") });
+    expect(e.cls).toBe("cos_variable");
+    expect(e.months).toEqual(Array(12).fill(5));
+    expect(budgetToLines([e], MONTHS)[0]).toMatchObject({ cls: "cos_variable" });
+    const v = storedRow({ view: "revenue", key: "prod:a", label: null, mode: "year", basis: null, cost: { kind: "unit", value: 3, price: 9 }, months: null });
+    expect(v.cls).toBeUndefined();
+    expect(v.label).toBe("");
+    expect(v.months).toEqual(Array(12).fill(0));
+    expect(v.cost).toEqual({ kind: "unit", value: 3, price: 9 });
   });
 });
 
@@ -285,7 +344,7 @@ describe("budget builder: lines and actuals", () => {
     const e2 = row({ view: "expense", key: "exp:Petty cash", label: "Petty cash", months: Array(12).fill(2) });
     const e3 = row({ view: "expense", key: "expgrp:7", label: "Rent & Co", cls: "exp_fixed", months: Array(12).fill(3) });
     const cust = row({ view: "customer", key: "A", months: Array(12).fill(100) });
-    const lines = budgetToLines([rev, e1, e2, e3, cust], new Map([["prod:a", base("prod:a")]]), MONTHS);
+    const lines = budgetToLines([rev, e1, e2, e3, cust], MONTHS);
     const tot = (k: string) => sum(lines.filter((l) => l.key === k).map((l) => l.amount));
     expect(tot("cls:revenue")).toBe(1100);
     expect(tot("cls:cos_variable")).toBe(440);
@@ -313,7 +372,7 @@ describe("budget builder: long labels", () => {
   it("line labels are cut to 200 characters", () => {
     const long = "x".repeat(250);
     const e = row({ view: "expense", key: `exp:${long}`, label: long, months: Array(12).fill(10) });
-    const lines = budgetToLines([e], new Map(), MONTHS);
+    const lines = budgetToLines([e], MONTHS);
     expect(lines).toHaveLength(12);
     expect(lines.every((l) => (l.label ?? "").length === 200)).toBe(true);
   });

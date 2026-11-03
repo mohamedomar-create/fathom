@@ -10,8 +10,7 @@ import { useExpenses } from "@/lib/company/expenses-context";
 import { downloadReportPdf } from "@/lib/report/export";
 import { COMMENTARY_SECTIONS } from "@/lib/ai/sections";
 import { REPORT_SECTIONS, SECTION_COMMENT, type ReportInput, type ReportOrg, type ReportSection } from "@/lib/report/types";
-import { demoBudget } from "@/lib/company/demo-budget";
-import { demoSales } from "@/lib/company/demo-sales";
+import { demoCompareBudget } from "@/lib/company/demo-budget";
 import { deleteReport, publishReport, saveCommentary, saveReport, updatePublishedFigures } from "@/app/company/[id]/reports/actions";
 import { dateIn, ReportDocument, titleIn } from "./report-document";
 import { titleToStore } from "@/lib/report/title";
@@ -59,9 +58,9 @@ export function ReportBuilder({ report, org, demo = false, budgets: budgetsIn }:
   const budgets = useMemo<ReportInput["budgets"]>(() => {
     if (budgetsIn !== undefined) return budgetsIn;
     if (!demo) return [];
-    const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth, demoSales().products);
+    const b = demoCompareBudget(c.months, c.settings.fyStartMonth ?? 1);
     return [{ fy: b.fy, name: b.name, lines: b.lines, products: b.products }];
-  }, [budgetsIn, demo, c.accounts, c.months, c.settings.fyStartMonth]);
+  }, [budgetsIn, demo, c.months, c.settings.fyStartMonth]);
   const input = useMemo(() => ({
     title, companyName: c.name, months: c.months, accounts: c.accounts, settings: c.settings, alerts: c.alerts,
     sel: { type, end: validEnd }, sections, commentary: comments, org, notes: c.notes ?? [], accepted: c.accepted ?? [], assumptions: c.assumptions ?? {}, forecast: c.forecast ?? {}, sales, expenses, asOf: c.asOf ?? null, budgets,

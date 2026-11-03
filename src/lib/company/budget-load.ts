@@ -2,7 +2,7 @@ import "server-only";
 import type { getUser } from "@/lib/supabase/server";
 import type { ClassKey } from "@/lib/engine";
 import type { BudgetLine, BudgetProduct } from "@/lib/engine/budget";
-import type { BudgetRow, BudgetSetup } from "@/lib/engine/budget-builder";
+import { storedRow, type BudgetRow, type BudgetSetup } from "@/lib/engine/budget-builder";
 import { COGS_SUPPLIER } from "@/lib/engine/expenses";
 
 type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
@@ -19,12 +19,21 @@ export interface BudgetSet {
 
 const PAGE = 1000;
 
+/** A read error that keeps the database's code (42P01 and the like). */
+class ReadError extends Error {
+  constructor(message: string, readonly code?: string) { super(message); }
+}
+
+/** Missing table or column (0053 not pasted yet): Postgres 42P01 / 42703, PostgREST PGRST204 / PGRST205. */
+const MISSING = new Set(["42P01", "42703", "PGRST204", "PGRST205"]);
+const isMissing = (e: unknown) => e instanceof ReadError && !!e.code && MISSING.has(e.code);
+
 /** Reads every row of a query, a page at a time (the API answers at most 1,000 rows a call). */
-async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>): Promise<T[]> {
+async function all<T>(page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE) {
     const { data, error } = await page(from, from + PAGE - 1);
-    if (error) throw new Error(error.message);
+    if (error) throw new ReadError(error.message, error.code);
     out.push(...(data ?? []));
     if (!data || data.length < PAGE) return out;
   }
@@ -80,7 +89,9 @@ export async function loadBudgetSetup(supabase: Supa, companyId: string): Promis
 
 /**
  * One version's lines and products, every row (paged); with `builder`, also its builder rows and setup (the budget page
- * only: Financials, reports and the export read the lines). Throws when they can't be read.
+ * only: Financials, reports and the export read the lines). Throws when they can't be read, except that a missing
+ * budget_rows table or budget_versions.setup column (0053 not pasted yet) reads as no rows and no setup, so older
+ * budgets still show.
  */
 export async function loadBudgetRows(supabase: Supa, versionId: string): Promise<{ lines: BudgetLine[]; products: BudgetProduct[] }>;
 export async function loadBudgetRows(supabase: Supa, versionId: string, opts: { builder: true }): Promise<{ lines: BudgetLine[]; products: BudgetProduct[]; rows: BudgetRow[]; setup: BudgetSetup | null }>;
@@ -92,27 +103,32 @@ export async function loadBudgetRows(supabase: Supa, versionId: string, opts: { 
     products: products.map((p) => ({ product: p.product, category: p.category, month: p.month, units: Number(p.units), price: Number(p.price), unit_cost: p.unit_cost === null ? null : Number(p.unit_cost) })),
   };
   if (!opts.builder) return out;
-  const rows = await all((a, b) => supabase.from("budget_rows").select("view, key, label, mode, basis, cost, months").eq("version_id", versionId).order("view").order("key").range(a, b));
+  let rows: BudgetRow[] = [];
+  try {
+    rows = (await all((a, b) => supabase.from("budget_rows").select("view, key, label, mode, basis, cost, months").eq("version_id", versionId).order("view").order("key").range(a, b))).map(storedRow);
+  } catch (e) {
+    if (!isMissing(e)) throw e;
+  }
   const { data: ver, error } = await supabase.from("budget_versions").select("setup").eq("id", versionId).maybeSingle();
-  if (error) throw new Error(error.message);
-  return {
-    ...out,
-    rows: rows.map((r) => ({ view: r.view as BudgetRow["view"], key: r.key, label: r.label ?? "", mode: r.mode as BudgetRow["mode"], basis: r.basis as BudgetRow["basis"], cost: r.cost as BudgetRow["cost"], months: (r.months ?? []).map(Number) })),
-    setup: (ver?.setup ?? null) as unknown as BudgetSetup | null,
-  };
+  if (error && !MISSING.has(error.code ?? "")) throw new ReadError(error.message, error.code);
+  return { ...out, rows, setup: (error ? null : ver?.setup ?? null) as unknown as BudgetSetup | null };
 }
 
 /**
- * Of the given cost-of-sales accounts, those whose expense lines are all stock cost-of-goods postings (supplier
- * COGS_SUPPLIER): the budget builder may leave them out when products carry unit costs. Two counts per account (at most
- * 20 accounts); an account with any other line, or a failed read, is not listed.
+ * Of the given cost-of-sales accounts, `stock`: those whose expense lines are all stock cost-of-goods postings (supplier
+ * COGS_SUPPLIER), which the budget builder may leave out when products carry their cost; `mixed`: those holding such
+ * postings and other lines, which means the builder budgets no product cost (it can't leave out part of an account).
+ * Two counts per account (stock lines, all lines; at most 20 accounts); a failed read lists the account in neither.
  */
-export async function loadStockCogsAccounts(supabase: Supa, companyId: string, accounts: string[]): Promise<string[]> {
-  const out: string[] = [];
+export async function loadStockCogsAccounts(supabase: Supa, companyId: string, accounts: string[]): Promise<{ stock: string[]; mixed: string[] }> {
+  const stockOnly: string[] = [];
+  const mixed: string[] = [];
   await Promise.all(accounts.slice(0, 20).map(async (account) => {
     const q = () => supabase.from("expense_lines").select("id", { count: "exact", head: true }).eq("company_id", companyId).eq("account", account);
-    const [stock, other] = await Promise.all([q().eq("supplier", COGS_SUPPLIER), q().neq("supplier", COGS_SUPPLIER)]);
-    if (!stock.error && !other.error && (stock.count ?? 0) > 0 && other.count === 0) out.push(account);
+    // All lines against the stock ones (a "not this supplier" filter would miss lines with no supplier).
+    const [stock, total] = await Promise.all([q().eq("supplier", COGS_SUPPLIER), q()]);
+    if (stock.error || total.error || stock.count == null || total.count == null || stock.count <= 0) return;
+    (total.count > stock.count ? mixed : stockOnly).push(account);
   }));
-  return out.sort();
+  return { stock: stockOnly.sort(), mixed: mixed.sort() };
 }

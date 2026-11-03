@@ -40,10 +40,12 @@ export interface BudgetPageProps {
   expenseAccounts?: ExpenseAccountRow[];
   /** Cost-of-sales accounts that hold only stock cost-of-goods postings (left out when products carry unit costs). */
   stockCogs?: string[];
+  /** Cost-of-sales accounts that hold stock cost-of-goods postings and other lines (then no unit cost is used). */
+  mixedCogs?: string[];
   fyStart?: number;
 }
 
-export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [], stockCogs = [] }: BudgetPageProps) {
+export function BudgetPage({ versions, current, salesProducts, demo, setup = null, salesCustomers = [], expenseAccounts = [], stockCogs = [], mixedCogs = [] }: BudgetPageProps) {
   const c = useCompany();
   const router = useRouter();
   const { d, ml, ms } = useT();
@@ -164,7 +166,7 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
     <div>
       <PageHeader title={t.title} right={!demo && !c.readOnly ? <div className="flex items-center gap-2">
         {canSetup && <button type="button" onClick={() => setSetupOpen(true)} className="inline-flex items-center gap-1 rounded border border-line px-3 py-1.5 text-sm" data-testid="bsetup-open"><Settings2 aria-hidden className="h-4 w-4" />{t.wiz.open}</button>}
-        <NewBudget versions={versions} salesProducts={salesProducts} setup={setup} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} onCreated={go} say={say} />
+        <NewBudget versions={versions} salesProducts={salesProducts} setup={setup} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} mixedCogs={mixedCogs} onCreated={go} say={say} />
       </div> : undefined}>
       {canSetup && (
         <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
@@ -209,8 +211,8 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
           {version.status === "approved" && <p className="mb-3 text-sm text-mute">{t.locked}</p>}
           {msg && <p role="status" className={cn("mb-3 text-sm", msg.ok ? "text-green-d" : "text-red-d")} data-testid="budget-msg">{msg.text}</p>}
           {builder ? (
-            <BudgetBuilderView key={`${version.id}:${version.updatedAt}`} version={version} current={{ rows: current!.rows ?? [], setup: current!.setup ?? null }} companySetup={setup}
-              salesProducts={salesProducts} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} editable={canEdit} say={say} onDirty={setBuilderDirty}
+            <BudgetBuilderView key={`${version.id}:${version.updatedAt}`} version={version} current={{ rows: current!.rows ?? [], setup: current!.setup ?? null, lines: current!.lines }} companySetup={setup}
+              salesProducts={salesProducts} salesCustomers={salesCustomers} expenseAccounts={expenseAccounts} stockCogs={stockCogs} mixedCogs={mixedCogs} editable={canEdit} say={say} onDirty={setBuilderDirty}
               renderVs={(l) => <BudgetVs lines={l} products={products} months={months} versionName={version.name} salesProducts={salesProducts} />} />
           ) : <>
           <div role="tablist" className="mb-4 flex gap-1 border-b border-line">
@@ -245,8 +247,8 @@ export function BudgetPage({ versions, current, salesProducts, demo, setup = nul
 
 }
 
-function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAccounts, stockCogs, onCreated, say }: {
-  versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; setup: BudgetSetup | null; salesCustomers: SalesCustomerRow[]; expenseAccounts: ExpenseAccountRow[]; stockCogs: string[];
+function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAccounts, stockCogs, mixedCogs, onCreated, say }: {
+  versions: BudgetVersionInfo[]; salesProducts: SalesProductRow[]; setup: BudgetSetup | null; salesCustomers: SalesCustomerRow[]; expenseAccounts: ExpenseAccountRow[]; stockCogs: string[]; mixedCogs: string[];
   onCreated: (id: string) => void; say: (ok: boolean, text: string) => void;
 }) {
   const c = useCompany();
@@ -277,7 +279,7 @@ function NewBudget({ versions, salesProducts, setup, salesCustomers, expenseAcco
     const p = Number(pctV) || 0;
     if (from === "setup") {
       // Every row starts at this year's estimate; the version keeps a copy of the setup it was built with.
-      const built = buildFromSetup({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs }, setup!, fy, fyStart);
+      const built = buildFromSetup({ products: salesProducts, customers: salesCustomers, expenses: expenseAccounts, stockCogs, mixedCogs, asOfDate: c.asOf }, setup!, fy, fyStart);
       if (built.empty) { setBusy(false); return setErr(t.b.noData); }
       const r = await createBudget(c.id, { fy, kind: hasOriginal ? "revision" : "original", name, from: null });
       if (!r.ok) { setBusy(false); return setErr(r.error); }

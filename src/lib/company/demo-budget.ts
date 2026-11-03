@@ -1,39 +1,12 @@
-import { fyStartOf, hasPL, PL_KEYS, type MonthData } from "@/lib/engine";
-import { fyMonths, seedFromLastYear, seedWithProducts, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
-import { accountMarkKey } from "@/lib/engine/statement-rows";
-import type { SalesData, SalesProductRow } from "@/lib/engine/sales";
+import { fyStartOf, hasPL, type MonthData } from "@/lib/engine";
+import { fyMonths, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
+import type { SalesData } from "@/lib/engine/sales";
 import type { ExpensesData } from "@/lib/engine/expenses";
 import { budgetToLines, customerView, rowMonths, type BudgetSetup } from "@/lib/engine/budget-builder";
 import { builderBases, startRows } from "@/lib/engine/budget-bases";
 import { suggestSetup } from "@/lib/engine/budget-setup";
-import type { AccountLine } from "./types";
-
-const PL = new Set<string>(PL_KEYS);
-
-/**
- * The demo company's budget for its latest financial year: last year + 10% where last year is loaded; the demo's books
- * start mid-year, so the other months are set a little under or over what happened (made up, so there is something to
- * compare), plus products from last year's sales. Nothing is saved.
- */
-export function demoBudget(accounts: AccountLine[], months: MonthData[], fyStart: number, sales: SalesProductRow[]): { fy: string; name: string; lines: BudgetLine[]; products: BudgetProduct[] } {
-  const last = months.filter(hasPL).map((m) => m.period).pop() ?? "2026-01";
-  const fy = fyStartOf(last, fyStart).slice(0, 4);
-  const ms = fyMonths(fy, fyStart);
-  const ly = seedFromLastYear(accounts, ms, 10);
-  const have = new Set(ly.map((l) => `${l.key}|${l.month}`));
-  // Months with last year: by product where sold by unit, by account for the rest.
-  const seeded = seedWithProducts(accounts, sales, ms, 10);
-  const lines = [...seeded.lines];
-  accounts.forEach((a, i) => {
-    if (!PL.has(a.cls)) return;
-    for (const m of ms) {
-      const v = a.amounts[m];
-      if (!v || have.has(`${accountMarkKey(a)}|${m}`)) continue;
-      lines.push({ key: accountMarkKey(a), cls: a.cls, label: a.code ? `${a.code} ${a.name}` : a.name, month: m, amount: Math.round(v * (i % 3 === 0 ? 0.94 : i % 3 === 1 ? 1.05 : 1.01)) });
-    }
-  });
-  return { fy, name: `Budget FY ${fy}`, lines, products: seeded.products };
-}
+import { demoSales } from "./demo-sales";
+import { demoExpenses } from "./demo-expenses";
 
 /**
  * The demo company's budget built with the budget builder (made up, nothing saved): a setup from `suggestSetup` on the
@@ -62,5 +35,14 @@ export function demoBuilderBudget(months: MonthData[], fyStart: number, sales: S
   const total = Array.from({ length: 12 }, (_, i) => Math.round(rev.reduce((t, r) => t + r.months[i], 0) * 100) / 100);
   const customers = bb.customer.length ? customerView(total, bb.customer, []).rows : [];
   const rows = [...rev, ...customers, ...start.filter((r) => r.view === "expense")];
-  return { fy, name: `Budget FY ${fy}`, setup, rows, lines: budgetToLines(rows, bb.byKey, ms) };
+  return { fy, name: `Budget FY ${fy}`, setup, rows, lines: budgetToLines(rows, ms) };
+}
+
+/**
+ * The demo's budget for the Financials "Budget" comparison and reports: the lines of the builder budget the demo budget
+ * page shows, so the demo has one budget everywhere.
+ */
+export function demoCompareBudget(months: MonthData[], fyStart: number): { fy: string; name: string; status: "approved"; lines: BudgetLine[]; products: BudgetProduct[] } {
+  const b = demoBuilderBudget(months, fyStart, demoSales(), demoExpenses());
+  return { fy: b.fy, name: b.name, status: "approved", lines: b.lines, products: [] };
 }

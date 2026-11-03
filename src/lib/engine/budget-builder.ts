@@ -23,6 +23,10 @@ export interface BaseCol {
   units?: number;
   price?: number;
   unitCost?: number | null;
+  /** This year's cost of sales / sales of the item when every sale carries a cost (no quantities needed); else null. */
+  costRatio?: number | null;
+  /** The company's revenue by month last year: the pattern for a row with no history of its own. */
+  company?: number[];
 }
 
 type Series = Map<string, Map<string, number>>;
@@ -39,12 +43,15 @@ function add(series: Series, key: string, month: string, amount: number) {
  * Base columns for the keys in `series` (key -> month -> amount; all keys in the map are totalled, so pass a
  * one-key map for a single row). `fy` is the BUDGET year; "this year" is the financial year before it (fy-1) and
  * "last year" is fy-2. `years` holds the prior full years fy-2 .. fy-1-yearsBack that have any data, oldest first.
- * `ytd` is this year's actual up to and including the month of `asOf` (a partly elapsed month counts as actual).
+ * `ytd` is this year's actual booked up to and including the month of `asOf`.
  * `months` = actual up to that month, then last year's same month x (this year to date / last year same months to
  * date), or last year's month as-is when that denominator is not above zero.
+ * `partDay` (0-1] is the part of the `asOf` month booked (1 when it is complete). For a part month the ratio uses the
+ * complete months only (both sides); with no complete month yet, the part month scaled up by `partDay`. That month is
+ * then max(actual, last year's month x ratio).
  */
 export function baseYears(
-  series: Map<string, Map<string, number>>, fy: string, fyStart: number, asOf: string, yearsBack = 3,
+  series: Map<string, Map<string, number>>, fy: string, fyStart: number, asOf: string, partDay = 1, yearsBack = 3,
 ): Omit<BaseCol, "key" | "label"> {
   const budgetYear = Number(fy);
   const total = new Map<string, number>();
@@ -60,13 +67,20 @@ export function baseYears(
   const lastYear = fyMonths(String(budgetYear - 2), fyStart).map((p) => r2(total.get(p) ?? 0));
   const actual = thisMonths.map((p) => r2(total.get(p) ?? 0));
   const asOfMonth = asOf.slice(0, 7);
+  const part = partDay > 0 && partDay < 1 ? thisMonths.indexOf(asOfMonth) : -1;
   let ytd = 0;
-  let lastToDate = 0;
+  let done = 0; // complete months: this year and last year's same months
+  let lastDone = 0;
   thisMonths.forEach((p, i) => {
-    if (p <= asOfMonth) { ytd += actual[i]; lastToDate += lastYear[i]; }
+    if (p > asOfMonth) return;
+    ytd += actual[i];
+    if (i !== part) { done += actual[i]; lastDone += lastYear[i]; }
   });
-  const ratio = lastToDate > 0 ? ytd / lastToDate : 1;
-  const months = thisMonths.map((p, i) => (p <= asOfMonth ? actual[i] : r2(lastYear[i] * ratio)));
+  const hasDone = part < 0 || thisMonths.some((p, i) => p <= asOfMonth && i !== part);
+  const ratio = hasDone ? (lastDone > 0 ? done / lastDone : 1)
+    : lastYear[part] > 0 ? actual[part] / partDay / lastYear[part] : 1;
+  const months = thisMonths.map((p, i) => (i === part ? Math.max(actual[i], r2(lastYear[i] * ratio))
+    : p <= asOfMonth ? actual[i] : r2(lastYear[i] * ratio)));
   return { years, ytd: r2(ytd), estimate: r2(months.reduce((t, v) => t + v, 0)), months, lastYear };
 }
 
@@ -110,15 +124,17 @@ export function revenueItems(rows: SalesProductRow[], setup: BudgetSetup): Serie
 }
 
 /**
- * Split a year amount over 12 months by `pattern`; if that is all zero use `fallback`, else equal months.
- * Months are rounded to 2 decimals and the remainder goes in the last month so the sum equals `year` to the cent.
+ * Split a year amount over 12 months by `pattern`; if it has no positive month use the first `fallbacks` that has,
+ * else equal months. Only positive weights count (a month of credit notes gets nothing), so no month takes the
+ * opposite sign of the year. Months are rounded to 2 decimals and the remainder goes in the last month so the sum
+ * equals `year` to the cent.
  */
-export function spread(year: number, pattern: number[], fallback?: number[]): number[] {
-  const usable = (w?: number[]) => !!w && w.length === 12 && w.reduce((t, v) => t + Math.abs(v), 0) > 0;
-  const w = usable(pattern) ? pattern : usable(fallback) ? fallback! : Array(12).fill(1);
-  const sum = w.reduce((t, v) => t + v, 0);
-  const norm = sum !== 0 ? w.map((v) => v / sum) : w.map((v) => Math.abs(v) / w.reduce((t, x) => t + Math.abs(x), 0));
-  const out = norm.map((f) => r2(year * f) || 0); // `|| 0` turns -0 into 0
+export function spread(year: number, pattern: number[], ...fallbacks: (number[] | undefined)[]): number[] {
+  const pos = (w?: number[]) => (w && w.length === 12 ? w.map((v) => (v > 0 ? v : 0)) : null);
+  const total = (w: number[] | null) => (w ? w.reduce((t, v) => t + v, 0) : 0);
+  const w = [pattern, ...fallbacks].map(pos).find((x) => total(x) > 0) ?? Array<number>(12).fill(1);
+  const sum = total(w);
+  const out = w.map((v) => r2(year * (v / sum)) || 0); // `|| 0` turns -0 into 0
   const head = out.slice(0, 11).reduce((t, v) => t + v, 0);
   out[11] = r2(r2(year) - head) || 0;
   return out;
@@ -127,7 +143,14 @@ export function spread(year: number, pattern: number[], fallback?: number[]): nu
 // ---- rows, cost of sales, views, P&L lines, actuals ----
 
 export type Basis = { kind: "amount"; value: number } | { kind: "pct"; value: number } | { kind: "units"; units: number; price: number };
-export type Cost = { kind: "unit"; value: number } | { kind: "margin"; pct: number } | null;
+/**
+ * Revenue rows: `unit` (cost per unit; `price` is the price it was set against, for rows not entered as units x price),
+ * `margin` (gross margin %), or null (no product cost: cost of sales stays in the expense rows). Fixed when the version
+ * is built and never re-decided from live data. Expense rows: `expense` carries the row's class (budget_rows has no
+ * column for it, so it is stored in the cost object).
+ */
+export type Cost =
+  | { kind: "unit"; value: number; price?: number } | { kind: "margin"; pct: number } | { kind: "expense"; cls: ClassKey } | null;
 export interface BudgetRow {
   view: "revenue" | "customer" | "expense"; key: string; label: string; mode: "year" | "months";
   basis: Basis | null; cost: Cost; months: number[];
@@ -137,31 +160,43 @@ export interface BudgetRow {
 const zeros = () => Array<number>(12).fill(0);
 const sumTo = (rows: number[][]) => zeros().map((_, i) => r2(rows.reduce((t, m) => t + (m[i] ?? 0), 0)));
 
-/** A basis as 12 months, seasonal by last year's months (equal months when last year has none). */
+/**
+ * A basis as 12 months, seasonal by the row's last year; with no history, this year's estimate months, then the
+ * company's revenue pattern (`base.company`), then equal months.
+ */
 export function rowMonths(basis: Basis, base: BaseCol): number[] {
   const year = basis.kind === "amount" ? basis.value
     : basis.kind === "pct" ? base.estimate * (1 + basis.value / 100)
     : basis.units * basis.price;
-  return spread(year, base.lastYear, base.months);
+  return spread(year, base.lastYear, base.months, base.company);
 }
 
 /**
- * Cost of sales by month. `unit` (needs a units basis; otherwise ignored and the default is used): units per month =
- * the row's month / basis price, times the unit cost. `margin`: month x (1 - pct/100). Default (cost null): the base's
- * unit cost / price ratio when both are known, else 0 (Task 5 passes unitCost and price into BaseCol).
+ * Cost of sales by month, from the cost stored on the row only. `unit`: units per month = the row's month / price (the
+ * units basis price, else the price stored with the cost), times the unit cost. `margin`: month x (1 - pct/100).
+ * Null, `expense`, or a unit cost without a price: none.
  */
-export function costMonths(row: BudgetRow, base: BaseCol): number[] {
+export function costMonths(row: BudgetRow): number[] {
   const c = row.cost;
   if (c?.kind === "margin") return row.months.map((m) => r2(m * (1 - c.pct / 100)));
-  if (c?.kind === "unit" && row.basis?.kind === "units" && row.basis.price > 0) {
-    const price = row.basis.price;
-    return row.months.map((m) => r2((m / price) * c.value));
-  }
-  if (base.unitCost != null && base.price && base.price > 0) {
-    const ratio = base.unitCost / base.price;
-    return row.months.map((m) => r2(m * ratio));
+  if (c?.kind === "unit") {
+    const price = row.basis?.kind === "units" && row.basis.price > 0 ? row.basis.price : c.price ?? 0;
+    if (price > 0) return row.months.map((m) => r2((m / price) * c.value));
   }
   return zeros();
+}
+
+/** A row as read from budget_rows (no cls column): an expense row's class comes from its cost object. */
+export function storedRow(r: {
+  view: string; key: string; label: string | null; mode: string; basis: unknown; cost: unknown; months: (number | string)[] | null;
+}): BudgetRow {
+  const cost = (r.cost ?? null) as Cost;
+  const months = (r.months ?? []).map(Number);
+  return {
+    view: r.view as BudgetRow["view"], key: r.key, label: r.label ?? "", mode: r.mode as BudgetRow["mode"],
+    basis: (r.basis ?? null) as Basis | null, cost, months: months.length === 12 ? months : zeros(),
+    ...(cost?.kind === "expense" ? { cls: cost.cls } : {}),
+  };
 }
 
 const customerRow = (key: string, label: string, months: number[]): BudgetRow =>
@@ -282,7 +317,7 @@ function expenseKey(row: BudgetRow): string {
  * P&L budget lines: revenue rows -> "cls:revenue", their cost of sales -> "cls:cos_variable", expense rows -> their own
  * key and class. Customer-view rows are a breakdown of the revenue and add nothing. Zero months are left out.
  */
-export function budgetToLines(rows: BudgetRow[], bases: Map<string, BaseCol>, months: string[]): BudgetLine[] {
+export function budgetToLines(rows: BudgetRow[], months: string[]): BudgetLine[] {
   const acc = new Map<string, BudgetLine>();
   const put = (key: string, cls: ClassKey, label: string, i: number, amount: number) => {
     const id = `${key}|${i}`;
@@ -292,13 +327,13 @@ export function budgetToLines(rows: BudgetRow[], bases: Map<string, BaseCol>, mo
   };
   for (const r of rows) {
     if (r.view === "customer") continue;
-    const cost = r.view === "revenue" ? costMonths(r, bases.get(r.key) ?? { key: r.key, label: r.label, years: [], ytd: 0, estimate: 0, months: zeros(), lastYear: zeros() }) : null;
+    const cost = r.view === "revenue" ? costMonths(r) : null;
     const key = r.view === "expense" ? expenseKey(r) : "";
     for (let i = 0; i < 12; i++) {
       if (r.view === "revenue") {
         put("cls:revenue", "revenue", "Revenue (from the budget builder)", i, r.months[i]);
         put("cls:cos_variable", "cos_variable", "Cost of sales (from the budget builder)", i, cost![i]);
-      } else put(key, r.cls ?? "exp_fixed", r.label, i, r.months[i]);
+      } else put(key, r.cls ?? (r.cost?.kind === "expense" ? r.cost.cls : "exp_fixed"), r.label, i, r.months[i]);
     }
   }
   return [...acc.values()].filter((l) => Math.abs(l.amount) >= 0.005);

@@ -21,9 +21,12 @@ const Basis = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("pct"), value: Num }),
   z.object({ kind: z.literal("units"), units: Num, price: Num }),
 ]);
+// Revenue rows: unit cost (with the price it was set against) or margin. Expense rows: their class (budget_rows has no
+// cls column, so the class is kept in the cost object).
 const Cost = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("unit"), value: Num }),
+  z.object({ kind: z.literal("unit"), value: Num, price: Num.optional() }),
   z.object({ kind: z.literal("margin"), pct: Num }),
+  z.object({ kind: z.literal("expense"), cls: z.enum(PL_KEYS) }),
 ]);
 export const View = z.enum(["revenue", "customer", "expense"]);
 

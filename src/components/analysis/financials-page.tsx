@@ -16,8 +16,7 @@ import { accountMarkKey, BS_LINES, emptyBS, markAt, PL_LINES, type Highlights, t
 import { cfRowCls, ChangeCell, Flag, flagReason, fmtIn, MarkButton, rowCls } from "./statement-ui";
 import { setStatementMark } from "@/app/company/[id]/analysis/highlight-actions";
 import { budgetAccounts, budgetComparison, budgetFor, type BudgetLine, type BudgetProduct } from "@/lib/engine/budget";
-import { demoBudget } from "@/lib/company/demo-budget";
-import { demoSales } from "@/lib/company/demo-sales";
+import { demoCompareBudget } from "@/lib/company/demo-budget";
 
 /** A financial year's budget for the "Budget" comparison: its latest approved version, else its latest draft. */
 export interface CompareBudget { fy: string; name: string; status: "draft" | "approved"; lines: BudgetLine[]; products: BudgetProduct[] }
@@ -34,9 +33,8 @@ export function FinancialsPage({ budgets: budgetsIn }: { budgets?: CompareBudget
   const budgets = useMemo<CompareBudget[]>(() => {
     if (budgetsIn !== undefined) return budgetsIn;
     if (c.source !== "demo") return [];
-    const b = demoBudget(c.accounts, c.months, c.settings.fyStartMonth ?? 1, demoSales().products);
-    return [{ fy: b.fy, name: b.name, status: "approved", lines: b.lines, products: b.products }];
-  }, [budgetsIn, c.source, c.accounts, c.months, c.settings.fyStartMonth]);
+    return [demoCompareBudget(c.months, c.settings.fyStartMonth ?? 1)];
+  }, [budgetsIn, c.source, c.months, c.settings.fyStartMonth]);
   // The budget of the financial year the selected period falls in (none: the Budget comparison is not offered).
   const a = useAnalysis();
   const selEnd = a?.view.sel.end;

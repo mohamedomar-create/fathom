@@ -17,6 +17,6 @@ export default async function Page({ params, searchParams }: { params: Promise<{
   ]);
   // Cost-of-sales accounts in the expenses that may hold only stock cost-of-goods postings.
   const cos = [...new Set(expenses.data.accounts.filter((r) => r.c?.startsWith("cos_")).map((r) => r.t))];
-  const stockCogs = cos.length ? await loadStockCogsAccounts(supabase, id, cos) : [];
-  return <BudgetPage versions={set.versions} current={set.current} salesProducts={sales.data.products} setup={setup} salesCustomers={sales.data.customers} expenseAccounts={expenses.data.accounts} stockCogs={stockCogs} fyStart={company.data?.fy_start_month ?? 1} />;
+  const cogs = cos.length ? await loadStockCogsAccounts(supabase, id, cos) : { stock: [], mixed: [] };
+  return <BudgetPage versions={set.versions} current={set.current} salesProducts={sales.data.products} setup={setup} salesCustomers={sales.data.customers} expenseAccounts={expenses.data.accounts} stockCogs={cogs.stock} mixedCogs={cogs.mixed} fyStart={company.data?.fy_start_month ?? 1} />;
 }
