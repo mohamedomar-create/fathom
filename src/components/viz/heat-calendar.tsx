@@ -10,7 +10,7 @@ const NEG = ["#fde7e5", "#f7b9b3", "#ec8178", "#d9343a"] as const;
  * Seasonality at a glance: one row per year, one cell per calendar month, darker = more. Values below zero (a loss month)
  * take a red scale of their own. Each cell carries its figure as text on hover and for screen readers.
  */
-export function HeatCalendar({ periods, values, fmt, testId }: { periods: string[]; values: (number | null)[]; fmt: (v: number) => string; testId?: string }) {
+export function HeatCalendar({ periods, values, fmt, testId, label }: { periods: string[]; values: (number | null)[]; fmt: (v: number) => string; testId?: string; label?: string }) {
   const T = useT();
   const g = heatGrid(periods, values);
   if (!g.years.length) return <p className="text-sm text-mute">{T.d.viz.noData}</p>;
@@ -23,7 +23,7 @@ export function HeatCalendar({ periods, values, fmt, testId }: { periods: string
     return { bg: SEQ[i], fg: seqInk(i) };
   };
   return (
-    <div dir="ltr" className="overflow-x-auto" data-testid={testId}>
+    <div dir="ltr" tabIndex={0} role="region" aria-label={label ?? T.d.viz.fin.seasonality} className="overflow-x-auto" data-testid={testId}>
       <table className="w-full border-separate border-spacing-[3px] text-[10.5px]">
         <thead>
           <tr><th className="w-10" />{names.slice(1, 13).map((m) => <th key={m} className="px-0.5 pb-1 text-center font-normal text-mute">{T.lang === "ar" ? m : m.slice(0, 3)}</th>)}</tr>
