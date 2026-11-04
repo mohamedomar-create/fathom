@@ -38,4 +38,9 @@ describe("compact page data", () => {
     const plain = { customers: [], products: [], sources: {} };
     expect(isPacked(plain)).toBe(false);
   });
+
+  it("keeps a map that happens to use the table marker as a key, and leaves dates and other non-plain values as they are", () => {
+    const tricky = { m: { "~t": ["x", "y"], c: [1] }, d: new Date(0), list: [{ "~t": ["a"] }, { "~t": ["b"] }] };
+    expect(unpack(pack(tricky))).toEqual(tricky);
+  });
 });

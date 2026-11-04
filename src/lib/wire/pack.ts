@@ -11,9 +11,11 @@ type Col = ["s", number[]] | ["v", Prim[]];
 type Table = { [T]: string[]; c: Col[]; n: number };
 export interface Packed { [P]: 1; s: string[]; v: unknown }
 
+const O = "~o";
+/** Only plain objects are walked into; a Date, Map or class instance is passed on as it is. */
+const isPlain = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x) && Object.getPrototypeOf(x) === Object.prototype;
 const isPrim = (x: unknown): x is Prim => x === null || x === undefined || ["string", "number", "boolean"].includes(typeof x);
-const isRow = (x: unknown): x is Record<string, Prim> =>
-  !!x && typeof x === "object" && !Array.isArray(x) && Object.values(x as object).every(isPrim);
+const isRow = (x: unknown): x is Record<string, Prim> => isPlain(x) && !(T in x) && !(O in x) && Object.values(x).every(isPrim);
 
 export function pack(value: unknown): Packed {
   const dict: string[] = [];
@@ -37,7 +39,11 @@ export function pack(value: unknown): Packed {
       }
       return x.map(enc);
     }
-    if (x && typeof x === "object") return Object.fromEntries(Object.entries(x).map(([k, v]) => [k, enc(v)]));
+    if (isPlain(x)) {
+      const o = Object.fromEntries(Object.entries(x).map(([k, v]) => [k, enc(v)]));
+      // A map whose own keys look like the codec's markers is wrapped, so it is never read back as a table.
+      return T in x || O in x ? { [O]: o } : o;
+    }
     return x;
   };
   const v = enc(value);
@@ -53,8 +59,9 @@ export function unpack<T>(p: Packed | T): T {
   const dict = p.s;
   const dec = (x: unknown): unknown => {
     if (Array.isArray(x)) return x.map(dec);
-    if (x && typeof x === "object") {
-      const o = x as Record<string, unknown>;
+    if (isPlain(x)) {
+      const o = x;
+      if (isPlain(o[O]) && Object.keys(o).length === 1) return Object.fromEntries(Object.entries(o[O] as Record<string, unknown>).map(([k, v]) => [k, dec(v)]));
       if (Array.isArray(o[T])) {
         const t = o as unknown as Table;
         const keys = t[T];
