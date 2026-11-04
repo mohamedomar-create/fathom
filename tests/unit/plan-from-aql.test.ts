@@ -68,12 +68,12 @@ describe("a plan started from the company's books (Aql360 data)", () => {
   });
 
   it("with no sales lines, uses one line from revenue with unit cost from the variable cost of sales", () => {
-    const none = planFromAql({ months, sales: { customers: [], products: [], sources: {} }, accounts: [], settings, startYear: 2027 });
+    const none = planFromAql({ months, sales: { products: [] }, accounts: [], settings, startYear: 2027 });
     expect(none.lines).toEqual([expect.objectContaining({ units: 1, price: 130000, unitCost: 78000 })]);
     expect(none.expenses.map((e) => e.name)).toEqual(["Overheads"]);
   });
 
   it("with no books at all, returns an empty seed (a blank page)", () => {
-    expect(planFromAql({ months: [], sales: { customers: [], products: [], sources: {} }, accounts: [], settings, startYear: 2027 }).lines).toEqual([]);
+    expect(planFromAql({ months: [], sales: { products: [] }, accounts: [], settings, startYear: 2027 }).lines).toEqual([]);
   });
 });
