@@ -13,6 +13,7 @@ const SUSPENSE = /suspense|clearing|adjust|undistributed|difference|معلق|و�
 // Odoo's stock interim accounts legitimately hold goods received but not yet billed, or delivered but not yet invoiced.
 const INTERIM_IN = /interim.*(received|receipt|input)|goods received not (yet )?(billed|invoiced)|بضاعة (واردة|مستلمة)/i;
 const INTERIM_OUT = /interim.*(delivered|delivery|output)|goods delivered not (yet )?invoiced|بضاعة (منصرفة|مسلمة)/i;
+const OPENING = /open(ing)?\s*bal|opining|افتتاح/i;
 const fmt = (v: number) => Math.round(v).toLocaleString("en-US");
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : NaN; };
 
@@ -68,5 +69,54 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
     out.push({ id: "review", severity: "warn", period: m.period, statement: "PL", title: "No depreciation booked",
       detail: `${mlabel(m.period)} has no depreciation while the months around it do. Check that the month's depreciation entry was posted in Odoo.` });
   });
+  // 4. Customer and supplier days that can't be right: a balance tiny or huge against a month's sales or costs usually
+  // means accounts in the wrong class (receivables booked elsewhere) or sales and costs in the wrong months.
+  if (last && plMonths.length) {
+    const recent = plMonths.slice(-3);
+    const avg = (f: (m: MonthData) => number) => recent.reduce((t, m) => t + f(m), 0) / recent.length;
+    const days = (bal: number, flow: number) => (flow > 0 ? (bal / flow) * (365 / 12) : NaN);
+    const odd = (who: "Customer" | "Supplier", d: number, bal: number, cls: string) => {
+      if (!Number.isFinite(d) || bal <= 0 || (d >= 3 && d <= 365)) return;
+      const low = d < 3;
+      out.push({ id: "review", severity: "warn", period: last.period, statement: "BS", title: `${who} days of ${Math.round(d)} look too ${low ? "low" : "high"}`,
+        detail: low
+          ? `${who === "Customer" ? "Customers owe" : "The company owes suppliers"} ${fmt(bal)} at ${mlabel(last.period)}, about ${Math.round(d)} days of ${who === "Customer" ? "sales" : "costs"}. That is normal only when ${who === "Customer" ? "nearly every sale is paid on the spot" : "nearly every purchase is paid on the spot"}; otherwise check that the ${cls} accounts are classed as ${cls} in Chart of accounts.`
+          : `${who === "Customer" ? "Customers owe" : "The company owes suppliers"} ${fmt(bal)} at ${mlabel(last.period)}, about ${Math.round(d)} days of ${who === "Customer" ? "sales" : "costs"}. Check for old balances that should have been settled or written off, and for ${who === "Customer" ? "sales" : "costs"} missing from the recent months.`,
+        actual: Math.round(d) });
+    };
+    odd("Customer", days(last.bs.ar ?? 0, avg((m) => plCalc(m.pl).revenue)), last.bs.ar ?? 0, "Receivables");
+    odd("Supplier", days(Math.abs(last.bs.ap ?? 0), avg((m) => (m.pl.cos_variable ?? 0) + (m.pl.cos_fixed ?? 0))), Math.abs(last.bs.ap ?? 0), "Payables");
+  }
+
+  // 5. Stock at the books' start left on a stock interim account (goods in transit) instead of the stock account itself.
+  const first = bsMonths[0];
+  if (first) {
+    const material = Math.max(1, Math.abs(bsCalc(first.bs).ta) * 0.01);
+    for (const a of accounts) {
+      if (!a.name || !(INTERIM_IN.test(a.name) || INTERIM_OUT.test(a.name))) continue;
+      const v = a.amounts[first.period] ?? 0;
+      if (Math.abs(v) <= material) continue;
+      out.push({ id: "review", severity: "warn", period: first.period, statement: "BS", title: "Opening stock on an interim account",
+        detail: `"${a.name}" holds ${fmt(Math.abs(v))} at the books' start (${mlabel(first.period)}). Stock brought in by the opening entry belongs on the stock account; on an interim account it shows as goods not yet billed or invoiced, and the stock checks won't agree. Move it in Odoo with one journal entry.`, actual: v });
+    }
+  }
+
+  // 6. The opening-balance account should only move on the opening entry: later postings to it are corrections
+  // that bypass the right accounts.
+  if (first) {
+    for (const a of accounts) {
+      if (!a.name || isPL(a.cls) || !OPENING.test(a.name)) continue;
+      const moves: string[] = [];
+      let prev = a.amounts[first.period] ?? 0, lastMove = "";
+      for (const m of bsMonths.slice(1)) {
+        const v = a.amounts[m.period] ?? 0, d = v - prev;
+        if (Math.abs(d) > 1) { moves.push(`${mlabel(m.period)}: ${d > 0 ? "+" : "-"}${fmt(Math.abs(d))}`); lastMove = m.period; }
+        prev = v;
+      }
+      if (!moves.length) continue;
+      out.push({ id: "review", severity: "warn", period: lastMove, statement: "BS", title: "Entries in the opening-balance account after the start",
+        detail: `"${a.name}" changed after the books' start (${moves.join("; ")}). The opening-balance account should move only on the opening entry; ask what each entry corrects and post it to the right account.` });
+    }
+  }
   return out;
 }
