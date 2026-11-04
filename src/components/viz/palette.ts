@@ -16,3 +16,18 @@ export const SEQ = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184
 export const seqInk = (i: number) => (i >= 4 ? "#ffffff" : "#0b0b0b");
 /** Last year / the comparison line: a quiet grey that never competes with the series. */
 export const GHOST = "#b8bfbf";
+/**
+ * Parts that sit side by side (mix tiles, stacked columns, ageing buckets): `n` evenly spaced steps of the one blue ramp,
+ * darkest first, so neighbouring parts read as one family instead of a row of unrelated hues. Names and amounts beside
+ * each part carry its identity; the shade only orders them.
+ */
+export function ramp(n: number): string[] {
+  const top = SEQ.length - 1;
+  const k = Math.max(1, Math.min(n, SEQ.length));
+  // Up to 6 parts skip the near-white step, so the lightest part still shows on a white card.
+  const low = k < SEQ.length ? 1 : 0;
+  const out = Array.from({ length: k }, (_, i) => SEQ[k === 1 ? top : Math.round(top - (i * (top - low)) / (k - 1))]);
+  return n > SEQ.length ? [...out, ...Array.from({ length: n - SEQ.length }, () => SEQ[0])] : out;
+}
+/** Label ink on a ramp step: white on the dark steps, near-black on the light ones (each pair at least 4.5:1). */
+export const rampInk = (c: string) => seqInk(SEQ.indexOf(c as (typeof SEQ)[number]));

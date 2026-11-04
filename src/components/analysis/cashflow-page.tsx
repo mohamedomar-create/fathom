@@ -13,7 +13,7 @@ import { useT } from "@/lib/i18n/use-t";
 import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
 import { CardGrid, ChartCard } from "@/components/viz/chart-card";
 import { Bridge } from "@/components/viz/bridge";
-import { SERIES, TONE } from "@/components/viz/palette";
+import { ramp, SERIES, TONE } from "@/components/viz/palette";
 
 export function CashflowPage() {
   const c = useCompany();
@@ -95,9 +95,9 @@ export function CashflowPage() {
             <ChartCard title={v.byActivity} wide testId="card-cash-activity"
               table={{ head: [t.month, t.operating, t.investing, t.financing], rows: rows.map((r) => [T.ml(r.period), money(r.cfo, cur), money(r.cfi, cur), money(r.cff, cur)]) }}>
               <ColumnChart testId="cash-columns" cur={cur} labels={labels} series={[
-                { name: t.operating, values: rows.map((r) => r.cfo), color: SERIES[0] },
-                { name: t.investing, values: rows.map((r) => r.cfi), color: SERIES[1] },
-                { name: t.financing, values: rows.map((r) => r.cff), color: SERIES[2] },
+                { name: t.operating, values: rows.map((r) => r.cfo), color: ramp(3)[0] },
+                { name: t.investing, values: rows.map((r) => r.cfi), color: ramp(3)[1] },
+                { name: t.financing, values: rows.map((r) => r.cff), color: ramp(3)[2] },
               ]} />
             </ChartCard>
             <ChartCard title={v.cashLine} testId="card-cash-line">

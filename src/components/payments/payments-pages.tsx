@@ -20,7 +20,7 @@ import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
 import { CardGrid, ChartCard } from "@/components/viz/chart-card";
 import { AgeingStack } from "@/components/viz/ageing-stack";
 import { ColumnChart } from "@/components/charts/column-chart";
-import { SERIES } from "@/components/viz/palette";
+import { ramp } from "@/components/viz/palette";
 
 /** The Payments analysis for the period chosen (payments months, else the ageing's month). */
 function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPayments: boolean } | null {
@@ -227,8 +227,8 @@ export function PaymentsOverview() {
           <ChartCard title={t.byMonth} wide testId="card-pay-months"
             table={{ head: [t.month, t.received, t.paid], rows: a.flows.byMonth.map((m) => [monthIn(m.p, T), money(m.received, cur), money(m.paid, cur)]) }}>
             <ColumnChart cur={cur} height={240} labels={a.flows.byMonth.map((m) => (/^\d{4}-\d{2}$/.test(m.p) ? T.ms(m.p) : m.p))} series={[
-              { name: t.received, values: a.flows.byMonth.map((m) => m.received), color: SERIES[0] },
-              { name: t.paid, values: a.flows.byMonth.map((m) => m.paid), color: SERIES[1] },
+              { name: t.received, values: a.flows.byMonth.map((m) => m.received), color: ramp(2)[0] },
+              { name: t.paid, values: a.flows.byMonth.map((m) => m.paid), color: ramp(2)[1] },
             ]} />
           </ChartCard>
         )}
@@ -332,8 +332,8 @@ export function PaymentsFlows() {
       {f.byMonth.length > 1 && (
         <div className="mb-8"><ChartCard title={t.byMonth} testId="card-flows-months">
           <ColumnChart cur={cur} height={240} labels={f.byMonth.map((m) => (/^\d{4}-\d{2}$/.test(m.p) ? T.ms(m.p) : m.p))} series={[
-            { name: t.received, values: f.byMonth.map((m) => m.received), color: SERIES[0] },
-            { name: t.paid, values: f.byMonth.map((m) => m.paid), color: SERIES[1] },
+            { name: t.received, values: f.byMonth.map((m) => m.received), color: ramp(2)[0] },
+            { name: t.paid, values: f.byMonth.map((m) => m.paid), color: ramp(2)[1] },
           ]} />
         </ChartCard></div>
       )}

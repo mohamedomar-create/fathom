@@ -17,7 +17,7 @@ import { baseOf, BudgetSheet, sumOf } from "./budget-sheet";
 import { Amt, BudgetCards, ChartCard, SplitBar, useCompact } from "./budget-visuals";
 import { BarList, type BarItem } from "@/components/charts/bar-list";
 import { ColumnChart } from "@/components/charts/column-chart";
-import { C } from "@/components/charts/util";
+import { ramp } from "@/components/viz/palette";
 import { pct } from "@/lib/engine/format";
 import { cn } from "@/lib/cn";
 import { useT } from "@/lib/i18n/use-t";
@@ -45,7 +45,7 @@ const ranked = (items: { key: string; label: string; value: number }[], total: n
   items.slice().sort((a, b) => (a.key === "others" ? 1 : b.key === "others" ? -1 : b.value - a.value))
     .map((x) => { const share = total ? (x.value / total) * 100 : 0; return { ...x, share, sub: pct(share, 1) }; });
 /** A fixed colour per expense group (by the group, never its rank): the chart tokens, then the target purple. */
-const GROUP_COLOR: Record<string, string> = { cos: C.s[0], fixed: C.s[1], variable: C.s[2], depreciation: C.s[3], finance: C.s[4], other: "#9a6bb0" };
+const GROUP_COLOR: Record<string, string> = Object.fromEntries(["cos", "fixed", "variable", "depreciation", "finance", "other"].map((k, i) => [k, ramp(6)[i]]));
 const GROUP_OF_CLS = new Map(EXPENSE_GROUPS.flatMap((g) => g.classes.map((c) => [c as string, g] as const)));
 
 export interface BuilderViewProps {
@@ -211,7 +211,7 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
       {tab === "streams" && <>
         <ChartCard testId="bchart-streams" title={b.charts.streams} summary={`${b.sales} ${fmt(sumOf(streams.sales))}, ${b.rental} ${fmt(sumOf(streams.rental))}`}>
           <ColumnChart stacked labels={months.map(ms)} cur={c.settings.currency} height={240} ariaLabel={b.charts.streams}
-            series={[{ name: b.sales, values: streams.sales, color: C.s[0] }, { name: b.rental, values: streams.rental, color: C.s[1] }]} />
+            series={[{ name: b.sales, values: streams.sales, color: ramp(2)[0] }, { name: b.rental, values: streams.rental, color: ramp(2)[1] }]} />
         </ChartCard>
         <ViewTable testId="bstreams" note={b.streamsNote} months={months} rows={[{ id: "sales", name: b.sales, months: streams.sales }, { id: "rental", name: b.rental, months: streams.rental }]} total={revenueMonths} />
       </>}

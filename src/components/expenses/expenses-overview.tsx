@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/shell/page-header";
 import { LineChart } from "@/components/charts/line-chart";
 import { BarList } from "@/components/charts/bar-list";
 import { C } from "@/components/charts/util";
+import { ramp } from "@/components/viz/palette";
 import { ColumnChart } from "@/components/charts/column-chart";
 import { compact } from "@/lib/engine/format";
 import { Cockpit, HeroKpi } from "@/components/viz/kpi";
@@ -76,7 +77,7 @@ export function ExpensesOverview() {
             table={{ head: [V.month, ...groups.map(gl)], rows: last12.map((x) => [T.ml(x.period), ...groups.map((g) => money(x.groups[g] ?? 0, cur))]) }}>
             <ColumnChart stacked cur={cur} height={260} labels={last12.map((x) => T.ms(x.period))}
               series={[
-                ...groups.map((g, i) => ({ name: gl(g), values: last12.map((x) => (x.total === null ? null : x.groups[g] ?? 0)), color: C.s[i % C.s.length] })),
+                ...groups.map((g, i) => ({ name: gl(g), values: last12.map((x) => (x.total === null ? null : x.groups[g] ?? 0)), color: ramp(groups.length)[i] })),
                 ...(positiveGroups > groups.length ? [{ name: V.other(positiveGroups - groups.length), values: last12.map((x) => (x.total === null ? null : Math.max(0, x.total - groups.reduce((t, g) => t + (x.groups[g] ?? 0), 0)))), color: C.mute }] : []),
               ]} />
           </ChartCard>

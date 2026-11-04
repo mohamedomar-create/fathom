@@ -1,10 +1,9 @@
 "use client";
 import { money, pct } from "@/lib/engine/format";
-import { STATUS } from "./palette";
+import { ramp } from "./palette";
 
-/** Bucket colours from on-time to oldest: the reserved status ramp, always beside the bucket's name and amount. */
-const RAMP = [STATUS.good, "#9ccc3c", STATUS.warning, STATUS.serious, STATUS.critical, "#9b2226"];
-const colourAt = (i: number, n: number) => RAMP[n <= 1 ? 0 : Math.round((i / (n - 1)) * (RAMP.length - 1))];
+/** Bucket colours from on-time to oldest: one blue, lightest to darkest, always beside the bucket's name and amount. */
+const colourAt = (i: number, n: number) => ramp(n)[n - 1 - i];
 
 /**
  * One stacked bar of what is owed by age (oldest on the right), then each bucket as a row: swatch, name, amount and share.
