@@ -11,6 +11,7 @@ import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
+import { doc } from "./areas/doc";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
 import { bank } from "./areas/bank";
@@ -49,7 +50,7 @@ export const ar: Dict = {
   },
   navGroups: { overview: "نظرة عامة", performance: "الأداء", cash: "النقدية والقوائم", plan: "التخطيط" },
   bottom: { home: "الرئيسية", pages: "الصفحات", more: "المزيد", sectionPages: "صفحات هذا القسم", everything: "كل الأقسام" },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط", doctor: "الطبيب" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -62,6 +63,7 @@ export const ar: Dict = {
     "analysis/budget": ["الموازنة", "الموازنة"],
     planning: ["خطة العمل", "خطة العمل"],
     "planning/budget": ["الموازنة", "الموازنة"],
+    doctor: ["طبيب النظام", "طبيب النظام الذكي"],
     "analysis/forecast": ["التوقعات", "التوقعات"],
     "analysis/financials": ["القوائم", "القوائم المالية"],
     "analysis/real-profit": ["الربح الحقيقي", "الربح الحقيقي"],
@@ -140,6 +142,7 @@ export const ar: Dict = {
   cash: cash.ar,
   hl: hl.ar,
   bud: bud.ar,
+  doc: doc.ar,
   bp: bp.ar,
   viz: viz.ar,
   bank: bank.ar,

@@ -19,7 +19,7 @@ export async function aiBudgetOk(supabase: SupabaseClient, orgId: string): Promi
 }
 
 /** Records what one AI call used (after the reply), so the allowance counts real spend. */
-export async function recordAiUsage(supabase: SupabaseClient, orgId: string, kind: "commentary" | "read_page", usage: Usage | undefined | null) {
+export async function recordAiUsage(supabase: SupabaseClient, orgId: string, kind: "commentary" | "read_page" | "doctor" | "ask", usage: Usage | undefined | null) {
   if (!usage) return;
   const { error } = await supabase.rpc("record_ai_usage", { p_org: orgId, p_kind: kind, p_input: usage.input_tokens, p_output: usage.output_tokens, p_micros: aiCostMicros(usage) });
   if (error) console.error("ai usage not recorded", { code: error.code, error: error.message });

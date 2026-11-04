@@ -17,6 +17,8 @@ export interface Finding {
   /** The page where it is looked into or fixed. */
   href: string;
   accepted?: Decision;
+  /** An expense flag's parts, so the page can word it in its own language (title and detail are the English). */
+  flag?: { k: "double" | "large"; supplier: string; doc: string; doc2?: string; type: string };
 }
 
 /** Customer days above this are counted as cash tied up. */
@@ -62,6 +64,7 @@ export function doctorFindings({ checks, expenseFlags = [], months, basePath, de
       title: double ? `Possible double payment to ${x.s}` : `Unusually large bill from ${x.s}`,
       detail: double ? `${x.doc} and ${x.doc2 ?? "another bill"} for ${x.t} carry the same amount close together. Check that it was not paid twice.` : `${x.doc} for ${x.t} is far above the usual amount for this supplier.`,
       period: x.p, impact, basis: double ? "possible double payment" : "unusual payment", href: `${basePath}/expenses`,
+      flag: { k: x.k, supplier: x.s, doc: x.doc, doc2: x.doc2, type: x.t },
     });
   }
   const accepted = new Map(decisions.map((d) => [d.key, d]));

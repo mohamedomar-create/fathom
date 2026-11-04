@@ -22,6 +22,15 @@ describe("Financials in four groups", () => {
     expect(sectorOf("planning").key).toBe("planning");
     expect(ar.sectors.planning).toMatch(/[؀-ۿ]/);
   });
+  it("the AI system doctor is its own top tab, last, with English and Arabic names", () => {
+    expect(SECTORS.at(-1)!.key).toBe("doctor");
+    expect(SECTORS.at(-1)!.items.map((i) => i.href)).toEqual(["doctor"]);
+    expect(sectorOf("doctor").key).toBe("doctor");
+    expect(bottomTab("/doctor")).toBe("pages");
+    expect(en.sectors.doctor).toBeTruthy();
+    expect(ar.sectors.doctor).toMatch(/[؀-ۿ]/);
+    expect(ar.nav.doctor[1]).toMatch(/[؀-ۿ]/);
+  });
   it("other sectors are one group with no heading", () => {
     const g = navGroups(SECTORS.find((s) => s.key === "sales")!);
     expect(g).toHaveLength(1);
