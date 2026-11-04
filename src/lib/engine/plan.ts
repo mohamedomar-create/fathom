@@ -545,6 +545,8 @@ export function sensitivity(p: BusinessPlan, m: Metric, share = 0.1) {
 
 interface AqlMonth { period: string; pl: Partial<Record<string, number>>; bs: Partial<Record<string, number>>; has?: { pl: boolean; bs: boolean } }
 interface AqlProduct { p: string; r: string; a: number; k: number | null; ka?: number | null; q: number | null }
+/** Which months of the books a seed was built from; fewer than 12 were scaled up to a year. */
+export interface SeedBasis { year: string; months: number; first: string; last: string }
 interface AqlAccount { name: string; cls: string; amounts: Record<string, number> }
 
 /**
@@ -556,7 +558,7 @@ interface AqlAccount { name: string; cls: string; amounts: Record<string, number
 export function planFromAql(o: {
   months: AqlMonth[]; sales: { products: AqlProduct[] }; accounts: AqlAccount[];
   settings: { taxRate: number; vatRate?: number }; startYear: number; labels?: PlanLabels;
-}): Pick<BusinessPlan, 'opening' | 'lines' | 'staff' | 'expenses' | 'loans' | 'season' | 'receivableDays' | 'payableDays' | 'stockDays' | 'taxRate'> {
+}): Pick<BusinessPlan, 'opening' | 'lines' | 'staff' | 'expenses' | 'loans' | 'season' | 'receivableDays' | 'payableDays' | 'stockDays' | 'taxRate'> & { basis: SeedBasis | null } {
   const lb = o.labels ?? {}
   const pl = (m: AqlMonth) => !m.has || m.has.pl
   const bsOk = (m: AqlMonth) => !m.has || m.has.bs
@@ -565,7 +567,7 @@ export function planFromAql(o: {
   if (!withPL.some((m) => m.period.startsWith(base)) && withPL.length) base = withPL[withPL.length - 1].period.slice(0, 4)
   const ms = withPL.filter((m) => m.period.startsWith(base))
   const taxRate = round2(o.settings.taxRate * 100)
-  if (!ms.length) return { opening: blank(), lines: [], staff: [], expenses: [], loans: [], season: Array(12).fill(1), receivableDays: 30, payableDays: 30, stockDays: 60, taxRate }
+  if (!ms.length) return { opening: blank(), lines: [], staff: [], expenses: [], loans: [], season: Array(12).fill(1), receivableDays: 30, payableDays: 30, stockDays: 60, taxRate, basis: null }
   const k = 12 / ms.length
   const periods = new Set(ms.map((m) => m.period))
   const sumPL = (key: string) => ms.reduce((s, m) => s + (m.pl[key] ?? 0), 0) * k
@@ -581,18 +583,24 @@ export function planFromAql(o: {
 
   // Sales per product: lines with quantities; what has none becomes one Other sales line.
   // Only the months the books hold, scaled by the same months; cost per unit from the sales whose cost is known (ka).
-  const by = new Map<string, { a: number; q: number; k: number; ka: number }>()
+  // Credit notes and returns net against their product: a return takes its units and amount off, a price-only credit
+  // note (no quantity) lowers the price. Cost per unit comes from the price before such credits (a discount isn't cheaper stock).
+  const by = new Map<string, { a: number; q: number; qa: number; k: number; ka: number }>()
   for (const r of o.sales.products) {
-    if (!periods.has(r.p) || !r.q || r.q <= 0) continue
-    const x = by.get(r.r) ?? { a: 0, q: 0, k: 0, ka: 0 }
-    x.a += r.a; x.q += r.q
+    if (!periods.has(r.p) || !r.a) continue
+    const counted = r.q !== null && r.q !== 0
+    if (!counted && r.a > 0) continue
+    const x = by.get(r.r) ?? { a: 0, q: 0, qa: 0, k: 0, ka: 0 }
+    x.a += r.a
+    if (counted) { x.q += r.q!; x.qa += r.a }
     const known = r.ka ?? (r.k !== null ? r.a : 0)
-    if (r.k !== null && known > 0) { x.k += r.k; x.ka += known }
+    if (r.k !== null && known !== 0) { x.k += r.k; x.ka += known }
     by.set(r.r, x)
   }
-  const lines: PlanLine[] = [...by.entries()].filter(([, x]) => x.a > 0).sort((p, q) => q[1].a - p[1].a).map(([name, x]) => {
+  const lines: PlanLine[] = [...by.entries()].filter(([, x]) => x.a > 0 && x.q > 0).sort((p, q) => q[1].a - p[1].a).map(([name, x]) => {
     const price = round2(x.a / x.q)
-    return { id: uid('pl'), name, units: Math.round(x.q * k), price, unitCost: round2(price * (x.ka > 0 ? x.k / x.ka : costRatio)), growthUnits: 10, growthPrice: 10 }
+    const ratio = x.ka > 0 ? x.k / x.ka : costRatio
+    return { id: uid('pl'), name, units: Math.round(x.q * k), price, unitCost: round2((x.qa / x.q) * ratio), growthUnits: 10, growthPrice: 10 }
   })
   // The lines add up to the books' revenue: what the product lines don't explain is one Other sales line.
   const explained = lines.reduce((s, l) => s + l.units * l.price, 0)
@@ -618,6 +626,7 @@ export function planFromAql(o: {
     season: season.some((v) => v > 0) ? season : Array(12).fill(1),
     receivableDays: days(opening.receivables, revenue, 30), payableDays: days(opening.payables, cogs + overheads, 30), stockDays: days(opening.inventory, cogs, 60),
     taxRate,
+    basis: { year: base, months: ms.length, first: ms[0].period, last: ms[ms.length - 1].period },
   }
 }
 

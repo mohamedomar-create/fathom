@@ -109,4 +109,28 @@ describe("a plan started from the company's books (Aql360 data)", () => {
     const total = sd.lines.reduce((s, l) => s + l.units * l.price, 0);
     expect(total).toBeCloseTo(120000, 0);
   });
+
+  it("credit notes and returns reduce their product's units and sales, so the lines still add up to revenue", () => {
+    const sd = planFromAql({ months, sales: { products: [
+      { p: "2026-02", r: "Pumps", a: 10000, k: 6000, ka: 10000, q: 100 },
+      { p: "2026-05", r: "Pumps", a: -1000, k: -600, ka: -1000, q: -10 },
+      { p: "2026-07", r: "Pumps", a: -900, k: null, ka: null, q: null },
+    ] }, accounts: [], settings, startYear: 2027 });
+    expect(sd.lines[0]).toMatchObject({ name: "Pumps", units: 90, price: 90, unitCost: 60 });
+    expect(sd.lines.reduce((t, l) => t + l.units * l.price, 0)).toBeCloseTo(130000, 0);
+  });
+
+  it("a product returned in full gives no line (nothing left to sell)", () => {
+    const sd = planFromAql({ months, sales: { products: [
+      { p: "2026-02", r: "Returned", a: 500, k: 300, ka: 500, q: 5 },
+      { p: "2026-03", r: "Returned", a: -500, k: -300, ka: -500, q: -5 },
+    ] }, accounts: [], settings, startYear: 2027 });
+    expect(sd.lines.map((l) => l.name)).not.toContain("Returned");
+  });
+
+  it("says which months it was built from, so a part year scaled up to twelve months is never silent", () => {
+    expect(planFromAql({ months, sales, accounts, settings, startYear: 2027 }).basis).toEqual({ year: "2026", months: 12, first: "2026-01", last: "2026-12" });
+    expect(planFromAql({ months: months.slice(0, 1), sales, accounts, settings, startYear: 2027 }).basis).toEqual({ year: "2026", months: 1, first: "2026-01", last: "2026-01" });
+    expect(planFromAql({ months: [], sales: { products: [] }, accounts: [], settings, startYear: 2027 }).basis).toBeNull();
+  });
 });

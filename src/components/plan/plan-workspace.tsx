@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { BriefcaseBusiness, Check, Copy, FilePlus2, FileSpreadsheet, FileText, Landmark, LayoutDashboard, SlidersHorizontal, Trash2, TrendingUp, Wallet } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { byYear, cleanPlan, planChecks, projectMonths, shortenPlan, type BusinessPlan, type PlanLabels, type ScenarioName } from "@/lib/engine/plan";
+import { byYear, cleanPlan, planChecks, projectMonths, shortenPlan, type BusinessPlan, type PlanLabels, type ScenarioName, type SeedBasis } from "@/lib/engine/plan";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { CostsTab, FundingTab, SalesTab, type SetPlan } from "./plan-inputs";
 import { Overview, ScenariosTab, StatementsTab } from "./plan-views";
@@ -40,10 +40,14 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
   // The edit a save failed on: not retried by itself (no loop); the next change or leaving the page tries again.
   const failedRef = useRef<Record<string, string>>({});
   const inflight = useRef<Set<string>>(new Set());
+  // Plans being deleted (or deleted): no save goes out for them, and a save already on its way is not reported.
+  const gone = useRef<Set<string>>(new Set());
   const version = useRef<Record<string, string>>(Object.fromEntries(initial.map((x) => [x.id, x.updatedAt])));
   const [state, setState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  // Shown after a plan is started from part of a year's books: those months were scaled up to twelve.
+  const [seedNote, setSeedNote] = useState("");
   const [sc, setSc] = useState<ScenarioName>("base");
   const [opened, setOpened] = useState<BusinessPlan | null>(null);
   if (saved && opened?.id !== saved.id) setOpened(saved);
@@ -59,12 +63,13 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
       if (readOnly) return;
       for (const [id, d] of Object.entries(drafts)) {
         const json = JSON.stringify(d);
-        if (json === sentRef.current[id] || json === failedRef.current[id] || inflight.current.has(id)) continue;
+        if (gone.current.has(id) || json === sentRef.current[id] || json === failedRef.current[id] || inflight.current.has(id)) continue;
         sentRef.current[id] = json;
         inflight.current.add(id);
         setState("saving");
         void store.save(id, d, version.current[id] ?? null).then((r) => {
           inflight.current.delete(id);
+          if (gone.current.has(id)) return;
           if (r.ok) {
             version.current[id] = r.data;
             setState("saved"); setError("");
@@ -73,7 +78,9 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
           } else { delete sentRef.current[id]; failedRef.current[id] = json; setState("failed"); setError(r.error); }
         }, (e: unknown) => {
           // A save that couldn't reach the server (offline, a deploy in between): keep the edit and say so.
-          inflight.current.delete(id); delete sentRef.current[id]; failedRef.current[id] = json;
+          inflight.current.delete(id);
+          if (gone.current.has(id)) return;
+          delete sentRef.current[id]; failedRef.current[id] = json;
           setState("failed"); setError(e instanceof Error && e.message ? e.message : t("Check your connection and try again."));
         });
       }
@@ -110,9 +117,11 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
 
   const create = async (o: { name?: string; startYear: number; years: number; fromBooks: boolean; copyOf?: BusinessPlan }) => {
     const labels: PlanLabels = { loans: t("Existing loans"), other: t("Other sales"), overheads: t("Overheads"), lang };
-    const base = o.copyOf ? { ...o.copyOf, name: `${o.copyOf.name} (${t("copy")})` } : { name: o.name || t("Business plan {from}–{to}", { from: o.startYear, to: o.startYear + o.years - 1 }), startYear: o.startYear, years: o.years, ...(o.fromBooks ? seed(o.startYear, labels) ?? {} : {}) };
+    const { basis, ...seeded } = (!o.copyOf && o.fromBooks ? seed(o.startYear, labels) ?? {} : {}) as Record<string, unknown> & { basis?: SeedBasis | null };
+    const base = o.copyOf ? { ...o.copyOf, name: `${o.copyOf.name} (${t("copy")})` } : { name: o.name || t("Business plan {from}–{to}", { from: o.startYear, to: o.startYear + o.years - 1 }), startYear: o.startYear, years: o.years, ...seeded };
     const r = await store.create(base);
     if (!r.ok) { setError(r.error); setState("failed"); return; }
+    setSeedNote(basis && basis.months < 12 ? t("Started from {n} months of {year} ({from} to {to}), scaled up to a full year. Check the sales and costs before you rely on it.", { n: basis.months, year: basis.year, from: basis.first, to: basis.last }) : "");
     version.current[r.data.id] = r.data.updatedAt;
     setList((l) => [...l, r.data]); setStarting(false); setError(""); setState("idle");
     go({ plan: r.data.id, tab: "overview" });
@@ -154,7 +163,7 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
               <button type="button" onClick={() => create({ startYear: p.startYear, years: p.years, fromBooks: false, copyOf: p })} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2.5 py-1.5 text-[13px] hover:border-brand"><Copy className="h-4 w-4" />{t("Make a copy")}</button>
               <ConfirmDialog title={t("Delete this business plan?")} confirmLabel={t("Delete")} testId="plan-delete"
                 trigger={<button type="button" className="inline-flex items-center gap-1 rounded border border-line bg-white px-2.5 py-1.5 text-[13px] text-red hover:border-red"><Trash2 className="h-4 w-4" />{t("Delete")}</button>}
-                onConfirm={async () => { const r = await store.remove(p.id); if (!r.ok) return r.error; setDrafts(({ [p.id]: _, ...rest }) => { void _; return rest; }); setState("idle"); setError(""); setList((l) => l.filter((x) => x.id !== p.id)); const q = new URLSearchParams(params.toString()); q.delete("plan"); router.replace(`${path}?${q.toString()}`); }}>
+                onConfirm={async () => { const id = p.id; gone.current.add(id); const r = await store.remove(id); if (!r.ok) { gone.current.delete(id); setTimeout(() => flush.current(), 0); return r.error; } delete sentRef.current[id]; delete failedRef.current[id]; setDrafts(({ [p.id]: _, ...rest }) => { void _; return rest; }); setState("idle"); setError(""); setList((l) => l.filter((x) => x.id !== p.id)); const q = new URLSearchParams(params.toString()); q.delete("plan"); router.replace(`${path}?${q.toString()}`); }}>
                 <p className="text-sm text-mute">{t("“{name}” and everything in it are removed. This can’t be undone.", { name: p.name })}</p>
               </ConfirmDialog>
             </>}
@@ -162,6 +171,12 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
         </div>
         {note && <div className="mt-2 px-1 text-[12.5px] text-mute">{note}</div>}
       </header>
+      {seedNote && (
+        <div role="status" className="no-print mb-4 flex items-start gap-3 rounded border border-amber/40 bg-amber/10 px-3 py-2 text-sm" data-testid="plan-seed-note">
+          <p className="flex-1">{seedNote}</p>
+          <button type="button" onClick={() => setSeedNote("")} className="shrink-0 text-ink-2 underline">{t("Dismiss")}</button>
+        </div>
+      )}
       <nav aria-label={t("Plan sections")} className="no-print mb-4 overflow-x-auto">
         <ol className="flex min-w-max gap-1 rounded-xl border border-line bg-white p-1">
           {TABS.map((x, i) => (

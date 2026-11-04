@@ -279,6 +279,8 @@ const s = {
   "IRR: no outlay to recover · at {rate}": "IRR: no outlay to recover · at {rate}",
   "Table": "Table",
   "Check your connection and try again.": "Check your connection and try again.",
+  "Started from {n} months of {year} ({from} to {to}), scaled up to a full year. Check the sales and costs before you rely on it.": "Started from {n} months of {year} ({from} to {to}), scaled up to a full year. Check the sales and costs before you rely on it.",
+  "Dismiss": "Dismiss",
 };
 
 export const bp = area(
@@ -561,5 +563,7 @@ export const bp = area(
     "IRR: no outlay to recover · at {rate}": "معدل العائد الداخلي: لا يوجد إنفاق يُسترد · عند {rate}",
     "Table": "جدول",
     "Check your connection and try again.": "تحقق من الاتصال وحاول مرة أخرى.",
+    "Started from {n} months of {year} ({from} to {to}), scaled up to a full year. Check the sales and costs before you rely on it.": "بُنيت الخطة من {n} شهر من {year} (من {from} إلى {to}) وتم تحويلها إلى سنة كاملة. راجع المبيعات والتكاليف قبل الاعتماد عليها.",
+    "Dismiss": "إغلاق",
   } },
 );

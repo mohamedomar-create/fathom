@@ -16,6 +16,8 @@ test("a business plan from the books: created, edited, saved by itself, still th
   await page.getByTestId("plan-create").click();
   await expect(page.getByTestId("plan-workspace")).toBeVisible({ timeout: 20_000 });
   expect(sql(`select count(*) from public.business_plans where company_id = '${id}'`)).toBe("1");
+  // The books hold only part of the base year: the plan says it scaled them up to a year.
+  await expect(page.getByTestId("plan-seed-note")).toContainText("scaled up to a full year");
 
   // An edit saves itself about a second later.
   await page.getByTestId("plan-name").fill("Bank plan 2027");
@@ -51,5 +53,32 @@ test("a business plan from the books: created, edited, saved by itself, still th
   await page.getByTestId("plan-workspace").getByRole("button", { name: "Delete", exact: true }).click();
   await page.getByTestId("plan-delete").getByRole("button", { name: "Delete", exact: true }).click();
   await expect(page.getByTestId("plan-start")).toBeVisible({ timeout: 15_000 });
+  expect(sql(`select count(*) from public.business_plans where company_id = '${id}'`)).toBe("0");
+});
+
+test("deleting a plan while its last edit is still saving says nothing confusing afterwards", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Plan Racer", org: "Race Org", email: newEmail("planrace") });
+  const id = await createCompany(page, "Race Co");
+  await page.goto(`/company/${id}/planning`);
+  await page.getByTestId("plan-create").click();
+  await expect(page.getByTestId("plan-workspace")).toBeVisible({ timeout: 20_000 });
+
+  // An edit, then Delete at once: the delete is held on its way to the server, so the edit's own save (a second after
+  // typing) goes out while the plan is being deleted.
+  let held = false;
+  await page.route("**/planning**", async (route) => {
+    const body = route.request().method() === "POST" ? route.request().postData() ?? "" : "";
+    if (body && !body.includes("Racing save")) { held = true; await new Promise((r) => setTimeout(r, 3000)); }
+    await route.continue();
+  });
+  await page.getByTestId("plan-name").fill("Racing save");
+  await page.getByTestId("plan-workspace").getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByTestId("plan-delete").getByRole("button", { name: "Delete", exact: true }).click();
+  await expect.poll(() => held, { timeout: 10_000 }).toBe(true);
+  await expect(page.getByTestId("plan-start")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(6000); // the held save has come back by now
+  await expect(page.getByTestId("plan-start")).toBeVisible();
+  await expect(page.getByText(/does not exist|Not saved|couldn.t be saved/i)).toHaveCount(0);
   expect(sql(`select count(*) from public.business_plans where company_id = '${id}'`)).toBe("0");
 });
