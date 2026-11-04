@@ -7,6 +7,7 @@ import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { confirmCount, parseResetPreview, type ResetPreview } from "@/lib/company/reset";
 import { removeFiles } from "@/lib/company/remove-files";
+import { companyRole } from "@/lib/company/role";
 
 const Id = z.string().uuid();
 const Scope = z.enum(["financials", "sales", "expenses", "stock", "payments", "end_users", "all"]);
@@ -33,8 +34,8 @@ export async function clearData(companyId: string, scope: string, shown: number)
   if (!user) return { ok: false, error: "Please sign in again." };
   if (s.data === "all") { const stale = await requireRecentSignIn(supabase); if (stale) return { ok: false, error: stale }; }
   // The role first, so a viewer's attempt neither runs nor uses up the editors' reset allowance (the database checks it too).
-  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
-  const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
+  const role = await companyRole(supabase, companyId);
+  const mem = role ? { role } : null;
   if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can clear data." };
   if (s.data === "all" && mem.role !== "admin") return { ok: false, error: "Only organisation admins can clear everything." };
   if (await limited(supabase, "reset", companyId)) return { ok: false, error: TOO_MANY };
@@ -59,8 +60,8 @@ export async function deleteCompanyFully(companyId: string, name: string): Promi
   const before = await previewReset(companyId);
   if (!before.ok) return before;
   if (before.preview.company !== name) return { ok: false, error: "The name typed does not match the company." };
-  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
-  const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
+  const role = await companyRole(supabase, companyId);
+  const mem = role ? { role } : null;
   if (mem?.role !== "admin") return { ok: false, error: "Only organisation admins can delete a company." };
   if (await limited(supabase, "reset", companyId)) return { ok: false, error: TOO_MANY };
   // The rows first, all or nothing, so a refused delete never leaves a company whose files are already gone; then the

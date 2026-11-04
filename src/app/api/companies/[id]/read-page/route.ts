@@ -6,6 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { BUSY, limits } from "@/lib/rate-limit";
 import { ReadError, readPage } from "@/lib/ai/read-page";
 import { MAX_PAGE_BYTES } from "@/lib/ingest/pdf-schema";
+import { companyRole } from "@/lib/company/role";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -17,10 +18,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (Number(req.headers.get("content-length") ?? 0) > MAX_PAGE_BYTES + 100_000) return NextResponse.json({ error: "This page is too large to send. Scan it at a lower resolution." }, { status: 413 });
   const { supabase, user } = await getUser();
   if (!user) return NextResponse.json({ error: "Please sign in" }, { status: 401 });
-  const { data: company } = await supabase.from("companies").select("org_id").eq("id", id).maybeSingle();
-  if (!company) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const { data: mem } = await supabase.from("memberships").select("role").eq("org_id", company.org_id).eq("user_id", user.id).maybeSingle();
-  if (!mem || mem.role === "viewer") return NextResponse.json({ error: "View-only access" }, { status: 403 });
+  const [role, { data: company }] = await Promise.all([companyRole(supabase, id), supabase.from("companies").select("org_id").eq("id", id).maybeSingle()]);
+  if (!role || !company) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (role === "viewer") return NextResponse.json({ error: "View-only access" }, { status: 403 });
 
   const form = await req.formData().catch(() => null);
   const file = form?.get("page");

@@ -80,6 +80,14 @@ RECON_DIR=<private folder> npx vitest run tests/unit/golden-reconciliation.test.
 - **Tests**: `tests/unit` (vitest), `tests/e2e` (public), `tests/e2e-auth` (signed-in).
 - **Design docs**: `docs/superpowers/specs/2026-10-15-modules-consistency-design.md` and `docs/superpowers/plans/2026-10-15-inventory-and-tieouts.md`.
 
+### Access rule for new database code (from 0057)
+- A check "may this person do X in company C" is `private.company_can(C, 'viewer'|'editor'|'admin')`, never
+  `private.is_member(private.company_org(C), ...)`: per-company roles (editor, viewer, no access) only work through
+  `company_can`. Migration 0057 rewrote every existing function and policy; a new migration that still uses the old
+  form should end with `select private.adopt_company_roles();` (it rewrites whatever uses the old form).
+- In the app, a company role comes from `companyRole()` (`src/lib/company/role.ts`) or `loadCompanyMeta`, never from
+  the `memberships` table directly.
+
 ## 5. Accounting rules as built
 
 - **Classes:** 30 standard classes (revenue, `cos_variable`, `exp_fixed`, `exp_variable`, `exp_depreciation`, `interest_expenses`, cash, ar, inventory, ap, `retained_earnings`, `other_equity`, …). A person's choice in Chart of accounts is stored in the **account map** (by code) and beats Odoo's account type and every later upload or sync.

@@ -28,6 +28,7 @@ import { stageAdd, stageBegin, stageFinish, type StageKind } from "@/lib/company
 import { getUser } from "@/lib/supabase/server";
 import { bindingOf, connect, openKey, probeVersion } from "@/lib/odoo/connect";
 import type { Json } from "@/lib/supabase/database.types";
+import { companyRole } from "@/lib/company/role";
 
 type Result<T> = { ok: true; data: T } | { ok: false; error: string };
 const fail = (e: unknown): { ok: false; error: string } => ({ ok: false, error: safeError(e, "odoo") });
@@ -49,11 +50,8 @@ const STAGE_UPDATE = "The detail sync needs the latest database update (migratio
 const missingFn = (e: { code?: string; message?: string }) => e.code === "PGRST202" || e.code === "42883" || e.code === "42703";
 
 /** The caller's role in the company's organisation (null: not a member). Checked here as well as by the database. */
-async function roleIn(supabase: Supa, userId: string, companyId: string): Promise<Role | null> {
-  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
-  if (!co) return null;
-  const { data: m } = await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", userId).maybeSingle();
-  return (m?.role as Role | undefined) ?? null;
+async function roleIn(supabase: Supa, companyId: string): Promise<Role | null> {
+  return companyRole(supabase, companyId);
 }
 
 /** Everyone who acts on the connection: signed in, a member with at least this role, Odoo not switched off. */
@@ -61,7 +59,7 @@ async function guard(companyId: string, min: Role) {
   const { supabase, user } = await getUser();
   if (!user) throw new Error("Please sign in again.");
   if (odooDisabled()) throw new Error("The Odoo connection is switched off on this server.");
-  const role = await roleIn(supabase, user.id, companyId);
+  const role = await roleIn(supabase, companyId);
   if (!atLeast(role, min)) {
     if (role) await audit(supabase, companyId, "refused", false, `${min} action refused for a ${role}`);
     throw new Error(min === "admin" ? "Only an admin of this company can change the Odoo connection." : "Only an editor or admin of this company can do that.");

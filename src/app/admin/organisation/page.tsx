@@ -1,4 +1,5 @@
 import { getUser } from "@/lib/supabase/server";
+import { adminOrgs } from "@/lib/admin/org";
 import { getDict } from "@/lib/i18n/server";
 import { DeleteOrg } from "./delete-org";
 import { OrgForm } from "./org-form";
@@ -7,7 +8,7 @@ import { AiAllowance } from "./ai-allowance";
 
 export default async function OrgPage() {
   const { supabase, user } = await getUser();
-  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
+  const m = (await adminOrgs()).current;
   // Not an admin anywhere: the layout explains; this page renders nothing (it runs alongside the layout).
   if (!m) return null;
   const [{ data: o }, { count: companies }, { count: members }, { data: gone }, { data: use }] = await Promise.all([
@@ -25,7 +26,7 @@ export default async function OrgPage() {
     <div>
       <h1 className="mb-1 text-3xl font-light">{d.orgProfile}</h1>
       <p className="mb-6 text-mute">{d.orgProfileHelp}</p>
-      <OrgForm org={o!} />
+      <OrgForm key={o!.id} org={o!} />
       <AiAllowance orgId={o!.id} usd={Number(o!.ai_monthly_usd ?? 20)} usedMicros={usedMicros} isOwner={o!.owner_id === user!.id} />
       <RecentlyDeleted items={deleted} />
       {o!.owner_id === user!.id && <DeleteOrg orgId={o!.id} name={o!.name} companies={companies ?? 0} members={members ?? 0} />}

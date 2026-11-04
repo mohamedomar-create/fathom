@@ -1,4 +1,5 @@
 "use server";
+import { MIN_PASSWORD } from "@/lib/password";
 import { revalidatePath } from "next/cache";
 import { requireRecentSignIn } from "@/lib/auth/require-recent";
 import { redirect } from "next/navigation";
@@ -46,4 +47,22 @@ export async function deleteAccount(typedEmail: string): Promise<Result> {
   console.info(JSON.stringify({ level: "info", event: "account_deleted", user: user.id }));
   await supabase.auth.signOut().catch(() => undefined); // the user no longer exists; this only clears the cookies
   redirect("/?account=deleted");
+}
+
+/**
+ * Changes the password after checking the current one (a stolen open session can't change it), then signs out every
+ * other device, so a session the person doesn't know about ends with it.
+ */
+export async function changePassword(current: string, next: string): Promise<Result> {
+  const v = z.object({ current: z.string().min(1).max(200), next: z.string().min(MIN_PASSWORD).max(200) }).safeParse({ current, next });
+  if (!v.success) return { ok: false, error: `Use at least ${MIN_PASSWORD} characters.` };
+  const { supabase, user } = await getUser();
+  if (!user?.email) return { ok: false, error: "Please sign in again." };
+  const { error: wrong } = await supabase.auth.signInWithPassword({ email: user.email, password: v.data.current });
+  if (wrong) return { ok: false, error: "The current password is not right." };
+  if (v.data.current === v.data.next) return { ok: false, error: "Choose a password different from the current one." };
+  const { error } = await supabase.auth.updateUser({ password: v.data.next });
+  if (error) return { ok: false, error: error.message };
+  await supabase.auth.signOut({ scope: "others" });
+  return { ok: true };
 }

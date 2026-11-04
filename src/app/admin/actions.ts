@@ -6,6 +6,8 @@ import { dbError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import { getUser } from "@/lib/supabase/server";
 import { orgFiles, removeFiles } from "@/lib/company/remove-files";
+import { cookies } from "next/headers";
+import { ADMIN_ORG_COOKIE, adminOrgs } from "@/lib/admin/org";
 
 type Result = { ok: boolean; error?: string };
 const Uuid = z.string().uuid();
@@ -181,3 +183,26 @@ export async function setAiAllowance(orgId: string, usd: string): Promise<Result
   return { ok: true };
 }
 
+
+/** Which organisation the admin pages manage (kept for the browser session; only one the person administers). */
+export async function chooseAdminOrg(orgId: string): Promise<Result> {
+  if (!Uuid.safeParse(orgId).success) return { ok: false, error: "That value isn't valid." };
+  const { all } = await adminOrgs();
+  if (!all.some((o) => o.org_id === orgId)) return { ok: false, error: NO_PERMISSION };
+  (await cookies()).set(ADMIN_ORG_COOKIE, orgId, { httpOnly: true, sameSite: "lax", secure: true, path: "/admin" });
+  revalidatePath("/admin", "layout");
+  return { ok: true };
+}
+
+/** An admin gives a member another role in one company (or, with null, the organisation role again). */
+export async function setCompanyRole(companyId: string, userId: string, role: "editor" | "viewer" | "none" | null): Promise<Result> {
+  const v = z.object({ companyId: Uuid, userId: Uuid, role: z.enum(["editor", "viewer", "none"]).nullable() }).safeParse({ companyId, userId, role });
+  if (!v.success) return { ok: false, error: "That value isn't valid." };
+  const { supabase, user } = await signedIn();
+  if (!user) return { ok: false, error: "Please sign in again." };
+  if (await limited(supabase, "company_role", user.id)) return { ok: false, error: TOO_MANY };
+  const { error } = await supabase.rpc("set_company_role", { p_company: v.data.companyId, p_user: v.data.userId, p_role: v.data.role });
+  if (error) return { ok: false, error: dbError(error, "setCompanyRole") };
+  revalidatePath("/admin/people");
+  return { ok: true };
+}

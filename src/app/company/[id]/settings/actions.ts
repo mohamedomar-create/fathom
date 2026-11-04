@@ -26,6 +26,7 @@ import { booksStartOf, validTimeZone } from "@/lib/company/time-zone";
 import { dbError, safeError } from "@/lib/action-error";
 import { limited, TOO_MANY } from "@/lib/rate-limit";
 import type { Json } from "@/lib/supabase/database.types";
+import { companyRole } from "@/lib/company/role";
 
 export type { AcceptedItem } from "@/lib/company/accept";
 export interface PreviewResult { timeline: TimelineCell[]; diffs: MonthDiff[]; checks: (Check & { accepted?: boolean })[]; accounts: number; hasData: boolean; overlap: Overlap[]; closedSkipped: string[] }
@@ -67,11 +68,8 @@ async function buildPlan(supabase: Awaited<ReturnType<typeof getUser>>["supabase
 }
 
 /** Whether this user is an admin of the company's organisation. */
-async function adminOf(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, userId: string): Promise<boolean> {
-  const { data: co } = await supabase.from("companies").select("org_id").eq("id", companyId).maybeSingle();
-  if (!co) return false;
-  const { data: m } = await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", userId).maybeSingle();
-  return m?.role === "admin";
+async function adminOf(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string): Promise<boolean> {
+  return (await companyRole(supabase, companyId)) === "admin";
 }
 
 function openingBasisOf(opening: Plan["opening"], checks: Check[]): OpeningBasis {
@@ -105,7 +103,7 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     const d = v.data;
     const { plan, prevAccepted, notes } = await buildPlan(supabase, d);
     // Accepted issues carry into this version only while they fail by the same amount; serious file checks need an admin.
-    const isAdmin = await adminOf(supabase, d.companyId, user.id);
+    const isAdmin = await adminOf(supabase, d.companyId);
     const { accepted, blocking, refused } = acceptChecks(plan.checks, prevAccepted, d.accept, { by: user.email ?? user.id, isAdmin }, new Date().toISOString());
     if (refused) return { ok: false, error: refused, blocking };
     if (blocking.length) return { ok: false, error: `${blocking.length} check${blocking.length > 1 ? "s" : ""} failed. Fix the mapping, or accept ${blocking.length > 1 ? "them" : "it"} with a reason.`, blocking };

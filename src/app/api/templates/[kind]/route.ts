@@ -1,11 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonCapped } from "@/lib/http/body";
+import { localLimiter } from "@/lib/local-limit";
+
+/** Blank templates need no sign-in: 60 in 10 minutes from one address on this server is plenty. */
+const templateIpOver = localLimiter(600_000, 60);
 import { buildTemplate } from "@/lib/templates/build";
 import { TEMPLATE_KINDS, type TemplateKind } from "@/lib/templates/spec";
 import { BS_KEYS, PL_KEYS } from "@/lib/engine";
 import { getLang } from "@/lib/i18n/server";
 import { getUser } from "@/lib/supabase/server";
-import { limited, TOO_MANY } from "@/lib/rate-limit";
+import { clientIp, limited, TOO_MANY } from "@/lib/rate-limit";
 import { loadAccounts } from "@/lib/company/load";
 import { naturalAccounts } from "@/lib/company/build";
 import { storedFill } from "@/lib/templates/fill";
@@ -30,6 +35,7 @@ const Q = z.object({
 
 /** The blank template for one kind of data, for the company's financial year (no data in it, so no sign-in needed). */
 export async function GET(req: Request, ctx: { params: Promise<{ kind: string }> }) {
+  if (templateIpOver(clientIp(req))) return NextResponse.json({ error: "Too many requests. Please wait a few minutes and try again." }, { status: 429 });
   const { kind } = await ctx.params;
   if (!(TEMPLATE_KINDS as string[]).includes(kind)) return NextResponse.json({ error: "Unknown template" }, { status: 404 });
   const q = Q.safeParse(Object.fromEntries(new URL(req.url).searchParams));
@@ -113,8 +119,9 @@ const Fill = z.object({
 export async function POST(req: Request, ctx: { params: Promise<{ kind: string }> }) {
   const { kind } = await ctx.params;
   if (kind !== "financials") return NextResponse.json({ error: "Only the financials template can be filled here" }, { status: 404 });
-  if (Number(req.headers.get("content-length") ?? 0) > 4_000_000) return NextResponse.json({ error: "Too large" }, { status: 413 });
-  const body = Fill.safeParse(await req.json().catch(() => null));
+  const raw = await readJsonCapped(req, 4_000_000);
+  if (!raw.ok) return NextResponse.json({ error: raw.reason === "too_large" ? "Too large" : "Invalid request" }, { status: raw.reason === "too_large" ? 413 : 400 });
+  const body = Fill.safeParse(raw.value);
   if (!body.success || (!body.data.pl && !body.data.bs)) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const d = body.data;
   const first = (d.pl?.months ?? d.bs!.months)[0];

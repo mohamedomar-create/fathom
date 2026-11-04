@@ -1,10 +1,11 @@
 import { getUser } from "@/lib/supabase/server";
+import { adminOrgs } from "@/lib/admin/org";
 import { getDict, getLang } from "@/lib/i18n/server";
 
 /** Every people change in the organisation, newest first (admins only; the database refuses others). */
 export default async function AuditPage() {
-  const { supabase, user } = await getUser();
-  const { data: m } = await supabase.from("memberships").select("org_id").eq("user_id", user!.id).eq("role", "admin").order("created_at").limit(1).maybeSingle();
+  const { supabase } = await getUser();
+  const m = (await adminOrgs()).current;
   if (!m) return null;
   const { data: rows } = await supabase.from("org_audit").select("id, actor, action, target, detail, at").eq("org_id", m.org_id).order("at", { ascending: false }).limit(200);
   const actors = [...new Set((rows ?? []).map((r) => r.actor).filter((x): x is string => !!x))];

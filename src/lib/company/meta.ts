@@ -18,14 +18,15 @@ export const loadCompanyMeta = cache(async (id: string): Promise<CompanyMeta> =>
   const { supabase, user } = await getUser();
   if (!user) notFound();
   // A read that failed is an error (the error screen with a retry), not "not found"; no membership is not found.
-  // The company and the person's memberships are read at the same time (one round to the database, not two).
-  const [{ data: c, error: cErr }, { data: ms, error: mErr }] = await Promise.all([
+  // The company and the person's role in it (their organisation role, or the role an admin set for this company) are
+  // read at the same time: one round to the database, not two.
+  const [{ data: c, error: cErr }, { data: role, error: rErr }] = await Promise.all([
     supabase.from("companies").select("*").eq("id", id).maybeSingle(),
-    supabase.from("memberships").select("role, org_id").eq("user_id", user.id),
+    supabase.rpc("my_company_role", { p_company: id }),
   ]);
   if (cErr) throw new AccessError(cErr.code);
   if (!c) notFound();
-  const access = accessFrom(mErr ? null : (ms ?? []).find((m) => m.org_id === c.org_id) ?? null, mErr);
+  const access = accessFrom(rErr ? null : role ? { role } : null, rErr);
   if (access === "none") notFound();
   return { id: c.id, orgId: c.org_id, role: access.role, readOnly: access.readOnly, dataVersion: c.data_version, source: c.source, kpiConfig: c.kpi_config, row: c };
 });

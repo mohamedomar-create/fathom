@@ -5,8 +5,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/cn";
 import { MIN_PASSWORD, passwordHint, passwordProblem } from "@/lib/password";
 import { useDict, useLang } from "@/lib/i18n/context";
-import { createClient } from "@/lib/supabase/client";
-import { deleteAccount, leaveOrganisation, saveName } from "./actions";
+import { changePassword, deleteAccount, leaveOrganisation, saveName } from "./actions";
 
 export interface OrgInfo { id: string; name: string; role: string; members: number; otherAdmins: number }
 
@@ -31,6 +30,7 @@ export function NameForm({ initial }: { initial: string }) {
 export function PasswordForm() {
   const d = useDict().account;
   const lang = useLang();
+  const [current, setCurrent] = useState("");
   const [pw, setPw] = useState("");
   const [again, setAgain] = useState("");
   const [msg, setMsg] = useState<Msg>(null);
@@ -40,14 +40,15 @@ export function PasswordForm() {
     const problem = passwordProblem(pw, lang) ?? (pw !== again ? d.mismatch : null);
     if (problem) { setMsg({ ok: false, text: problem }); return; }
     setBusy(true); setMsg(null);
-    const { error } = await createClient().auth.updateUser({ password: pw });
+    const r = await changePassword(current, pw);
     setBusy(false);
-    if (error) { setMsg({ ok: false, text: /session|reauth/i.test(error.message) ? d.reauth : error.message }); return; }
-    setPw(""); setAgain("");
+    if (!r.ok) { setMsg({ ok: false, text: r.error ?? d.reauth }); return; }
+    setCurrent(""); setPw(""); setAgain("");
     setMsg({ ok: true, text: d.passwordChanged });
   }
   return (
     <form onSubmit={submit} className="grid gap-3 sm:grid-cols-2">
+      <label className="sm:col-span-2"><span className="label mb-1 block">{d.currentPassword}</span><input type="password" className={field} value={current} onChange={(e) => setCurrent(e.target.value)} required autoComplete="current-password" data-testid="pw-current" /></label>
       <label><span className="label mb-1 block">{d.newPassword}</span><input type="password" className={field} value={pw} onChange={(e) => setPw(e.target.value)} minLength={MIN_PASSWORD} required autoComplete="new-password" /></label>
       <label><span className="label mb-1 block">{d.repeat}</span><input type="password" className={field} value={again} onChange={(e) => setAgain(e.target.value)} minLength={MIN_PASSWORD} required autoComplete="new-password" /></label>
       <p className="text-xs text-mute sm:col-span-2">{passwordHint(lang)}</p>

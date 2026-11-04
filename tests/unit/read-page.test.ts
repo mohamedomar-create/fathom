@@ -23,7 +23,8 @@ vi.mock("@/lib/supabase/server", () => ({
         const q = { select: () => q, eq: () => q, maybeSingle: async () => ({ data: t === "companies" ? db.company : db.role ? { role: db.role } : null }) };
         return q;
       },
-      rpc: async (name: string) => { db.rpcs.push(name); return { data: name === "ai_budget_ok" ? db.budget : null, error: null }; },
+      // The person's role in the company (organisation role, or one set for this company): none when not a member.
+      rpc: async (name: string) => { db.rpcs.push(name); return { data: name === "ai_budget_ok" ? db.budget : name === "my_company_role" ? (db.company ? db.role : null) : null, error: null }; },
     },
   }),
 }));
@@ -94,7 +95,7 @@ describe("the read-page route", () => {
     const res = await post(await onePagePdf());
     expect(res.status).toBe(200);
     expect((await res.json()).read).toEqual(PAGE);
-    expect(db.rpcs).toEqual(["ai_budget_ok", "record_ai_usage"]);
+    expect(db.rpcs).toEqual(["my_company_role", "ai_budget_ok", "record_ai_usage"]);
   });
 
   it("when the limit cannot be checked, it says try again in a minute, not tomorrow", async () => {
@@ -118,8 +119,9 @@ describe("the read-page route", () => {
     expect((await post(await onePagePdf())).status).toBe(401);
     db.user = { id: "u1" }; db.role = "viewer";
     expect((await post(await onePagePdf())).status).toBe(403);
+    // Not a member (or no access to this company): not found, as the company pages answer.
     db.role = null;
-    expect((await post(await onePagePdf())).status).toBe(403);
+    expect((await post(await onePagePdf())).status).toBe(404);
     db.company = null;
     expect((await post(await onePagePdf())).status).toBe(404);
     expect(parse).not.toHaveBeenCalled();

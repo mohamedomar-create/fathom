@@ -42,7 +42,7 @@ function builder(table: string) {
 }
 const client = {
   from: (t: string) => builder(t),
-  rpc: (name: string) => ({ then: (ok: (v: unknown) => unknown) => { started.push({ what: `rpc:${name}`, round }); return new Promise((r) => setTimeout(r, 5)).then(() => { round++; return { data: [], error: null }; }).then(ok); } }),
+  rpc: (name: string, args?: { p_company?: string }) => ({ then: (ok: (v: unknown) => unknown) => { started.push({ what: `rpc:${name}`, round }); return new Promise((r) => setTimeout(r, 5)).then(() => { round++; return { data: name === "my_company_role" ? (args?.p_company === company.id && company.org_id === ORG ? "admin" : null) : [], error: null }; }).then(ok); } }),
 };
 vi.mock("@/lib/supabase/server", () => ({ getUser: async () => ({ supabase: client, user: { id: USER, email: "w@x.test" } }) }));
 

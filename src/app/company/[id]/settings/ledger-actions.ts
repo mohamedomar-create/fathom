@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getUser } from "@/lib/supabase/server";
 import { safeError } from "@/lib/action-error";
 import { clearLedger, type LedgerKind } from "@/lib/company/ledger-lines";
+import { companyRole } from "@/lib/company/role";
 
 const Input = z.object({ companyId: z.string().uuid(), periods: z.union([z.literal("all"), z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)).max(600)]) });
 
@@ -17,8 +18,8 @@ export async function clearLedgerLines(companyId: string, periods: string[] | "a
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   // Row security would quietly delete nothing for a viewer; say so instead of reporting success.
-  const { data: co } = await supabase.from("companies").select("org_id").eq("id", v.data.companyId).maybeSingle();
-  const { data: mem } = co ? await supabase.from("memberships").select("role").eq("org_id", co.org_id).eq("user_id", user.id).maybeSingle() : { data: null };
+  const role = await companyRole(supabase, v.data.companyId);
+  const mem = role ? { role } : null;
   if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can do that." };
   try {
     await clearLedger(supabase, v.data.companyId, v.data.periods, kinds?.filter((k) => ["sales", "expenses", "stock"].includes(k)));

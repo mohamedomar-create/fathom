@@ -1,12 +1,15 @@
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonCapped } from "@/lib/http/body";
 import { clientWithToken, getUser } from "@/lib/supabase/server";
 import { readJobOnServer, stageJobOnServer, type StageDb, type StageJob } from "@/lib/imports/server-stage";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-const Body = z.object({ mappings: z.record(z.string().uuid(), z.record(z.string().max(40), z.string().max(200))).optional() });
+// At most 50 files and 200 mapped columns each: a real import has a handful.
+const Mapping = z.record(z.string().max(40), z.string().max(200)).refine((m) => Object.keys(m).length <= 200, "Too many columns");
+const Body = z.object({ mappings: z.record(z.string().uuid(), Mapping).refine((m) => Object.keys(m).length <= 50, "Too many files").optional() });
 
 /**
  * Hands an import over to the server once its original files are uploaded: the server reads them from storage and sends
@@ -16,7 +19,9 @@ const Body = z.object({ mappings: z.record(z.string().uuid(), z.record(z.string(
 export async function POST(req: Request, ctx: { params: Promise<{ job: string }> }) {
   const { job } = await ctx.params;
   if (!z.string().uuid().safeParse(job).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const body = Body.safeParse(await req.json().catch(() => ({})));
+  const raw = await readJsonCapped(req, 200_000);
+  if (!raw.ok && raw.reason === "too_large") return NextResponse.json({ error: "Too large" }, { status: 413 });
+  const body = Body.safeParse(raw.ok ? raw.value : {});
   if (!body.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const { supabase, user } = await getUser();
   if (!user) return NextResponse.json({ error: "Please sign in" }, { status: 401 });

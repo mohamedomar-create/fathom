@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { readJsonCapped } from "@/lib/http/body";
 import { htmlToPdf } from "@/lib/pdf/render";
 import { REPORT_FONT_CSS } from "@/lib/report/fonts.generated";
 import { getUser } from "@/lib/supabase/server";
@@ -30,7 +31,9 @@ const Body = z.object({
  * figures are made up and not stored.
  */
 export async function POST(req: Request) {
-  const parsed = Body.safeParse(await req.json().catch(() => null));
+  const raw = await readJsonCapped(req, 5_200_000);
+  if (!raw.ok) return NextResponse.json({ error: raw.reason === "too_large" ? "Too large" : "Invalid request" }, { status: raw.reason === "too_large" ? 413 : 400 });
+  const parsed = Body.safeParse(raw.value);
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   const b = parsed.data;
   const { supabase, user } = await getUser();
