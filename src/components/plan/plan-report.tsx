@@ -1,4 +1,5 @@
 "use client";
+import { useMemo } from "react";
 import { pct } from "@/lib/engine/format";
 import { byYear, loanPayment, projectMonths, sensitivity, sourcesAndUses, type BusinessPlan } from "@/lib/engine/plan";
 import { ColumnChart } from "@/components/charts/column-chart";
@@ -29,8 +30,13 @@ export function ReportTab({ p, set, cur, company, readOnly }: { p: BusinessPlan;
   const labels = years.map((y) => y.label);
   const su = sourcesAndUses(p, months);
   const y1 = years[0];
-  const cases = SCENARIOS.map((s) => ({ s, years: byYear(projectMonths(p, s.id)) }));
-  const tor = sensitivity(p, "npv", 0.1);
+  // The report's heavy parts don't depend on the two text boxes: typing in them doesn't re-run fifteen projections.
+  const figures = useMemo(() => ({ ...p, summary: undefined, market: undefined }), [p]);
+  const key = JSON.stringify(figures);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const cases = useMemo(() => SCENARIOS.map((s) => ({ s, years: byYear(projectMonths(figures, s.id)) })), [key]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const tor = useMemo(() => sensitivity(figures, "npv", 0.1), [key]);
   const today = new Date().toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB", { day: "numeric", month: "long", year: "numeric" });
   const text = (k: "summary" | "market", label: string, ph: string) => (
     <label className="block text-[13px]"><span className="mb-1 block font-medium">{label}</span>

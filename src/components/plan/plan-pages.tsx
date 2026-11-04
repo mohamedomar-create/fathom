@@ -19,7 +19,7 @@ export function CompanyPlan({ plans, products, loadError }: { plans: BusinessPla
   const { t } = usePlanT();
   const seed = useSeed(products);
   const store: PlanStore = useMemo(() => ({
-    create: (input) => createPlan(c.id, input), save: (id, plan) => savePlan(c.id, id, plan), remove: (id) => deletePlan(c.id, id),
+    create: (input) => createPlan(c.id, input), save: (id, plan, expected) => savePlan(c.id, id, plan, expected), remove: (id) => deletePlan(c.id, id),
   }), [c.id]);
   if (loadError === "missing") return <p className="py-16 text-center text-mute" data-testid="plan-needs-update">{t("Business plans need the latest database update (0054). Ask the site owner to run it.")}</p>;
   if (loadError) return <p className="py-16 text-center text-red" role="alert">{t("The business plans couldn't be loaded just now. Your data is safe; try again in a moment.")}</p>;

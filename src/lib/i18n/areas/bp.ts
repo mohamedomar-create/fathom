@@ -278,6 +278,7 @@ const s = {
   "From the start": "From the start",
   "IRR: no outlay to recover · at {rate}": "IRR: no outlay to recover · at {rate}",
   "Table": "Table",
+  "Check your connection and try again.": "Check your connection and try again.",
 };
 
 export const bp = area(
@@ -559,5 +560,6 @@ export const bp = area(
     "From the start": "من البداية",
     "IRR: no outlay to recover · at {rate}": "معدل العائد الداخلي: لا يوجد إنفاق يُسترد · عند {rate}",
     "Table": "جدول",
+    "Check your connection and try again.": "تحقق من الاتصال وحاول مرة أخرى.",
   } },
 );

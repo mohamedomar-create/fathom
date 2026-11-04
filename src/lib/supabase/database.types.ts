@@ -151,8 +151,8 @@ export type Database = {
       budget_save_products: { Args: { p_version: string; p_rows: Json; p_replace?: boolean }; Returns: number };
       budget_save: { Args: { p_version: string; p_lines?: Json | null; p_products?: Json | null; p_replace_lines?: boolean }; Returns: Json };
       budget_setup_save: { Args: { p_company: string; p_setup: Json }; Returns: undefined };
-      plan_create: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: undefined };
-      plan_save: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: undefined };
+      plan_create: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: string };
+      plan_save: { Args: { p_company: string; p_id: string; p_data: Json; p_expected?: string | null }; Returns: string };
       plan_delete: { Args: { p_company: string; p_id: string }; Returns: undefined };
       budget_rows_save: { Args: { p_version: string; p_rows: Json; p_views: string[]; p_lines?: Json | null; p_setup?: Json | null }; Returns: undefined };
       budget_approve: { Args: { p_version: string }; Returns: undefined };

@@ -37,7 +37,7 @@ insert into ids select (select id from public.companies where name = 'Plan Co'),
 grant select on ids to authenticated;
 
 select pg_temp.check('the plan functions are there',
-  (to_regprocedure('public.plan_create(uuid, text, jsonb)') is not null and to_regprocedure('public.plan_save(uuid, text, jsonb)') is not null
+  (to_regprocedure('public.plan_create(uuid, text, jsonb)') is not null and to_regprocedure('public.plan_save(uuid, text, jsonb, timestamptz)') is not null
    and to_regprocedure('public.plan_delete(uuid, text)') is not null)::text, 'true');
 select pg_temp.check('schema version 54 or later', (public.schema_version() >= 54)::text, 'true');
 select pg_temp.check('row security is on', (select relrowsecurity from pg_class where oid = 'public.business_plans'::regclass)::text, 'true');
@@ -48,6 +48,16 @@ select pg_temp.check('an editor creates a plan', (select data->>'name' from publ
 select pg_temp.check('creating is recorded', (select count(*) from public.company_data_audit where company_id = (select co from ids) and action = 'plan_create')::text, '1');
 select public.plan_save((select co from ids), 'plan_a', '{"name":"Plan A2","startYear":2027,"years":3}'::jsonb);
 select pg_temp.check('an editor saves it', (select data->>'name' || '/' || (data->>'years') from public.business_plans where id = 'plan_a'), 'Plan A2/3');
+-- A save carries the version it was edited from: a stale one (another tab saved since) is refused, nothing is overwritten.
+create temp table ver (v timestamptz);
+grant select, insert, update on ver to authenticated;
+insert into ver select updated_at from public.business_plans where id = 'plan_a';
+select pg_temp.check('a save from the current version goes through and returns the new version',
+  (public.plan_save((select co from ids), 'plan_a', '{"name":"Tab B","startYear":2027,"years":3}'::jsonb, (select v from ver)) > (select v from ver))::text, 'true');
+select pg_temp.check('a save from a stale version is refused',
+  pg_temp.fails($$select public.plan_save((select co from ids), 'plan_a', '{"name":"Tab A stale"}'::jsonb, (select v from ver))$$), 'refused');
+select pg_temp.check('the newer save is kept', (select data->>'name' from public.business_plans where id = 'plan_a'), 'Tab B');
+select public.plan_save((select co from ids), 'plan_a', '{"name":"Plan A2","startYear":2027,"years":3}'::jsonb);
 select pg_temp.check('no direct insert', pg_temp.fails($$insert into public.business_plans (id, company_id, data) values ('x', (select co from ids), '{}')$$), 'refused');
 select pg_temp.check('no direct update', pg_temp.fails($$update public.business_plans set data = '{}' where id = 'plan_a'$$) || (select data->>'name' from public.business_plans where id = 'plan_a'), 'refusedPlan A2');
 select pg_temp.check('a non-object plan is refused', pg_temp.fails($$select public.plan_save((select co from ids), 'plan_a', '[1]'::jsonb)$$), 'refused');
@@ -77,7 +87,10 @@ select pg_temp.check('deleting is recorded', (select count(*) from public.compan
 select pg_temp.check('the same id can be used again in another company', (select count(*) from public.business_plans where company_id = (select other from ids))::text, '0');
 
 reset role;
-select pg_temp.check('anon cannot run the functions', (has_function_privilege('anon', 'public.plan_save(uuid, text, jsonb)', 'execute'))::text, 'false');
+select pg_temp.check('anon cannot run the functions', (has_function_privilege('anon', 'public.plan_save(uuid, text, jsonb, timestamptz)', 'execute'))::text, 'false');
 select pg_temp.check('the tenant guard is on the table', (select count(*) from pg_trigger where tgrelid = 'public.business_plans'::regclass and tgname = 'tenant_guard')::text, '1');
 -- Leave no plan audit rows behind: later test files re-apply 0043, whose action list predates plans.
 delete from public.company_data_audit where action in ('plan_create', 'plan_delete');
+select pg_temp.check('only the new save function exists (the old three-argument one is dropped)', (select count(*) from pg_proc where proname = 'plan_save' and pronamespace = 'public'::regnamespace)::text, '1');
+select pg_temp.check('a stale save is refused with the stale_plan hint (not 40001, which PostgREST would retry)',
+  (select count(*) from pg_proc where proname = 'plan_save' and prosrc like '%stale_plan%' and prosrc not like '%errcode = ''40001''%')::text, '1');

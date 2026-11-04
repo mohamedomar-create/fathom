@@ -29,6 +29,20 @@ test("a business plan from the books: created, edited, saved by itself, still th
   await expect(page.getByTestId("plan-name")).toHaveValue("Bank plan 2027");
   await expect(page.getByTestId("plan-years")).toHaveValue("3");
 
+  // Two tabs on the same plan: the older tab can't overwrite the newer save; it says so and keeps its edit.
+  const other = await page.context().newPage();
+  await other.goto(page.url());
+  await other.getByTestId("plan-name").fill("Saved in tab B");
+  await expect(other.getByTestId("plan-save-state")).toContainText("All changes saved", { timeout: 15_000 });
+  await page.getByTestId("plan-name").fill("Stale tab A");
+  await expect(page.getByTestId("plan-save-state")).toContainText("changed in another tab", { timeout: 15_000 });
+  await expect(page.getByTestId("plan-name")).toHaveValue("Stale tab A");
+  expect(sql(`select data->>'name' from public.business_plans where company_id = '${id}'`)).toBe("Saved in tab B");
+  await other.close();
+  page.once("dialog", (d) => d.accept());
+  await page.reload();
+  await expect(page.getByTestId("plan-name")).toHaveValue("Saved in tab B");
+
   // The statements agree after the save round trip.
   await page.getByTestId("plan-tab-statements").click();
   await expect(page.getByTestId("plan-agree")).toBeVisible();

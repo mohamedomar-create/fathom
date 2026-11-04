@@ -31,21 +31,23 @@ export async function createPlan(companyId: string, input: unknown): Promise<Res
   const s = await begin();
   if ("error" in s) return { ok: false, error: s.error! };
   const id = newPlanId();
-  const { error } = await s.supabase.rpc("plan_create", { p_company: companyId, p_id: id, p_data: c.plan as never });
+  const { data, error } = await s.supabase.rpc("plan_create", { p_company: companyId, p_id: id, p_data: c.plan as never });
   if (error) return { ok: false, error: dbError(error, "plan_create") };
   revalidatePath(`/company/${companyId}/planning`);
-  return { ok: true, data: { ...c.plan, id, createdBy: s.user.id, updatedAt: new Date().toISOString() } };
+  return { ok: true, data: { ...c.plan, id, createdBy: s.user.id, updatedAt: String(data) } };
 }
 
-export async function savePlan(companyId: string, id: string, input: unknown): Promise<Result> {
+/** Saves the plan if nobody saved it since `expected` (the version it was edited from); returns the new version. */
+export async function savePlan(companyId: string, id: string, input: unknown, expected: string | null): Promise<Result<string>> {
   if (!Id.safeParse(companyId).success || !PlanId.safeParse(id).success) return { ok: false, error: "That value isn't valid." };
   const c = clean(input);
   if (!c.ok) return c;
   const s = await begin();
   if ("error" in s) return { ok: false, error: s.error! };
-  const { error } = await s.supabase.rpc("plan_save", { p_company: companyId, p_id: id, p_data: c.plan as never });
+  const { data, error } = await s.supabase.rpc("plan_save", { p_company: companyId, p_id: id, p_data: c.plan as never, p_expected: expected || null });
+  if (error?.hint === "stale_plan") return { ok: false, error: "This plan was changed in another tab or by someone else. Reload the page to get the latest version." };
   if (error) return { ok: false, error: dbError(error, "plan_save") };
-  return { ok: true, data: undefined };
+  return { ok: true, data: String(data) };
 }
 
 export async function deletePlan(companyId: string, id: string): Promise<Result> {

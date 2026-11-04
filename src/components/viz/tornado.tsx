@@ -30,7 +30,7 @@ export function Tornado({ rows, base, fmt, lowLabel, highLabel, testId }: {
                 ))}
                 <span className="absolute -inset-y-1 w-[2px] bg-ink" style={{ left: `calc(${at(base)}% - 1px)` }} />
               </div>
-              <div className="mt-0.5 flex justify-between text-[11px] text-mute num"><span>{fmt(Math.min(r.low, r.high))}</span><span>{fmt(Math.max(r.low, r.high))}</span></div>
+              <div dir="ltr" className="mt-0.5 flex justify-between text-[11px] text-mute num"><span>{fmt(Math.min(r.low, r.high))}</span><span>{fmt(Math.max(r.low, r.high))}</span></div>
             </div>
           </li>
         ))}

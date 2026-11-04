@@ -544,7 +544,7 @@ export function sensitivity(p: BusinessPlan, m: Metric, share = 0.1) {
 /* ---------------- starting from the books (Aql360) ---------------- */
 
 interface AqlMonth { period: string; pl: Partial<Record<string, number>>; bs: Partial<Record<string, number>>; has?: { pl: boolean; bs: boolean } }
-interface AqlProduct { p: string; r: string; a: number; k: number | null; q: number | null }
+interface AqlProduct { p: string; r: string; a: number; k: number | null; ka?: number | null; q: number | null }
 interface AqlAccount { name: string; cls: string; amounts: Record<string, number> }
 
 /**
@@ -580,22 +580,24 @@ export function planFromAql(o: {
   for (const key of Object.keys(opening) as (keyof PlanOpening)[]) opening[key] = round2(opening[key])
 
   // Sales per product: lines with quantities; what has none becomes one Other sales line.
-  const by = new Map<string, { a: number; q: number; kq: number; k: number }>()
-  let other = 0
+  // Only the months the books hold, scaled by the same months; cost per unit from the sales whose cost is known (ka).
+  const by = new Map<string, { a: number; q: number; k: number; ka: number }>()
   for (const r of o.sales.products) {
-    if (!r.p.startsWith(base)) continue
-    if (!r.q || r.q <= 0) { other += r.a; continue }
-    const x = by.get(r.r) ?? { a: 0, q: 0, kq: 0, k: 0 }
+    if (!periods.has(r.p) || !r.q || r.q <= 0) continue
+    const x = by.get(r.r) ?? { a: 0, q: 0, k: 0, ka: 0 }
     x.a += r.a; x.q += r.q
-    if (r.k !== null) { x.k += r.k; x.kq += r.q }
+    const known = r.ka ?? (r.k !== null ? r.a : 0)
+    if (r.k !== null && known > 0) { x.k += r.k; x.ka += known }
     by.set(r.r, x)
   }
   const lines: PlanLine[] = [...by.entries()].filter(([, x]) => x.a > 0).sort((p, q) => q[1].a - p[1].a).map(([name, x]) => {
     const price = round2(x.a / x.q)
-    return { id: uid('pl'), name, units: Math.round(x.q * k), price, unitCost: round2(x.kq > 0 ? x.k / x.kq : price * costRatio), growthUnits: 10, growthPrice: 10 }
+    return { id: uid('pl'), name, units: Math.round(x.q * k), price, unitCost: round2(price * (x.ka > 0 ? x.k / x.ka : costRatio)), growthUnits: 10, growthPrice: 10 }
   })
-  if (other > 0) lines.push({ id: uid('pl'), name: lb.other || 'Other sales', units: 1, price: round2(other * k), unitCost: round2(other * k * costRatio), growthUnits: 10, growthPrice: 10 })
-  if (!lines.length && revenue > 0) lines.push({ id: uid('pl'), name: lb.other || 'Sales', units: 1, price: round2(revenue), unitCost: round2(revenue * costRatio), growthUnits: 10, growthPrice: 10 })
+  // The lines add up to the books' revenue: what the product lines don't explain is one Other sales line.
+  const explained = lines.reduce((s, l) => s + l.units * l.price, 0)
+  const rest = revenue - explained
+  if (rest > Math.max(1, revenue * 0.001)) lines.push({ id: uid('pl'), name: lines.length ? lb.other || 'Other sales' : lb.other || 'Sales', units: 1, price: round2(rest), unitCost: round2(rest * costRatio), growthUnits: 10, growthPrice: 10 })
 
   // Overheads: each fixed or variable expense account (not depreciation, interest or tax), else one row from the classes.
   const OVER = ['exp_fixed', 'cos_fixed', 'exp_variable']
@@ -606,14 +608,15 @@ export function planFromAql(o: {
     if (v > 0.005) expenses.push({ id: uid('pe'), name: lb.overheads || 'Overheads', monthly: round2(v / 12), growth: 10 })
   }
 
-  const vat = 1 + (o.settings.vatRate ?? 0.14)
-  const days = (bal: number, flow: number, dflt: number) => (flow > 0 && bal > 0 ? Math.min(365, Math.round((bal / flow) * 365)) : dflt)
+  // Days on the engine's own basis (no VAT; payables against cost of sales and overheads); a zero balance is zero days.
+  const overheads = OVER.reduce((s, c) => s + sumPL(c), 0) - sumPL('cos_fixed')
+  const days = (bal: number, flow: number, dflt: number) => (flow > 0 ? Math.min(365, Math.max(0, Math.round((bal / flow) * 365))) : dflt)
   const season = ms.length === 12 ? Array.from({ length: 12 }, (_, i) => round2(Math.max(0, ms.find((m) => Number(m.period.slice(5, 7)) === i + 1)?.pl.revenue ?? 0))) : Array(12).fill(1)
   return {
     opening, lines, staff: [], expenses,
     loans: opening.loans > 0 ? [{ id: uid('pn'), name: lb.loans || 'Existing loans', amount: opening.loans, month: 0, rate: 20, termMonths: 36, graceMonths: 0 }] : [],
     season: season.some((v) => v > 0) ? season : Array(12).fill(1),
-    receivableDays: days(opening.receivables / vat, revenue, 30), payableDays: days(opening.payables / vat, cogs, 30), stockDays: days(opening.inventory, cogs, 60),
+    receivableDays: days(opening.receivables, revenue, 30), payableDays: days(opening.payables, cogs + overheads, 30), stockDays: days(opening.inventory, cogs, 60),
     taxRate,
   }
 }

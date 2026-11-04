@@ -14,7 +14,8 @@ type Result<T = undefined> = { ok: true; data: T } | { ok: false; error: string 
 /** Where plans are kept: the company's server actions, or the demo's memory. */
 export interface PlanStore {
   create: (input: unknown) => Promise<Result<BusinessPlan>>;
-  save: (id: string, plan: BusinessPlan) => Promise<Result>;
+  /** Saves if nobody saved since `expected` (the version it was edited from); returns the new version. */
+  save: (id: string, plan: BusinessPlan, expected: string | null) => Promise<Result<string>>;
   remove: (id: string) => Promise<Result>;
 }
 
@@ -33,50 +34,71 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
   const [list, setList] = useState(initial);
   const tab = (TABS.some((x) => x.id === params.get("tab")) ? params.get("tab") : "overview") as Tab;
   const saved = list.find((x) => x.id === params.get("plan")) ?? list.at(-1) ?? null;
-  const [draft, setDraft] = useState<BusinessPlan | null>(null);
-  const [sent, setSent] = useState("");
+  // Unsaved edits per plan: switching plans or a failed save never drops them.
+  const [drafts, setDrafts] = useState<Record<string, BusinessPlan>>({});
+  const sentRef = useRef<Record<string, string>>({});
+  // The edit a save failed on: not retried by itself (no loop); the next change or leaving the page tries again.
+  const failedRef = useRef<Record<string, string>>({});
+  const inflight = useRef<Set<string>>(new Set());
+  const version = useRef<Record<string, string>>(Object.fromEntries(initial.map((x) => [x.id, x.updatedAt])));
   const [state, setState] = useState<"idle" | "saving" | "saved" | "failed">("idle");
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
   const [sc, setSc] = useState<ScenarioName>("base");
   const [opened, setOpened] = useState<BusinessPlan | null>(null);
   if (saved && opened?.id !== saved.id) setOpened(saved);
-  const p = draft && draft.id === saved?.id ? draft : saved;
-  const pending = Boolean(draft && draft.id === saved?.id && JSON.stringify(draft) !== sent);
+  const p = (saved && drafts[saved.id]) || saved;
+  const dirty = (id: string) => { const j = drafts[id] && JSON.stringify(drafts[id]); return !!j && j !== sentRef.current[id] && j !== failedRef.current[id]; };
+  const pending = Boolean(saved && dirty(saved.id));
 
-  // Saved by itself a second after the last change, when leaving the page, and before switching plans.
+  // Saved by itself a second after the last change, when leaving the page, and before switching plans. One save at a
+  // time per plan, each naming the version it was edited from; a failed save keeps the edits and says so.
   const flush = useRef<() => void>(() => undefined);
   useEffect(() => {
     flush.current = () => {
-      if (!draft || readOnly) return;
-      const json = JSON.stringify(draft);
-      if (json === sent) return;
-      setSent(json);
-      setState("saving");
-      void store.save(draft.id, draft).then((r) => {
-        if (r.ok) { setState("saved"); setError(""); setList((l) => l.map((x) => (x.id === draft.id ? draft : x))); }
-        else { setState("failed"); setError(r.error); setSent(""); }
-      });
+      if (readOnly) return;
+      for (const [id, d] of Object.entries(drafts)) {
+        const json = JSON.stringify(d);
+        if (json === sentRef.current[id] || json === failedRef.current[id] || inflight.current.has(id)) continue;
+        sentRef.current[id] = json;
+        inflight.current.add(id);
+        setState("saving");
+        void store.save(id, d, version.current[id] ?? null).then((r) => {
+          inflight.current.delete(id);
+          if (r.ok) {
+            version.current[id] = r.data;
+            setState("saved"); setError("");
+            setList((l) => l.map((x) => (x.id === id ? { ...d, updatedAt: r.data } : x)));
+            setDrafts((all) => { if (JSON.stringify(all[id]) !== json) { setTimeout(() => flush.current(), 0); return all; } const { [id]: _, ...rest } = all; void _; return rest; });
+          } else { delete sentRef.current[id]; failedRef.current[id] = json; setState("failed"); setError(r.error); }
+        }, (e: unknown) => {
+          // A save that couldn't reach the server (offline, a deploy in between): keep the edit and say so.
+          inflight.current.delete(id); delete sentRef.current[id]; failedRef.current[id] = json;
+          setState("failed"); setError(e instanceof Error && e.message ? e.message : t("Check your connection and try again."));
+        });
+      }
     };
   });
   useEffect(() => {
     if (!pending) return;
     const h = setTimeout(() => flush.current(), 1000);
     return () => clearTimeout(h);
-  }, [draft, pending]);
+  }, [drafts, pending]);
+  const unsaved = useRef(false);
+  unsaved.current = Object.keys(drafts).length > 0 || state === "failed" || state === "saving";
   useEffect(() => {
-    const away = () => flush.current();
+    const away = (e: BeforeUnloadEvent) => { flush.current(); if (unsaved.current) e.preventDefault(); };
     window.addEventListener("beforeunload", away);
-    return () => { window.removeEventListener("beforeunload", away); away(); };
+    return () => { window.removeEventListener("beforeunload", away); flush.current(); };
   }, []);
 
   const go = (next: { tab?: string; plan?: string }) => {
     const q = new URLSearchParams(params.toString());
     if (next.tab) q.set("tab", next.tab);
-    if (next.plan) { flush.current(); q.set("plan", next.plan); setDraft(null); }
+    if (next.plan) { flush.current(); q.set("plan", next.plan); }
     router.replace(`${path}?${q.toString()}`, { scroll: false });
   };
-  const set: SetPlan = (patch) => { if (p && !readOnly) setDraft({ ...p, ...patch }); };
+  const set: SetPlan = (patch) => { if (p && !readOnly) setDrafts((all) => ({ ...all, [p.id]: { ...(all[p.id] ?? p), ...patch } })); };
 
   const checks = useMemo(() => (p ? planChecks(p, projectMonths(p)) : []), [p]);
   const y1 = useMemo(() => (p ? byYear(projectMonths(p))[0] : null), [p]);
@@ -87,11 +109,11 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
   } : {};
 
   const create = async (o: { name?: string; startYear: number; years: number; fromBooks: boolean; copyOf?: BusinessPlan }) => {
-    flush.current();
     const labels: PlanLabels = { loans: t("Existing loans"), other: t("Other sales"), overheads: t("Overheads"), lang };
     const base = o.copyOf ? { ...o.copyOf, name: `${o.copyOf.name} (${t("copy")})` } : { name: o.name || t("Business plan {from}–{to}", { from: o.startYear, to: o.startYear + o.years - 1 }), startYear: o.startYear, years: o.years, ...(o.fromBooks ? seed(o.startYear, labels) ?? {} : {}) };
     const r = await store.create(base);
     if (!r.ok) { setError(r.error); setState("failed"); return; }
+    version.current[r.data.id] = r.data.updatedAt;
     setList((l) => [...l, r.data]); setStarting(false); setError(""); setState("idle");
     go({ plan: r.data.id, tab: "overview" });
   };
@@ -117,7 +139,7 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
                 </select>
                 <span>{p.startYear}–{p.startYear + p.years - 1}</span>
                 {!readOnly && <span aria-live="polite" data-testid="plan-save-state" className={cn(state === "failed" && "text-red")}>
-                  {pending || state === "saving" ? t("Saving…") : state === "failed" ? `${t("Not saved")}: ${error}` : state === "saved" ? <span className="inline-flex items-center gap-1 text-green-d"><Check className="h-3.5 w-3.5" aria-hidden />{t("All changes saved")}</span> : null}
+                  {state === "failed" && !pending ? `${t("Not saved")}: ${error}` : pending || state === "saving" ? t("Saving…") : state === "saved" ? <span className="inline-flex items-center gap-1 text-green-d"><Check className="h-3.5 w-3.5" aria-hidden />{t("All changes saved")}</span> : null}
                 </span>}
                 {readOnly && <span className="rounded bg-white px-2 py-0.5">{t("View only")}</span>}
               </div>
@@ -132,7 +154,7 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
               <button type="button" onClick={() => create({ startYear: p.startYear, years: p.years, fromBooks: false, copyOf: p })} className="inline-flex items-center gap-1 rounded border border-line bg-white px-2.5 py-1.5 text-[13px] hover:border-brand"><Copy className="h-4 w-4" />{t("Make a copy")}</button>
               <ConfirmDialog title={t("Delete this business plan?")} confirmLabel={t("Delete")} testId="plan-delete"
                 trigger={<button type="button" className="inline-flex items-center gap-1 rounded border border-line bg-white px-2.5 py-1.5 text-[13px] text-red hover:border-red"><Trash2 className="h-4 w-4" />{t("Delete")}</button>}
-                onConfirm={async () => { const r = await store.remove(p.id); if (!r.ok) return r.error; setDraft(null); setList((l) => l.filter((x) => x.id !== p.id)); const q = new URLSearchParams(params.toString()); q.delete("plan"); router.replace(`${path}?${q.toString()}`); }}>
+                onConfirm={async () => { const r = await store.remove(p.id); if (!r.ok) return r.error; setDrafts(({ [p.id]: _, ...rest }) => { void _; return rest; }); setState("idle"); setError(""); setList((l) => l.filter((x) => x.id !== p.id)); const q = new URLSearchParams(params.toString()); q.delete("plan"); router.replace(`${path}?${q.toString()}`); }}>
                 <p className="text-sm text-mute">{t("“{name}” and everything in it are removed. This can’t be undone.", { name: p.name })}</p>
               </ConfirmDialog>
             </>}
@@ -162,8 +184,8 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
       {tab === "scenarios" && <ScenariosTab p={p} set={set} cur={cur} readOnly={readOnly} />}
       {tab === "report" && <ReportTab p={p} set={set} cur={cur} company={company} readOnly={readOnly} />}
       <div className="no-print mt-6 flex items-center justify-between">
-        {idx > 0 ? <button type="button" onClick={() => go({ tab: TABS[idx - 1].id })} className="rounded border border-line bg-white px-3 py-1.5 text-[13px]">← {t("Back")}</button> : <span />}
-        {idx < TABS.length - 1 && <button type="button" onClick={() => go({ tab: TABS[idx + 1].id })} className="rounded bg-brand-d px-3 py-1.5 text-[13px] font-medium text-white" data-testid="plan-next">{t("Next: {tab}", { tab: t(TABS[idx + 1].label) })} →</button>}
+        {idx > 0 ? <button type="button" onClick={() => go({ tab: TABS[idx - 1].id })} className="rounded border border-line bg-white px-3 py-1.5 text-[13px]"><span aria-hidden className="inline-block rtl:-scale-x-100">←</span> {t("Back")}</button> : <span />}
+        {idx < TABS.length - 1 && <button type="button" onClick={() => go({ tab: TABS[idx + 1].id })} className="rounded bg-brand-d px-3 py-1.5 text-[13px] font-medium text-white" data-testid="plan-next">{t("Next: {tab}", { tab: t(TABS[idx + 1].label) })} <span aria-hidden className="inline-block rtl:-scale-x-100">→</span></button>}
       </div>
     </div>
   );
@@ -216,7 +238,7 @@ export function demoStore(): PlanStore {
   let n = 0;
   return {
     create: async (input) => { try { return { ok: true, data: { ...cleanPlan(input), id: `demo_${++n}_${Date.now().toString(36)}`, createdBy: "demo", updatedAt: new Date().toISOString() } }; } catch (e) { return { ok: false, error: (e as Error).message }; } },
-    save: async (_id, plan) => { try { cleanPlan(plan); return { ok: true, data: undefined }; } catch (e) { return { ok: false, error: (e as Error).message }; } },
+    save: async (_id, plan) => { try { cleanPlan(plan); return { ok: true, data: new Date().toISOString() }; } catch (e) { return { ok: false, error: (e as Error).message }; } },
     remove: async () => ({ ok: true, data: undefined }),
   };
 }

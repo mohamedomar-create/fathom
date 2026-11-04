@@ -234,7 +234,7 @@ export function ScenariosTab({ p, set, cur, readOnly }: { p: BusinessPlan; set: 
                   {SL.map(([k, l]) => (
                     <label key={k} className="block text-[12.5px]">
                       <span className="flex justify-between"><span>{t(l)}</span><span className="num">{def[k] > 0 ? "+" : ""}{def[k]}%</span></span>
-                      <input type="range" min={-50} max={50} step={1} value={def[k]} disabled={readOnly} aria-label={`${t(s.label)}: ${t(l)}`}
+                      <input type="range" min={Math.min(-50, def[k])} max={Math.max(50, def[k])} step={1} value={def[k]} disabled={readOnly} aria-label={`${t(s.label)}: ${t(l)}`}
                         onChange={(e) => set({ scenarios: { ...p.scenarios, [s.id]: { ...p.scenarios[s.id as "best" | "worst"], [k]: Number(e.target.value) } } })} className="w-full accent-[#0b6e70]" />
                     </label>
                   ))}
