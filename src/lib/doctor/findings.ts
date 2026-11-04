@@ -9,7 +9,8 @@ import type { ExpenseFlag } from "@/lib/engine/expenses";
  */
 export type Area = "books" | "sales" | "expenses" | "stock" | "payments" | "setup";
 export type Basis = "difference" | "unexplained" | "cash tied up" | "margin at risk" | "possible double payment" | "unusual payment";
-export interface Decision { key: string; reason: string; at: string; by?: string; id?: string }
+/** `amount`: the money at stake when it was accepted; a material change reopens the finding. */
+export interface Decision { key: string; reason: string; at: string; by?: string; id?: string; amount?: number | null; /** Still inside the 30 days an acceptance can be undone. */ undoable?: boolean }
 export interface Finding {
   key: string; area: Area; severity: "high" | "medium" | "low"; title: string; detail: string; period?: string;
   /** EGP at stake (null when the finding has no amount), and what that amount means. */
@@ -17,6 +18,8 @@ export interface Finding {
   /** The page where it is looked into or fixed. */
   href: string;
   accepted?: Decision;
+  /** Accepted before, but the money at stake has changed since: open again, with what was accepted. */
+  reopened?: Decision;
   /** An expense flag's parts, so the page can word it in its own language (title and detail are the English). */
   flag?: { k: "double" | "large"; supplier: string; doc: string; doc2?: string; type: string };
 }
@@ -29,6 +32,9 @@ const annualRevenue = (months: MonthData[]) => {
   return pl.length ? (pl.reduce((t, m) => t + plCalc(m.pl).revenue, 0) / pl.length) * 12 : 0;
 };
 
+/** A check's finding key: check, month and the title's words, without its figures. */
+export const findingKey = (c: Pick<Check, "id" | "period" | "title">) => `${c.id}|${c.period ?? ""}|${c.title.replace(/-?\d[\d,.]*%?/g, "#")}`.slice(0, 400);
+
 export function doctorFindings({ checks, expenseFlags = [], months, basePath, decisions = [] }: { checks: Check[]; expenseFlags?: ExpenseFlag[]; months: MonthData[]; basePath: string; decisions?: Decision[] }): Finding[] {
   const yearRev = annualRevenue(months);
   const revenueOf = (p?: string) => { const m = months.find((x) => x.period === p); return m ? plCalc(m.pl).revenue : 0; };
@@ -36,7 +42,8 @@ export function doctorFindings({ checks, expenseFlags = [], months, basePath, de
   const out: Finding[] = [];
   for (const c of checks) {
     if (c.severity === "info") continue;
-    const key = `${c.id}|${c.period ?? ""}|${c.title}`;
+    // The title's own figures ("Customer days of 90…") change as months shift; the key keeps only its words.
+    const key = findingKey(c);
     let impact: number | null = c.diff !== undefined ? Math.abs(c.diff) : null;
     let basis: Basis | null = impact !== null ? "difference" : null;
     let area: Area = c.id === "unmapped" ? "setup" : "books";
@@ -68,7 +75,12 @@ export function doctorFindings({ checks, expenseFlags = [], months, basePath, de
     });
   }
   const accepted = new Map(decisions.map((d) => [d.key, d]));
-  for (const f of out) { const d = accepted.get(f.key); if (d) f.accepted = d; }
+  for (const f of out) {
+    const d = accepted.get(f.key);
+    if (!d) continue;
+    const moved = d.amount != null && f.impact != null && Math.abs(f.impact - d.amount) > Math.max(1, 0.05 * Math.abs(d.amount));
+    if (moved) f.reopened = d; else f.accepted = d;
+  }
   const rank = { high: 0, medium: 1, low: 2 };
   return out.sort((a, b) => Number(!!a.accepted) - Number(!!b.accepted) || (b.impact ?? -1) - (a.impact ?? -1) || rank[a.severity] - rank[b.severity] || a.key.localeCompare(b.key));
 }

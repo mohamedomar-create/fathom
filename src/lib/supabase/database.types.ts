@@ -14,7 +14,7 @@ export type BudgetVersionRow = {
   based_on: string | null; setup: Json | null; created_by: string | null; approved_by: string | null; approved_at: string | null; created_at: string; updated_at: string;
 }
 export type BudgetLineRow = { version_id: string; company_id: string; key: string; cls: string; label: string | null; month: string; amount: number }
-export type DoctorDecisionRow = { id: string; company_id: string; finding_key: string; title: string; reason: string; created_by: string | null; created_at: string; undone_at: string | null; undone_by: string | null }
+export type DoctorDecisionRow = { id: string; company_id: string; finding_key: string; title: string; reason: string; amount: number | null; created_by: string | null; created_at: string; undone_at: string | null; undone_by: string | null }
 export type BusinessPlanRow = { company_id: string; id: string; data: Json; created_by: string | null; created_at: string; updated_by: string | null; updated_at: string }
 export type BudgetSetupRow = { company_id: string; setup: Json; updated_at: string; updated_by: string | null }
 export type BudgetRowRow = {
@@ -156,7 +156,7 @@ export type Database = {
       plan_create: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: string };
       plan_save: { Args: { p_company: string; p_id: string; p_data: Json; p_expected?: string | null }; Returns: string };
       plan_delete: { Args: { p_company: string; p_id: string }; Returns: undefined };
-      doctor_accept: { Args: { p_company: string; p_key: string; p_title: string; p_reason: string }; Returns: string };
+      doctor_accept: { Args: { p_company: string; p_key: string; p_title: string; p_reason: string; p_amount?: number | null }; Returns: string };
       doctor_undo: { Args: { p_company: string; p_id: string }; Returns: undefined };
       budget_rows_save: { Args: { p_version: string; p_rows: Json; p_views: string[]; p_lines?: Json | null; p_setup?: Json | null }; Returns: undefined };
       budget_approve: { Args: { p_version: string }; Returns: undefined };

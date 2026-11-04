@@ -12,6 +12,14 @@ describe("the facts an answer may use", () => {
     expect(values).toEqual(expect.arrayContaining([1234568, 38.4, 512000, 0.62]));
     expect(factsFrom(context).find((f) => f.value === 0.62)?.unit).toBe("ratio");
   });
+
+  it("keep their sign, and leave out account codes and document numbers", () => {
+    const values = factsFrom({ net: "-EGP 1,200,000", top: ["620400 Professional Fees: EGP 48,000"], flag: "BILL/2026/0281 is large" }).map((f) => f.value);
+    expect(values).toEqual(expect.arrayContaining([-1_200_000, 48_000]));
+    expect(values).not.toContain(620400);
+    expect(values).not.toContain(281);
+    expect(values).not.toContain(1_200_000);
+  });
 });
 
 describe("a verified answer", () => {
@@ -48,4 +56,18 @@ describe("a verified answer", () => {
     await verifiedAnswer({ task: "كم الإيرادات؟", context, lang: "ar", call });
     expect(call.mock.calls[0][0]).toMatch(/Arabic/);
   });
+
+  it("records what a failed call used (it is paid for), then reports the failure", async () => {
+    const call = vi.fn().mockRejectedValue(new DoctorAiError("cut off", "upstream", { input_tokens: 7, output_tokens: 1500 }));
+    const used: number[] = [];
+    await expect(verifiedAnswer({ task: "Revenue?", context, lang: "en", call, onUsage: (u) => used.push(u.output_tokens) })).rejects.toThrow("cut off");
+    expect(used).toEqual([1500]);
+  });
+
+  it("does not try again when there is not enough time left for a second answer", async () => {
+    const call = vi.fn().mockResolvedValue({ answer: "Revenue was EGP 2,000,000.", usage: { input_tokens: 1, output_tokens: 1 } });
+    await expect(verifiedAnswer({ task: "Revenue?", context, lang: "en", call, deadline: Date.now() + 10_000 })).rejects.toBeInstanceOf(DoctorAiError);
+    expect(call).toHaveBeenCalledTimes(1);
+  });
 });
+

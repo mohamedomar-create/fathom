@@ -37,4 +37,31 @@ describe("the figure check", () => {
   it("does not accept a rounding so loose that it hides a different figure", () => {
     expect(verifyFigures("Revenue was 1.3M.", facts).ok).toBe(false);
   });
+
+  it("checks small numbers and years when they are amounts or percentages", () => {
+    expect(verifyFigures("Gross margin fell 25%.", facts).ok).toBe(false);
+    expect(verifyFigures("Bank charges were EGP 2,050.", facts).ok).toBe(false);
+    expect(verifyFigures("Customers pay in 74 days, up from 2025.", facts).ok).toBe(true);
+  });
+
+  it("does not let a coarse rounding match any figure nearby", () => {
+    const many: Fact[] = [{ id: "a", label: "a", value: 2_600_000, unit: "EGP" }];
+    expect(verifyFigures("Revenue was EGP 3M.", many).ok).toBe(false);
+    expect(verifyFigures("Revenue was EGP 2.6M.", many).ok).toBe(true);
+  });
+
+  it("keeps the sign: a negative figure in the answer must be a negative figure in the books", () => {
+    const pl: Fact[] = [{ id: "np", label: "Net profit", value: 1_200_000, unit: "EGP" }];
+    expect(verifyFigures("Net profit was EGP -1.2M.", pl).ok).toBe(false);
+    expect(verifyFigures("Net profit was EGP (1.2M).", pl).ok).toBe(false);
+    expect(verifyFigures("Net loss was EGP -1.2M.", [{ ...pl[0], value: -1_200_000 }]).ok).toBe(true);
+  });
+});
+
+describe("numbers written with words", () => {
+  it("reads million, billion, thousand and the Arabic words, and numbers glued to the currency", () => {
+    expect(numbersIn("about 1.23 million and 1.2bn and 15 thousand")).toEqual([1_230_000, 1_200_000_000, 15_000]);
+    expect(numbersIn("الإيرادات 1.23 مليون جنيه و 15 ألف")).toEqual([1_230_000, 15_000]);
+    expect(numbersIn("EGP1.5M")).toEqual([1_500_000]);
+  });
 });

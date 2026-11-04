@@ -11,6 +11,7 @@ import { aiBudgetOk, OVER_BUDGET, recordAiUsage, type Usage } from "@/lib/ai/bud
 import { getLang } from "@/lib/i18n/server";
 import { doctorData } from "@/lib/doctor/load";
 import { DoctorAiError, doctorAiStatus, verifiedAnswer } from "@/lib/doctor/ai";
+import { doctorAiLimits, mayUseDoctorAi } from "@/lib/doctor/access";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -24,8 +25,9 @@ const Body = z.discriminatedUnion("mode", [
 /** The core statements only: the bank and real-profit blocks are large and not needed to answer about the books. */
 const SECTIONS = ["summary", "kpis", "profitability", "cashflow", "pl", "bs", "trend", "growth"] as const;
 
-/** "Explain" a doctor finding, or "Ask your numbers": any member may ask; the answer's figures are checked before it is sent. */
+/** "Explain" a doctor finding, or "Ask your numbers": editors and admins (it spends the AI allowance); the answer's figures are checked before it is sent. */
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const started = Date.now();
   const { id } = await ctx.params;
   const parsed = Body.safeParse(await req.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -34,7 +36,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const bundle = await loadCompanyBundle(id);
   const body = parsed.data;
-  const limit = await limits(supabase, [[body.mode === "ask" ? "ask" : "doctor", user.id], ["ai_company", id]]);
+  if (!mayUseDoctorAi(bundle.role)) return NextResponse.json({ error: "View-only access" }, { status: 403 });
+  const limit = await limits(supabase, doctorAiLimits(body.mode, user.id, id));
   if (limit === "error") return NextResponse.json({ error: BUSY }, { status: 503 });
   if (limit === "over") return NextResponse.json({ error: "The limit for AI answers has been reached. Try again later." }, { status: 429 });
   if (!(await aiBudgetOk(supabase, bundle.orgId))) return NextResponse.json({ error: OVER_BUDGET }, { status: 429 });
@@ -61,9 +64,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     const context: Record<string, unknown> = { ...extra, ...buildContext(a, bundle.months, { name: bundle.name, currency: bundle.settings.currency, asOf: bundle.asOf ?? null, notes: bundle.notes, assumptions: bundle.assumptions, accounts: bundle.accounts }, SECTIONS) };
     if (body.mode === "ask") {
       const [sales, expenses] = await Promise.all([loadSales(id), loadExpenses(id)]);
-      if (sales.status === "ready" && expenses.status === "ready") Object.assign(context, linesContext(bundle.months, bundle.accounts, sales.data, expenses.data, sel, bundle.settings.fyStartMonth, bundle.settings.currency, bundle.asOf));
+      const usable = (st: string) => st === "ready" || st === "stale";
+      if (usable(sales.status) && usable(expenses.status)) Object.assign(context, linesContext(bundle.months, bundle.accounts, sales.data, expenses.data, sel, bundle.settings.fyStartMonth, bundle.settings.currency, bundle.asOf));
     }
-    const r = await verifiedAnswer({ task, context, lang, onUsage: (u) => used.push(u) });
+    const r = await verifiedAnswer({ task, context, lang, onUsage: (u) => used.push(u), deadline: started + 55_000 });
     return NextResponse.json({ answer: r.text, period: end, verified: true });
   } catch (e) {
     if (e instanceof DoctorAiError) return NextResponse.json({ error: e.message }, { status: doctorAiStatus(e) });

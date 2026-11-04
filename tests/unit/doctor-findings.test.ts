@@ -62,4 +62,21 @@ describe("doctor findings", () => {
     expect(s.score).toBeLessThan(80);
     expect(s.open).toBe(f.length);
   });
+
+  it("keeps a finding's key when only its figures change, so an acceptance is not lost", () => {
+    const a = doctorFindings({ checks: [check({ title: "Customer days of 90 look too high", period: "2026-03", actual: 90 })], months, basePath: base });
+    const b = doctorFindings({ checks: [check({ title: "Customer days of 95 look too high", period: "2026-03", actual: 95 })], months, basePath: base });
+    expect(a[0].key).toBe(b[0].key);
+  });
+
+  it("reopens an accepted finding when its money at stake changes materially, and says so", () => {
+    const one = (diff: number) => [check({ id: "bs_balance", severity: "block", period: "2026-03", statement: "BS", title: "Balance sheet doesn't balance", diff })];
+    const key = doctorFindings({ checks: one(50), months, basePath: base })[0].key;
+    const d = [{ key, reason: "Rounding", at: "2026-11-04T10:00:00Z", amount: 50 }];
+    expect(doctorFindings({ checks: one(51), months, basePath: base, decisions: d })[0].accepted?.reason).toBe("Rounding");
+    const grown = doctorFindings({ checks: one(5_000_000), months, basePath: base, decisions: d })[0];
+    expect(grown.accepted).toBeUndefined();
+    expect(grown.reopened?.amount).toBe(50);
+  });
 });
+

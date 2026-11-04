@@ -28,12 +28,16 @@ async function askServer(companyId: string, body: Record<string, unknown>): Prom
 /** An AI answer, shown only after its figures were checked; or the reason it can't be shown. */
 function Answer({ text, error, testId }: { text?: string; error?: string; testId: string }) {
   const t = useT().d.doc;
-  if (error) return <p role="alert" className="mt-3 rounded-md bg-red/5 p-3 text-sm text-red" data-testid={`${testId}-error`}>{error}</p>;
-  if (!text) return null;
+  // The live region stays mounted, so a screen reader announces the answer when it arrives.
   return (
-    <div className="mt-3 rounded-md border border-brand/30 bg-brand-bg/40 p-3 text-sm leading-relaxed" data-testid={testId} aria-live="polite">
-      <p className="whitespace-pre-line">{text}</p>
-      <p className="mt-2 flex items-center gap-1 text-xs text-green-d"><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{t.verified}</p>
+    <div aria-live="polite">
+      {error && <p role="alert" className="mt-3 rounded-md bg-red/5 p-3 text-sm text-red" data-testid={`${testId}-error`}>{error}</p>}
+      {!error && text && (
+        <div className="mt-3 rounded-md border border-brand/30 bg-brand-bg/40 p-3 text-sm leading-relaxed" data-testid={testId}>
+          <p className="whitespace-pre-line" dir="auto">{text}</p>
+          <p className="mt-2 flex items-center gap-1 text-xs text-green-d"><ShieldCheck className="h-3.5 w-3.5" aria-hidden />{t.verified}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -60,7 +64,7 @@ function AcceptButton({ f, companyId }: { f: Finding; companyId: string }) {
           <DialogClose className="rounded border border-line px-4 py-2 text-sm">{t.cancel}</DialogClose>
           <button type="button" className="rounded bg-brand-d px-4 py-2 text-sm font-medium text-white disabled:opacity-50" disabled={pending || reason.trim().length < 3} data-testid="doctor-accept-save"
             onClick={() => start(async () => {
-              const r = await acceptFinding(companyId, f.key, f.title, reason);
+              const r = await acceptFinding(companyId, f.key, f.title, reason, f.impact);
               if (!r.ok) { setErr(r.error); return; }
               setOpen(false); setReason(""); router.refresh();
             })}>{t.save}</button>
@@ -76,6 +80,7 @@ function FindingCard({ f, companyId, canEdit, aiOn, lang }: { f: Finding; compan
   const router = useRouter();
   const [ans, setAns] = useState<{ text?: string; error?: string }>({});
   const [pending, start] = useTransition();
+  const [undoing, startUndo] = useTransition();
   const at = f.accepted?.at ? new Date(f.accepted.at).toLocaleDateString(lang === "ar" ? "ar-EG" : "en-GB") : "";
   return (
     <li className={cn("rounded-xl border border-line bg-white p-4", f.accepted && "opacity-80")} data-testid="doctor-finding" data-key={f.key}>
@@ -94,6 +99,11 @@ function FindingCard({ f, companyId, canEdit, aiOn, lang }: { f: Finding; compan
           {f.basis && <div className="text-xs text-mute">{t.basis[f.basis]}</div>}
         </div>
       </div>
+      {f.reopened && (
+        <p className="mt-2 rounded-md bg-amber/10 p-2 text-xs" data-testid="doctor-reopened">
+          {t.reopened(f.reopened.amount ?? 0)}: {f.reopened.reason}
+        </p>
+      )}
       {f.accepted && (
         <p className="mt-2 rounded-md bg-band p-2 text-xs text-ink-2" data-testid="doctor-accepted-reason">
           {f.accepted.by === "upload" ? t.acceptedAtUpload : t.acceptedOn(at)}: {f.accepted.reason}
@@ -108,9 +118,9 @@ function FindingCard({ f, companyId, canEdit, aiOn, lang }: { f: Finding; compan
           </button>
         )}
         {canEdit && companyId && !f.accepted && <AcceptButton f={f} companyId={companyId} />}
-        {canEdit && companyId && f.accepted?.id && (
-          <button type="button" className="inline-flex items-center rounded border border-line bg-white px-3 py-1.5 text-xs hover:bg-band disabled:opacity-50" disabled={pending} data-testid="doctor-undo"
-            onClick={() => start(async () => { const r = await undoFinding(companyId, f.accepted!.id!); if (!r.ok) setAns({ error: r.error }); else router.refresh(); })}>{t.undo}</button>
+        {canEdit && companyId && f.accepted?.id && f.accepted.undoable && (
+          <button type="button" className="inline-flex items-center rounded border border-line bg-white px-3 py-1.5 text-xs hover:bg-band disabled:opacity-50" disabled={undoing} data-testid="doctor-undo"
+            onClick={() => startUndo(async () => { const r = await undoFinding(companyId, f.accepted!.id!); if (!r.ok) setAns({ error: r.error }); else router.refresh(); })}>{t.undo}</button>
         )}
       </div>
       <Answer text={ans.text} error={ans.error} testId="doctor-explanation" />
@@ -146,7 +156,7 @@ export function DoctorView({ data }: { data: DoctorData }) {
   const demo = c.id === "demo";
   const companyId = demo ? null : c.id;
   const canEdit = !demo && !c.readOnly && !data.decisionsUnavailable;
-  const aiOn = !demo && Boolean(c.aiEnabled);
+  const aiOn = !demo && !c.readOnly && Boolean(c.aiEnabled);
   const open = data.findings.filter((f) => !f.accepted && (area === "all" || f.area === area));
   const accepted = data.findings.filter((f) => f.accepted && (area === "all" || f.area === area));
   const present = new Set(data.findings.map((f) => f.area));
@@ -166,7 +176,7 @@ export function DoctorView({ data }: { data: DoctorData }) {
       {!demo && c.readOnly && <p className="mb-4 text-sm text-mute">{t.viewer}</p>}
       {demo && <p className="mb-4 rounded-md bg-band p-3 text-sm" data-testid="doctor-demo-note">{t.demoAi}</p>}
       {aiOn && companyId && <AskBox companyId={companyId} lang={lang} />}
-      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={t.areas.all}>
+      <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label={t.filterAreas}>
         {AREAS.filter((a) => a === "all" || present.has(a)).map((a) => (
           <button key={a} type="button" aria-pressed={area === a} onClick={() => setArea(a)}
             className={cn("rounded-full border px-3 py-1 text-sm", area === a ? "border-brand-d bg-brand-bg font-medium" : "border-line bg-white")}>{t.areas[a]}</button>

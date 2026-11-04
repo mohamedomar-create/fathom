@@ -4,24 +4,32 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 import type { Usage } from "@/lib/ai/budget";
 import { asData, COMMENTARY_MODEL } from "@/lib/ai/commentary";
-import { numbersIn, verifyFigures, type Fact } from "@/lib/ai/verify";
+import { signedNumbersIn, verifyFigures, type Fact } from "@/lib/ai/verify";
 
 /**
  * "Explain" and "Ask your numbers": the AI words the answer, the company's own figures supply every number. The answer
  * is checked against the figures it was given; a wrong number sends it back once with the list, then it is refused.
  */
 export class DoctorAiError extends Error {
-  constructor(message: string, readonly kind: "not_configured" | "unverified" | "upstream" = "upstream") { super(message); }
+  /** `usage`: what the failed call used; it is billed even when the answer can't be used. */
+  constructor(message: string, readonly kind: "not_configured" | "unverified" | "upstream" = "upstream", readonly usage?: Usage) { super(message); }
 }
 export const doctorAiStatus = (e: DoctorAiError) => (e.kind === "not_configured" ? 503 : e.kind === "unverified" ? 422 : 502);
 
 export type AiCall = (system: string, user: string) => Promise<{ answer: string; usage: Usage }>;
 
-/** Every number in the data the AI is given. Decimals between −1 and 1 are ratios, so they may also be written as a %. */
+/**
+ * Every number in the data exactly as the AI was given it (after asData), with its sign. Document numbers
+ * ("BILL/2026/0281") and account codes ("620400 Professional Fees") are names, not figures, and are left out.
+ * Decimals between −1 and 1 are ratios, so they may also be written as a %.
+ */
 export function factsFrom(context: unknown): Fact[] {
+  const text = JSON.stringify(asData(context))
+    .replace(/[A-Za-z]{2,}\/[\w/.-]+/g, " ")
+    .replace(/(?<![\d.,])\d{4,}(?=\s+[A-Za-z؀-ۿ])/g, " ");
   const seen = new Set<number>();
   const out: Fact[] = [];
-  for (const v of numbersIn(JSON.stringify(context))) {
+  for (const v of signedNumbersIn(text)) {
     if (seen.has(v)) continue;
     seen.add(v);
     out.push({ id: `n${out.length}`, label: String(v), value: v, unit: !Number.isInteger(v) && Math.abs(v) <= 1 ? "ratio" : "count" });
@@ -57,8 +65,8 @@ export const anthropicCall: AiCall = async (system, user) => {
       system,
       messages: [{ role: "user", content: user }],
     });
-    if (r.stop_reason === "refusal") throw new DoctorAiError("The AI declined to answer this.");
-    if (r.stop_reason === "max_tokens" || !r.parsed_output) throw new DoctorAiError("The AI answer could not be read. Please try again.");
+    if (r.stop_reason === "refusal") throw new DoctorAiError("The AI declined to answer this.", "upstream", r.usage);
+    if (r.stop_reason === "max_tokens" || !r.parsed_output) throw new DoctorAiError("The AI answer could not be read. Please try again.", "upstream", r.usage);
     return { answer: r.parsed_output.answer.trim().slice(0, 2000), usage: r.usage };
   } catch (e) {
     if (e instanceof DoctorAiError) throw e;
@@ -73,13 +81,22 @@ export const anthropicCall: AiCall = async (system, user) => {
 const fmt = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 6 });
 
 /** Asks, checks every number, asks once more with the wrong numbers named, then refuses. Usage is reported for each call. */
-export async function verifiedAnswer(opts: { task: string; context: unknown; lang: "en" | "ar"; call?: AiCall; onUsage?: (u: Usage) => void }): Promise<{ text: string }> {
+/** A second try needs this long; with less time left before `deadline` the answer is refused instead. */
+const RETRY_MS = 28_000;
+
+export async function verifiedAnswer(opts: { task: string; context: unknown; lang: "en" | "ar"; call?: AiCall; onUsage?: (u: Usage) => void; deadline?: number }): Promise<{ text: string }> {
   const call = opts.call ?? anthropicCall;
   const system = doctorSystem(opts.lang);
   const facts = factsFrom(opts.context);
   let user = userMessage(opts.task, opts.context);
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { answer, usage } = await call(system, user);
+    if (attempt > 0 && opts.deadline !== undefined && Date.now() + RETRY_MS > opts.deadline) break;
+    let res: Awaited<ReturnType<AiCall>>;
+    try { res = await call(system, user); } catch (e) {
+      if (e instanceof DoctorAiError && e.usage) opts.onUsage?.(e.usage);
+      throw e;
+    }
+    const { answer, usage } = res;
     opts.onUsage?.(usage);
     const check = verifyFigures(answer, facts);
     if (check.ok && answer.trim()) return { text: answer.trim() };
