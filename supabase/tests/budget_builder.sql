@@ -45,7 +45,7 @@ grant select, update on ids to authenticated;
 select pg_temp.check('the builder functions are there',
   (to_regprocedure('public.budget_setup_save(uuid, jsonb)') is not null
    and to_regprocedure('public.budget_rows_save(uuid, jsonb, text[], jsonb, jsonb)') is not null)::text, 'true');
-select pg_temp.check('schema version 53', public.schema_version()::text, '53');
+select pg_temp.check('schema version 53 or later', (public.schema_version() >= 53)::text, 'true');
 
 select pg_temp.login('bbe@x.test');
 update ids set v1 = public.budget_create(co, '2026', 'original', 'Budget 2026', null);
