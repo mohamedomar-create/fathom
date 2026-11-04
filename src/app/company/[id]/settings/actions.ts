@@ -394,8 +394,8 @@ export async function copyCompanySettings(companyId: string, fromId: string): Pr
     supabase.from("companies").select("org_id, kpi_config, data_version").eq("id", fromId).maybeSingle(),
   ]);
   if (!target || !src) return { ok: false, error: "You do not have access to both companies." };
-  const { data: mem } = await supabase.from("memberships").select("role").eq("org_id", target.org_id).eq("user_id", user.id).maybeSingle();
-  if (!mem || mem.role === "viewer") return { ok: false, error: "Only an editor or admin of this company can do that." };
+  const role = await companyRole(supabase, companyId);
+  if (role !== "editor" && role !== "admin") return { ok: false, error: "Only an editor or admin of this company can do that." };
   const [{ data: accts, error: e1 }, srcMap, targetMap] = await Promise.all([
     supabase.from("source_accounts").select("code, name, class").eq("company_id", fromId).eq("version", src.data_version),
     loadAccountMap(supabase, fromId), loadAccountMap(supabase, companyId),

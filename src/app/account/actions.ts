@@ -6,6 +6,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { dbError } from "@/lib/action-error";
 import { getUser } from "@/lib/supabase/server";
+import { createClient as createPlainClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/supabase/env";
+import { limited } from "@/lib/rate-limit";
+import { changePasswordWith } from "@/lib/auth/password-change";
 
 type Result = { ok: boolean; error?: string };
 const SIGN_IN_AGAIN = "Please sign in again.";
@@ -51,18 +56,24 @@ export async function deleteAccount(typedEmail: string): Promise<Result> {
 
 /**
  * Changes the password after checking the current one (a stolen open session can't change it), then signs out every
- * other device, so a session the person doesn't know about ends with it.
+ * other device. The current password is checked on a separate client, so this session and its two-step sign-in stay.
  */
 export async function changePassword(current: string, next: string): Promise<Result> {
-  const v = z.object({ current: z.string().min(1).max(200), next: z.string().min(MIN_PASSWORD).max(200) }).safeParse({ current, next });
+  const v = z.object({ current: z.string().max(200), next: z.string().max(200) }).safeParse({ current, next });
   if (!v.success) return { ok: false, error: `Use at least ${MIN_PASSWORD} characters.` };
   const { supabase, user } = await getUser();
-  if (!user?.email) return { ok: false, error: "Please sign in again." };
-  const { error: wrong } = await supabase.auth.signInWithPassword({ email: user.email, password: v.data.current });
-  if (wrong) return { ok: false, error: "The current password is not right." };
-  if (v.data.current === v.data.next) return { ok: false, error: "Choose a password different from the current one." };
-  const { error } = await supabase.auth.updateUser({ password: v.data.next });
-  if (error) return { ok: false, error: error.message };
-  await supabase.auth.signOut({ scope: "others" });
-  return { ok: true };
+  if (!user?.email) return { ok: false, error: SIGN_IN_AGAIN };
+  const email = user.email;
+  return changePasswordWith({
+    limited: () => limited(supabase, "password", user.id),
+    verify: async (e, password) => {
+      const probe = createPlainClient<Database>(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+      const { data, error } = await probe.auth.signInWithPassword({ email: e, password });
+      if (error || !data.session) return false;
+      await probe.auth.signOut({ scope: "local" }).catch(() => undefined);
+      return true;
+    },
+    update: async (password) => (await supabase.auth.updateUser({ password })).error?.message ?? null,
+    signOutOthers: async () => { await supabase.auth.signOut({ scope: "others" }); },
+  }, email, v.data.current, v.data.next);
 }

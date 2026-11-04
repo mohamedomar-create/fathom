@@ -200,9 +200,9 @@ export async function setCompanyRole(companyId: string, userId: string, role: "e
   if (!v.success) return { ok: false, error: "That value isn't valid." };
   const { supabase, user } = await signedIn();
   if (!user) return { ok: false, error: "Please sign in again." };
-  if (await limited(supabase, "company_role", user.id)) return { ok: false, error: TOO_MANY };
+  // The database counts each change against the company_role limit itself.
   const { error } = await supabase.rpc("set_company_role", { p_company: v.data.companyId, p_user: v.data.userId, p_role: v.data.role });
-  if (error) return { ok: false, error: dbError(error, "setCompanyRole") };
+  if (error) return { ok: false, error: error.code === "54000" ? TOO_MANY : dbError(error, "setCompanyRole") };
   revalidatePath("/admin/people");
   return { ok: true };
 }
