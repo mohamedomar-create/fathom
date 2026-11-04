@@ -1,6 +1,7 @@
 -- 0055: background jobs that do nothing when there is nothing to do.
 --  * private.run_import_jobs (every 5 s): returns at once when no upload is in progress and the clean-up of old
---    uploads ran in the last minute. Clean-up (stuck uploads, rows of cancelled and old uploads) runs once a minute.
+--    uploads ran in the last minute. While uploads are in progress every tick works as before; otherwise the clean-up
+--    of old uploads' rows runs once a minute.
 --  * private.refresh_inventory_rollups: one refresh at a time (a second caller returns 0).
 -- Only replaces the two functions and adds one small table; safe to run again.
 
@@ -37,7 +38,8 @@ begin
            message = 'The save took too long for the database. Press “Try again”, or upload fewer months at a time.'
      where id in (select id from public.import_jobs where status = 'saving' and updated_at < now() - interval '15 minutes' for update skip locked);
   end if;
-  if not exists (select 1 from private.job_housekeeping where last_at > now() - interval '1 minute') then
+  -- Rows of cancelled, stopped and old uploads: cleared on every tick while uploads are in progress (as before), else once a minute.
+  if v_busy or not exists (select 1 from private.job_housekeeping where last_at > now() - interval '1 minute') then
     delete from public.import_rows r using public.import_jobs j
      where r.job_id = j.id and (j.status = 'cancelled'
         or (j.status = 'failed' and j.queued_at is null)

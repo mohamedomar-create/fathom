@@ -2,6 +2,7 @@
 -- Run by scripts/test-db.sh; any failed check raises.
 \set ON_ERROR_STOP on
 \set QUIET on
+\i supabase/migrations/0055_idle_jobs.sql
 
 create function pg_temp.check(label text, got text, want text) returns void language plpgsql as $f$
 begin
