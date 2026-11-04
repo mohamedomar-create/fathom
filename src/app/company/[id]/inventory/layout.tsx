@@ -1,3 +1,4 @@
+import { pack } from "@/lib/wire/pack";
 import { ExpensesProvider } from "@/lib/company/expenses-context";
 import { loadExpenses } from "@/lib/company/expenses-load";
 import { InventoryProvider } from "@/lib/company/inventory-context";
@@ -17,7 +18,7 @@ export default async function InventoryLayout({ children, params }: { children: 
     <UnreadModules modules={unread}>
       <DependencyNote modules={unread} />
       {expenses.status === "stale" && <StaleDependency module="expenses" builtAt={expenses.builtAt} />}
-      <ExpensesProvider value={forInventory(expenses.data)}><InventoryProvider state={inventory}>{children}</InventoryProvider></ExpensesProvider>
+      <ExpensesProvider value={pack(forInventory(expenses.data))}><InventoryProvider state={inventory}>{children}</InventoryProvider></ExpensesProvider>
     </UnreadModules>
   );
 }

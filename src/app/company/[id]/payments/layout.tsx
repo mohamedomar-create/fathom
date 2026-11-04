@@ -5,6 +5,7 @@ import { statusOf } from "@/lib/company/loaded";
 import { loadCompanyBundle } from "@/lib/company/load";
 import { loadCashCompany, loadCashEntries } from "@/lib/cash/load";
 import { cashOwed } from "@/lib/cash/figures";
+import { pack } from "@/lib/wire/pack";
 
 export default async function PaymentsLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,5 +17,5 @@ export default async function PaymentsLayout({ children, params }: { children: R
     const [entries, cash] = await Promise.all([loadCashEntries(id), loadCashCompany(id)]);
     if (entries.ok) value = { ...value, cashOwed: { ...cashOwed(entries.entries, cash.today), asOf: cash.today } };
   }
-  return <ModuleGate module="payments" state={statusOf(payments, !noPayments(payments.data.data) || !!value.cashOwed?.toYou.total || !!value.cashOwed?.byYou.total)}><PaymentsProvider value={value}>{children}</PaymentsProvider></ModuleGate>;
+  return <ModuleGate module="payments" state={statusOf(payments, !noPayments(payments.data.data) || !!value.cashOwed?.toYou.total || !!value.cashOwed?.byYou.total)}><PaymentsProvider value={pack(value)}>{children}</PaymentsProvider></ModuleGate>;
 }

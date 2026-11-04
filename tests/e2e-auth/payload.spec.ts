@@ -1,5 +1,5 @@
 // Page weight budget (3c): the first answer of each main company page (its HTML with the data the page carries) on the
-// large made-up company (scripts/bench/seed-big.sql) stays within the size measured on 1 Nov 2026 plus 20%. A change
+// large made-up company (scripts/bench/seed-big.sql) stays within the size measured on 4 Nov 2026 plus 20%. A change
 // that makes a page send much more data fails here instead of slowing every user down.
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -9,9 +9,12 @@ import { createCompany, newEmail, requireLocalStack, signUp } from "./helpers";
 requireLocalStack();
 
 const DB = process.env.DB_URL ?? "postgres://postgres:postgres@127.0.0.1:54322/postgres";
-/** Kilobytes measured on 1 Nov 2026 (uncompressed first answer). The budget is 20% above. */
+/**
+ * Kilobytes measured on 4 Nov 2026 (uncompressed first answer), after Sales, Expenses and Payments started sending their
+ * data compact (lib/wire/pack: about a third of the 1 Nov sizes). The budget is 20% above.
+ */
 const MEASURED_KB: Record<string, number> = {
-  summary: 309, "analysis/financials": 299, sales: 4669, expenses: 3936, "payments/flows": 6193, data: 300, "data/checks": 386, reports: 273,
+  summary: 343, "analysis/financials": 303, sales: 1518, expenses: 1244, "payments/flows": 2195, data: 304, "data/checks": 389, reports: 275,
 };
 
 test("each main page of a large company stays within its size budget", async ({ page }) => {

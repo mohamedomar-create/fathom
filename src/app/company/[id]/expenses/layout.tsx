@@ -6,6 +6,7 @@ import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
 import { ModuleGate } from "@/components/shell/module-state";
 import { statusOf } from "@/lib/company/loaded";
 import { hasFigures } from "@/lib/company/loaded";
+import { pack } from "@/lib/wire/pack";
 
 export default async function ExpensesLayout({ children, params }: { children: React.ReactNode; params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,7 +15,7 @@ export default async function ExpensesLayout({ children, params }: { children: R
   const names = hasFigures(sales) ? [...customersOf(sales.data)] : [];
   return (
     <ModuleGate module="expenses" state={statusOf(expenses, !noExpenses(expenses.data))}>
-      <CustomerNamesProvider value={names}><ExpensesProvider value={expenses.data}>{children}</ExpensesProvider></CustomerNamesProvider>
+      <CustomerNamesProvider value={names}><ExpensesProvider value={pack(expenses.data)}>{children}</ExpensesProvider></CustomerNamesProvider>
     </ModuleGate>
   );
 }

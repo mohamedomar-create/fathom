@@ -1,12 +1,15 @@
 "use client";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useMemo } from "react";
+import { unpack, type Packed } from "@/lib/wire/pack";
 import { EMPTY_SALES, type SalesData } from "@/lib/engine";
 
 const Ctx = createContext<SalesData>(EMPTY_SALES);
 
 /** The company's sales summary for the Sales pages (loaded once by the sector's layout). */
-export function SalesProvider({ value, children }: { value: SalesData; children: React.ReactNode }) {
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+export function SalesProvider({ value, children }: { value: SalesData | Packed; children: React.ReactNode }) {
+  // Sent compact (lib/wire/pack); read back once here.
+  const data = useMemo(() => unpack<SalesData>(value), [value]);
+  return <Ctx.Provider value={data}>{children}</Ctx.Provider>;
 }
 
 export const useSales = () => useContext(Ctx);

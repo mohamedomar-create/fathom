@@ -4,6 +4,7 @@ import { SalesProvider } from "@/lib/company/sales-context";
 import { loadSales, noSales } from "@/lib/company/sales-load";
 import { DependencyNote, UnreadModules } from "@/components/shell/module-state";
 import { unknownState } from "@/lib/company/loaded";
+import { pack } from "@/lib/wire/pack";
 
 /**
  * A report can include the Sales and Expenses pages, so an open report reads the company's sales and expense summaries
@@ -18,7 +19,7 @@ export async function ReportData({ id, children }: { id: string; children: React
   return (
     <UnreadModules modules={unread}>
       <DependencyNote modules={unread} />
-      <SalesProvider value={sales.data}><ExpensesProvider value={expenses.data}>{children}</ExpensesProvider></SalesProvider>
+      <SalesProvider value={pack(sales.data)}><ExpensesProvider value={pack(expenses.data)}>{children}</ExpensesProvider></SalesProvider>
     </UnreadModules>
   );
 }
