@@ -66,7 +66,7 @@ import { highlightsOf } from "@/lib/engine/statement-rows";
 import { loadBalances } from "./balances";
 import { runChecks } from "./checks";
 import { openChecks } from "./status";
-import { accessFrom, AccessError } from "./access";
+import { loadCompanyMeta } from "./meta";
 function withDefaults(active: string[], cfg: KpiConfig) {
   const set = new Set(active);
   for (const d of KPI_DEFS) if (cfg[d.key]?.active === undefined && d.defaultActive) set.add(d.key);
@@ -91,27 +91,23 @@ export async function loadAccounts(supabase: Awaited<ReturnType<typeof getUser>>
 export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle & { role: string; orgId: string; dataVersion: number }> => {
   if (!isUuid(id)) notFound();
   const t0 = Date.now();
-  const { supabase, user } = await getUser();
-  if (!user) notFound();
-  const { data: c, error: cErr } = await supabase.from("companies").select("*").eq("id", id).maybeSingle();
-  if (cErr) throw new AccessError(cErr.code);
-  if (!c) notFound();
-  // Everything else in one round, the accounts included.
-  const [{ data: mem, error: memErr }, { data: org }, { data: list }, { data: comm }, { data: imp, error: impErr }, stored, subMap] = await Promise.all([
-    supabase.from("memberships").select("role").eq("org_id", c.org_id).eq("user_id", user.id).maybeSingle(),
+  const { supabase } = await getUser();
+  // Who the person is and the company row come from the same request's lookup (one round, shared with the layout).
+  const meta = await loadCompanyMeta(id);
+  const c = meta.row;
+  // Everything else in one round, the accounts and the budget targets included.
+  const useBudget = budgetTargetsOf(c.kpi_config);
+  const [{ data: org }, { data: list }, { data: comm }, { data: imp, error: impErr }, stored, subMap, budgets] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
     supabase.from("commentary").select("period_key, section, body").eq("company_id", id),
     supabase.from("imports").select("report").eq("company_id", id).eq("data_version", c.data_version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle(),
     loadAccounts(supabase, id, c.data_version),
     loadSubMap(supabase, id),
+    // The approved budget, only when the company uses it as KPI targets (a read failure: no budget targets, never an error).
+    useBudget ? loadYearBudgets(supabase, id) : Promise.resolve([]),
   ]);
-  // The approved budget, only when the company uses it as KPI targets (a read failure: no budget targets, never an error).
-  const useBudget = budgetTargetsOf(c.kpi_config);
-  const budgets = useBudget ? await loadYearBudgets(supabase, id) : [];
-  // Fails closed: a membership that couldn't be read is an error, none means not this person's company.
-  const access = accessFrom(mem, memErr);
-  if (access === "none") notFound();
+  const access = { role: meta.role, readOnly: meta.readOnly };
   // Each account's sub-class (the company's choice, else its name), for the cash flow statement.
   const accounts = withSubClasses(naturalAccounts(stored), subMap);
   const { settings, alerts } = settingsFromRow(c);
