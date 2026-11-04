@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { fyMonths, type BudgetLine } from "@/lib/engine/budget";
 import {
@@ -89,7 +89,16 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   // Customers typed by hand (kept as typed); the others follow the revenue by their share.
   const [edited, setEdited] = useState(() => new Set(rows.customer.filter((r) => r.basis !== null).map((r) => r.key)));
   const [dirty, setDirty] = useState(0);
-  const [tab, setTab] = useState<Tab>("revenue");
+  // The open tab lives in the address (?btab=), so the redraw after a save (or a reload) keeps the person where they were.
+  const params = useSearchParams();
+  const asTab = (v: string | null): Tab => ((TABS as readonly string[]).includes(v ?? "") ? (v as Tab) : "revenue");
+  const [tab, setTabState] = useState<Tab>(() => asTab(params.get("btab")));
+  function setTab(k: Tab) {
+    setTabState(k);
+    const u = new URL(window.location.href);
+    if (k === "revenue") u.searchParams.delete("btab"); else u.searchParams.set("btab", k);
+    window.history.replaceState(window.history.state, "", u);
+  }
   const [pending, start] = useTransition();
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 

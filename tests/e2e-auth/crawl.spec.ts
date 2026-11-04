@@ -56,7 +56,10 @@ test("the navigation rail and menus take a user everywhere", async ({ page }) =>
     if (!(await link.isVisible())) await page.getByTestId(`tab-${p.startsWith("sales") ? "sales" : p.startsWith("expenses") ? "expenses" : p === "banking" ? "banking" : "financials"}`).click();
     await page.locator(`a[href$="/company/${id}/${p}"]`).first().click();
     await expect(page).toHaveURL(new RegExp(`/company/${id}/${p}`));
-    await expect(page.locator("h1")).toBeVisible();
+    // During a client navigation Next can keep the previous copy of the route mounted but hidden for a moment, so the
+    // title is checked on the copy a person can see: every page must show one, with text.
+    await expect(page.locator("h1").filter({ visible: true })).toHaveCount(1);
+    await expect(page.locator("h1").filter({ visible: true })).not.toBeEmpty();
     for (const i of await textAndLayout(page)) issues.push(`${p}: ${i}`);
   }
   // The period picker carries the chosen period from page to page.

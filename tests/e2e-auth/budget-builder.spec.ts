@@ -208,6 +208,9 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   await expect(page.getByTestId("customer-diff")).toHaveCount(0);
   await page.getByTestId("budget-save").click();
   await expect(page.getByTestId("budget-save")).toHaveCount(0, { timeout: 15_000 }); // saved: nothing left to save
+  // The tab the person is on stays open when the page is drawn again (after a save's refresh, or a reload).
+  await page.reload();
+  await expect(page.getByTestId("btab-customers")).toHaveAttribute("aria-selected", "true");
   await expect.poll(() => yearOf("cust:Lakeside Medical", "customer")).toBe(27000);
   const custOff = sql(`
     with c as (select i, sum(months[i]) v from public.budget_rows, generate_series(1, 12) i where version_id = '${v}' and view = 'customer' group by i),
