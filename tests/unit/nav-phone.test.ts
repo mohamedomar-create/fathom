@@ -12,8 +12,15 @@ describe("Financials in four groups", () => {
       ["summary", "analysis/kpis", "analysis/explorer"],
       ["analysis/profitability", "analysis/growth", "analysis/trend", "analysis/real-profit"],
       ["analysis/cashflow", "analysis/financials"],
-      ["analysis/budget", "analysis/forecast", "analysis/goalseek"],
+      ["analysis/forecast", "analysis/goalseek"],
     ]);
+  });
+  it("Planning is its own sector: Business plan, then Budget", () => {
+    const p = SECTORS.find((s) => s.key === "planning")!;
+    expect(p.items.map((i) => i.href)).toEqual(["planning", "planning/budget"]);
+    expect(sectorOf("planning/budget").key).toBe("planning");
+    expect(sectorOf("planning").key).toBe("planning");
+    expect(ar.sectors.planning).toMatch(/[؀-ۿ]/);
   });
   it("other sectors are one group with no heading", () => {
     const g = navGroups(SECTORS.find((s) => s.key === "sales")!);

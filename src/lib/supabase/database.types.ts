@@ -14,6 +14,7 @@ export type BudgetVersionRow = {
   based_on: string | null; setup: Json | null; created_by: string | null; approved_by: string | null; approved_at: string | null; created_at: string; updated_at: string;
 }
 export type BudgetLineRow = { version_id: string; company_id: string; key: string; cls: string; label: string | null; month: string; amount: number }
+export type BusinessPlanRow = { company_id: string; id: string; data: Json; created_by: string | null; created_at: string; updated_by: string | null; updated_at: string }
 export type BudgetSetupRow = { company_id: string; setup: Json; updated_at: string; updated_by: string | null }
 export type BudgetRowRow = {
   version_id: string; company_id: string; view: "revenue" | "customer" | "expense"; key: string; label: string | null; mode: "year" | "months";
@@ -103,6 +104,7 @@ export type Database = {
       budget_lines: Table<BudgetLineRow, "version_id" | "company_id" | "key" | "cls" | "month" | "amount">;
       budget_products: Table<BudgetProductRow, "version_id" | "company_id" | "product" | "month" | "units" | "price">;
       budget_setups: Table<BudgetSetupRow, "company_id" | "setup">;
+      business_plans: Table<BusinessPlanRow, "company_id" | "id" | "data">;
       budget_rows: Table<BudgetRowRow, "version_id" | "company_id" | "view" | "key" | "mode" | "months">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
       aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
@@ -149,6 +151,9 @@ export type Database = {
       budget_save_products: { Args: { p_version: string; p_rows: Json; p_replace?: boolean }; Returns: number };
       budget_save: { Args: { p_version: string; p_lines?: Json | null; p_products?: Json | null; p_replace_lines?: boolean }; Returns: Json };
       budget_setup_save: { Args: { p_company: string; p_setup: Json }; Returns: undefined };
+      plan_create: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: undefined };
+      plan_save: { Args: { p_company: string; p_id: string; p_data: Json }; Returns: undefined };
+      plan_delete: { Args: { p_company: string; p_id: string }; Returns: undefined };
       budget_rows_save: { Args: { p_version: string; p_rows: Json; p_views: string[]; p_lines?: Json | null; p_setup?: Json | null }; Returns: undefined };
       budget_approve: { Args: { p_version: string }; Returns: undefined };
       budget_delete: { Args: { p_version: string }; Returns: undefined };

@@ -11,6 +11,7 @@ import { inv } from "./areas/inv";
 import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
+import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
 import { bank } from "./areas/bank";
 import { rp } from "./areas/rp";
@@ -50,7 +51,7 @@ export const en = {
   },
   navGroups: { overview: "Overview", performance: "Performance", cash: "Cash & statements", plan: "Plan" },
   bottom: { home: "Home", pages: "Pages", more: "More", sectionPages: "Pages in this section", everything: "All sections" },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", planning: "Planning" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -62,6 +63,8 @@ export const en = {
     "analysis/trend": ["Trend", "Trend"],
     "analysis/goalseek": ["Goalseek", "Goalseek"],
     "analysis/budget": ["Budget", "Budget"],
+    planning: ["Business plan", "Business Plan"],
+    "planning/budget": ["Budget", "Budget"],
     "analysis/forecast": ["Forecast", "Forecast"],
     "analysis/financials": ["Financials", "Financials"],
     "analysis/real-profit": ["Real Profit", "Real Profit"],
@@ -140,6 +143,7 @@ export const en = {
   cash: cash.en,
   hl: hl.en,
   bud: bud.en,
+  bp: bp.en,
   viz: viz.en,
   bank: bank.en,
   state: state.en,

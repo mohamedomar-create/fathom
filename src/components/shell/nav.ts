@@ -1,12 +1,12 @@
 import {
-  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Hospital, Target,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Hospital, Target, BriefcaseBusiness,
   type LucideIcon,
 } from "lucide-react";
 
 export type NavGroupKey = "overview" | "performance" | "cash" | "plan";
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Financials only: the heading this page sits under. */ group?: NavGroupKey }
 
-export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking";
+export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "planning";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -22,7 +22,6 @@ export const SECTORS: Sector[] = [
       { href: "analysis/real-profit", label: "Real Profit", title: "Real Profit", icon: Scale, group: "performance" },
       { href: "analysis/cashflow", label: "Cash Flow", title: "Cash Flow", icon: Waves, group: "cash" },
       { href: "analysis/financials", label: "Financials", title: "Financials", icon: FileSpreadsheet, group: "cash" },
-      { href: "analysis/budget", label: "Budget", title: "Budget", icon: Target, group: "plan" },
       { href: "analysis/forecast", label: "Forecast", title: "Forecast", icon: CalendarRange, group: "plan" },
       { href: "analysis/goalseek", label: "Goalseek", title: "Goalseek", icon: Telescope, group: "plan" },
     ],
@@ -65,13 +64,19 @@ export const SECTORS: Sector[] = [
       { href: "banking", label: "Bank Readiness", title: "Bank Readiness", icon: Landmark },
     ],
   },
+  {
+    key: "planning", label: "Planning", items: [
+      { href: "planning", label: "Business plan", title: "Business Plan", icon: BriefcaseBusiness },
+      { href: "planning/budget", label: "Budget", title: "Budget", icon: Target },
+    ],
+  },
 ];
 
 /** The sector a page belongs to, from its path relative to the company (e.g. "sales/products"). */
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
   const first = r.split("/")[0];
-  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" ? first : "financials";
+  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" || first === "planning" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }
 

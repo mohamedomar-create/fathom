@@ -630,3 +630,6 @@ export function shortenPlan<T extends Pick<BusinessPlan, 'years' | 'staff' | 'ca
     equity: p.equity.map((x) => ({ ...x, month: cap(x.month) })),
   }
 }
+
+/** A new plan's id (letters, digits, - and _ only, as the database requires). */
+export const newPlanId = () => uid('plan')

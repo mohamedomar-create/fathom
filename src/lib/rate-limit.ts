@@ -8,7 +8,7 @@ type Supa = Awaited<ReturnType<typeof getUser>>["supabase"];
  */
 export type Scope =
   | "invite" | "pdf_read_company" | "pdf_read_user" | "ai_company" | "ai_user" | "pdf_render_user" | "pdf_render_ip" | "pdf_render_token" | "export"
-  | "odoo" | "odoo_test_company" | "odoo_sync_company" | "import" | "import_preview" | "inventory" | "expenses" | "sales" | "payments" | "reset" | "cash_entry" | "cash_suggest" | "cash_rules" | "budget";
+  | "odoo" | "odoo_test_company" | "odoo_sync_company" | "import" | "import_preview" | "inventory" | "expenses" | "sales" | "payments" | "reset" | "cash_entry" | "cash_suggest" | "cash_rules" | "budget" | "plan";
 
 /**
  * Shared rate limit, counted in the database so it holds across server instances. The subject is the user, company or

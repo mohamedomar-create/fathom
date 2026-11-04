@@ -1,2 +1,4 @@
-import { DemoBudget } from "@/components/analysis/demo-budget";
-export default function Page() { return <DemoBudget />; }
+import { redirect } from "next/navigation";
+
+/** The budget moved to the Planning screen; old links keep working. */
+export default function Page() { redirect("/demo/planning/budget"); }
