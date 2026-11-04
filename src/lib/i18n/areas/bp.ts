@@ -277,6 +277,7 @@ const s = {
   "Good": "Good",
   "From the start": "From the start",
   "IRR: no outlay to recover · at {rate}": "IRR: no outlay to recover · at {rate}",
+  "Table": "Table",
 };
 
 export const bp = area(
@@ -557,5 +558,6 @@ export const bp = area(
     "Good": "جيد",
     "From the start": "من البداية",
     "IRR: no outlay to recover · at {rate}": "معدل العائد الداخلي: لا يوجد إنفاق يُسترد · عند {rate}",
+    "Table": "جدول",
   } },
 );

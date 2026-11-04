@@ -147,7 +147,7 @@ export function PlanWorkspace({ initial, store, seed, cur, company, readOnly, no
               <button type="button" onClick={() => go({ tab: x.id })} aria-current={tab === x.id ? "page" : undefined} data-testid={`plan-tab-${x.id}`}
                 className={cn("relative flex items-center gap-2 rounded-lg px-3 py-1.5 text-start text-[13px]", tab === x.id ? "bg-brand-d text-white" : "text-ink-2 hover:bg-band")}>
                 <span className={cn("flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold", tab === x.id ? "bg-white/20" : "bg-band")}>{i + 1}</span>
-                <span><span className="block font-medium leading-tight">{t(x.label)}</span>{sub[x.id] && <span className={cn("block text-[11px] leading-tight", tab === x.id ? "text-white/80" : "text-mute")}>{sub[x.id]}</span>}</span>
+                <span><span className="block font-medium leading-tight">{t(x.label)}</span>{sub[x.id] && <span className={cn("block text-[11px] leading-tight", tab === x.id ? "text-white" : "text-mute")}>{sub[x.id]}</span>}</span>
                 {x.id === "overview" && dot && <span className={cn("absolute end-1 top-1 h-2 w-2 rounded-full", dot)} aria-label={t("The plan check found problems")} role="img" />}
               </button>
             </li>

@@ -3,7 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 
 // The demo's budget: its own page, the Budget comparison on Financials and a Budget column in the report.
 test("the demo budget page is a budget builder version, read-only, with budget against actual", async ({ page }) => {
-  await page.goto("/demo/analysis/budget");
+  await page.goto("/demo/planning/budget");
   await expect(page.getByTestId("budget-demo")).toBeVisible();
   await expect(page.getByTestId("budget-status")).toContainText("Approved");
   // The builder tabs replace the old Accounts / Products grids (budget-tab-accounts, budget-tab-products).
@@ -26,7 +26,7 @@ test("the demo budget page is a budget builder version, read-only, with budget a
 
 // The visual pass: summary cards, compact amounts with the exact one on hover, one chart per tab, sort and search.
 test("the demo budget: cards, compact amounts, a chart on every tab, sort by amount and search", async ({ page }) => {
-  await page.goto("/demo/analysis/budget");
+  await page.goto("/demo/planning/budget");
   await expect(page.getByTestId("budget-demo")).toHaveText("Demo: a budget built from this year's figures with a few changes. Sign up to build your own.");
   for (const k of ["revenue", "gp", "exp", "np"]) await expect(page.getByTestId(`bcards-${k}`)).toBeVisible();
   // A credible story: the revenue changed on this year's estimate and the year makes a profit.
@@ -78,7 +78,7 @@ test("the demo budget: cards, compact amounts, a chart on every tab, sort by amo
 const nonZero = (t: string | null) => /[1-9]/.test(t ?? "");
 
 test("the demo builder: groups Hospitals and Homecare, a rental stream, customers that add up", async ({ page }) => {
-  await page.goto("/demo/analysis/budget");
+  await page.goto("/demo/planning/budget");
   await page.getByTestId("btab-groups").click();
   const groups = page.getByTestId("bgroups-row");
   await expect(groups.filter({ hasText: "Hospitals" })).toHaveCount(1);
@@ -97,7 +97,7 @@ for (const lang of ["en", "ar"] as const) {
   test(`the demo budget page meets WCAG 2.2 AA on every builder tab (${lang})`, async ({ page, context, baseURL }) => {
     await context.addCookies([{ name: "lang", value: lang, url: baseURL! }]);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/demo/analysis/budget");
+    await page.goto("/demo/planning/budget");
     await page.waitForLoadState("networkidle").catch(() => {});
     const found: string[] = [];
     for (const k of ["revenue", "customers", "streams", "groups", "expenses", "vs"]) {

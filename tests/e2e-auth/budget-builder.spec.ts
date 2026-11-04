@@ -27,7 +27,7 @@ test("setup: top products ticked, a group created with a product and a customer,
   await loadData(page, id);
 
   // No setup yet and there are products: the wizard opens by itself.
-  await page.goto(`/company/${id}/analysis/budget`);
+  await page.goto(`/company/${id}/planning/budget`);
   await expect(page.getByTestId("bsetup-step-1")).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("bsetup-coverage")).toContainText("% of revenue");
   const products = page.locator("[data-testid^=bsetup-product-]");
@@ -94,7 +94,7 @@ test("a version from the setup: revenue row +10% equals estimate × 1.1, a month
   };
   sql(`insert into public.budget_setups (company_id, setup) values ('${id}', '${JSON.stringify(setup)}'::jsonb)`);
 
-  await page.goto(`/company/${id}/analysis/budget`);
+  await page.goto(`/company/${id}/planning/budget`);
   await expect(page.getByTestId("bsetup-step-1")).toHaveCount(0);
   await page.getByTestId("budget-new").click();
   await page.getByTestId("budget-fy").selectOption("2026");

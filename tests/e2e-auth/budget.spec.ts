@@ -11,7 +11,7 @@ test("a budget from last year + 10%: edited, approved and then locked; the templ
   const id = await createCompany(page, "Budget Co");
   await importFiles(page, id, ["odoo-pl-bs.xlsx"]);
 
-  await page.goto(`/company/${id}/analysis/budget`);
+  await page.goto(`/company/${id}/planning/budget`);
   await expect(page.getByText("No budget yet")).toBeVisible();
   await page.getByTestId("budget-new").click();
   // Next year: last year is the year just loaded.

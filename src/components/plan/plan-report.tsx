@@ -72,7 +72,7 @@ export function ReportTab({ p, set, cur, company, readOnly }: { p: BusinessPlan;
           </Section>
           {p.market && <Section n={++n} title={t("The market")}><p className="whitespace-pre-line text-[14px] leading-relaxed">{p.market}</p></Section>}
           <Section n={++n} title={t("The sales plan")}>
-            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-[13px]">
+            <div className="overflow-x-auto" role="region" aria-label={t("Table")} tabIndex={0}><table className="w-full min-w-[520px] text-[13px]">
               <thead><tr className="border-b border-line text-[11px] uppercase text-mute"><th className="py-1 text-start">{t("Product line")}</th><th className="text-end">{t("Units a year")}</th><th className="text-end">{t("Price")}</th><th className="text-end">{t("Cost per unit")}</th><th className="text-end">{t("Margin")}</th><th className="text-end">{t("Units growth")}</th><th className="text-end">{t("Price growth")}</th></tr></thead>
               <tbody>{p.lines.map((l) => <tr key={l.id} className="border-b border-line/60"><td className="py-1">{l.name}</td><td className="num text-end">{l.units.toLocaleString("en-US")}</td><td className="num text-end">{wm(l.price, cur)}</td><td className="num text-end">{wm(l.unitCost, cur)}</td><td className="num text-end">{l.price ? pct(((l.price - l.unitCost) / l.price) * 100, 0) : "–"}</td><td className="num text-end">{pct(l.growthUnits, 0)}</td><td className="num text-end">{pct(l.growthPrice, 0)}</td></tr>)}</tbody>
             </table></div>
@@ -102,7 +102,7 @@ export function ReportTab({ p, set, cur, company, readOnly }: { p: BusinessPlan;
               {[[t("NPV at {rate}", { rate: pct(p.discountRate, 0) }), wm(ind.npv, cur)], [t("IRR"), ind.irr === null ? "–" : pct(ind.irr, 1)], [t("Payback"), ind.payback === null ? t("Not within the plan") : ind.payback === 0 ? t("From the start") : t("{n} years", { n: ind.payback.toFixed(1) })],
                 [t("Break-even sales"), ind.breakEven === null ? "–" : wm(ind.breakEven, cur)], [t("Lowest cash"), wm(ind.minCash, cur)]].map(([l, v]) => <tr key={l} className="border-b border-line/60"><th scope="row" className="py-1 text-start font-normal text-mute">{l}</th><td className="num py-1 text-end">{v}</td></tr>)}
             </tbody></table>
-            <div className="overflow-x-auto"><table className="w-full min-w-[520px] text-[13px]">
+            <div className="overflow-x-auto" role="region" aria-label={t("Table")} tabIndex={0}><table className="w-full min-w-[520px] text-[13px]">
               <thead><tr className="border-b border-line text-[11px] uppercase text-mute"><th className="py-1 text-start">{t("Ratio")}</th>{ratios.map((r) => <th key={r.label} className="text-end">{r.label}</th>)}</tr></thead>
               <tbody>{([["grossMargin", "Gross margin", "pct"], ["netMargin", "Net margin", "pct"], ["currentRatio", "Current ratio", "x"], ["dscr", "Debt service cover (DSCR)", "x"], ["roe", "Return on equity", "pct"]] as const).map(([k, l, u]) => (
                 <tr key={k} className="border-b border-line/60"><td className="py-1">{t(l)}</td>{ratios.map((r) => { const v = r[k]; return <td key={r.label} className="num text-end">{v === null ? "–" : u === "pct" ? pct(v, 1) : `${v.toFixed(2)}×`}</td>; })}</tr>
