@@ -5,9 +5,11 @@ import { useT } from "@/lib/i18n/use-t";
 import { treemap } from "@/lib/viz/geometry";
 import { SERIES } from "./palette";
 
-const OTHER = "#a9a9a3";
-/** Label ink inside a categorical fill, the one that clears 4.5:1: white on green and violet, near-black on the rest. */
-const inkOn = (i: number) => ([5, 6].includes(i) ? "#ffffff" : "#0b0b0b");
+export const OTHER = "#a9a9a3";
+/** Tile fill: the series colour, except the first (largest) tile, which takes the next darker step of the same blue (#2a78d6 clears 4.5:1 with neither ink). */
+export const tileFill = (i: number) => (i < 0 ? OTHER : i === 0 ? "#256abf" : SERIES[i]);
+/** Label ink inside a tile, the one that clears 4.5:1: white on blue, green and violet, near-black on the rest. */
+export const inkOn = (i: number) => ([0, 5, 6].includes(i) ? "#ffffff" : "#0b0b0b");
 
 /** Share of a whole as tiles: at most 8 named tiles in the fixed series order, the rest folded into one grey Other. */
 export function Treemap({ items, cur, height = 260, testId }: { items: { key: string; label: string; value: number }[]; cur: string; height?: number; testId?: string }) {
@@ -34,8 +36,8 @@ export function Treemap({ items, cur, height = 260, testId }: { items: { key: st
     <div ref={box} className="relative" style={{ height }} data-testid={testId}>
       {tiles.map((t) => {
         const it = by.get(t.key)!;
-        const bg = it.k < 0 ? OTHER : SERIES[it.k];
-        const fg = it.k < 0 ? "#0b0b0b" : inkOn(it.k);
+        const bg = tileFill(it.k);
+        const fg = inkOn(it.k);
         const share = (t.value / total) * 100;
         const big = t.w > 70 && t.h > 38, mid = t.w > 44 && t.h > 22;
         const label = `${it.label}: ${money(t.value, cur)} (${pct(share, 1)})`;
