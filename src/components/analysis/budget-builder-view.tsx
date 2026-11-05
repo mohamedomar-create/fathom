@@ -93,12 +93,18 @@ export function BudgetBuilderView({ version, current, companySetup, salesProduct
   const params = useSearchParams();
   const asTab = (v: string | null): Tab => ((TABS as readonly string[]).includes(v ?? "") ? (v as Tab) : "revenue");
   const [tab, setTabState] = useState<Tab>(() => asTab(params.get("btab")));
-  function setTab(k: Tab) {
-    setTabState(k);
+  const writeTab = (k: Tab) => {
     const u = new URL(window.location.href);
     if (k === "revenue") u.searchParams.delete("btab"); else u.searchParams.set("btab", k);
     window.history.replaceState(window.history.state, "", u);
+  };
+  function setTab(k: Tab) {
+    setTabState(k);
+    writeTab(k);
   }
+  // A refresh still running from an earlier save can finish after the tab changed and write back the address it
+  // started with: the open tab is put back in the address, so a reload keeps it.
+  useEffect(() => { if (asTab(params.get("btab")) !== tab) writeTab(tab); }, [params, tab]);
   const [pending, start] = useTransition();
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
 
