@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useSyncExternalStore, useTransition } from "react";
 import Link from "next/link";
 import { useCompany } from "@/lib/company/context";
 import { useT } from "@/lib/i18n/use-t";
@@ -7,15 +7,37 @@ import { money } from "@/lib/engine/format";
 import { BENCHMARK_AS_OF, EGYPT_AS_OF, SECTORS, valueCompany, type Adjustment, type Purpose, type Sector, type ValuationSettings } from "@/lib/engine/valuation";
 import { valuationInputs } from "@/lib/valuation/inputs";
 import { plainNumber } from "@/lib/valuation/number";
-import { saveValuationSettings } from "@/app/company/[id]/value/actions";
+import { saveValuationSettings } from "@/app/company/[id]/valuation/actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
 import { CardGrid, ChartCard } from "@/components/viz/chart-card";
 import { Bridge } from "@/components/viz/bridge";
 import { FootballField } from "./football-field";
+import { SimpleValuation } from "./simple-view";
 import { cn } from "@/lib/cn";
 
 type Tab = "overview" | "methods" | "assumptions";
+
+/** The chosen view: "?view=expert" or "?view=simple" in the address wins, then the one this browser last chose. */
+const VIEW_KEY = "valuation:view";
+const viewListeners = new Set<() => void>();
+function subscribeView(fn: () => void) {
+  viewListeners.add(fn);
+  window.addEventListener("storage", fn);
+  return () => { viewListeners.delete(fn); window.removeEventListener("storage", fn); };
+}
+let chosen: string | null = null;
+function readView(): string | null {
+  if (chosen) return chosen;
+  const q = new URLSearchParams(window.location.search).get("view");
+  if (q === "expert" || q === "simple") return q;
+  try { return window.localStorage.getItem(VIEW_KEY); } catch { return null; }
+}
+function writeView(v: "expert" | "simple") {
+  chosen = v;
+  try { window.localStorage.setItem(VIEW_KEY, v); } catch { /* storage may be blocked */ }
+  viewListeners.forEach((fn) => fn());
+}
 const PURPOSES: Purpose[] = ["owner", "sale", "bank", "partners"];
 const pc = (v: number, d = 1) => `${(v * 100).toFixed(d)}%`;
 
@@ -35,12 +57,22 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
   }, [c, topCustomerShare]);
   const v = useMemo(() => (inputs ? valueCompany(inputs, s) : null), [inputs, s]);
   const fmt = (x: number) => money(x, cur, true);
-  const base = demo ? "/demo/value" : `/company/${companyId}/value`;
+  const base = demo ? "/demo/valuation" : `/company/${companyId}/valuation`;
   const canEdit = !demo && !c.readOnly;
+  // Simple for everyone first; the Expert view (methods, assumptions, every figure) is one switch away and remembered.
+  const stored = useSyncExternalStore(subscribeView, readView, () => null);
+  const expert = tab !== "overview" || stored === "expert";
+  const setExpert = (on: boolean) => writeView(on ? "expert" : "simple");
 
   const head = (
     <PageHeader title={t.title} right={
       <div className="flex flex-wrap items-end gap-3 text-sm">
+        <div className="grid gap-1" role="group" aria-label={t.simple.view}><span className="text-xs text-mute">{t.simple.view}</span>
+          <div className="flex overflow-hidden rounded-md border border-line">
+            {([false, true] as const).map((on) => (
+              <button key={String(on)} type="button" aria-pressed={expert === on} onClick={() => setExpert(on)} data-testid={on ? "view-expert" : "view-simple"}
+                className={cn("px-3 py-1.5", expert === on ? "bg-brand-d text-white" : "bg-white")}>{on ? t.simple.viewExpert : t.simple.viewSimple}</button>))}
+          </div></div>
         <label className="grid gap-1"><span className="text-xs text-mute">{t.purpose}</span>
           <select className="rounded-md border border-line bg-white px-2 py-1.5" value={s.purpose} onChange={(e) => setS({ ...s, purpose: e.target.value as Purpose })} data-testid="value-purpose">
             {PURPOSES.map((p) => <option key={p} value={p}>{t.purposes[p]}</option>)}
@@ -67,11 +99,13 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
     <div data-testid="value-page">
       {head}
       {demo && <p className="mb-4 rounded-md bg-amber/10 p-3 text-sm" role="status">{t.demoNote}</p>}
-      <nav aria-label={t.title} className="mb-6 flex flex-wrap gap-2 text-sm">
+      {expert && <nav aria-label={t.title} className="mb-6 flex flex-wrap gap-2 text-sm">
         {tabs.map((x) => <Link key={x.k} href={x.href} aria-current={x.k === tab ? "page" : undefined} className={cn("rounded-full border px-3 py-1", x.k === tab ? "border-brand bg-brand/10 font-medium" : "border-line")}>{x.label}</Link>)}
-      </nav>
+      </nav>}
 
-      {tab === "overview" && <>
+      {tab === "overview" && !expert && <SimpleValuation v={v} inputs={inputs} cur={cur} />}
+
+      {tab === "overview" && expert && <>
         <Cockpit testId="value-cockpit" hero={
           <HeroKpi label={t.best} value={<span data-testid="value-best">{fmt(v.best.mid)}</span>} testId="value-hero" story={<>
             <span className="block">{t.range(fmt(v.best.low), fmt(v.best.high))}</span>
@@ -86,6 +120,13 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
         </Cockpit>
         <ChartCard title={t.football} sub={t.footballSub} wide testId="value-football">
           <FootballField methods={v.methods} best={v.best} label={label} fmt={fmt} reason={reason} weightOf={weightOf} />
+        </ChartCard>
+        <ChartCard title={t.simple.askTitle} sub={t.simple.askSub} wide testId="value-ask-expert">
+          <p className="mb-2 text-sm" data-testid="value-before-discount">{t.simple.discount(fmt(v.best.mid), fmt(v.bestBeforeDiscount.mid))}</p>
+          <table className="w-full text-sm"><tbody>
+            {v.ask.methods.map((m) => <tr key={m.key} className="border-b border-line/60"><td className="py-1.5">{t.simple.ask[m.key][0]}</td>
+              <td className="py-1.5 text-end num">{m.value ? t.range(fmt(m.value.low), fmt(m.value.high)) : <span className="text-mute">{t.simple.askReasons[m.reason ?? ""] ?? ""}</span>}</td></tr>)}
+          </tbody></table>
         </ChartCard>
         <CardGrid>
           <ChartCard title={t.bridge} sub={t.bridgeSub} testId="value-bridge">
@@ -159,6 +200,9 @@ type Num = "riskFree" | "longRiskFree" | "equityPremium" | "beta" | "sizePremium
 const PCT: Num[] = ["riskFree", "longRiskFree", "equityPremium", "sizePremium", "longGrowth", "growth", "targetMargin", "privateDiscount"];
 
 const COMPLETE = /^-?\d+(\.\d+)?$/;
+const DEAL = ["synergySavings", "synergySales", "synergyShare", "vcReturn", "vcYears", "startupBase"] as const;
+const SCORE_KEYS = ["team", "market", "product", "competition", "channels", "traction"] as const;
+const BERKUS_KEYS = ["idea", "prototype", "team", "partners", "sales"] as const;
 
 /**
  * A number box that keeps what is typed ("12.", "-", "٠٫٥") and passes the value on only once it is a whole number,
@@ -216,6 +260,32 @@ function Assumptions({ s, setS, v, cur, canEdit, busy, msg, onSave, onReset }: {
             <span className="text-xs text-mute">{t.defaultIs(defaults[k])}</span>
           </div>))}
       </div>
+      <section className="mb-8" aria-labelledby="va-scores-h" data-testid="va-scores">
+        <h2 id="va-scores-h" className="text-lg">{t.scoresTitle}</h2>
+        <p className="mb-3 text-sm text-mute">{t.scoresHint}</p>
+        <div className="mb-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {DEAL.map((k) => {
+            const isPct = k !== "vcYears" && k !== "startupBase";
+            const x = s[k];
+            return <div key={k} className="grid gap-1 text-sm"><span aria-hidden>{t.dealFields[k]}</span>
+              <NumberBox label={t.dealFields[k]} className="rounded-md border border-line px-2 py-1.5 num" testId={`va-${k}`}
+                value={x == null ? undefined : isPct ? Math.round(x * 10000) / 100 : x}
+                onValue={(n) => { const next = { ...s } as Record<string, unknown>; if (n === undefined) delete next[k]; else next[k] = isPct ? n / 100 : k === "vcYears" ? Math.round(n) : n; setS(next as unknown as ValuationSettings); }} /></div>;
+          })}
+        </div>
+        {([["scores", SCORE_KEYS, t.scoreFields, t.simple.ask.scorecard[0]], ["berkusScores", BERKUS_KEYS, t.berkusFields, t.simple.ask.berkus[0]]] as const).map(([group, keys, labels, title]) => (
+          <fieldset key={group} className="mb-4"><legend className="mb-2 font-medium">{title}</legend>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">{keys.map((k) => {
+              const cur0 = (s[group] ?? {}) as Record<string, number>;
+              return <div key={k} className="grid gap-1 text-sm"><span aria-hidden>{labels[k]}</span>
+                <NumberBox label={`${title}: ${labels[k]}`} className="rounded-md border border-line px-2 py-1.5 num" testId={`va-${group}-${k}`} value={cur0[k]} placeholder="0–5"
+                  onValue={(n) => {
+                    const next = { ...cur0 }; if (n === undefined) delete next[k]; else next[k] = Math.min(5, Math.max(0, n));
+                    // A score left empty counts as typical (scorecard) or as not yet there (Berkus).
+                    setS({ ...s, [group]: Object.keys(next).length ? next : undefined } as ValuationSettings);
+                  }} /></div>;
+            })}</div></fieldset>))}
+      </section>
       <section className="mb-6" aria-labelledby="va-adj-h">
         <h2 id="va-adj-h" className="text-lg">{t.adjustmentsTitle}</h2>
         <p className="mb-3 text-sm text-mute">{t.adjustmentsHint}</p>

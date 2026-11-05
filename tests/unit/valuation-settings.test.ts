@@ -15,3 +15,13 @@ describe("saved valuation settings", () => {
     expect(ValuationSettingsSchema.safeParse({ purpose: "owner", sector: "other", adjustments: Array.from({ length: 41 }, () => ({ key: "oneoff", label: "x", amount: 1 })) }).success).toBe(false);
   });
 });
+
+describe("the owner's scores and deal inputs", () => {
+  it("are saved when in range and refused when not", async () => {
+    const { ValuationSettingsSchema } = await import("@/lib/valuation/settings");
+    const ok = { purpose: "owner", sector: "other", synergySavings: 0.1, vcReturn: 0.4, vcYears: 5, scores: { team: 5, market: 4, product: 3, competition: 2, channels: 1, traction: 0 }, berkusScores: { idea: 1, prototype: 2, team: 3, partners: 4, sales: 5 } };
+    expect(ValuationSettingsSchema.safeParse(ok).success).toBe(true);
+    expect(ValuationSettingsSchema.safeParse({ ...ok, scores: { ...ok.scores, team: 9 } }).success).toBe(false);
+    expect(ValuationSettingsSchema.safeParse({ ...ok, vcYears: 30 }).success).toBe(false);
+  });
+});

@@ -20,6 +20,6 @@ export async function saveValuationSettings(companyId: string, input: unknown): 
   // Kept under the profile, which the database merges one level deep: other profile settings are left as they are.
   const r = await patchSettings(supabase, companyId, { [PROFILE_KEY]: { valuation: v.data } });
   if (!r.ok) return r;
-  revalidatePath(`/company/${companyId}/value`, "layout");
+  revalidatePath(`/company/${companyId}/valuation`, "layout");
   return { ok: true };
 }

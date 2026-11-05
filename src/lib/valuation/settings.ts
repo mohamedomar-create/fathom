@@ -3,6 +3,7 @@ import { SECTORS, type ValuationSettings } from "@/lib/engine/valuation";
 
 const pct = (lo: number, hi: number) => z.number().finite().min(lo).max(hi);
 const money = z.number().finite().min(0).max(1e13);
+const score = z.number().finite().min(0).max(5).optional();
 
 /** What an editor may save; every figure bounded so a typo can't produce a nonsense value. */
 export const ValuationSettingsSchema = z.object({
@@ -26,6 +27,14 @@ export const ValuationSettingsSchema = z.object({
   arOver180: money.optional(),
   slowStock: money.optional(),
   fx: z.number().finite().min(0.01).max(10000).optional(),
+  synergySavings: pct(0, 0.5).optional(),
+  synergySales: pct(0, 1).optional(),
+  synergyShare: pct(0, 1).optional(),
+  vcReturn: pct(0, 1.5).optional(),
+  vcYears: z.number().int().min(1).max(10).optional(),
+  startupBase: money.optional(),
+  scores: z.object({ team: score, market: score, product: score, competition: score, channels: score, traction: score }).strict().optional(),
+  berkusScores: z.object({ idea: score, prototype: score, team: score, partners: score, sales: score }).strict().optional(),
   adjustments: z.array(z.object({
     key: z.enum(["oneoff", "owner", "disposal", "fx", "related", "other"]),
     label: z.string().trim().min(1).max(120),

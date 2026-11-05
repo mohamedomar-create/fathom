@@ -26,7 +26,7 @@ const PAGES = [
   "/", "/login", "/privacy", "/terms",
   "/demo/cash", "/demo/cash/in", "/demo/cash/out", "/demo/cash/cash", "/demo/cash/entries",
   "/demo/summary", "/demo/analysis/kpis", "/demo/analysis/explorer", "/demo/analysis/profitability", "/demo/analysis/cashflow", "/demo/analysis/growth",
-  "/demo/analysis/trend", "/demo/analysis/goalseek", "/demo/planning", ...["sales", "costs", "funding", "statements", "scenarios", "report"].map((t) => `/demo/planning?tab=${t}`), "/demo/planning/budget", "/demo/doctor", "/demo/value", "/demo/value/methods", "/demo/value/assumptions", "/demo/analysis/forecast", "/demo/analysis/financials", "/demo/analysis/real-profit", "/demo/banking",
+  "/demo/analysis/trend", "/demo/analysis/goalseek", "/demo/planning", ...["sales", "costs", "funding", "statements", "scenarios", "report"].map((t) => `/demo/planning?tab=${t}`), "/demo/planning/budget", "/demo/doctor", "/demo/valuation", "/demo/valuation?view=expert", "/demo/valuation/methods", "/demo/valuation/assumptions", "/demo/analysis/forecast", "/demo/analysis/financials", "/demo/analysis/real-profit", "/demo/banking",
   "/demo/sales", "/demo/sales/products", "/demo/sales/customers", "/demo/sales/trend",
   "/demo/expenses", "/demo/expenses/accounts", "/demo/expenses/suppliers", "/demo/expenses/trend",
   "/demo/inventory", "/demo/inventory/products", "/demo/inventory/movements", "/demo/inventory/valuation",

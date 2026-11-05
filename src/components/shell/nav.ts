@@ -6,7 +6,7 @@ import {
 export type NavGroupKey = "overview" | "performance" | "cash" | "plan";
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Financials only: the heading this page sits under. */ group?: NavGroupKey }
 
-export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "planning" | "doctor" | "value";
+export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "planning" | "doctor" | "valuation";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -48,7 +48,7 @@ export const SECTORS: Sector[] = [
       { href: "inventory", label: "Overview", title: "Inventory Overview", icon: Boxes },
       { href: "inventory/products", label: "Products", title: "Stock by Product", icon: Package },
       { href: "inventory/movements", label: "Movements", title: "Stock Movements", icon: ArrowLeftRight },
-      { href: "inventory/valuation", label: "Valuation", title: "Valuation and Checks", icon: ShieldCheck },
+      { href: "inventory/valuation", label: "Stock valuation", title: "Stock valuation and checks", icon: ShieldCheck },
     ],
   },
   {
@@ -76,10 +76,10 @@ export const SECTORS: Sector[] = [
     ],
   },
   {
-    key: "value", label: "Value", items: [
-      { href: "value", label: "Company value", title: "Company value", icon: Gem },
-      { href: "value/methods", label: "Methods", title: "Valuation methods", icon: Layers },
-      { href: "value/assumptions", label: "Assumptions", title: "Valuation assumptions", icon: SlidersHorizontal },
+    key: "valuation", label: "Valuation", items: [
+      { href: "valuation", label: "Valuation", title: "Valuation", icon: Gem },
+      { href: "valuation/methods", label: "Methods", title: "Valuation methods", icon: Layers },
+      { href: "valuation/assumptions", label: "Assumptions", title: "Valuation assumptions", icon: SlidersHorizontal },
     ],
   },
 ];
@@ -88,7 +88,7 @@ export const SECTORS: Sector[] = [
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
   const first = r.split("/")[0];
-  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" || first === "planning" || first === "doctor" || first === "value" ? first : "financials";
+  const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" || first === "planning" || first === "doctor" || first === "valuation" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }
 

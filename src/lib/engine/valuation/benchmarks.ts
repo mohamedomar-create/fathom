@@ -59,3 +59,6 @@ export function sizePremium(revenue: number): number {
   if (revenue < 1e9) return 0.03;
   return 0.02;
 }
+
+/** A typical young company's value before revenue (the scorecard method's starting point), EGP, by sector. */
+export const STARTUP_BASE: Partial<Record<Sector, number>> & { other: number } = { technology: 20e6, clinics: 15e6, medical: 12e6, other: 10e6 };

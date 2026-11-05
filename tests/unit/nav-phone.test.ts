@@ -22,7 +22,7 @@ describe("Financials in four groups", () => {
     expect(sectorOf("planning").key).toBe("planning");
     expect(ar.sectors.planning).toMatch(/[؀-ۿ]/);
   });
-  it("the AI system doctor is its own top tab, before Company value, with English and Arabic names", () => {
+  it("the AI system doctor is its own top tab, before Valuation, with English and Arabic names", () => {
     expect(SECTORS.at(-2)!.key).toBe("doctor");
     expect(SECTORS.at(-2)!.items.map((i) => i.href)).toEqual(["doctor"]);
     expect(sectorOf("doctor").key).toBe("doctor");
@@ -31,12 +31,17 @@ describe("Financials in four groups", () => {
     expect(ar.sectors.doctor).toMatch(/[؀-ۿ]/);
     expect(ar.nav.doctor[1]).toMatch(/[؀-ۿ]/);
   });
-  it("Company value is the last top tab, with its three pages, in English and Arabic", () => {
-    expect(SECTORS.at(-1)!.key).toBe("value");
-    expect(SECTORS.at(-1)!.items.map((i) => i.href)).toEqual(["value", "value/methods", "value/assumptions"]);
-    expect(sectorOf("value/methods").key).toBe("value");
-    expect(ar.sectors.value).toMatch(/[؀-ۿ]/);
-    expect(ar.nav["value/assumptions"][1]).toMatch(/[؀-ۿ]/);
+  it("Valuation is the last top tab, with its three pages, in English and Arabic; Inventory's page is Stock valuation", () => {
+    expect(SECTORS.at(-1)!.key).toBe("valuation");
+    expect(SECTORS.at(-1)!.items.map((i) => i.href)).toEqual(["valuation", "valuation/methods", "valuation/assumptions"]);
+    expect(sectorOf("valuation/methods").key).toBe("valuation");
+    expect(sectorOf("inventory/valuation").key).toBe("inventory");
+    expect(en.sectors.valuation).toBe("Valuation");
+    expect(ar.sectors.valuation).toBe("التقييم");
+    expect(en.nav.valuation[0]).toBe("Valuation");
+    expect(ar.nav["valuation/assumptions"][1]).toMatch(/[؀-ۿ]/);
+    expect(en.nav["inventory/valuation"][0]).toBe("Stock valuation");
+    expect(ar.nav["inventory/valuation"][0]).toBe("تقييم المخزون");
   });
   it("other sectors are one group with no heading", () => {
     const g = navGroups(SECTORS.find((s) => s.key === "sales")!);

@@ -1,5 +1,6 @@
 import { assetValues } from "./assets";
-import { BENCHMARKS, EGYPT, SDE_MULTIPLE, sizePremium, type Sector } from "./benchmarks";
+import { BENCHMARKS, EGYPT, SDE_MULTIPLE, STARTUP_BASE, sizePremium, type Sector } from "./benchmarks";
+import { berkus, futureValue, pitchValue, scorecard, strategicValue, type BerkusScores, type ScorecardScores } from "./ask";
 import { equityBridge, type BridgeItems, type BridgeRow } from "./bridge";
 import { combine } from "./combine";
 import { dcf, type DcfResult } from "./dcf";
@@ -14,6 +15,7 @@ export { BENCHMARKS, BENCHMARK_AS_OF, BENCHMARK_SOURCE, SECTORS, EGYPT, EGYPT_AS
 export type { Adjustment } from "./normalise";
 export type { Quality, QualityKey } from "./quality";
 export type { BridgeRow } from "./bridge";
+export { dealMaths, growthMultiple, GROWTH_NORM, SCORECARD_WEIGHTS, BERKUS_CAP, type ScorecardScores, type BerkusScores } from "./ask";
 
 /** The company's own figures for the last twelve months (flows scaled to a year) and its closing balance sheet. */
 export interface ValuationInputs extends BridgeItems {
@@ -69,7 +71,17 @@ export interface ValuationSettings {
   weights?: Partial<Record<MethodKey, number>>;
   /** Local currency per USD, for the USD view. */
   fx?: number;
+  /** What a strategic buyer saves (share of your costs), sells extra through its channels (share of your sales), and pays of it. */
+  synergySavings?: number; synergySales?: number; synergyShare?: number;
+  /** The future-value (VC) method: the return an investor wants each year, and the years to the exit. */
+  vcReturn?: number; vcYears?: number;
+  /** The owner's own scores (0–5) for the startup methods; they apply only once scored. */
+  scores?: ScorecardScores; berkusScores?: BerkusScores; startupBase?: number;
 }
+
+export type AskKey = "pitch" | "strategic" | "future" | "scorecard" | "berkus";
+/** One way of asking for more: its range, or why it doesn't apply, and the figures behind it. */
+export interface AskResult { key: AskKey; value: Range | null; reason?: string; n?: Record<string, number> }
 
 export type LimitKey = "shortHistory" | "annualised" | "partMonth" | "noBalanceSheet" | "openChecks" | "concentration" | "loss"
   | "negativeEquity" | "terminalHeavy" | "highInflation" | "multiples" | "unaudited" | "noCapex" | "assetsAboveEarnings" | "volatile"
@@ -81,6 +93,10 @@ export interface Valuation {
   label: string;
   methods: MethodResult[];
   best: Range & { weights: Partial<Record<MethodKey, number>> };
+  /** The best estimate before the private-company discount buyers take off. */
+  bestBeforeDiscount: Range;
+  /** "What you can ask for": higher values investors and buyers use, never blended into the best estimate. */
+  ask: { methods: AskResult[]; band: Range | null };
   usd: Range | null;
   capital: { riskFree: number; longRiskFree: number; equityPremium: number; beta: number; sizePremium: number; specificPremium: number; costOfEquity: number; costOfDebt: number; afterTaxDebt: number; debtWeight: number; wacc: number; terminalWacc: number; longGrowth: number };
   /** The DCF when it applies (null when the method doesn't). */
@@ -114,6 +130,10 @@ const ordered = (r: Range): Range => { const [low, mid, high] = [r.low, r.mid, r
 const scaled = (r: Range, mid: number): Range => ({ low: (r.low / r.mid) * mid, mid, high: (r.high / r.mid) * mid });
 
 export function valueCompany(inp: ValuationInputs, s: ValuationSettings): Valuation {
+  return value(inp, s, true);
+}
+
+function value(inp: ValuationInputs, s: ValuationSettings, full: boolean): Valuation {
   const tax = inp.taxRate > 0 ? inp.taxRate : EGYPT.taxRate;
   const norm = normalise({ ebitda: inp.ebitda, netIncome: inp.netIncome, taxRate: tax }, s.adjustments ?? []);
   const quality = qualityScore(inp.quality);
@@ -219,6 +239,29 @@ export function valueCompany(inp: ValuationInputs, s: ValuationSettings): Valuat
   const weights = { ...(s.weights ?? PURPOSE_WEIGHTS[s.purpose]), liquidation: 0, bookAssets: 0 };
   const best = combine(methods, weights);
 
+  const bestBeforeDiscount: Range = full && discount > 0 ? value(inp, { ...s, privateDiscount: 0 }, false).best : { low: best.low, mid: best.mid, high: best.high };
+
+  // ---- what you can ask for: the ways investors and buyers value a business higher (never in the best estimate)
+  const netDebt = -equityBridge(0, bridgeItems).equity;
+  const askMethods: AskResult[] = [];
+  const pitch = pitchValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt });
+  askMethods.push({ key: "pitch", value: pitch, reason: pitch ? undefined : "noRevenue", n: { growth: growth0 } });
+  const strat = best.mid > 0 && norm.ebitda > 0 ? strategicValue({ fair: best, revenue: inp.revenue, ebitda: norm.ebitda, multiple: bench.evEbitda.mid,
+    savings: s.synergySavings ?? 0.05, extraSales: s.synergySales ?? 0.05, share: s.synergyShare ?? 0.5 }) : null;
+  askMethods.push({ key: "strategic", value: strat?.value ?? null, reason: strat ? undefined : "loss", n: strat ? { synergy: strat.synergy } : undefined });
+  const vcYears = s.vcYears ?? 5, vcReturn = s.vcReturn ?? 0.35;
+  const fut = futureValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, years: vcYears, target: vcReturn, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt });
+  askMethods.push({ key: "future", value: fut?.value ?? null, reason: fut ? undefined : "noRevenue", n: fut ? { exitProfit: fut.exitProfit, exitValue: fut.exitValue.mid, years: vcYears, target: vcReturn, growth: growth0 } : undefined });
+  const around = (x: number): Range => ({ low: x * 0.8, mid: x, high: x * 1.2 });
+  const sc = s.scores ? scorecard(s.startupBase ?? STARTUP_BASE[s.sector] ?? STARTUP_BASE.other, s.scores) : null;
+  askMethods.push({ key: "scorecard", value: sc ? around(sc) : null, reason: sc ? undefined : "noScores" });
+  const bk = s.berkusScores ? berkus(s.berkusScores) : null;
+  askMethods.push({ key: "berkus", value: bk ? around(bk) : null, reason: bk ? undefined : "noScores" });
+  const applying = askMethods.filter((m) => m.value && m.value.mid > 0).map((m) => m.value!);
+  const band: Range | null = applying.length ? {
+    low: Math.min(...applying.map((r) => r.mid)), mid: applying.reduce((t, r) => t + r.mid, 0) / applying.length, high: Math.max(...applying.map((r) => r.high)),
+  } : null;
+
   // ---- sensitivity grid: long-run WACC ± 2 points (today's rate moves with it) × long-run growth ± 1 point
   const shifts = [-0.02, -0.01, 0, 0.01, 0.02];
   const gs = [-0.01, -0.005, 0, 0.005, 0.01].map((d) => longGrowth + d);
@@ -251,7 +294,7 @@ export function valueCompany(inp: ValuationInputs, s: ValuationSettings): Valuat
   limits.push({ key: "multiples", effect: "info" }, { key: "unaudited", effect: "info" });
 
   return {
-    currency: inp.currency, label: inp.label, methods, best,
+    currency: inp.currency, label: inp.label, methods, best, bestBeforeDiscount, ask: { methods: askMethods, band },
     usd: s.fx && s.fx > 0 ? { low: best.low / s.fx, mid: best.mid / s.fx, high: best.high / s.fx } : null,
     capital: { riskFree, longRiskFree, equityPremium, beta, sizePremium: size, specificPremium: specific, costOfEquity: cap.costOfEquity, costOfDebt, afterTaxDebt: cap.afterTaxDebt, debtWeight, wacc: cap.wacc, terminalWacc: capL.wacc, longGrowth },
     dcf: dcfBase, bridge: dcfBase ? equityBridge(dcfBase.ev, bridgeItems).rows : [],

@@ -39,6 +39,15 @@ const nextConfig: NextConfig = {
     "/api/**": ["./node_modules/@sparticuz/chromium/bin/**"],
   },
   poweredByHeader: false,
+  // Company value was renamed Valuation: the old addresses keep working.
+  async redirects() {
+    return [
+      { source: "/company/:id/value", destination: "/company/:id/valuation", permanent: true },
+      { source: "/company/:id/value/:rest*", destination: "/company/:id/valuation/:rest*", permanent: true },
+      { source: "/demo/value", destination: "/demo/valuation", permanent: true },
+      { source: "/demo/value/:rest*", destination: "/demo/valuation/:rest*", permanent: true },
+    ];
+  },
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },
