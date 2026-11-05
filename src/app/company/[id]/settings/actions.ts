@@ -127,6 +127,10 @@ export async function commitImport(input: z.input<typeof ImportSchema>): Promise
     await supabase.from("companies").update({ source: "upload" }).eq("id", d.companyId).neq("source", "odoo");
     // The books start confirmed on this upload is the company's from now on (the next upload and the Odoo sync use it);
     // an opening balances upload also records the day its balances are at.
+    if (d.vatMeasured) {
+      const r = await patchSettings(supabase, d.companyId, { [PROFILE_KEY]: { vatMeasured: d.vatMeasured } });
+      if (!r.ok) console.error("commitImport: measured VAT", r.error);
+    }
     if (d.booksStart || d.opening) {
       const { data: row } = await supabase.from("companies").select("kpi_config").eq("id", d.companyId).maybeSingle();
       if (row && (booksStartOf(row.kpi_config) !== d.booksStart || d.opening)) {

@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { money, pct, realProfit, realProfitSummary, twelveMonths, type WaterfallRow } from "@/lib/engine";
+import { money, pct, realProfit, realProfitSummary, receivablesLine, twelveMonths, type WaterfallRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -25,7 +25,7 @@ export function RealProfitPage() {
   const { lang, d: { rp: t, viz: T_viz }, pl } = useT();
   const T_fin = T_viz.fin;
   const target = c.settings.targets?.ar_days ?? 45;
-  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate]);
+  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate, c.settings.vatSalesRate) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate, c.settings.vatSalesRate]);
   const x = useMemo(() => (basis ? realProfit(basis, a, cur, target ?? 45, lang) : null), [basis, a, cur, target, lang]);
   if (!basis || !x) return null;
   const m = (v: number | null) => (v === null ? "–" : money(v, cur));
@@ -65,7 +65,7 @@ export function RealProfitPage() {
           <Bullet label={t.dso} value={col.dso} target={target} lowerIsBetter fmt={(v) => t.days(Math.round(v))} testId="bullet-dso" />
           <table className="tbl mt-3 text-[13px]"><tbody>
             <tr className="row"><td>{t.invoiced}</td><td>{m(col.revenue)}</td></tr>
-            <tr className="row"><td>{t.owedUp}</td><td>{col.stuck === null ? t.needsBefore : m(-col.stuck)}</td></tr>
+            {(() => { const r = receivablesLine(col.stuck); return <tr className="row"><td>{r?.dir === "add" ? t.owedDown : t.owedUp}</td><td>{r === null ? t.needsBefore : m(r.value)}</td></tr>; })()}
             <tr className="tot"><td>{t.collected}</td><td>{m(col.collected)}</td></tr>
           </tbody></table>
         </ChartCard>

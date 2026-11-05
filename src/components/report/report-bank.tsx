@@ -85,7 +85,7 @@ export function ReportRealProfit({ input, head }: { input: ReportInput; head: (t
   const lang = T.lang;
   const cur = input.settings.currency;
   const { basis, x } = useMemo(() => {
-    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth, input.asOf, input.settings.vatRate);
+    const basis = twelveMonths(input.months, input.sel.end, input.settings.fyStartMonth, input.asOf, input.settings.vatRate, input.settings.vatSalesRate);
     return { basis, x: realProfit(basis, input.assumptions ?? {}, cur, input.settings.targets?.ar_days ?? 45, lang) };
   }, [input.months, input.sel.end, input.settings, input.assumptions, input.asOf, cur, lang]);
   const inf = x.inflation;

@@ -105,7 +105,7 @@ function sideView(side: Side, d: AgedData, perDay: number | null, vatRate = 0, k
   };
 }
 
-export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string; booksAsOf?: string | null; vatRate?: number; kpiDays?: Partial<Record<Side, number | null>> } = {}): PaymentsAnalysis {
+export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: number, opts: { accounts?: Account[]; control?: Partial<Record<Side, string[]>>; revenue?: Record<string, number>; cost?: Record<string, number>; lang?: "en" | "ar"; cur?: string; booksAsOf?: string | null; vatRate?: number; vatSalesRate?: number; kpiDays?: Partial<Record<Side, number | null>> } = {}): PaymentsAnalysis {
   const ar = opts.lang === "ar";
   const L = (en: string, a: string) => (ar ? a : en);
   const cur = opts.cur ?? "EGP";
@@ -121,7 +121,7 @@ export function paymentsAnalysis(d: PaymentsData, sel: PeriodSel, fyStart: numbe
     const days = ps.reduce((s, p) => s + daysOf(p), 0);
     return ps.reduce((s, p) => s + flows[p], 0) / days;
   };
-  const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue), opts.vatRate, opts.kpiDays?.receivable) : null;
+  const receivable = d.aged.receivable ? sideView("receivable", d.aged.receivable, perDay(d.aged.receivable.asOf, opts.revenue), opts.vatSalesRate ?? opts.vatRate, opts.kpiDays?.receivable) : null;
   const payable = d.aged.payable ? sideView("payable", d.aged.payable, perDay(d.aged.payable.asOf, opts.cost), opts.vatRate, opts.kpiDays?.payable) : null;
 
   // The General Ledger's payments, when loaded, are the record (every bank entry, tied to the books); a payments file

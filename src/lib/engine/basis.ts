@@ -11,6 +11,8 @@ import { hasBS, hasPL, type BSCalc, type MonthData, type PLCalc } from "./types"
 export interface Basis {
   /** VAT rate for debtor and creditor days (0.14 when not set). */
   vat?: number;
+  /** VAT rate on sales, for customer days (the purchase rate `vat` when not given). */
+  vatSales?: number;
   end: string;
   start: string;
   /** "12 months to Jun 2026", or "5 months to Jun 2026" when the books start later. */
@@ -43,7 +45,7 @@ export interface Basis {
  * asOf: the last day the books cover when the end month is still in progress ("2026-10-10"): only the days covered count,
  * and the part month counts as that share of a month when flows are scaled to a year.
  */
-export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf?: string | null, vat?: number): Basis {
+export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf?: string | null, vat?: number, vatSales?: number): Basis {
   const { sorted: all, byPeriod } = indexMonths(months);
   const endMonth = byPeriod.get(end);
   if (!endMonth) throw new Error(`No data for ${end}`);
@@ -97,6 +99,7 @@ export function twelveMonths(months: MonthData[], end: string, fyStart = 1, asOf
   const gapNote = gaps.length ? ` (${gaps.length === 1 ? mlabel(gaps[0]) : `${gaps.length} months`} missing)` : "";
   return {
     ...(vat !== undefined ? { vat } : {}),
+    ...(vatSales !== undefined ? { vatSales } : {}),
     end, start, covered, gaps, factor, days, P, Pa, B, B0, avg, prior, annualColumn,
     label: `${Math.round(covered * 10) / 10} month${covered > 1 ? "s" : ""} to ${part < 1 ? `${partDay} ` : ""}${mlabel(end)}${gapNote}`,
     ocf: B0 && !gaps.length ? cashFlowStatement(P, B, B0, { sub: cfSubOf([...used, ...(topUp ? [cutSubP(topUp, 1 - part)] : [])], bsAt(end), open) }).cfo : null,

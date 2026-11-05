@@ -39,6 +39,8 @@ export const PlanSchema = z.object({
   opening: z.object({ asAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).nullable().default(null),
   // The unit the file states its amounts in ("in thousands"): one unit of it is the books' rounding in the checks.
   unit: z.union([z.literal(1), z.literal(1000), z.literal(1_000_000)]).default(1),
+  // The VAT rate measured from the ledger's output VAT over its last 12 months (0–14%), kept on the profile.
+  vatMeasured: z.object({ rate: z.number().min(0).max(0.14), from: z.string().regex(/^\d{4}-\d{2}$/), to: z.string().regex(/^\d{4}-\d{2}$/) }).nullable().default(null),
 });
 export const ImportSchema = PlanSchema.extend({
   filename: z.string().max(300).nullable(),

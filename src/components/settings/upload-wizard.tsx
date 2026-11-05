@@ -507,7 +507,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
       // fails, nothing has changed and the screen says so.
       let derived: Awaited<ReturnType<typeof deriveInWorker>>;
       try {
-        derived = sheetsToken && res.lines.some(hasEntries) ? await deriveInWorker(sheetsToken) : { sales: [], expenses: [], stock: [], payments: { lines: [], errors: [] } };
+        derived = sheetsToken && res.lines.some(hasEntries) ? await deriveInWorker(sheetsToken) : { sales: [], expenses: [], stock: [], payments: { lines: [], errors: [] }, vat: null };
       } catch (e) {
         console.error("derive failed", e);
         setErr(w.deriveFail((e as Error).message || w.unknown));
@@ -519,6 +519,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           ...p, filename: files.map((f) => f.name).join(" + ").slice(0, 300),
           report: { kind: res.kind, periods: res.periods, warnings: res.issues.warnings, notes: res.issues.notes, flips: res.issues.flips, ...(res.asOf ? { asOf: res.asOf } : {}), ...(cutoffDay ? { cutoff: cutoffDay } : {}), source: ledgerFile ? "ledger" as const : "summary" as const, ...(pdfSummary ? { pdf: pdfSummary } : {}), mapping: Object.fromEntries(Object.entries(mapping).filter(([k]) => !k.includes("|"))), fixes: fixes() },
           accept: blocking.length && acceptOn ? { keys: blocking.map(checkKey), reason } : undefined,
+          vatMeasured: derived.vat ? { rate: derived.vat.rate, from: derived.vat.from, to: derived.vat.to } : null,
         });
       } catch (e) {
         console.error("import failed", e);

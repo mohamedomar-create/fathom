@@ -45,7 +45,7 @@ function usePaymentsAnalysis(): { a: PaymentsAnalysis; months: string[]; hasPaym
     };
     const kr = kpiAt(data.aged.receivable?.asOf), kp = kpiAt(data.aged.payable?.asOf);
     const kpiDays = { receivable: kr?.ar_days != null ? Math.round(kr.ar_days) : null, payable: kp?.ap_days != null ? Math.round(kp.ap_days) : null };
-    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency, booksAsOf: c.asOf, vatRate: c.settings.vatRate ?? 0.14, kpiDays }), months, hasPayments: data.payments.length > 0 };
+    return { a: paymentsAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { accounts, control, revenue, cost, lang, cur: c.settings.currency, booksAsOf: c.asOf, vatRate: c.settings.vatRate ?? 0.14, vatSalesRate: c.settings.vatSalesRate ?? c.settings.vatRate ?? 0.14, kpiDays }), months, hasPayments: data.payments.length > 0 };
   }, [data, control, months, sel.type, sel.end, c.months, c.accounts, c.settings, c.settings.fyStartMonth, c.settings.currency, lang, c.asOf]);
 }
 

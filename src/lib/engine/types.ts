@@ -51,6 +51,8 @@ export type PLCalc = Record<PLKey, number> & {
 export type BSCalc = Record<BSKey, number> & {
   tca: number; tnca: number; ta: number; tcl: number; tncl: number; tl: number; te: number; tle: number;
   imbalance: number; debt: number; owc: number; tic: number; toi: number;
+  /** Capital employed: total assets less current liabilities (the textbook ROCE base). */
+  capital_employed: number;
 };
 
 export type PeriodType = "month" | "quarter" | "year";
@@ -63,6 +65,8 @@ export interface CompanySettings {
   taxRate: number; // 0.225
   /** VAT rate for debtor and creditor days (0.14 when not set). */
   vatRate?: number;
+  /** VAT rate on sales, for customer days only (measured from output VAT for exempt sellers); vatRate when not set. */
+  vatSalesRate?: number;
   targets?: Record<string, number | null | undefined>;
   importance?: Record<string, Importance>;
   activeKpis?: string[];

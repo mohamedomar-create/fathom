@@ -11,7 +11,7 @@ import { cn } from "@/lib/cn";
 import { useDict } from "@/lib/i18n/context";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null; vat_rate?: number | null }
+export interface ProfileData { id: string; name: string; currency: string; fy_start_month: number; tax_rate: number; industry: string | null; ai_context: Record<string, string>; time_zone?: string | null; books_start?: string | null; vat_rate?: number | null; vat_measured?: { rate: number; from: string; to: string } | null }
 /** Every time zone the browser knows, the company's own first if the list lacks it. */
 const zones = (own: string | null | undefined) => {
   const all = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : ["Africa/Cairo", "UTC"];
@@ -49,8 +49,9 @@ export function ProfileForm({ initial, readOnly, canDelete, canExport = true, ro
           <select disabled={readOnly} className={field} value={v.fy_start_month} onChange={(e) => setV({ ...v, fy_start_month: Number(e.target.value) })}>{MONTHS.map((m, i) => <option key={m} value={i + 1}>{p.months[i] ?? m}</option>)}</select></label>
         <label><span className="label mb-1 block">{p.taxRate}</span><input disabled={readOnly} type="number" step="0.1" className={field} value={v.tax_rate} onChange={(e) => setV({ ...v, tax_rate: Number(e.target.value) })} /></label>
         {v.vat !== undefined && (
-          <label><span className="label mb-1 block">{p.vatRate}</span><input disabled={readOnly} type="number" step="0.1" min={0} max={50} placeholder="14" className={field} value={v.vat} onChange={(e) => setV({ ...v, vat: e.target.value })} data-testid="vat-rate" />
-            <span className="mt-1 block text-xs text-mute">{p.vatNote}</span></label>
+          <label><span className="label mb-1 block">{p.vatRate}</span><input disabled={readOnly} type="number" step="0.1" min={0} max={50} placeholder={initial.vat_measured ? String(Math.round(initial.vat_measured.rate * 1000) / 10) : "14"} className={field} value={v.vat} onChange={(e) => setV({ ...v, vat: e.target.value })} data-testid="vat-rate" />
+            <span className="mt-1 block text-xs text-mute">{p.vatNote}</span>
+            {initial.vat_measured && <span className="mt-1 block text-xs" data-testid="vat-measured">{p.vatMeasured((Math.round(initial.vat_measured.rate * 1000) / 10).toFixed(1), initial.vat_measured.from, initial.vat_measured.to)}</span>}</label>
         )}
         <label><span className="label mb-1 block">{p.timeZone}</span>
           <select disabled={readOnly} className={field} value={v.time_zone ?? ""} onChange={(e) => setV({ ...v, time_zone: e.target.value || null })} data-testid="time-zone">

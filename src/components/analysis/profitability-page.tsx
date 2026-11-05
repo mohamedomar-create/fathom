@@ -43,6 +43,7 @@ export function ProfitabilityPage() {
             <Blk label={t.mos} value={<span className={b.mos < 0 ? "text-red" : ""}>{money(b.mos, cur)} <span className="text-base text-mute">({b.mosPct.toFixed(0)}%)</span></span>} testId="mos" />
             <Blk label={<span className="text-red">{t.variable}</span>} value={<span className="text-base">{t.perUnit(cur, b.vcr.toFixed(2))}</span>} />
             <Blk label={t.fixed} value={<span className="text-base">{money(b.fixedCosts, cur)}</span>} />
+            <p className="rounded bg-band px-3 py-2 font-mono text-xs" data-testid="bep-formula">{t.bepFormula}</p>
           </div>
         </div>
       ) : (

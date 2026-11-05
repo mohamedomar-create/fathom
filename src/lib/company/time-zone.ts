@@ -27,6 +27,26 @@ export function vatRateOf(kpiConfig: unknown): number | undefined {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 0.5 ? v : undefined;
 }
 
+/**
+ * The VAT rate on sales, for customer days: the rate the person set, otherwise the rate measured from the ledger's
+ * output VAT. Supplier days keep vatRateOf (typed, else 14%): an exempt seller still pays VAT on what it buys.
+ */
+export function vatSalesRateOf(kpiConfig: unknown): number | undefined {
+  const typed = vatRateOf(kpiConfig);
+  if (typed !== undefined) return typed;
+  const m = vatMeasuredOf(kpiConfig);
+  return m && Number.isFinite(m.rate) && m.rate >= 0 && m.rate <= 0.5 ? m.rate : undefined;
+}
+
+/** The rate typed on the profile only (the form edits this one, never the measured one). */
+export const vatRateSetOf = vatRateOf;
+
+/** The VAT rate measured from the last General Ledger upload, and the months it covers. */
+export function vatMeasuredOf(kpiConfig: unknown): { rate: number; from: string; to: string } | null {
+  const m = ((kpiConfig ?? {}) as Record<string, { vatMeasured?: { rate?: unknown; from?: unknown; to?: unknown } } | undefined>)[PROFILE_KEY]?.vatMeasured;
+  return m && typeof m.rate === "number" && typeof m.from === "string" && typeof m.to === "string" ? { rate: m.rate, from: m.from, to: m.to } : null;
+}
+
 /** The company said its books start from zero: no history before its first month, so no opening balance is due. */
 export function booksFromZeroOf(kpiConfig: unknown): boolean {
   return ((kpiConfig ?? {}) as Record<string, { booksFromZero?: unknown } | undefined>)[PROFILE_KEY]?.booksFromZero === true;

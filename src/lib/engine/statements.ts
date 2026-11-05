@@ -35,7 +35,7 @@ export function bsCalc(bs: BSInput): BSCalc {
   const tle = tl + te;
   const debt = b.std + b.ltd;
   const owc = b.ar + b.inventory + b.wip - b.ap;
-  return { ...b, tca, tnca, ta, tcl, tncl, tl, te, tle, imbalance: ta - tle, debt, owc, tic: te + debt, toi: owc + b.fixed_assets };
+  return { ...b, tca, tnca, ta, tcl, tncl, tl, te, tle, imbalance: ta - tle, debt, owc, tic: te + debt, toi: owc + b.fixed_assets, capital_employed: ta - tcl };
 }
 
 /** Sum P&L inputs across months (P&L is a flow). */
