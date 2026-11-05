@@ -118,7 +118,7 @@ export default async function Home() {
             <div className="lp-card rounded-2xl p-5 shadow-xl">
               <div className="flex items-center gap-3 border-b border-line pb-4">
                 <span className="grid h-10 w-10 place-items-center rounded-xl bg-green-bg text-green-d"><FileSpreadsheet className="h-5 w-5" aria-hidden /></span>
-                <div className="min-w-0"><div className="truncate font-medium" dir="ltr">{l.checkFile}</div><div className="text-xs text-mute">{l.checkRows("141,208")}</div></div>
+                <div className="min-w-0"><div className="truncate font-medium" dir="ltr">general_ledger_2026.xlsx</div><div className="text-xs text-mute">{l.checkRows("141,208")}</div></div>
               </div>
               <ul className="mt-4 space-y-3">
                 {l.checks.map((c, i) => (
