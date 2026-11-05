@@ -3,7 +3,7 @@
 exports[`Full mode is unchanged by Simple mode > the analysis of the latest sample month matches the snapshot 1`] = `
 {
   "K": {
-    "activity": 5.320213552080663,
+    "activity": 5.808867194351459,
     "ap_days": 13.19390064452839,
     "ar_days": 14.724036910004045,
     "asset_change": 3.5793968651247114,
@@ -11,6 +11,7 @@ exports[`Full mode is unchanged by Simple mode > the analysis of the latest samp
     "cash": 1711153,
     "ccc": 23.610904536435733,
     "cf_margin": 12.907522290735345,
+    "cost_ratio": 82.94911165346325,
     "current": 4.842677347568226,
     "debt_equity": 8.746587108407859,
     "ebit_growth": -16.83450278870126,
@@ -23,13 +24,15 @@ exports[`Full mode is unchanged by Simple mode > the analysis of the latest samp
     "int_cover": 7.704095238095238,
     "inv_days": 22.080768270960082,
     "mos": 42.10094815487302,
+    "mos_amount": 448854.2066394001,
+    "net_int_cover": 8.0893,
     "npat": 10.954116634056755,
     "nvcf": 34.834044589102895,
     "opm": 17.050888346536752,
     "profit_ratio": 15.174958588850599,
     "quick": 4.095253221839297,
     "rev_growth": -7.049950261595238,
-    "roce": 80.73402033666581,
+    "roce": 88.14931912241614,
     "roe": 63.6310087586719,
     "total_revenue": 1066138,
     "wca": 5.665965728510769,
@@ -178,6 +181,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 287545.6835363987,
         "ar": 606665.7824152678,
+        "capital_employed": 2421446.546049146,
         "cash": 1829750.768792749,
         "debt": 200764,
         "fixed_assets": 125000,
@@ -406,6 +410,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 288878.7849166125,
         "ar": 609478.4684217362,
+        "capital_employed": 2551861.710012735,
         "cash": 1961700.5064042648,
         "debt": 200764,
         "fixed_assets": 120000,
@@ -634,6 +639,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 292089.7776374545,
         "ar": 616252.9203868025,
+        "capital_employed": 2686508.802407684,
         "cash": 2093000.9149473286,
         "debt": 200764,
         "fixed_assets": 115000,
@@ -862,6 +868,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 295587.1917915921,
         "ar": 623631.7876094845,
+        "capital_employed": 2825310.0141929,
         "cash": 2227710.7841065843,
         "debt": 200764,
         "fixed_assets": 110000,
@@ -1090,6 +1097,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 305665.2257539733,
         "ar": 644894.4894791249,
+        "capital_employed": 2968187.519584542,
         "cash": 2349390.974650719,
         "debt": 200764,
         "fixed_assets": 105000,
@@ -1318,6 +1326,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 309108.93494516547,
         "ar": 652160.0496202579,
+        "capital_employed": 3115063.5732022626,
         "cash": 2492315.288845684,
         "debt": 200764,
         "fixed_assets": 100000,
@@ -1546,6 +1555,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 315998.07976161846,
         "ar": 666694.8123443964,
+        "capital_employed": 3265860.6016535275,
         "cash": 2630204.35067763,
         "debt": 200764,
         "fixed_assets": 95000,
@@ -1774,6 +1784,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 308934.32736727485,
         "ar": 651791.6614121285,
+        "capital_employed": 3420501.2896756325,
         "cash": 2808206.888458349,
         "debt": 200764,
         "fixed_assets": 90000,
@@ -2002,6 +2013,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 315540.7768546368,
         "ar": 665729.9916847748,
+        "capital_employed": 3578908.6609657416,
         "cash": 2954441.1446457896,
         "debt": 200764,
         "fixed_assets": 85000,
@@ -2230,6 +2242,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 315224.0485618406,
         "ar": 665061.7562642014,
+        "capital_employed": 3741006.1538384845,
         "cash": 3122361.955919568,
         "debt": 200764,
         "fixed_assets": 80000,
@@ -2458,6 +2471,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 318273.85692046746,
         "ar": 671496.2618563714,
+        "capital_employed": 3906717.691858262,
         "cash": 3285145.6788422996,
         "debt": 200764,
         "fixed_assets": 75000,
@@ -2686,6 +2700,7 @@ exports[`Full mode is unchanged by Simple mode > the forecast on the sample comp
       "B": {
         "ap": 321260.8105668705,
         "ar": 677798.1561662114,
+        "capital_employed": 4075967.7495997315,
         "cash": 3451631.308977967,
         "debt": 200764,
         "fixed_assets": 70000,

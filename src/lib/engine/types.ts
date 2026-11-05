@@ -51,6 +51,8 @@ export type PLCalc = Record<PLKey, number> & {
 export type BSCalc = Record<BSKey, number> & {
   tca: number; tnca: number; ta: number; tcl: number; tncl: number; tl: number; te: number; tle: number;
   imbalance: number; debt: number; owc: number; tic: number; toi: number;
+  /** Capital employed: total assets less current liabilities (the textbook ROCE base). */
+  capital_employed: number;
 };
 
 export type PeriodType = "month" | "quarter" | "year";

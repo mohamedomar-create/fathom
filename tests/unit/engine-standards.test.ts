@@ -44,8 +44,9 @@ describe("standard definitions, checked by hand on a full year", () => {
   it("returns: ROE, ROCE and asset turnover on average balances", () => {
     // Average equity 442,300 (13 month-ends).
     expect(K.roe).toBeCloseTo((204600 / 442300) * 100, 9);
-    // Average equity 442,300 + borrowing 170,000; average assets 652,300 (13 month-ends).
-    expect(K.roce).toBeCloseTo((276000 / 612300) * 100, 9);
+    // Capital employed = average assets 652,300 − average current liabilities 90,000 (short loan 50,000 + suppliers
+    // 40,000) = 562,300 (owner's choice, 5 Nov: the textbook base, no longer equity + borrowing 612,300).
+    expect(K.roce).toBeCloseTo((276000 / 562300) * 100, 9);
     expect(K.asset_turn).toBeCloseTo(1.2e6 / 652300, 9);
   });
 

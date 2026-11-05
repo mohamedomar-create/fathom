@@ -95,6 +95,12 @@ export interface RealProfit {
 
 const pos = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) && v > 0 ? v : null);
 
+/** The receivables row of "cash collected": an increase in what customers owe is taken off sales, a decrease added. */
+export function receivablesLine(stuck: number | null): { dir: "less" | "add"; value: number } | null {
+  if (stuck === null) return null;
+  return { dir: stuck >= 0 ? "less" : "add", value: -stuck };
+}
+
 export function realProfit(b: Basis, a: Assumptions = {}, cur = "EGP", targetDso = 45, lang: "en" | "ar" = "en"): RealProfit {
   const { P, B, B0 } = b;
   const ar = lang === "ar";

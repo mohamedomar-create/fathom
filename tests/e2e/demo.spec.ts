@@ -32,6 +32,15 @@ test("period picker switches to a quarter and the numbers change", async ({ page
   await expect(page.getByTestId("period-picker")).toContainText("Q3 2026");
 });
 
+test("profitability states the breakeven formula; the KPI pop-up shows the closing-balance figure", async ({ page }) => {
+  await page.goto("/demo/analysis/profitability");
+  await expect(page.getByTestId("bep-formula")).toContainText("Fixed costs");
+  await page.goto("/demo/analysis/kpis");
+  await page.getByTestId("kpi-roce").click();
+  await expect(page.getByRole("dialog")).toContainText("On closing balances");
+  await expect(page.getByRole("dialog")).toContainText("Total Assets − Current Liabilities");
+});
+
 test("KPI detail modal opens with explanation and chart", async ({ page }) => {
   await page.goto("/demo/analysis/kpis");
   await page.getByTestId("kpi-gpm").click();

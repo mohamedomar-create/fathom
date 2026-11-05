@@ -148,6 +148,8 @@ function KpiModal({ row }: { row: KpiRow }) {
             [t.changeFrom(a.view.ly ? T.pl(a.view.ly.label) : t.yearEarlier), diff(row.value, ly)],
             [t.avg12(last12[0] ? T.ml(last12[0].period) : "–"), fmt(avg)],
             [t.kpiImportance, T.tl(row.importance)],
+            ...(row.def.key in a.KClosing ? [[t.onClosing, fmt(a.KClosing[row.def.key])]] : []),
+            ...(row.def.key === "roe" ? [[t.onOpeningEquity, fmt(a.KClosing.roe_opening)]] : []),
           ].map(([l, v]) => (
             <div key={l}><div className="label">{l}</div><div className={cn("num text-xl", l === T.pl(a.view.window.label) && (row.ok === false ? "text-red" : row.ok ? "text-green-d" : ""))}>{v}</div></div>
           ))}

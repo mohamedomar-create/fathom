@@ -23,8 +23,23 @@ export function timeZoneOf(kpiConfig: unknown): string | null {
 
 /** The VAT rate the company set for debtor and creditor days (0.14 = 14%); undefined when it never set one. */
 export function vatRateOf(kpiConfig: unknown): number | undefined {
+  const p = ((kpiConfig ?? {}) as Record<string, { vatRate?: unknown; vatMeasured?: { rate?: unknown } } | undefined>)[PROFILE_KEY];
+  const ok = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 0.5;
+  // The rate the person set wins; otherwise the rate measured from the ledger's output VAT; otherwise none (14%).
+  if (ok(p?.vatRate)) return p.vatRate;
+  return ok(p?.vatMeasured?.rate) ? p.vatMeasured.rate : undefined;
+}
+
+/** The rate typed on the profile only (the form edits this one, never the measured one). */
+export function vatRateSetOf(kpiConfig: unknown): number | undefined {
   const v = ((kpiConfig ?? {}) as Record<string, { vatRate?: unknown } | undefined>)[PROFILE_KEY]?.vatRate;
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 0.5 ? v : undefined;
+}
+
+/** The VAT rate measured from the last General Ledger upload, and the months it covers. */
+export function vatMeasuredOf(kpiConfig: unknown): { rate: number; from: string; to: string } | null {
+  const m = ((kpiConfig ?? {}) as Record<string, { vatMeasured?: { rate?: unknown; from?: unknown; to?: unknown } } | undefined>)[PROFILE_KEY]?.vatMeasured;
+  return m && typeof m.rate === "number" && typeof m.from === "string" && typeof m.to === "string" ? { rate: m.rate, from: m.from, to: m.to } : null;
 }
 
 /** The company said its books start from zero: no history before its first month, so no opening balance is due. */

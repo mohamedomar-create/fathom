@@ -1,3 +1,4 @@
+import { measureVat } from "./vat-rate";
 // The upload's reading, as one function the background worker runs (or the page, when the browser has no worker): the
 // accounts or opening balances read from the sheets with the person's corrections, and the lines the ledger gives.
 import { addMonths } from "@/lib/engine";
@@ -68,6 +69,6 @@ export const hasEntries = (l: { entries?: unknown[]; entryCount?: number }) => (
 
 /** What the ledger gives besides the figures: its sales, expense, stock and bank-and-cash lines. */
 export function deriveLedgerLines(lines: IngestLine[]) {
-  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), stock: stockFromLedger(lines), payments: paymentsFromLedger(lines, ledgerCashMoves(lines)) };
+  return { sales: salesFromLedger(lines), expenses: expensesFromLedger(lines), stock: stockFromLedger(lines), payments: paymentsFromLedger(lines, ledgerCashMoves(lines)), vat: measureVat(lines) };
 }
 export type LedgerLines = ReturnType<typeof deriveLedgerLines>;

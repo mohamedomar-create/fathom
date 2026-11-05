@@ -1,7 +1,7 @@
 import { breakeven } from "./breakeven";
 import { cashFlowStatement, cashWaterfall } from "./cashflow";
 import { insights, type Finding } from "./insights";
-import { computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
+import { closingKpis, computeKpis, KPI_DEFS, kpiStatus, type KpiDef, type KpiTrend } from "./kpis";
 import { daysIn } from "./format";
 import { periodView, type PeriodSel, type PeriodView } from "./period";
 import { hasPL, type CompanySettings, type Comparison, type Importance, type MonthData } from "./types";
@@ -22,6 +22,8 @@ export interface Analysis {
   W: ReturnType<typeof cashWaterfall> | null;
   CF: ReturnType<typeof cashFlowStatement> | null;
   K: Record<string, number | null>;
+  /** The balance-based KPIs on closing balances, as Fathom shows them (plus ROE on opening equity). */
+  KClosing: Record<string, number | null>;
   targets: Record<string, number | null>;
   kpiRows: KpiRow[];
   onTrack: number;
@@ -84,6 +86,7 @@ export function analyze(
   const W = B0 ? cashWaterfall(P, B, B0, view.sub) : null;
   const CF = B0 ? cashFlowStatement(P, B, B0, { sub: view.sub }) : null;
   const K = computeKpis({ P, B, B0, Bavg: view.Bavg, Pprev: (view.likePrior ?? view.prior)?.P ?? null, days: view.days, ocf: W?.ocf ?? null, vat: settings.vatRate });
+  const KClosing = closingKpis({ P, B, B0, Pprev: null, days: view.days, ocf: W?.ocf ?? null, vat: settings.vatRate });
   // Targets are monthly: scaled by the months the figures cover (12 for an annual column).
   // A part month counts as the share of its days covered (revenue to the 10th is judged against 10 days' target).
   const partShare = view.partDay ? 1 - view.partDay / daysIn(view.window.end) : 0;
@@ -129,7 +132,7 @@ export function analyze(
     cur: settings.currency, priorLabel: partPrior ? PART_PRIOR_LABEL[sel.type] : PRIOR_LABEL[sel.type], periodWord: sel.type,
     critical: kpiRows.filter((r) => r.importance === "Critical" && r.ok === false).map((r) => (opts.kpiName ? opts.kpiName(r.def) : r.def.name)), lang: opts.lang,
   });
-  return { view, settings, W, CF, K, targets, kpiRows, onTrack, offTrack, findings, breakeven: breakeven(P) };
+  return { view, settings, W, CF, K, KClosing, targets, kpiRows, onTrack, offTrack, findings, breakeven: breakeven(P) };
 }
 
 function shiftEnd(end: string, type: "month" | "quarter" | "year") {

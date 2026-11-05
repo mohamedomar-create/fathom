@@ -1,6 +1,6 @@
 "use client";
 import { useMemo } from "react";
-import { money, pct, realProfit, realProfitSummary, twelveMonths, type WaterfallRow } from "@/lib/engine";
+import { money, pct, realProfit, realProfitSummary, receivablesLine, twelveMonths, type WaterfallRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PageHeader } from "@/components/shell/page-header";
@@ -65,7 +65,7 @@ export function RealProfitPage() {
           <Bullet label={t.dso} value={col.dso} target={target} lowerIsBetter fmt={(v) => t.days(Math.round(v))} testId="bullet-dso" />
           <table className="tbl mt-3 text-[13px]"><tbody>
             <tr className="row"><td>{t.invoiced}</td><td>{m(col.revenue)}</td></tr>
-            <tr className="row"><td>{t.owedUp}</td><td>{col.stuck === null ? t.needsBefore : m(-col.stuck)}</td></tr>
+            {(() => { const r = receivablesLine(col.stuck); return <tr className="row"><td>{r?.dir === "add" ? t.owedDown : t.owedUp}</td><td>{r === null ? t.needsBefore : m(r.value)}</td></tr>; })()}
             <tr className="tot"><td>{t.collected}</td><td>{m(col.collected)}</td></tr>
           </tbody></table>
         </ChartCard>
