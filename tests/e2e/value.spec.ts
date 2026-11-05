@@ -9,12 +9,13 @@ test("demo company value: best estimate, every method on the football field, the
   await expect(page.getByTestId("value-disclaimer")).toBeVisible();
 });
 
-test("changing the purpose to a bank brings liquidation into the estimate", async ({ page }) => {
+test("changing the purpose to a bank gives the asset method more weight; liquidation is never blended in", async ({ page }) => {
   await page.goto("/demo/value");
-  const liq = page.getByTestId("ff-liquidation");
-  await expect(liq).not.toContainText("%");
+  const assets = page.getByTestId("ff-adjustedAssets");
+  const before = await assets.innerText();
   await page.getByTestId("value-purpose").selectOption("bank");
-  await expect(liq).toContainText("%");
+  await expect(assets).not.toHaveText(before);
+  await expect(page.getByTestId("ff-liquidation")).not.toContainText("%");
 });
 
 test("methods page shows the cost of capital, the projection and the sensitivity grid", async ({ page }) => {
