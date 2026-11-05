@@ -1,6 +1,6 @@
 import { assetValues } from "./assets";
 import { BENCHMARKS, EGYPT, SDE_MULTIPLE, STARTUP_BASE, sizePremium, type Sector } from "./benchmarks";
-import { berkus, futureValue, pitchValue, scorecard, strategicValue, type BerkusScores, type ScorecardScores } from "./ask";
+import { berkus, futureValue, growthNorm, pitchValue, scorecard, strategicValue, type BerkusScores, type ScorecardScores } from "./ask";
 import { equityBridge, type BridgeItems, type BridgeRow } from "./bridge";
 import { combine } from "./combine";
 import { dcf, type DcfResult } from "./dcf";
@@ -79,6 +79,9 @@ export interface ValuationSettings {
   scores?: ScorecardScores; berkusScores?: BerkusScores; startupBase?: number;
 }
 
+/** Sales below which a company counts as young, for the startup methods (EGP a year). */
+export const YOUNG_REVENUE = 50e6;
+
 export type AskKey = "pitch" | "strategic" | "future" | "scorecard" | "berkus";
 /** One way of asking for more: its range, or why it doesn't apply, and the figures behind it. */
 export interface AskResult { key: AskKey; value: Range | null; reason?: string; n?: Record<string, number> }
@@ -96,7 +99,7 @@ export interface Valuation {
   /** The best estimate before the private-company discount buyers take off. */
   bestBeforeDiscount: Range;
   /** "What you can ask for": higher values investors and buyers use, never blended into the best estimate. */
-  ask: { methods: AskResult[]; band: Range | null };
+  ask: { methods: AskResult[]; band: Range | null; netDebt: number };
   usd: Range | null;
   capital: { riskFree: number; longRiskFree: number; equityPremium: number; beta: number; sizePremium: number; specificPremium: number; costOfEquity: number; costOfDebt: number; afterTaxDebt: number; debtWeight: number; wacc: number; terminalWacc: number; longGrowth: number };
   /** The DCF when it applies (null when the method doesn't). */
@@ -244,22 +247,30 @@ function value(inp: ValuationInputs, s: ValuationSettings, full: boolean): Valua
   // ---- what you can ask for: the ways investors and buyers value a business higher (never in the best estimate)
   const netDebt = -equityBridge(0, bridgeItems).equity;
   const askMethods: AskResult[] = [];
-  const pitch = pitchValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt });
-  askMethods.push({ key: "pitch", value: pitch, reason: pitch ? undefined : "noRevenue", n: { growth: growth0 } });
-  const strat = best.mid > 0 && norm.ebitda > 0 ? strategicValue({ fair: best, revenue: inp.revenue, ebitda: norm.ebitda, multiple: bench.evEbitda.mid,
-    savings: s.synergySavings ?? 0.05, extraSales: s.synergySales ?? 0.05, share: s.synergyShare ?? 0.5 }) : null;
-  askMethods.push({ key: "strategic", value: strat?.value ?? null, reason: strat ? undefined : "loss", n: strat ? { synergy: strat.synergy } : undefined });
+  const gNorm = growthNorm(inp.inflation);
+  const pitch = hasBs ? pitchValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt, norm: gNorm }) : null;
+  askMethods.push({ key: "pitch", value: pitch && pitch.mid > 0 ? pitch : null, reason: !hasBs ? "noBalanceSheet" : !pitch ? "noRevenue" : pitch.mid > 0 ? undefined : "debt", n: { growth: growth0 } });
+  // A buyer taking the whole company pays no discount for shares that can't be sold, so it starts from the value before it.
+  const share = s.synergyShare ?? 0.5;
+  const strat = bestBeforeDiscount.mid > 0 && norm.ebitda > 0 ? strategicValue({ fair: bestBeforeDiscount, revenue: inp.revenue, ebitda: norm.ebitda, multiple: bench.evEbitda.mid,
+    savings: s.synergySavings ?? 0.05, extraSales: s.synergySales ?? 0.05, share }) : null;
+  askMethods.push({ key: "strategic", value: strat?.value ?? null, reason: strat ? undefined : norm.ebitda > 0 ? "debt" : "loss", n: strat ? { synergy: strat.synergy, share } : undefined });
   const vcYears = s.vcYears ?? 5, vcReturn = s.vcReturn ?? 0.35;
-  const fut = futureValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, years: vcYears, target: vcReturn, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt });
-  askMethods.push({ key: "future", value: fut?.value ?? null, reason: fut ? undefined : "noRevenue", n: fut ? { exitProfit: fut.exitProfit, exitValue: fut.exitValue.mid, years: vcYears, target: vcReturn, growth: growth0 } : undefined });
+  const fut = hasBs ? futureValue({ revenue: inp.revenue, ebitda: norm.ebitda, growth: growth0, years: vcYears, target: vcReturn, evEbitda: bench.evEbitda, evSales: bench.evSales, netDebt }) : null;
+  askMethods.push({ key: "future", value: fut && fut.value.mid > 0 ? fut.value : null, reason: !hasBs ? "noBalanceSheet" : !fut ? "noRevenue" : fut.value.mid > 0 ? undefined : "debt",
+    n: fut ? { exitProfit: fut.exitProfit, exitRevenue: fut.exitRevenue, basis: fut.basis === "profit" ? 1 : 0, exitValue: fut.exitValue.mid, years: vcYears, target: vcReturn, growth: growth0 } : undefined });
+  // The startup methods are for young companies (before much in sales); a score left empty is no score.
+  const young = inp.revenue < YOUNG_REVENUE;
   const around = (x: number): Range => ({ low: x * 0.8, mid: x, high: x * 1.2 });
-  const sc = s.scores ? scorecard(s.startupBase ?? STARTUP_BASE[s.sector] ?? STARTUP_BASE.other, s.scores) : null;
-  askMethods.push({ key: "scorecard", value: sc ? around(sc) : null, reason: sc ? undefined : "noScores" });
-  const bk = s.berkusScores ? berkus(s.berkusScores) : null;
-  askMethods.push({ key: "berkus", value: bk ? around(bk) : null, reason: bk ? undefined : "noScores" });
+  const scored = (o?: object) => !!o && Object.keys(o).length > 0;
+  const sc = young && scored(s.scores) ? scorecard(s.startupBase ?? STARTUP_BASE[s.sector] ?? STARTUP_BASE.other, s.scores!) : null;
+  askMethods.push({ key: "scorecard", value: sc ? around(sc) : null, reason: sc ? undefined : young ? "noScores" : "notYoung" });
+  const bk = young && scored(s.berkusScores) ? berkus(s.berkusScores!) : null;
+  askMethods.push({ key: "berkus", value: bk ? around(bk) : null, reason: bk ? undefined : young ? "noScores" : "notYoung" });
   const applying = askMethods.filter((m) => m.value && m.value.mid > 0).map((m) => m.value!);
+  // The headline is the largest central figure: the top of the widest range would promise more than any buyer expects.
   const band: Range | null = applying.length ? {
-    low: Math.min(...applying.map((r) => r.mid)), mid: applying.reduce((t, r) => t + r.mid, 0) / applying.length, high: Math.max(...applying.map((r) => r.high)),
+    low: Math.min(...applying.map((r) => r.mid)), mid: applying.reduce((t, r) => t + r.mid, 0) / applying.length, high: Math.max(...applying.map((r) => r.mid)),
   } : null;
 
   // ---- sensitivity grid: long-run WACC ± 2 points (today's rate moves with it) × long-run growth ± 1 point
@@ -294,7 +305,7 @@ function value(inp: ValuationInputs, s: ValuationSettings, full: boolean): Valua
   limits.push({ key: "multiples", effect: "info" }, { key: "unaudited", effect: "info" });
 
   return {
-    currency: inp.currency, label: inp.label, methods, best, bestBeforeDiscount, ask: { methods: askMethods, band },
+    currency: inp.currency, label: inp.label, methods, best, bestBeforeDiscount, ask: { methods: askMethods, band, netDebt },
     usd: s.fx && s.fx > 0 ? { low: best.low / s.fx, mid: best.mid / s.fx, high: best.high / s.fx } : null,
     capital: { riskFree, longRiskFree, equityPremium, beta, sizePremium: size, specificPremium: specific, costOfEquity: cap.costOfEquity, costOfDebt, afterTaxDebt: cap.afterTaxDebt, debtWeight, wacc: cap.wacc, terminalWacc: capL.wacc, longGrowth },
     dcf: dcfBase, bridge: dcfBase ? equityBridge(dcfBase.ev, bridgeItems).rows : [],

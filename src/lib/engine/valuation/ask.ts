@@ -9,26 +9,33 @@ const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v
 const floor0 = (r: Range): Range => ({ low: Math.max(0, r.low), mid: Math.max(0, r.mid), high: Math.max(0, r.high) });
 const times = (m: Range, k: number): Range => ({ low: m.low * k, mid: m.mid * k, high: m.high * k });
 
-/** Ask EGP `amount` for `pct` of the company → the value it implies; or, given a value, the share to offer. */
-export function dealMaths(d: { amount: number; pct?: number; value?: number }): { amount: number; pct: number; value: number } | null {
+/**
+ * Ask EGP `amount` for `pct` of the company → the value it implies once the money is in, and before it (when the
+ * investor's money goes into the company); or, given a value, the share to offer.
+ */
+export function dealMaths(d: { amount: number; pct?: number; value?: number }): { amount: number; pct: number; value: number; preMoney: number } | null {
   if (!(d.amount > 0)) return null;
-  if (d.pct != null) return d.pct > 0 && d.pct <= 1 ? { amount: d.amount, pct: d.pct, value: d.amount / d.pct } : null;
-  if (d.value != null && d.value > 0) { const pct = d.amount / d.value; return pct <= 1 ? { amount: d.amount, pct, value: d.value } : null; }
+  if (d.pct != null) return d.pct > 0 && d.pct <= 1 ? { amount: d.amount, pct: d.pct, value: d.amount / d.pct, preMoney: d.amount / d.pct - d.amount } : null;
+  if (d.value != null && d.value > 0) { const pct = d.amount / d.value; return pct <= 1 ? { amount: d.amount, pct, value: d.value, preMoney: d.value - d.amount } : null; }
   return null;
 }
 
-/** Growth above the sector norm (10% a year) earns a higher multiple: +25% of it for every 10 points, at most double. */
+/**
+ * Growth above the norm earns a higher multiple: +25% of it for every 10 points, at most double. The norm is 10% a year,
+ * or inflation plus 3% when prices rise faster, so growth that only keeps up with prices earns nothing extra.
+ */
 export const GROWTH_NORM = 0.1;
-export function growthMultiple(m: Range, growth: number): Range {
-  const k = 1 + clamp(((growth - GROWTH_NORM) / 0.1) * 0.25, 0, 1);
+export const growthNorm = (inflationPct: number | null) => Math.max(GROWTH_NORM, inflationPct != null ? inflationPct / 100 + 0.03 : 0);
+export function growthMultiple(m: Range, growth: number, norm = GROWTH_NORM): Range {
+  const k = 1 + clamp(((growth - norm) / 0.1) * 0.25, 0, 1);
   return times(m, k);
 }
 
 /** The investor pitch value: profit and sales × growth-adjusted multiples, less net debt, with no private discount. */
-export function pitchValue(i: { revenue: number; ebitda: number; growth: number; evEbitda: Range; evSales: Range; netDebt: number }): Range | null {
+export function pitchValue(i: { revenue: number; ebitda: number; growth: number; evEbitda: Range; evSales: Range; netDebt: number; norm?: number }): Range | null {
   const evs: Range[] = [];
-  if (i.ebitda > 0) evs.push(times(growthMultiple(i.evEbitda, i.growth), i.ebitda));
-  if (i.revenue > 0) evs.push(times(growthMultiple(i.evSales, i.growth), i.revenue));
+  if (i.ebitda > 0) evs.push(times(growthMultiple(i.evEbitda, i.growth, i.norm), i.ebitda));
+  if (i.revenue > 0) evs.push(times(growthMultiple(i.evSales, i.growth, i.norm), i.revenue));
   if (!evs.length) return null;
   const ev = { low: Math.min(...evs.map((e) => e.low)), mid: evs.reduce((s, e) => s + e.mid, 0) / evs.length, high: Math.max(...evs.map((e) => e.high)) };
   return floor0({ low: ev.low - i.netDebt, mid: ev.mid - i.netDebt, high: ev.high - i.netDebt });
@@ -49,14 +56,14 @@ export function strategicValue(i: { fair: Range; revenue: number; ebitda: number
 
 /** The future value (the venture-capital method): the value in year N if growth holds, brought back at the target return. */
 export function futureValue(i: { revenue: number; ebitda: number; growth: number; years: number; target: number; evEbitda: Range; evSales: Range; netDebt: number }):
-  { exitProfit: number; exitRevenue: number; exitValue: Range; value: Range } | null {
+  { exitProfit: number; exitRevenue: number; exitValue: Range; value: Range; basis: "profit" | "sales" } | null {
   const n = clamp(Math.round(i.years), 1, 10), g = clamp(i.growth, -0.5, 1), up = (1 + g) ** n;
   const exitProfit = i.ebitda * up, exitRevenue = i.revenue * up;
   const ev = exitProfit > 0 ? times(i.evEbitda, exitProfit) : exitRevenue > 0 ? times(i.evSales, exitRevenue) : null;
   if (!ev) return null;
   const exitValue = floor0({ low: ev.low - i.netDebt, mid: ev.mid - i.netDebt, high: ev.high - i.netDebt });
   const back = (1 + clamp(i.target, 0, 1.5)) ** n;
-  return { exitProfit, exitRevenue, exitValue, value: { low: exitValue.low / back, mid: exitValue.mid / back, high: exitValue.high / back } };
+  return { exitProfit, exitRevenue, exitValue, value: { low: exitValue.low / back, mid: exitValue.mid / back, high: exitValue.high / back }, basis: exitProfit > 0 ? "profit" : "sales" };
 }
 
 /** The scorecard method: a typical young company's value × how this one compares on each factor (2.5 of 5 = typical). */

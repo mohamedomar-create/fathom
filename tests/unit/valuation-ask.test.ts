@@ -5,7 +5,7 @@ const r = (low: number, mid: number, high: number) => ({ low, mid, high });
 
 describe("deal maths (ask EGP A for B%)", () => {
   it("values the company at A ÷ B", () => {
-    expect(dealMaths({ amount: 2e6, pct: 0.1 })).toEqual({ value: 20e6, pct: 0.1, amount: 2e6 });
+    expect(dealMaths({ amount: 2e6, pct: 0.1 })).toEqual({ value: 20e6, pct: 0.1, amount: 2e6, preMoney: 18e6 });
   });
   it("gives the share to offer for an amount at a value", () => {
     expect(dealMaths({ amount: 5e6, value: 25e6 })!.pct).toBeCloseTo(0.2, 10);
@@ -116,8 +116,54 @@ describe("the ask band in a full valuation", () => {
   });
   it("startup methods appear only once the owner scores the company", () => {
     expect(v.ask.methods.find((m) => m.key === "scorecard")!.value).toBeNull();
-    const s = valueCompany(co, { purpose: "owner", sector: "medical", scores: { team: 5, market: 4, product: 3, competition: 2.5, channels: 2.5, traction: 3 }, berkusScores: { idea: 4, prototype: 5, team: 4, partners: 3, sales: 5 } });
+    const s = valueCompany({ ...co, revenue: 8e6, priorRevenue: 4e6 }, { purpose: "owner", sector: "medical", scores: { team: 5, market: 4, product: 3, competition: 2.5, channels: 2.5, traction: 3 }, berkusScores: { idea: 4, prototype: 5, team: 4, partners: 3, sales: 5 } });
     expect(s.ask.methods.find((m) => m.key === "scorecard")!.value!.mid).toBeGreaterThan(0);
     expect(s.ask.methods.find((m) => m.key === "berkus")!.value!.mid).toBeGreaterThan(0);
+  });
+});
+
+describe("review fixes: honest headline, real growth, new money, no balance sheet", () => {
+  const v = valueCompany(co, { purpose: "owner", sector: "medical" });
+  it("the highest you can ask for is the largest central figure, not the top of the widest range", () => {
+    const mids = v.ask.methods.filter((m) => m.value).map((m) => m.value!.mid);
+    expect(v.ask.band!.high).toBeCloseTo(Math.max(...mids), 0);
+  });
+  it("growth that only matches inflation earns no higher multiple", () => {
+    const hot = valueCompany({ ...co, inflation: 30, priorRevenue: 120e6 / 1.3 }, { purpose: "owner", sector: "medical" });
+    const pitch = hot.ask.methods.find((m) => m.key === "pitch")!.value!;
+    const ev = (18e6 * BENCHMARKS.medical.evEbitda.mid + 120e6 * BENCHMARKS.medical.evSales.mid) / 2;
+    expect(pitch.mid).toBeCloseTo(ev - 12e6, 0);
+  });
+  it("a loss-making company's future value is said in sales, not a negative profit", () => {
+    const f = valueCompany({ ...co, ebitda: -5e6, netIncome: -8e6 }, { purpose: "owner", sector: "medical" }).ask.methods.find((m) => m.key === "future")!;
+    expect(f.n!.basis).toBe(0);
+    expect(f.n!.exitRevenue).toBeGreaterThan(0);
+  });
+  it("pitch and future values need a balance sheet, so debts are taken off", () => {
+    const nb = valueCompany({ ...co, quality: { ...co.quality, hasBalanceSheet: false } }, { purpose: "owner", sector: "medical" });
+    for (const k of ["pitch", "future"]) expect(nb.ask.methods.find((m) => m.key === k)!).toMatchObject({ value: null, reason: "noBalanceSheet" });
+  });
+  it("a bigger company's value starts from the value before the private-company discount", () => {
+    const s = v.ask.methods.find((m) => m.key === "strategic")!;
+    expect(s.value!.mid - s.n!.synergy).toBeCloseTo(v.bestBeforeDiscount.mid, 0);
+    expect(s.n!.share).toBe(0.5);
+  });
+  it("debts larger than the value give no pitch figure, saying why", () => {
+    const d = valueCompany({ ...co, debt: 2e9, avgDebt: 2e9 }, { purpose: "owner", sector: "medical" });
+    expect(d.ask.methods.find((m) => m.key === "pitch")!).toMatchObject({ value: null, reason: "debt" });
+  });
+  it("startup methods are for young companies; empty scores are no scores", () => {
+    const sc = { team: 5, market: 4, product: 3, competition: 2.5, channels: 2.5, traction: 3 };
+    expect(valueCompany(co, { purpose: "owner", sector: "medical", scores: sc }).ask.methods.find((m) => m.key === "scorecard")!).toMatchObject({ value: null, reason: "notYoung" });
+    const young = { ...co, revenue: 8e6, priorRevenue: 4e6 };
+    expect(valueCompany(young, { purpose: "owner", sector: "medical", scores: {} }).ask.methods.find((m) => m.key === "scorecard")!.value).toBeNull();
+    expect(valueCompany(young, { purpose: "owner", sector: "medical", scores: sc }).ask.methods.find((m) => m.key === "scorecard")!.value).not.toBeNull();
+    expect(v.ask.netDebt).toBeCloseTo(12e6, 0);
+  });
+});
+
+describe("deal maths with new money", () => {
+  it("gives the value before the money comes in", () => {
+    expect(dealMaths({ amount: 5e6, pct: 1 / 3 })!.preMoney).toBeCloseTo(10e6, 0);
   });
 });

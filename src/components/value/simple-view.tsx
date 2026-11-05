@@ -17,7 +17,10 @@ export function SimpleValuation({ v, inputs, cur }: { v: Valuation; inputs: Valu
   const t = T.d.val;
   const s = t.simple;
   const fmt = (x: number) => money(x, cur, true);
-  const lowest = v.methods.find((m) => m.key === "liquidation")?.value?.mid ?? null;
+  // Lowest: the quick-sale value when it is below the fair range, else the fair range's low end.
+  const liq = v.methods.find((m) => m.key === "liquidation")?.value?.mid ?? 0;
+  const lowFromSale = liq > 0 && liq < v.best.low;
+  const lowest = lowFromSale ? liq : v.best.low;
   const band = v.ask.band;
   const highest = band ? Math.max(band.high, v.best.high) : null;
   const tips = v.limits.map((l) => ({ key: l.key, text: s.tips[l.key] })).filter((x) => x.text);
@@ -26,7 +29,7 @@ export function SimpleValuation({ v, inputs, cur }: { v: Valuation; inputs: Valu
   return (
     <div data-testid="value-simple">
       <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <Card testId="simple-lowest" label={s.lowest} value={lowest != null ? fmt(lowest) : "–"} why={s.lowestWhy} />
+        <Card testId="simple-lowest" label={s.lowest} value={fmt(lowest)} why={lowFromSale ? s.lowestWhy : s.lowestRange} />
         <Card testId="simple-fair" label={s.fair} value={<span data-testid="value-best">{fmt(v.best.mid)}</span>} strong
           why={<>{t.range(fmt(v.best.low), fmt(v.best.high))}. {s.fairWhy(period)}</>} />
         <Card testId="simple-highest" label={s.highest} value={highest != null ? fmt(highest) : "–"} why={highest != null ? s.highestWhy : s.noAsk} />
@@ -48,8 +51,10 @@ export function SimpleValuation({ v, inputs, cur }: { v: Valuation; inputs: Valu
         <div className="grid gap-4 md:grid-cols-2">
           {v.ask.methods.map((m) => {
             const [name, how, believe] = s.ask[m.key];
-            const b = m.key === "pitch" ? believe(pc(m.n?.growth ?? 0), "") : m.key === "strategic" ? believe(fmt(m.n?.synergy ?? 0), "")
-              : m.key === "future" ? believe(fmt(m.n?.exitProfit ?? 0), String(m.n?.years ?? 5)) : believe("", "");
+            const b = m.key === "pitch" ? ((m.n?.growth ?? 0) > 0 ? believe(pc(m.n!.growth), "") : s.pitchFlat)
+              : m.key === "strategic" ? believe(fmt(m.n?.synergy ?? 0), pc(m.n?.share ?? 0.5))
+              : m.key === "future" ? (m.n?.basis === 1 ? believe(fmt(m.n.exitProfit), String(m.n.years)) : s.futureSales(fmt(m.n?.exitRevenue ?? 0), String(m.n?.years ?? 5)))
+              : believe("", "");
             return (
               <article key={m.key} className="rounded-lg border border-line p-4" data-testid={`ask-${m.key}`}>
                 <h3 className="font-medium">{name}</h3>
@@ -72,7 +77,7 @@ export function SimpleValuation({ v, inputs, cur }: { v: Valuation; inputs: Valu
             const [label, meaning] = s.methods[m.key];
             return (
               <li key={m.key} className="flex flex-wrap items-baseline justify-between gap-2 px-4 py-2.5">
-                <details className="min-w-0 flex-1"><summary className="cursor-pointer">{label} <span className="text-xs text-mute" aria-label={s.info}>ⓘ</span></summary>
+                <details className="min-w-0 flex-1"><summary className="cursor-pointer">{label} <span className="text-xs text-mute" aria-hidden>ⓘ</span><span className="sr-only">: {s.info}</span></summary>
                   <p className="mt-1 text-mute">{meaning}</p></details>
                 <span className="num">{m.value ? fmt(m.value.mid) : <span className="text-mute">–</span>}</span>
               </li>
@@ -100,11 +105,14 @@ function Deal({ v, inputs, cur }: { v: Valuation; inputs: ValuationInputs; cur: 
   const s = T.d.val.simple;
   const [amount, setAmount] = useState("");
   const [pct, setPct] = useState("");
-  const a = Number(plainNumber(amount)), p = Number(plainNumber(pct)) / 100;
+  const a = Number(plainNumber(amount)), p = Number(plainNumber(pct.replace(/[%٪]/g, ""))) / 100;
   const d = amount && pct ? dealMaths({ amount: a, pct: p }) : null;
   const top = Math.max(v.best.high, v.ask.band?.high ?? 0);
-  const fit = !d ? null : d.value < v.best.low ? "low" : d.value <= v.best.high ? "fair" : d.value <= top ? "ask" : "hard";
+  // The investor's money goes into the company, so the value it puts on today's company is before that money.
+  const pre = d?.preMoney ?? 0;
+  const fit = !d ? null : pre < v.best.low ? "low" : pre <= v.best.high ? "fair" : pre <= top ? "ask" : "hard";
   const profit = v.normalised.ebitda;
+  const ev = pre + v.ask.netDebt;
   return (
     <section className="mb-8 rounded-lg border border-line p-4" aria-labelledby="deal-h" data-testid="value-deal">
       <h2 id="deal-h" className="text-lg">{s.deal}</h2>
@@ -113,13 +121,13 @@ function Deal({ v, inputs, cur }: { v: Valuation; inputs: ValuationInputs; cur: 
         <label className="grid gap-1">{s.dealAsk}<input inputMode="decimal" className="rounded-md border border-line px-2 py-1.5 num" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid="deal-amount" /></label>
         <label className="grid gap-1">{s.dealPct}<input inputMode="decimal" className="w-28 rounded-md border border-line px-2 py-1.5 num" value={pct} onChange={(e) => setPct(e.target.value)} data-testid="deal-pct" /></label>
       </div>
-      {d && fit && (
-        <div className="mt-3 text-sm" aria-live="polite" data-testid="deal-result">
-          <p className="font-medium">{s.dealValue(money(d.value, cur, true))}</p>
-          {inputs.revenue > 0 && <p className="text-mute">{s.implied((d.value / inputs.revenue).toFixed(1), profit > 0 ? (d.value / profit).toFixed(1) : "–")}</p>}
+      <div className="mt-3 text-sm" aria-live="polite">
+        {d && fit && <div data-testid="deal-result">
+          <p className="font-medium">{s.dealValue(money(pre, cur, true), money(d.value, cur, true))}</p>
+          {inputs.revenue > 0 && <p className="text-mute">{s.implied((ev / inputs.revenue).toFixed(1), profit > 0 ? (ev / profit).toFixed(1) : "–")}</p>}
           <p className={cn("mt-1", fit === "hard" ? "text-red" : fit === "low" ? "text-ink" : "text-green-d")} data-testid="deal-fit" data-fit={fit}>{s.fit[fit]}</p>
-        </div>
-      )}
+        </div>}
+      </div>
     </section>
   );
 }

@@ -22,9 +22,11 @@ type Tab = "overview" | "methods" | "assumptions";
 const VIEW_KEY = "valuation:view";
 const viewListeners = new Set<() => void>();
 function subscribeView(fn: () => void) {
+  // A choice made in another tab replaces this tab's.
+  const other = () => { chosen = null; fn(); };
   viewListeners.add(fn);
-  window.addEventListener("storage", fn);
-  return () => { viewListeners.delete(fn); window.removeEventListener("storage", fn); };
+  window.addEventListener("storage", other);
+  return () => { viewListeners.delete(fn); window.removeEventListener("storage", other); };
 }
 let chosen: string | null = null;
 function readView(): string | null {
@@ -67,12 +69,12 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
   const head = (
     <PageHeader title={t.title} right={
       <div className="flex flex-wrap items-end gap-3 text-sm">
-        <div className="grid gap-1" role="group" aria-label={t.simple.view}><span className="text-xs text-mute">{t.simple.view}</span>
+        {tab === "overview" && <div className="grid gap-1" role="group" aria-label={t.simple.view}><span className="text-xs text-mute">{t.simple.view}</span>
           <div className="flex overflow-hidden rounded-md border border-line">
             {([false, true] as const).map((on) => (
               <button key={String(on)} type="button" aria-pressed={expert === on} onClick={() => setExpert(on)} data-testid={on ? "view-expert" : "view-simple"}
                 className={cn("px-3 py-1.5", expert === on ? "bg-brand-d text-white" : "bg-white")}>{on ? t.simple.viewExpert : t.simple.viewSimple}</button>))}
-          </div></div>
+          </div></div>}
         <label className="grid gap-1"><span className="text-xs text-mute">{t.purpose}</span>
           <select className="rounded-md border border-line bg-white px-2 py-1.5" value={s.purpose} onChange={(e) => setS({ ...s, purpose: e.target.value as Purpose })} data-testid="value-purpose">
             {PURPOSES.map((p) => <option key={p} value={p}>{t.purposes[p]}</option>)}
@@ -122,7 +124,7 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
           <FootballField methods={v.methods} best={v.best} label={label} fmt={fmt} reason={reason} weightOf={weightOf} />
         </ChartCard>
         <ChartCard title={t.simple.askTitle} sub={t.simple.askSub} wide testId="value-ask-expert">
-          <p className="mb-2 text-sm" data-testid="value-before-discount">{t.simple.discount(fmt(v.best.mid), fmt(v.bestBeforeDiscount.mid))}</p>
+          {v.bestBeforeDiscount.mid > v.best.mid && <p className="mb-2 text-sm" data-testid="value-before-discount">{t.simple.discount(fmt(v.best.mid), fmt(v.bestBeforeDiscount.mid))}</p>}
           <table className="w-full text-sm"><tbody>
             {v.ask.methods.map((m) => <tr key={m.key} className="border-b border-line/60"><td className="py-1.5">{t.simple.ask[m.key][0]}</td>
               <td className="py-1.5 text-end num">{m.value ? t.range(fmt(m.value.low), fmt(m.value.high)) : <span className="text-mute">{t.simple.askReasons[m.reason ?? ""] ?? ""}</span>}</td></tr>)}
