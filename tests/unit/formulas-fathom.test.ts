@@ -51,6 +51,11 @@ describe("expense ratios with one meaning each", () => {
 });
 
 describe("margin of safety in money too", () => {
+  it("not measured on negative revenue", () => {
+    const k = computeKpis({ ...inp, P: plCalc({ revenue: -100, cos_variable: 50, exp_fixed: 10 }) });
+    expect(k.mos).toBeNull();
+    expect(k.mos_amount).toBeNull();
+  });
   it("revenue less breakeven revenue", () => {
     // Variable cost ratio 0.5; fixed costs 300 → breakeven revenue 600; safety 600 EGP = 50%.
     const k = computeKpis(inp);
@@ -85,6 +90,7 @@ describe("formula text says what the code divides by", () => {
   it("every KPI the engine computes has a definition, and every definition is computed", () => {
     const k = computeKpis(inp);
     for (const d of KPI_DEFS) expect(d.key in k, d.key).toBe(true);
+    for (const key of Object.keys(k)) expect(KPI_BY_KEY[key], key).toBeDefined();
   });
 });
 
@@ -95,6 +101,9 @@ describe("Real profit: what customers owe moves cash collected the right way", a
   });
   it("a decrease in receivables adds to cash collected, shown as 'add'", () => {
     expect(receivablesLine(-80)).toEqual({ dir: "add", value: 80 });
+  });
+  it("no movement reads 0, not −0", () => {
+    expect(Object.is(receivablesLine(0)!.value, -0)).toBe(false);
   });
   it("no figure without an opening balance sheet", () => {
     expect(receivablesLine(null)).toBeNull();

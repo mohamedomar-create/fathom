@@ -166,7 +166,8 @@ export function bankAssessment(b: Basis, inp: BankInputs = {}, cur = "EGP"): Ban
   // Negative days (a receivable in credit, payables in debit) mean nothing: shown as n/a.
   // Receivables and payables net of VAT, as on the KPI page (the company's rate, 14% unless set).
   const vatF = 1 + Math.max(0, b.vat ?? DEFAULT_VAT);
-  const dso = R > 0 && avgAR >= 0 ? (avgAR / vatF / R) * b.days : null;
+  const vatS = 1 + Math.max(0, b.vatSales ?? b.vat ?? DEFAULT_VAT);
+  const dso = R > 0 && avgAR >= 0 ? (avgAR / vatS / R) * b.days : null;
   const dio = cogs > 0 && avgInv >= 0 ? (avgInv / cogs) * b.days : null;
   const dpo = cogs > 0 && avgAP >= 0 ? (avgAP / vatF / cogs) * b.days : null;
   const tnw = B.te - B.intangibles;

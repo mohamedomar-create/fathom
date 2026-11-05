@@ -15,7 +15,7 @@ import type { AlertSetting, CompanyBundle } from "./types";
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
 import { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS } from "./config-keys";
-import { booksFromZeroOf, budgetTargetsOf, timeZoneOf, vatRateOf } from "./time-zone";
+import { booksFromZeroOf, budgetTargetsOf, timeZoneOf, vatRateOf, vatSalesRateOf } from "./time-zone";
 import { loadYearBudgets } from "./budget-load";
 import { systemOf } from "./system";
 export { ECONOMY_KEY, FORECAST_KEY, INVENTORY_KEY, RESERVED_KEYS };
@@ -56,7 +56,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
     for (const [k, v] of Object.entries(cfg)) if (!RESERVED_KEYS.includes(k) && v.active) active.push(k);
   }
   return {
-    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), ...(vatRateOf(c.kpi_config) !== undefined ? { vatRate: vatRateOf(c.kpi_config) } : {}), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined, highlights: highlightsOf(c.kpi_config as Record<string, unknown> | null) },
+    settings: { currency: c.currency, fyStartMonth: c.fy_start_month, taxRate: Number(c.tax_rate), ...(vatRateOf(c.kpi_config) !== undefined ? { vatRate: vatRateOf(c.kpi_config) } : {}), ...(vatSalesRateOf(c.kpi_config) !== undefined ? { vatSalesRate: vatSalesRateOf(c.kpi_config) } : {}), targets, importance, activeKpis: anyActive ? withDefaults(active, cfg) : undefined, highlights: highlightsOf(c.kpi_config as Record<string, unknown> | null) },
     alerts,
   };
 }

@@ -84,12 +84,14 @@ export interface KpiInputs {
   Bavg?: BSCalc;
   /** VAT rate (0.14): receivables and payables include it, revenue and cost of sales do not. */
   vat?: number;
+  /** VAT rate on sales, for receivables (measured for exempt sellers); the purchase rate `vat` when not given. */
+  vatSales?: number;
 }
 
 /** The VAT rate used when a company has not set its own (Egypt's standard rate). */
 export const DEFAULT_VAT = 0.14;
 
-export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VAT }: KpiInputs): Record<string, number | null> {
+export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VAT, vatSales }: KpiInputs): Record<string, number | null> {
   const ann = (x: number) => (x * 365) / days;
   const R = P.revenue;
   const A = Bavg ?? B;
@@ -105,7 +107,8 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VA
   // A balance on the wrong side (customers in credit, suppliers in debit) gives negative days, which mean nothing: n/a.
   // Receivables and payables carry VAT; revenue and cost of sales do not, so both balances are taken net of it.
   const net = (x: number) => x / (1 + Math.max(0, vat));
-  k.ar_days = R > 0 && A.ar >= 0 ? div(net(A.ar) * days, R) : null;
+  const netSales = (x: number) => x / (1 + Math.max(0, vatSales ?? vat));
+  k.ar_days = R > 0 && A.ar >= 0 ? div(netSales(A.ar) * days, R) : null;
   k.inv_days = cogs > 0 && A.inventory >= 0 ? div(A.inventory * days, cogs) : null;
   k.ap_days = cogs > 0 && A.ap >= 0 ? div(net(A.ap) * days, cogs) : null;
   // A return on negative equity has no meaning (a loss would read as a positive return).
@@ -134,7 +137,7 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VA
   k.exp_ratio = R ? (P.expenses / R) * 100 : null;
   k.cost_ratio = R ? ((P.cos + P.expenses) / R) * 100 : null;
   const vcr = div(P.variable_costs, R);
-  const beRev = R && vcr !== null && vcr < 1 ? P.fixed_costs / (1 - vcr) : null;
+  const beRev = R > 0 && vcr !== null && vcr < 1 ? P.fixed_costs / (1 - vcr) : null;
   k.mos = beRev !== null ? ((R - beRev) / R) * 100 : null;
   k.mos_amount = beRev !== null ? R - beRev : null;
   const wipDays = cogs > 0 ? div(A.wip * days, cogs) ?? 0 : 0;

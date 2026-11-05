@@ -356,11 +356,11 @@ export function bankYearEnd(months: MonthData[], end: string, asOf?: string | nu
   return b.annualColumn || (b.covered === 12 && !b.gaps.length) ? dec : null;
 }
 
-export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number; vatRate?: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
+export function bankPack(months: MonthData[], end: string, settings: { currency: string; fyStartMonth: number; taxRate: number; vatRate?: number; vatSalesRate?: number }, a: Assumptions, name: string, accounts?: LoanAccount[], lang: Lang = "en", asOf?: string | null): BankPack {
   const cur = settings.currency;
   const yearEnd = bankYearEnd(months, end, asOf, settings.fyStartMonth);
   if (yearEnd) { end = yearEnd; asOf = null; }
-  const basis = twelveMonths(months, end, settings.fyStartMonth, asOf, settings.vatRate);
+  const basis = twelveMonths(months, end, settings.fyStartMonth, asOf, settings.vatRate, settings.vatSalesRate);
   const inputs: BankInputs = { rate: a.rate, tenor: a.tenor, principal12m: a.principal12m, inflation: a.inflation, accounts, lang, taxRate: settings.taxRate, vat: settings.vatRate };
   const assessment = bankAssessment(basis, inputs, cur);
   const trend = yearTrend(months, end, settings.fyStartMonth, inputs, cur, asOf);

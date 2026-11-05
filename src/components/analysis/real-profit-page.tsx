@@ -25,7 +25,7 @@ export function RealProfitPage() {
   const { lang, d: { rp: t, viz: T_viz }, pl } = useT();
   const T_fin = T_viz.fin;
   const target = c.settings.targets?.ar_days ?? 45;
-  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate]);
+  const basis = useMemo(() => (sel.end ? twelveMonths(c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate, c.settings.vatSalesRate) : null), [c.months, sel.end, c.settings.fyStartMonth, c.asOf, c.settings.vatRate, c.settings.vatSalesRate]);
   const x = useMemo(() => (basis ? realProfit(basis, a, cur, target ?? 45, lang) : null), [basis, a, cur, target, lang]);
   if (!basis || !x) return null;
   const m = (v: number | null) => (v === null ? "–" : money(v, cur));
