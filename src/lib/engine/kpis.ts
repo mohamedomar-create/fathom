@@ -93,11 +93,14 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VA
   // Stock and supplier days are measured against cost of sales before depreciation: the goods and services bought.
   const cogs = P.cos - P.cos_depreciation;
   const k: Record<string, number | null> = {};
+  // A margin needs the costs it subtracts: with no cost of sales loaded, gross margin would read 100%; with no expenses
+  // loaded, operating margins would be gross margin under another name. Those are not available, never fabricated.
+  const hasCos = P.cos !== 0, hasExp = P.expenses !== 0, hasCost = hasCos || hasExp;
   k.total_revenue = P.revenue;
-  k.gpm = R ? (P.gross_profit / R) * 100 : null;
-  k.opm = R ? (P.operating_profit / R) * 100 : null;
-  k.profit_ratio = R ? (P.ebit / R) * 100 : null;
-  k.npat = R ? (P.eat / R) * 100 : null;
+  k.gpm = R && hasCos ? (P.gross_profit / R) * 100 : null;
+  k.opm = R && hasExp ? (P.operating_profit / R) * 100 : null;
+  k.profit_ratio = R && hasExp ? (P.ebit / R) * 100 : null;
+  k.npat = R && hasExp ? (P.eat / R) * 100 : null;
   k.activity = div(ann(R), A.tic);
   // A balance on the wrong side (customers in credit, suppliers in debit) gives negative days, which mean nothing: n/a.
   // Receivables and payables carry VAT; revenue and cost of sales do not, so both balances are taken net of it.
@@ -110,7 +113,7 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VA
   k.roe = eq !== null && eq > 0 ? x100(div(ann(P.net_income), eq)) : null;
   k.roce = A.tic > 0 ? x100(div(ann(P.ebit), A.tic)) : null;
   // Average month-end stock, as for stock days (with one month and its opening balance this is the two-point average).
-  k.gmroi = A.inventory > 0 ? x100(div(ann(P.gross_profit), A.inventory)) : null;
+  k.gmroi = A.inventory > 0 && hasCos ? x100(div(ann(P.gross_profit), A.inventory)) : null;
   k.asset_turn = div(ann(R), A.ta);
   k.wca = x100(div(B.owc, ann(R)));
   k.current = div(B.tca, B.tcl);
@@ -119,16 +122,16 @@ export function computeKpis({ P, B, B0, Pprev, days, ocf, Bavg, vat = DEFAULT_VA
   k.int_cover = P.interest_expenses > 0 ? P.ebit / P.interest_expenses : null;
   k.cash = B.cash;
   k.cf_margin = ocf === null ? null : x100(div(ocf, R));
-  k.nvcf = R ? x100(div(ann(R) - ann(P.cos_variable) - ann(P.exp_variable) - B.owc, ann(R))) : null;
+  k.nvcf = R && hasCost ? x100(div(ann(R) - ann(P.cos_variable) - ann(P.exp_variable) - B.owc, ann(R))) : null;
   k.rev_growth = Pprev ? growth(P.revenue, Pprev.revenue) : null;
   k.gp_growth = Pprev ? growth(P.gross_profit, Pprev.gross_profit) : null;
   k.ebit_growth = Pprev ? growth(P.ebit, Pprev.ebit) : null;
   k.asset_change = B0 ? growth(B.ta, B0.ta) : null;
   k.equity_change = B0 && B0.te > 0 ? growth(B.te, B0.te) : null;
-  k.ebitda_margin = R ? (P.ebitda / R) * 100 : null;
-  k.exp_ratio = R ? (P.expenses / R) * 100 : null;
+  k.ebitda_margin = R && hasExp ? (P.ebitda / R) * 100 : null;
+  k.exp_ratio = R && hasExp ? (P.expenses / R) * 100 : null;
   const vcr = div(P.variable_costs, R);
-  k.mos = R && vcr !== null && vcr < 1 ? ((R - P.fixed_costs / (1 - vcr)) / R) * 100 : null;
+  k.mos = R && hasCost && vcr !== null && vcr < 1 ? ((R - P.fixed_costs / (1 - vcr)) / R) * 100 : null;
   const wipDays = cogs > 0 ? div(A.wip * days, cogs) ?? 0 : 0;
   k.ccc = k.ar_days !== null && k.inv_days !== null && k.ap_days !== null ? k.ar_days + k.inv_days + wipDays - k.ap_days : null;
   k.debt_equity = B.te > 0 ? x100(div(B.debt, B.te)) : null;
