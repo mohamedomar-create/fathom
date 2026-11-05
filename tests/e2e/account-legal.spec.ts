@@ -44,7 +44,7 @@ test("Arabic: the landing page, sign-in and the privacy policy read in Arabic", 
   await context.addCookies([{ name: "lang", value: "ar", url: baseURL! }]);
   await page.goto("/");
   await expect(page.locator("html")).toHaveAttribute("dir", "rtl");
-  await expect(page.getByRole("heading", { level: 1 })).toContainText("أرقام Odoo");
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("مفهوم أخيرًا");
   await expect(page.getByTestId("cta-demo")).toContainText("استكشف الشركة التجريبية");
   await page.goto("/login?mode=signup");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("أنشئ حسابك المجاني");
