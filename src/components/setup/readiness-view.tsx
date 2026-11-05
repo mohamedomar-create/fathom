@@ -190,7 +190,8 @@ export function ReadinessCard({ sector }: { sector: ReadinessSector }) {
         <div className="flex flex-wrap items-center gap-4 border-t border-line px-4 py-3">
           <RadarChart axes={r.items.map((i) => ({ label: i.axis, completion: i.completion, accuracy: i.accuracy }))} size={150} compact testId={`radar-card-${sector}`} />
           {next && (
-            <div className="min-w-0 flex-1">
+            // At least 14rem wide, so on a phone the text wraps below the chart instead of being squeezed beside it.
+            <div className="min-w-[14rem] flex-1" data-testid={`readiness-next-${sector}`}>
               <div className="text-sm"><span className="label me-2">{t.next}</span><b>{next.title}</b></div>
               <div className="text-[12.5px] text-mute">{next.detail}</div>
               <FixLine item={next} basePath={c.basePath} />

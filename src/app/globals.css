@@ -177,6 +177,11 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
     radial-gradient(50% 60% at 100% 100%, rgba(98,80,214,.07), transparent 60%), #f7f9f9; }
 .lp-draw { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: lp-draw 2.2s ease forwards .3s; }
 @keyframes lp-draw { to { stroke-dashoffset: 0; } }
+.lp-rise { opacity: 0; transform: translateY(10px); animation: lp-tick .6s ease forwards; }
+.lp-orb { position: absolute; border-radius: 9999px; filter: blur(60px); opacity: .55; animation: lp-orb 18s ease-in-out infinite alternate; pointer-events: none; }
+@keyframes lp-orb { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(40px,-30px,0) scale(1.15); } }
+.lp-flow { stroke-dasharray: 6 8; animation: lp-flow 1.6s linear infinite; }
+@keyframes lp-flow { to { stroke-dashoffset: -28; } }
 .lp-tick { opacity: 0; transform: translateY(6px); animation: lp-tick .5s ease forwards; }
 @keyframes lp-tick { to { opacity: 1; transform: none; } }
 .lp-marquee { display: flex; gap: 2.5rem; width: max-content; animation: lp-marquee 40s linear infinite; }
@@ -186,7 +191,8 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 @media (prefers-reduced-motion: reduce) {
   .lp-hero::before, .lp-float, .lp-float-2, .lp-shine::after, .lp-marquee { animation: none; }
   .lp-draw { animation: none; stroke-dashoffset: 0; }
-  .lp-tick { animation: none; opacity: 1; transform: none; }
+  .lp-tick, .lp-rise { animation: none; opacity: 1; transform: none; }
+  .lp-orb, .lp-flow { animation: none; }
   .lp-tilt, .lp-stage:hover .lp-tilt { transform: none; }
 }
 

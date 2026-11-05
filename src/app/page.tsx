@@ -8,7 +8,8 @@ import { LangSwitch } from "@/components/shell/lang-switch";
 import { getDict, getLang } from "@/lib/i18n/server";
 import { landingFigures } from "@/lib/landing/figures";
 import { CountUp } from "./landing/count-up";
-import { HeroDashboard } from "./landing/hero-dashboard";
+import { LiveDashboard } from "./landing/live-dashboard";
+import { Flow } from "./landing/flow";
 import { Showcase } from "./landing/showcase";
 import { BentoVisual } from "./landing/bento-visual";
 
@@ -38,37 +39,41 @@ export default async function Home() {
         </div>
       </header>
       <div className="lp-hero">
-
-        <section className="mx-auto grid max-w-6xl items-center gap-12 px-6 pb-16 pt-12 lg:grid-cols-[1fr_1.1fr] lg:pb-24 lg:pt-20">
+        <span className="lp-orb start-[-6rem] top-24 h-80 w-80 bg-teal-300/50" aria-hidden />
+        <span className="lp-orb end-[-4rem] top-10 h-96 w-96 bg-sky-300/40" aria-hidden />
+        <span className="lp-orb bottom-10 start-1/3 h-80 w-80 bg-violet-300/30" aria-hidden />
+        <section className="relative mx-auto max-w-6xl px-6 pb-16 pt-14 text-center lg:pb-24 lg:pt-20">
           <div className="fade-up">
             <div className="lp-glass mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5 text-xs font-medium text-brand-d"><Sparkles className="h-3.5 w-3.5" aria-hidden />{l.badge}</div>
-            <h1 className="text-[42px] font-semibold leading-[1.05] tracking-tight sm:text-[62px]">{l.heroA}<br /><span className="lp-gradient-text">{l.heroB}</span></h1>
-            <p className="mt-6 max-w-xl text-lg leading-relaxed text-ink-2">{l.heroText}</p>
-
-            <div className="mt-8" data-testid="doors">
-              <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-mute">{d.doors}</div>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Link href="/demo/cash" className="lp-glass group rounded-2xl p-4 transition hover:-translate-y-0.5 hover:shadow-xl" data-testid="door-cash">
-                  <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-brand-bg text-brand-d"><Receipt className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span>
-                  <div className="font-semibold">{d.doorCash[0]}</div>
-                  <p className="mt-1 text-sm text-mute">{d.doorCash[1]}</p>
-                  <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-brand-d">{d.seeDemo} <ArrowRight className="flip-rtl h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden /></span>
-                </Link>
-                <Link href="/demo/summary" className="lp-glass group rounded-2xl p-4 transition hover:-translate-y-0.5 hover:shadow-xl" data-testid="cta-demo">
-                  <span className="mb-3 inline-flex h-9 w-9 items-center justify-center rounded-xl bg-[#e3ecfb] text-[#1d56a6]"><Building2 className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span>
-                  <div className="font-semibold">{d.doorBooks[0]}</div>
-                  <p className="mt-1 text-sm text-mute">{d.doorBooks[1]}</p>
-                  <span className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-[#1d56a6]">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden /></span>
-                </Link>
-              </div>
-              <div className="mt-6 flex flex-wrap items-center gap-4 text-sm">
-                <Link href="/login?mode=signup" className="lp-shine relative rounded-xl bg-gradient-to-r from-brand-d to-[#1d56a6] px-6 py-3 font-semibold text-white shadow-[0_14px_30px_-12px_rgba(11,110,112,.7)] hover:brightness-110" data-testid="door-signup">{d.getStarted}</Link>
-                <Link href="/demo/data" className="inline-flex items-center gap-1.5 font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"><FileSpreadsheet className="h-4 w-4" aria-hidden />{d.tryFile}</Link>
-              </div>
-              <p className="mt-3 text-xs text-mute">{d.tryNote}</p>
+            <h1 className="mx-auto max-w-4xl text-[44px] font-semibold leading-[1.03] tracking-tight sm:text-[72px]">{l.heroA} <span className="lp-gradient-text">{l.heroB}</span></h1>
+            <p className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-2 sm:text-xl">{l.heroText}</p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3 text-sm">
+              <Link href="/login?mode=signup" className="lp-shine relative rounded-xl bg-gradient-to-r from-brand-d to-[#1d56a6] px-7 py-3.5 text-base font-semibold text-white shadow-[0_14px_30px_-12px_rgba(11,110,112,.7)] hover:brightness-110" data-testid="door-signup">{d.getStarted}</Link>
+              <Link href="/demo/summary" className="lp-glass inline-flex items-center gap-2 rounded-xl px-6 py-3.5 text-base font-medium hover:bg-white"><PlayCircle className="h-5 w-5 text-brand-d" aria-hidden />{d.exploreDemo}</Link>
             </div>
+            <p className="mt-3 text-xs text-mute">{l.finalBadge}</p>
           </div>
-          <HeroDashboard f={f} d={{ ...l, shots: l.shots }} lang={lang} />
+
+          <div className="relative mx-auto mt-14 max-w-5xl text-start" data-testid="hero-dashboard">
+            <LiveDashboard f={f} c={l.dash} />
+          </div>
+
+          <div className="mx-auto mt-14 max-w-4xl text-start" data-testid="doors">
+            <div className="mb-3 text-center text-xs font-semibold uppercase tracking-wider text-mute">{d.doors}</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Link href="/demo/cash" className="lp-glass group flex gap-4 rounded-2xl p-5 transition hover:-translate-y-0.5 hover:shadow-xl" data-testid="door-cash">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-bg text-brand-d"><Receipt className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span>
+                <span><span className="block font-semibold">{d.doorCash[0]}</span><span className="mt-1 block text-sm text-mute">{d.doorCash[1]}</span>
+                  <span className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-brand-d">{d.seeDemo} <ArrowRight className="flip-rtl h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden /></span></span>
+              </Link>
+              <Link href="/demo/summary" className="lp-glass group flex gap-4 rounded-2xl p-5 transition hover:-translate-y-0.5 hover:shadow-xl" data-testid="cta-demo">
+                <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[#e3ecfb] text-[#1d56a6]"><Building2 className="h-5 w-5" strokeWidth={1.8} aria-hidden /></span>
+                <span><span className="block font-semibold">{d.doorBooks[0]}</span><span className="mt-1 block text-sm text-mute">{d.doorBooks[1]}</span>
+                  <span className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-[#1d56a6]">{d.exploreDemo} <ArrowRight className="flip-rtl h-4 w-4 transition group-hover:translate-x-0.5" aria-hidden /></span></span>
+              </Link>
+            </div>
+            <p className="mt-4 text-center text-sm"><Link href="/demo/data" className="inline-flex items-center gap-1.5 font-medium text-ink underline decoration-line underline-offset-4 hover:decoration-ink"><FileSpreadsheet className="h-4 w-4" aria-hidden />{d.tryFile}</Link> <span className="text-xs text-mute">· {d.tryNote}</span></p>
+          </div>
         </section>
 
         <div className="border-y border-white/70 bg-white/50 py-5 backdrop-blur" aria-label={l.worksWith}>
@@ -150,6 +155,32 @@ export default async function Home() {
                   <h3 className="relative mt-5 text-xl font-semibold">{title}</h3>
                   <p className="relative mt-2 text-mute">{text}</p>
                   <div className="relative"><BentoVisual i={i} f={f} labels={{ gpm: d.gpm, cash: l.cash }} /></div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-24" aria-labelledby="flow-h">
+        <div className="mx-auto max-w-6xl px-6">
+          <h2 id="flow-h" className="mx-auto mb-3 max-w-3xl text-center text-4xl font-semibold tracking-tight sm:text-5xl">{l.flowTitle}</h2>
+          <p className="mx-auto mb-14 max-w-2xl text-center text-lg text-mute">{l.flowText}</p>
+          <Flow files={l.flowFiles} engine={l.flowEngine} out={l.flowOut} checks={l.checks} />
+        </div>
+      </section>
+
+      <section className="lp-section-mesh py-24" aria-labelledby="who-h">
+        <div className="mx-auto max-w-6xl px-6" data-testid="who">
+          <h2 id="who-h" className="mb-12 text-center text-4xl font-semibold tracking-tight sm:text-5xl">{l.whoTitle}</h2>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {l.who.map(([title, text], i) => {
+              const Icon = [Building2, LineChart, BadgeCheck, Landmark][i];
+              return (
+                <article key={title} className="lp-glass rounded-3xl p-6 transition hover:-translate-y-1 hover:shadow-2xl">
+                  <span className={`inline-flex h-12 w-12 items-center justify-center rounded-2xl text-white shadow-md ${["bg-brand", "bg-s1", "bg-green-d", "bg-s7"][i]}`}><Icon className="h-6 w-6" aria-hidden /></span>
+                  <h3 className="mt-5 text-lg font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm text-mute">{text}</p>
                 </article>
               );
             })}

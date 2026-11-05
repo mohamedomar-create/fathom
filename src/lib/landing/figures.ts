@@ -24,11 +24,15 @@ export function landingFigures() {
   return {
     company: c.name, end, currency: c.settings.currency,
     revenue: a.view.P.revenue,
+    netProfit: a.view.P.net_income,
+    // Where each pound of revenue went this month: cost of sales, operating expenses, and what was left (EBIT).
+    mix: { cos: a.view.P.cos, expenses: a.view.P.expenses, ebit: a.view.P.ebit },
+    revGrowth: a.K.rev_growth ?? null,
     gpm: a.K.gpm ?? 0,
     cash: a.view.B?.cash ?? 0,
     kpiOnTrack: a.onTrack + a.offTrack > 0 ? a.onTrack / (a.onTrack + a.offTrack) : 0,
     kpis: a.onTrack + a.offTrack,
-    series: { periods: last12(s.periods), revenue: last12(s.P.map((p) => p.revenue)), ebit: last12(s.P.map((p) => p.ebit)) },
+    series: { periods: last12(s.periods), revenue: last12(s.P.map((p) => p.revenue)), ebit: last12(s.P.map((p) => p.ebit)), costs: last12(s.P.map((p) => p.cos + p.expenses)), cash: last12(s.B.map((b) => b.cash)) },
     value: { fair: v.best.mid, low: v.best.low, high: v.best.high, highest: Math.max(v.best.high, v.ask.band?.high ?? 0) },
     doctor: { score: health.score, findings: health.open, atStake: health.atStake },
   };

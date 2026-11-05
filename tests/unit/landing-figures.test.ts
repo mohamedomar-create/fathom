@@ -15,6 +15,12 @@ describe("the landing page's figures come from the demo company itself", () => {
     expect(f.kpiOnTrack).toBeGreaterThan(0);
     expect(f.kpiOnTrack).toBeLessThanOrEqual(1);
   });
+  it("the cost structure adds up to revenue: cost of sales + expenses + operating result (before other income)", () => {
+    expect(f.mix.cos + f.mix.expenses).toBeGreaterThan(0);
+    expect(f.series.costs).toHaveLength(12);
+    expect(f.series.cash).toHaveLength(12);
+    expect(f.series.revenue.at(-1)).toBeCloseTo(f.revenue, 6);
+  });
   it("the valuation is the same one the Valuation page shows", () => {
     const v = valueCompany(valuationInputs(demoCompany(), null)!, { purpose: "owner", sector: "medical" });
     expect(f.value.fair).toBeCloseTo(v.best.mid, 0);
