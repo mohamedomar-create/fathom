@@ -104,7 +104,7 @@ export function QuickEntry({ trigger }: { trigger: React.ReactNode }) {
               onChange={(e) => { setMsg(null); setAmount(e.target.value); }}
               className="num w-full rounded-md border border-line px-3 py-2 text-end text-3xl font-semibold" data-testid="quick-amount" />
           </label>
-          <div className="mt-2 grid grid-cols-3 gap-1.5" data-testid="quick-pad">
+          <div dir="ltr" className="mt-2 grid grid-cols-3 gap-1.5" data-testid="quick-pad">
             {KEYS.map((k) => (
               <button key={k} type="button" onClick={() => press(k)} aria-label={k === "back" ? t.quickBack : k === "." ? t.quickPoint : k}
                 className="flex min-h-12 items-center justify-center rounded-md bg-band text-xl hover:bg-line" data-testid={`quick-key-${k === "." ? "dot" : k}`}>

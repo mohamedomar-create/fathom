@@ -61,7 +61,7 @@ export function settingsFromRow(c: Pick<CompanyRow, "currency" | "fy_start_month
   };
 }
 
-import { currentAsOf, KPI_DEFS } from "@/lib/engine";
+import { currentAsOf, KPI_DEFS, reportAsOf } from "@/lib/engine";
 import { highlightsOf } from "@/lib/engine/statement-rows";
 import { loadBalances } from "./balances";
 import { runChecks } from "./checks";
@@ -112,12 +112,12 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const accounts = withSubClasses(naturalAccounts(stored), subMap);
   const { settings, alerts } = settingsFromRow(c);
   const months = buildMonths(accounts);
-  const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string; unit?: number; source?: string };
+  const report = (imp?.report ?? {}) as { accepted?: { key: string; title: string; period?: string; reason: string }[]; asOf?: string; cutoff?: string; unit?: number; source?: string };
   // Where the books come from: Odoo, a cash book moved to the full system, a General Ledger, or monthly statements.
   const booksBasis = c.source === "odoo" ? "odoo" as const : report.source === "cashbook" ? "cash" as const : report.source === "ledger" ? "ledger" as const : report.source === "summary" ? "statements" as const : undefined;
   const accepted = report.accepted ?? [];
   // Only the latest month can be a part month: an older import's stop day no longer applies once later months exist.
-  const asOf = currentAsOf(report.asOf, months.map((m) => m.period)) ?? undefined;
+  const asOf = currentAsOf(reportAsOf(report), months.map((m) => m.period)) ?? undefined;
   const ok = new Set(accepted.map((a) => a.key));
   const tChecks = Date.now();
   const unit = report.unit === 1000 || report.unit === 1_000_000 ? report.unit : 1;

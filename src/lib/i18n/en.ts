@@ -131,7 +131,10 @@ export const en = {
   noData: {
     title: "No financial data yet",
     body: (name: string) => `Upload an Odoo export or connect your Odoo database to see KPIs, breakeven, cash flow and more for ${name}.`,
+    bodyOther: (name: string) => `Upload your General Ledger or Trial Balance (Excel or CSV) to see KPIs, breakeven, cash flow and more for ${name}.`,
     add: "Add financial data",
+    /** What each page will show once the books are in. */
+    pages: { summary: "The executive summary: profit, cash and what needs attention, in one page.", kpis: "Your KPIs scored against your targets.", banking: "How a bank reads your company: repayment cover, leverage and room to borrow.", valuation: "What your company is worth, from the quick-sale floor to what an investor could pay.", doctor: "The AI system doctor: what is wrong in the books, ranked by money at stake.", planning: "Your budget and business plan, built from your own figures.", analysis: "Statements, profitability, growth, trends and forecast." } as Record<string, string>,
   },
   healthUnknown: "This company's accounting checks couldn't be read just now, so we can't say whether its figures pass them. Reload the page to try again.",
   health: (n: number) => `${n} accounting check${n > 1 ? "s fail" : " fails"} in this company's data (for example the balance sheet does not balance). Figures may be wrong: review them in Data health.`,

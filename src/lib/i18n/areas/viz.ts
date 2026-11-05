@@ -20,7 +20,7 @@ export const viz = area(
       fcf: "Free cash flow", fcfSub: "Operating cash flow less investment, each month.", cashBridge: "Where the cash went",
       cashBridgeSub: "From opening cash to closing cash, IAS 7 sections.", opening: "Opening cash", closing: "Closing cash",
       byActivity: "Cash flow by activity, month by month", realBridge: "From book profit to real profit", realTrend: "Book vs real profit",
-      collection: "Collection", fxBox: "In US dollars", lowPoint: "Lowest cash", fcRange: "Range", backtest: "Forecast accuracy",
+      collection: "Collection", fxBox: "In US dollars", lowPoint: "Lowest cash", fcRange: "Range", backtest: "Forecast error (tested on past months)",
       backtestSub: "Average error when the method forecast months we already know.", drivers: "What the forecast assumes", statement: "Cash flow statement, line by line",
     },
     mod: {
@@ -49,7 +49,7 @@ export const viz = area(
       fcf: "التدفق النقدي الحر", fcfSub: "التدفق النقدي التشغيلي ناقص الاستثمار، كل شهر.", cashBridge: "أين ذهبت النقدية",
       cashBridgeSub: "من نقدية أول المدة إلى نقدية آخر المدة، حسب أقسام معيار المحاسبة الدولي 7.", opening: "نقدية أول المدة", closing: "نقدية آخر المدة",
       byActivity: "التدفق النقدي حسب النشاط، شهرًا بشهر", realBridge: "من الربح الدفتري إلى الربح الحقيقي", realTrend: "الربح الدفتري مقابل الحقيقي",
-      collection: "التحصيل", fxBox: "بالدولار الأمريكي", lowPoint: "أدنى نقدية", fcRange: "النطاق", backtest: "دقة التوقع",
+      collection: "التحصيل", fxBox: "بالدولار الأمريكي", lowPoint: "أدنى نقدية", fcRange: "النطاق", backtest: "خطأ التوقع (مختبر على الأشهر السابقة)",
       backtestSub: "متوسط الخطأ عندما توقعت الطريقة أشهرًا نعرفها بالفعل.", drivers: "افتراضات التوقع", statement: "قائمة التدفقات النقدية، بندًا بندًا",
     },
     mod: {

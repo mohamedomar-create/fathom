@@ -210,6 +210,7 @@ export function PaymentsOverview() {
       <Cockpit hero={
         <HeroKpi label={t.customersOwe} testId="tile-owed" value={rec ? money(rec.owed, cur) : "–"} deltaLabel={rec ? t.netCredits(money(rec.total, cur)) : t.noAgeing}
           story={<span data-testid="payments-headline">{headline}</span>}>
+          {!rec && !c.readOnly && <a href={`${c.basePath}/data/upload?step=payments`} className="mt-3 inline-block rounded-md bg-brand-d px-4 py-2 text-sm font-medium text-white" data-testid="upload-ageing">{t.uploadAgeing}</a>}
           {rec && rec.owed > 0 && <AgeingStack cur={cur} buckets={rec.buckets.map((b, i) => ({ label: bucketIn(b, T), value: rec.partners.reduce((s, p) => s + Math.max(p.amounts[i], 0), 0) }))} compact />}
         </HeroKpi>
       }>
@@ -222,7 +223,7 @@ export function PaymentsOverview() {
       <Tieouts a={a} />
       <CardGrid>
         {rec && <ChartCard title={t.receivables} sub={t.byAge} testId="card-age-rec"><AgeBar v={rec} cur={cur} /></ChartCard>}
-        {pay && <ChartCard title={t.payables} sub={t.byAge} testId="card-age-pay"><AgeBar v={pay} cur={cur} /></ChartCard>}
+        {pay && <ChartCard title={t.payables} sub={t.byAgePay} testId="card-age-pay"><AgeBar v={pay} cur={cur} /></ChartCard>}
         {!noList && a.flows.byMonth.length > 1 && (
           <ChartCard title={t.byMonth} wide testId="card-pay-months"
             table={{ head: [t.month, t.received, t.paid], rows: a.flows.byMonth.map((m) => [monthIn(m.p, T), money(m.received, cur), money(m.paid, cur)]) }}>

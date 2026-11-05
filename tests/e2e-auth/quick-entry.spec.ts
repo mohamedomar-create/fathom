@@ -63,6 +63,9 @@ test("three taps on a phone save today's entry; the category learned for a custo
   await page.emulateMedia({ reducedMotion: "reduce" });
   for (const lang of ["en", "ar"]) {
     if (lang === "ar") { await page.keyboard.press("Escape"); await page.context().addCookies([{ name: "lang", value: "ar", url: page.url() }]); await page.reload(); await page.getByTestId("cash-bottom-add").click(); }
+    // A number pad reads 1-2-3 left to right in both languages, like a phone's dialler.
+    const x1 = (await page.getByTestId("quick-key-1").boundingBox())!.x, x3 = (await page.getByTestId("quick-key-3").boundingBox())!.x;
+    expect(x1, `${lang}: 1 sits left of 3`).toBeLessThan(x3);
     await pad(page, "9");
     await page.getByTestId("quick-in").click();
     const a = await new AxeBuilder({ page }).include("[data-testid=quick-entry]").withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"]).analyze();

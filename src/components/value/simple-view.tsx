@@ -62,6 +62,8 @@ export function SimpleValuation({ v, inputs, cur }: { v: Valuation; inputs: Valu
                   : <p className="my-1 text-sm text-mute">{s.askReasons[m.reason ?? ""] ?? ""}</p>}
                 <p className="text-sm">{how}</p>
                 {m.value && <p className="mt-1 text-sm text-mute">{b}</p>}
+                {/* Honest when a way to ask for more comes out lower: it is shown, never sold as a higher value. */}
+                {m.value && m.value.mid < v.best.mid && <p className="mt-2 rounded bg-amber/15 px-2 py-1 text-[13px]" data-testid={`ask-below-${m.key}`}>{s.belowFair(fmt(v.best.mid))}</p>}
               </article>
             );
           })}

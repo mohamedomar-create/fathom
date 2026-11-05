@@ -198,7 +198,7 @@ export const wiz = area(
       savedMonths: (n: number, pay: number) => `${n} month${s(n)} saved${pay ? `, with ${pay} bank and cash payments` : ""}.`,
       what: "What are you uploading?", pickOne: "Pick one.",
       card: {
-        opening: ["Opening balances", "Your balance sheet the day before your books start."], accounts: ["My accounts", "Profit and loss, and balance sheet."],
+        opening: ["Opening balances", "Your balance sheet the day before your books start."], accounts: ["General Ledger or accounts", "Odoo's General Ledger (best), a Trial Balance, or your profit and loss and balance sheet."],
         sales: ["My sales", "Invoices: who bought what."], expenses: ["My expenses", "Bills and costs: who you pay."],
         inventory: ["My stock", "Odoo Inventory: valuation, moves, stock on hand."], payments: ["Receivables and payments", "Odoo's ageing reports and payments: who owes what, who paid."],
       } as Record<string, readonly [string, string]>,
@@ -473,7 +473,7 @@ export const wiz = area(
       savedMonths: (n: number, pay: number) => `عدد الأشهر المحفوظة: ${n}${pay ? `، مع مدفوعات بنك ونقدية عددها ${pay}` : ""}.`,
       what: "ماذا سترفع؟", pickOne: "اختر واحدًا.",
       card: {
-        opening: ["الأرصدة الافتتاحية", "ميزانيتك في اليوم السابق لبداية دفاترك."], accounts: ["حساباتي", "قائمة الدخل والميزانية."],
+        opening: ["الأرصدة الافتتاحية", "ميزانيتك في اليوم السابق لبداية دفاترك."], accounts: ["دفتر الأستاذ العام أو الحسابات", "دفتر الأستاذ العام من Odoo (الأفضل)، أو ميزان المراجعة، أو قائمة الدخل والميزانية."],
         sales: ["مبيعاتي", "الفواتير: من اشترى ماذا."], expenses: ["مصروفاتي", "الفواتير والتكاليف: لمن تدفع."],
         inventory: ["مخزوني", "مخزون Odoo: التقييم والحركات والرصيد الحالي."], payments: ["المدينون والمدفوعات", "تقارير أعمار الديون والمدفوعات من Odoo: من عليه ماذا، ومن دفع."],
       },

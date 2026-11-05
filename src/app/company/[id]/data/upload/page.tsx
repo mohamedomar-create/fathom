@@ -37,7 +37,7 @@ export default async function DataUploadPage({ params, searchParams }: { params:
       <p className="mb-5 text-mute">{w.intro}</p>
       {role === "viewer" ? (
         <p className="rounded bg-band px-4 py-3 text-sm" data-testid="view-only">{w.viewOnly}</p>
-      ) : c && <UploadWizard key={step ?? "any"} companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} setupStep={setupStep} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} ledgerLoaded={facts.ledger} />}
+      ) : c && <UploadWizard key={step ?? "any"} companyId={id} currency={c.currency} fyStart={c.fy_start_month} savedMapping={savedMapping} savedLayouts={savedLayouts} hasData={c.data_version > 0} dataVersion={c.data_version} setupStep={setupStep} salesLoaded={salesLoaded} expensesLoaded={expensesLoaded} booksStart={booksStartOf(c.kpi_config)} ledgerLoaded={facts.ledger} />}
     </div>
   );
 }

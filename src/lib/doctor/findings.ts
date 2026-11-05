@@ -22,6 +22,8 @@ export interface Finding {
   reopened?: Decision;
   /** An expense flag's parts, so the page can word it in its own language (title and detail are the English). */
   flag?: { k: "double" | "large"; supplier: string; doc: string; doc2?: string; type: string };
+  /** The same finding worded in Arabic, when its rule has it. */
+  ar?: { title: string; detail: string };
 }
 
 /** Customer days above this are counted as cash tied up. */
@@ -61,7 +63,7 @@ export function doctorFindings({ checks, expenseFlags = [], months, basePath, de
         impact = Math.round(Math.abs(c.actual)); basis = "unexplained";
       }
     }
-    out.push({ key, area, severity: sev(c.severity === "block", impact), title: c.title, detail: c.detail, period: c.period, impact, basis, href });
+    out.push({ key, area, severity: sev(c.severity === "block", impact), title: c.title, detail: c.detail, ...(c.ar ? { ar: c.ar } : {}), period: c.period, impact, basis, href });
   }
   for (const x of expenseFlags) {
     const double = x.k === "double";

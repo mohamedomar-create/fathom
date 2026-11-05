@@ -98,12 +98,12 @@ export function CheckList({ checks, empty }: { checks: PreviewCheck[]; empty?: s
           <li key={checkKey(c) + c.title} className={cn("flex gap-2 rounded px-3 py-2", blocking ? "bg-red-bg" : c.severity === "info" ? "bg-band" : "bg-amber/15")} data-severity={blocking ? "block" : c.severity}>
             {blocking ? <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red" /> : c.severity === "info" ? <Info className="mt-0.5 h-4 w-4 shrink-0 text-mute" /> : <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-[#7d5600]" />}
             <div>
-              <b className="font-semibold">{periods.length ? `${periodsLabel(periods, T.ml)}: ` : ""}{c.title}</b>
+              <b className="font-semibold">{periods.length ? `${periodsLabel(periods, T.ml)}: ` : ""}{T.lang === "ar" && c.ar ? c.ar.title : c.title}</b>
               {c.accepted && <span className="ms-2 rounded bg-white px-1.5 text-[11px] text-mute">{w.acceptedEarlier}</span>}
               {c.existing && <span className="ms-2 rounded bg-white px-1.5 text-[11px] text-mute">{w.existing}</span>}
               <div className="text-mute">{many && c.id === "bs_balance" && c.diff !== undefined
                 ? w.outBy(Math.round(Math.abs(c.diff)).toLocaleString("en-GB"))
-                : c.detail}</div>
+                : T.lang === "ar" && c.ar ? c.ar.detail : c.detail}</div>
             </div>
           </li>
         );

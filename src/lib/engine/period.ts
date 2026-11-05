@@ -219,6 +219,17 @@ export function defaultEnd(periods: string[], asOf?: string | null): string | un
 }
 
 /** The books' stop day, only while it falls in the latest month loaded: an older import's stop day no longer applies. */
+/**
+ * The part-month day an upload stored: the reader's own, else the cut-off the wizard showed (by default the file's last
+ * entry) when it falls before the month's last day. A cut-off on the last day is a full month.
+ */
+export function reportAsOf(report: { asOf?: string | null; cutoff?: string | null } | null | undefined): string | null {
+  if (report?.asOf) return report.asOf;
+  const c = report?.cutoff;
+  if (!c || !/^\d{4}-\d{2}-\d{2}$/.test(c)) return null;
+  return Number(c.slice(8)) < daysIn(c.slice(0, 7)) ? c : null;
+}
+
 export function currentAsOf(asOf: string | null | undefined, periods: string[]): string | null {
   if (!asOf || !periods.length) return null;
   const last = periods.reduce((a, b) => (b > a ? b : a));

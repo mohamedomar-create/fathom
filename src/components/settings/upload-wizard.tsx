@@ -83,7 +83,7 @@ const FILE_CHECKS = new Set<Check["id"]>(["control_total", "duplicate", "tb_zero
  * iReport reads, problems fixed one by one) → save (months already loaded: add only new ones, or replace them) → done.
  * salesLoaded / expensesLoaded: months that already have sales / expense lines from an uploaded file (to warn about duplicates).
  */
-export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false }: { companyId: string; ledgerLoaded?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
+export function UploadWizard({ companyId, currency, fyStart, savedMapping, savedLayouts, demo = false, setupStep, salesLoaded = [], expensesLoaded = [], booksStart: savedStart = null, ledgerLoaded = false, dataVersion = 0 }: { companyId: string; dataVersion?: number; ledgerLoaded?: boolean; booksStart?: string | null; currency: string; fyStart: number; savedMapping: Record<string, string>; savedLayouts?: SavedLayouts; hasData?: boolean; demo?: boolean; setupStep?: "opening" | "financials" | "tb" | "sales" | "expenses" | "inventory" | "payments"; salesLoaded?: string[]; expensesLoaded?: string[] }) {
   const router = useRouter();
   const company = useCompany();
   const T = useT(), d = T.d.wiz, w = d.w;
@@ -107,6 +107,8 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
   // Saving in steps after the figures: what is being saved now, and a stopped save that can continue.
   const [saveProgress, setSaveProgress] = useState<{ what: string; done: number; of: number } | null>(null);
   const [post, setPost] = useState<{ steps: PostStep[]; at: number; doneMsg: string } | null>(null);
+  /** The version this upload saved: the summary on the done screen waits until the page has reloaded to it. */
+  const [savedVersion, setSavedVersion] = useState<number | null>(null);
   // The person chose, on purpose, to save a summary report as figures although the books come from a ledger.
   const [asFigures, setAsFigures] = useState(false);
   // Preflight: the upload as read, waiting for its check; the check's result once it is done (for the save screen).
@@ -532,6 +534,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
         if ("blocking" in out && out.blocking?.length && preview) setPreview({ ...preview, checks: [...preview.checks.filter((c) => !out.blocking!.some((b) => checkKey(b) === checkKey(c))), ...out.blocking] });
         return;
       }
+      setSavedVersion(out.version);
       // The figures are saved. What the ledger gives besides is saved as steps, each one a staged save that replaces its
       // months in one go at its end; a step that stops is continued from there and never leaves a month half done.
       const filename = files.map((f) => f.name).join(" + ");
@@ -699,7 +702,7 @@ export function UploadWizard({ companyId, currency, fyStart, savedMapping, saved
           <div><div className="text-2xl font-medium">{checked ? w.checked : w.saved}</div><div className="text-[15px]">{done.what.replace(/\.$/, "")}.</div></div>
         </div>
         {pfRun && pfRun.cleaned.rejected.length > 0 && <p className="mb-4 text-[14px]" data-testid="done-rejected">{w.rejected(pfRun.cleaned.rejected.length)}<RejectedDownload run={pfRun} label={w.rejectedDl} /></p>}
-        {kind === "accounts" && !checked && <ImportReadiness />}
+        {kind === "accounts" && !checked && <ImportReadiness waiting={savedVersion !== null && dataVersion < savedVersion} />}
         <div className="flex flex-wrap gap-3">
           {checked
             ? <a href={`${company.basePath}/data`} className="rounded-md bg-brand-d px-6 py-3 font-medium text-white" data-testid="done-see">{w.backSteps}</a>

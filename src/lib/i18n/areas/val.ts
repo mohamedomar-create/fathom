@@ -100,7 +100,7 @@ export const val = area(
         unaudited: "Get your accounts audited before you sell or raise money.",
         noCustomerDetail: "Load sales by customer, so the spread of your customers can be shown.",
       } as Record<string, string>,
-      askTitle: "What you can ask for",
+      askTitle: "What you can ask for", belowFair: (fair: string) => `Lower than your fair value of ${fair} today, so not a reason to ask for more yet.`,
       askSub: "The ways investors and larger companies put a higher value on a business. These are not part of the fair value: each one needs the buyer to believe something about your future.",
       ask: {
         pitch: ["Investor pitch value", "Your profit and sales × what investors pay for companies growing as fast as yours. This is how investors on TV shows like Shark Tank value a business.", (g: string) => `Believe: your sales keep growing about ${g} a year.`],
@@ -234,7 +234,7 @@ export const val = area(
         unaudited: "اعتمد حساباتك من مراجع حسابات خارجي قبل البيع أو جذب التمويل.",
         noCustomerDetail: "حمّل المبيعات حسب العميل حتى يظهر توزيع عملائك.",
       },
-      askTitle: "ما يمكنك طلبه",
+      askTitle: "ما يمكنك طلبه", belowFair: (fair: string) => `أقل من قيمتك العادلة اليوم ${fair}، فليست سببًا لطلب المزيد بعد.`,
       askSub: "الطرق التي يقيّم بها المستثمرون والشركات الأكبر النشاط بقيمة أعلى. ليست جزءًا من القيمة العادلة: كل منها يحتاج أن يؤمن المشتري بشيء عن مستقبلك.",
       ask: {
         pitch: ["قيمة العرض على المستثمرين", "أرباحك ومبيعاتك × ما يدفعه المستثمرون في شركات تنمو بسرعتك. هكذا يقيّم المستثمرون في برامج مثل Shark Tank.", (g: string) => `بشرط: أن تواصل مبيعاتك النمو نحو ${g} سنويًا.`],

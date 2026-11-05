@@ -26,7 +26,7 @@ export function PeopleManager({ orgId, me, ownerId, people, invites }: { orgId: 
         <button disabled={pending} className="rounded bg-brand-d px-4 py-2 font-medium text-white">{d.invite}</button>
       </form>
       {msg && <p className="text-sm text-green-d">{msg}</p>}
-      <table className="tbl text-sm">
+      <div className="overflow-x-auto"><table className="tbl text-sm">
         <thead><tr><th>{d.name}</th><th>{d.email}</th><th>{d.role}</th><th></th></tr></thead>
         <tbody>
           {people.map((p) => (
@@ -59,16 +59,16 @@ export function PeopleManager({ orgId, me, ownerId, people, invites }: { orgId: 
             </tr>
           ))}
         </tbody>
-      </table>
+      </table></div>
       {invites.length > 0 && (
         <div>
           <h2 className="mb-2 text-lg font-light">{d.pending}</h2>
-          <table className="tbl text-sm"><tbody>
+          <div className="overflow-x-auto"><table className="tbl text-sm"><tbody>
             {invites.map((i) => <tr key={i.id} className="row" data-testid="invite-row"><td>{i.email}</td><td className="uppercase text-xs">{d.roles[i.role]}</td>
               <td className="text-xs text-mute" data-testid="invite-state">{inviteState(i)}</td>
               <td className="space-x-3 whitespace-nowrap"><button onClick={() => act(() => invite(orgId, i.email, i.role), d.invited(i.email))} className="text-xs text-brand-d hover:underline">{a.resend}</button>
                 <button onClick={() => act(() => cancelInvite(i.id), d.inviteCancelled)} className="text-xs text-red hover:underline">{d.cancelInvite}</button></td></tr>)}
-          </tbody></table>
+          </tbody></table></div>
         </div>
       )}
     </div>

@@ -45,6 +45,8 @@ export interface Check {
   diff?: number;
   /** Failure in a month the current import does not touch (shown, never blocks the import). */
   existing?: boolean;
+  /** The same finding worded in Arabic, when the rule has it (same figures). */
+  ar?: { title: string; detail: string };
 }
 
 /** A total row read from the source file (e.g. "Total Income", "Net Profit", "Total Assets"). */

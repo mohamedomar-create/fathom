@@ -43,7 +43,7 @@ function Answer({ text, error, testId }: { text?: string; error?: string; testId
 }
 
 function AcceptButton({ f, companyId }: { f: Finding; companyId: string }) {
-  const t = useT().d.doc;
+  const { d: { doc: t }, lang } = useT();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [reason, setReason] = useState("");
@@ -54,7 +54,7 @@ function AcceptButton({ f, companyId }: { f: Finding; companyId: string }) {
       <DialogTrigger className="inline-flex items-center rounded border border-line bg-white px-3 py-1.5 text-xs hover:bg-band disabled:opacity-50" data-testid="doctor-accept">{t.accept}</DialogTrigger>
       <DialogContent title={t.acceptTitle} className="w-[min(520px,calc(100vw-24px))] p-6">
         <h2 className="t-card pe-8">{t.acceptTitle}</h2>
-        <p className="mt-1 text-sm font-medium">{f.flag ? t.flagTitle[f.flag.k](f.flag.supplier) : f.title}</p>
+        <p className="mt-1 text-sm font-medium">{f.flag ? t.flagTitle[f.flag.k](f.flag.supplier) : (lang === "ar" && f.ar ? f.ar.title : f.title)}</p>
         <p className="mt-2 text-sm text-ink-2">{t.acceptText}</p>
         <label className="mt-4 block text-sm font-medium" htmlFor="doctor-reason">{t.reason}</label>
         <textarea id="doctor-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} rows={3} placeholder={t.reasonPh}
@@ -91,8 +91,8 @@ function FindingCard({ f, companyId, canEdit, aiOn, lang }: { f: Finding; compan
             <span className="text-mute">{t.areas[f.area]}</span>
             {f.period && <span className="text-mute">· {ml(f.period)}</span>}
           </div>
-          <h3 className="t-card mt-1">{f.flag ? t.flagTitle[f.flag.k](f.flag.supplier) : f.title}</h3>
-          <p className="mt-1 text-sm text-ink-2">{!f.flag ? f.detail : f.flag.k === "double" ? t.flagDetail.double(f.flag.doc, f.flag.doc2 ?? t.anotherBill, f.flag.type) : t.flagDetail.large(f.flag.doc, f.flag.type)}</p>
+          <h3 className="t-card mt-1">{f.flag ? t.flagTitle[f.flag.k](f.flag.supplier) : (lang === "ar" && f.ar ? f.ar.title : f.title)}</h3>
+          <p className="mt-1 text-sm text-ink-2">{!f.flag ? (lang === "ar" && f.ar ? f.ar.detail : f.detail) : f.flag.k === "double" ? t.flagDetail.double(f.flag.doc, f.flag.doc2 ?? t.anotherBill, f.flag.type) : t.flagDetail.large(f.flag.doc, f.flag.type)}</p>
         </div>
         <div className="text-end">
           {f.impact !== null ? <div className="t-kpi"><Amt v={f.impact} /></div> : <div className="text-sm text-mute">{t.noAmount}</div>}

@@ -54,7 +54,7 @@ export const ana = area(
     fcf: "Free cash flow", ncf: "Cash flow before borrowing", dcash: "Change in cash",
     ocfTile: "from trading, after tax, before interest", fcfTile: "after investment in assets", ncfTile: "change in cash less new borrowing",
     received: "Cash Received", spent: "Cash Spent",
-    ncfCheck: (dc: string, c0: string, c1: string, dd: string, d0: string, d1: string) => [`CASH FLOW BEFORE BORROWING CAN ALSO BE CALCULATED AS:`, ` Change in Cash on Hand ${dc} (Open: ${c0}, Close: ${c1}) − Change in Debt ${dd} (Open: ${d0}, Close: ${d1})`] as [string, string],
+    ncfCheck: (dc: string, c0: string, c1: string, dd: string, d0: string, d1: string) => [`Cash flow before borrowing also equals:`, ` Change in Cash on Hand ${dc} (Open: ${c0}, Close: ${c1}) − Change in Debt ${dd} (Open: ${d0}, Close: ${d1})`] as [string, string],
     monthByMonth: "Month by month", monthByMonthText: "Operating, investing and financing cash each month (IAS 7, interest under financing), and the cash balance at each month end.",
     notShown: (ms: string) => ` Not shown: ${ms} (a balance sheet or P&L is not loaded).`,
     operating: "Operating", investing: "Investing", financing: "Financing", cashAtEnd: "Cash at month end", month: "Month", unexplainedCol: "Unexplained", cashEnd: "Cash at end",

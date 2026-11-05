@@ -104,7 +104,30 @@ export function CashEntries() {
         </span>}
       </div>
       {error && <p role="alert" className="mb-3 rounded bg-red-bg px-4 py-2 text-sm text-red" data-testid="entries-error">{m(error)}</p>}
-      <div tabIndex={0} className="overflow-x-auto">
+      {/* On a phone each entry is a card (date, amount and who on one glance); adding goes through the Add button. */}
+      <ul className={cn("divide-y divide-line/60 border-y border-line/60 sm:hidden", editing !== null && "hidden")} data-testid="entry-cards">
+        {rows.slice(from, from + SHOW).map((e) => (
+          <li key={e.id} className="py-2.5" data-testid="entry-card">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="whitespace-nowrap text-xs text-mute" data-testid="entry-card-date">{e.day}</span>
+              <span className={cn("num whitespace-nowrap font-medium", e.direction === "in" ? "text-green-d" : "text-red")}>{e.direction === "in" ? "+" : "−"}{money(e.amount, cur)}</span>
+            </div>
+            <div className="mt-0.5 flex items-baseline justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate">{[e.category, e.party].filter(Boolean).join(" · ") || KIND_LABEL[e.kind][lang]}</span>
+              {!company.readOnly && <span className="flex shrink-0 gap-3 text-xs">
+                <button type="button" onClick={() => { setEditing(e.id); setDraft(draftOf(e)); setError(null); }} className="text-brand-d hover:underline">{t.edit}</button>
+                <ConfirmDialog title={t.removeTitle} confirmLabel={t.remove}
+                  trigger={<button type="button" className="text-red hover:underline">{t.remove}</button>}
+                  onConfirm={async () => { const r = await entryDelete(company.id, e.id); if (!r.ok) return r.error; router.refresh(); }}>
+                  <p>{t.removeText(`${e.day} · ${money(e.amount, cur)}`)}</p>
+                </ConfirmDialog>
+              </span>}
+            </div>
+            {e.note && <div className="mt-0.5 truncate text-xs text-mute">{e.note}</div>}
+          </li>
+        ))}
+      </ul>
+      <div tabIndex={0} className={cn("overflow-x-auto", editing === null && company.readOnly && "hidden sm:block")}>
         <table className="w-full text-sm">
           <thead><tr className="border-b border-line text-xs text-mute">{[t.date, t.direction, t.kind, t.amount, t.category, t.party, t.note, t.paid, t.paidOn].map((h) => <th key={h} className="px-1.5 py-2 text-start font-normal">{h}</th>)}<th /></tr></thead>
           <tbody>
@@ -121,7 +144,7 @@ export function CashEntries() {
                 </td>
               </tr>
             ) : (
-              <tr key={e.id} className="border-b border-line/60" data-testid="entries-row">
+              <tr key={e.id} className="hidden border-b border-line/60 sm:table-row" data-testid="entries-row">
                 <td className="px-1.5 py-1.5">{e.day}</td>
                 <td className={cn("px-1.5 py-1.5", e.direction === "in" ? "text-green-d" : "text-red")}>{e.direction === "in" ? t.inWord : t.outWord}</td>
                 <td className="px-1.5 py-1.5" data-testid="entries-kind">{KIND_LABEL[e.kind][lang]}{e.edited && <span className="ms-1.5 rounded bg-band px-1 text-[11px] text-mute" data-testid="entries-edited">{t.edited}</span>}</td>

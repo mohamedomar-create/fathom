@@ -1,5 +1,5 @@
 import "server-only";
-import { analyze, currentAsOf, defaultEnd, hasPL, type Analysis, type MonthData } from "@/lib/engine";
+import { analyze, currentAsOf, reportAsOf, defaultEnd, hasPL, type Analysis, type MonthData } from "@/lib/engine";
 import { getUser } from "@/lib/supabase/server";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 import { buildMonths, naturalAccounts } from "./build";
@@ -28,8 +28,8 @@ export async function loadPortfolio(): Promise<{ items: PortfolioItem[]; orgs: {
   // How far each company's books go (its current version's latest import), so a part month is treated as on its own pages.
   const asOfOf = async (id: string, version: number) => {
     const { data } = await supabase.from("imports").select("report").eq("company_id", id).eq("data_version", version).eq("action", "import").order("created_at", { ascending: false }).limit(1).maybeSingle();
-    const r = data?.report as { asOf?: string } | null | undefined;
-    return typeof r?.asOf === "string" ? r.asOf : null;
+    const r = data?.report as { asOf?: string; cutoff?: string } | null | undefined;
+    return reportAsOf(r);
   };
   const orgs = (mems ?? []).map((m) => ({ id: m.org_id, role: m.role, name: (m.organizations as unknown as { name: string } | null)?.name ?? "Organisation" }));
   const orgName = new Map(orgs.map((o) => [o.id, o.name]));

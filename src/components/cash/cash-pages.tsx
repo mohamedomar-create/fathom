@@ -104,10 +104,15 @@ function AgeTable({ title, fig, cur, testId }: { title: string; fig: Fig<Unpaid>
     <div className="mb-6" data-testid={testId}>
       <h3 className="mb-2 text-lg font-normal">{title}</h3>
       {!fig.ok ? <p className="text-[13px] text-mute">{t.needs[fig.needs]}</p> : (
-        <table className="w-full text-sm">
-          <thead><tr className="border-b border-line text-xs text-mute"><th className="py-1.5 text-start font-normal">{t.age}</th>{["0–30", "31–60", "61–90", "90+"].map((b) => <th key={b} className="py-1.5 text-end font-normal">{b}</th>)}<th className="py-1.5 text-end font-normal">{t.total}</th></tr></thead>
-          <tbody><tr><td />{fig.value.buckets.map((v, i) => <td key={i} className={cn("num py-1.5 text-end", i >= 2 && v > 0 && "text-red")}>{money(v, cur)}</td>)}<td className="num py-1.5 text-end">{money(fig.value.total, cur)}</td></tr></tbody>
-        </table>
+        // One labelled tile per age bucket (days since), then the total: wraps to two columns on a phone.
+        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {[...["0–30", "31–60", "61–90", "90+"].map((b, i) => ({ k: `${b} ${t.days}`, v: fig.value.buckets[i], late: i >= 2 })), { k: t.total, v: fig.value.total, late: false }].map((x, i) => (
+            <div key={i} className={cn("rounded-md border border-line px-3 py-2", i === 4 && "col-span-2 bg-band sm:col-span-1")} data-age-bucket>
+              <dt className="text-xs text-mute">{x.k}</dt>
+              <dd className={cn("num mt-0.5 font-medium", x.late && x.v > 0 && "text-red")}>{money(x.v, cur)}</dd>
+            </div>
+          ))}
+        </dl>
       )}
     </div>
   );

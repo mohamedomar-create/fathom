@@ -1,4 +1,5 @@
 import { mlabel, plCalc, bsCalc, type ClassKey, type MonthData } from "@/lib/engine";
+import { monthLabel } from "@/lib/i18n";
 import type { AccountLine } from "./types";
 import { buildMonths, CREDIT_CLASSES, isPL } from "./build";
 import type { Check } from "./checks";
@@ -15,6 +16,8 @@ const INTERIM_IN = /interim.*(received|receipt|input)|goods received not (yet )?
 const INTERIM_OUT = /interim.*(delivered|delivery|output)|goods delivered not (yet )?invoiced|بضاعة (منصرفة|مسلمة)/i;
 const OPENING = /open(ing)?\s*bal|opining|افتتاح/i;
 const fmt = (v: number) => Math.round(v).toLocaleString("en-US");
+/** A month in Arabic, for the Arabic wording of each finding. */
+const ma = (p: string) => monthLabel(p, "ar");
 const median = (xs: number[]) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : NaN; };
 
 export function reviewChecks({ accounts, months = buildMonths(accounts as AccountLine[]) }: { accounts: Acc[]; months?: MonthData[] }): Check[] {
@@ -35,13 +38,16 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
       if (INTERIM_IN.test(a.name) || INTERIM_OUT.test(a.name)) {
         const inbound = INTERIM_IN.test(a.name);
         out.push({ id: "review", severity: "warn", period: last.period, statement: "BS", title: inbound ? "Goods received, not yet billed" : "Goods delivered, not yet invoiced",
-          detail: `"${a.name}" holds ${fmt(Math.abs(v))} at ${mlabel(last.period)}: ${inbound ? "goods received from suppliers whose bills are not yet posted" : "goods delivered to customers who are not yet invoiced"}. A normal balance in Odoo's stock accounting; check that old receipts${inbound ? "" : " or deliveries"} are not left open and that the balance matches the open ${inbound ? "purchase orders" : "deliveries"}.`, actual: v });
+          detail: `"${a.name}" holds ${fmt(Math.abs(v))} at ${mlabel(last.period)}: ${inbound ? "goods received from suppliers whose bills are not yet posted" : "goods delivered to customers who are not yet invoiced"}. A normal balance in Odoo's stock accounting; check that old receipts${inbound ? "" : " or deliveries"} are not left open and that the balance matches the open ${inbound ? "purchase orders" : "deliveries"}.`, actual: v,
+          ar: { title: inbound ? "بضاعة مستلمة لم تصل فواتيرها بعد" : "بضاعة مُسلَّمة لم تُفوتر بعد",
+            detail: `في "${a.name}" رصيد ${fmt(Math.abs(v))} في ${ma(last.period)}: ${inbound ? "بضاعة استُلمت من موردين لم تُسجَّل فواتيرهم بعد" : "بضاعة سُلِّمت لعملاء لم تصدر فواتيرهم بعد"}. هذا رصيد طبيعي في محاسبة المخزون في Odoo؛ تأكد أن ${inbound ? "الاستلامات القديمة" : "الاستلامات والتسليمات القديمة"} ليست معلّقة وأن الرصيد يطابق ${inbound ? "أوامر الشراء المفتوحة" : "التسليمات المفتوحة"}.` } });
         continue;
       }
       if (!SUSPENSE.test(a.name)) continue;
       const credit = CREDIT_CLASSES.has(a.cls as ClassKey) ? v > 0 : v < 0;
       out.push({ id: "review", severity: "warn", period: last.period, statement: "BS", title: `Balance left in "${a.name}"`,
-        detail: `"${a.name}" holds ${fmt(Math.abs(v))} (${credit ? "credit" : "debit"}) at ${mlabel(last.period)}. Suspense, clearing and adjustment accounts should be empty at month end: ask what it is and clear it in Odoo.`, actual: v });
+        detail: `"${a.name}" holds ${fmt(Math.abs(v))} (${credit ? "credit" : "debit"}) at ${mlabel(last.period)}. Suspense, clearing and adjustment accounts should be empty at month end: ask what it is and clear it in Odoo.`, actual: v,
+        ar: { title: `رصيد متبقٍ في "${a.name}"`, detail: `في "${a.name}" رصيد ${fmt(Math.abs(v))} (${credit ? "دائن" : "مدين"}) في ${ma(last.period)}. حسابات المعلّقات والتسويات يجب أن تكون صفرًا في نهاية الشهر: اسأل عن أصله وسوِّه في Odoo.` } });
     }
   }
 
@@ -55,7 +61,8 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
     if (Math.abs(now - usual) <= 0.15) continue;
     const pct = (x: number) => `${Math.round(x * 100)}%`;
     out.push({ id: "review", severity: "warn", period: m.period, statement: "PL", title: `Gross margin ${pct(now)} against a usual ${pct(usual)}`,
-      detail: `Gross margin in ${mlabel(m.period)} is ${pct(now)}, far from the company's usual ${pct(usual)}. The usual cause: cost of sales is posted when goods are delivered but revenue when the invoice is issued, in another month (in Odoo, Anglo-Saxon accounting with the "Stock Interim (Delivered)" output account matches them). Otherwise check stock count adjustments, or costs posted to the wrong month or account. Read margins over a quarter until then.`, actual: now, expected: usual });
+      detail: `Gross margin in ${mlabel(m.period)} is ${pct(now)}, far from the company's usual ${pct(usual)}. The usual cause: cost of sales is posted when goods are delivered but revenue when the invoice is issued, in another month (in Odoo, Anglo-Saxon accounting with the "Stock Interim (Delivered)" output account matches them). Otherwise check stock count adjustments, or costs posted to the wrong month or account. Read margins over a quarter until then.`, actual: now, expected: usual,
+      ar: { title: `هامش مجمل الربح ${pct(now)} مقابل ${pct(usual)} المعتاد`, detail: `هامش مجمل الربح في ${ma(m.period)} ${pct(now)}، بعيد عن المعتاد للشركة ${pct(usual)}. السبب المعتاد: تُسجَّل تكلفة المبيعات عند التسليم والإيراد عند إصدار الفاتورة في شهر آخر (في Odoo تربطهما المحاسبة الأنجلوسكسونية بحساب Stock Interim (Delivered)). وإلا فراجع تسويات الجرد أو تكاليف سُجِّلت في شهر أو حساب خطأ. اقرأ الهوامش على ربع سنة حتى ذلك الحين.` } });
   }
 
   // 3. A month with no depreciation while the months on both sides have it (and fixed assets are held).
@@ -67,7 +74,8 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
     if (!(bsCalc(m.bs).fixed_assets > 0) && !accounts.some((a) => a.cls === "fixed_assets" && (a.amounts[m.period] ?? 0) > 0)) return;
     if (plMonths.slice(-12).every((x) => x !== m)) return;
     out.push({ id: "review", severity: "warn", period: m.period, statement: "PL", title: "No depreciation booked",
-      detail: `${mlabel(m.period)} has no depreciation while the months around it do. Check that the month's depreciation entry was posted in Odoo.` });
+      detail: `${mlabel(m.period)} has no depreciation while the months around it do. Check that the month's depreciation entry was posted in Odoo.`,
+      ar: { title: "لم يُسجَّل إهلاك", detail: `لا يوجد إهلاك في ${ma(m.period)} بينما الأشهر حوله فيها إهلاك. تأكد أن قيد إهلاك الشهر رُحِّل في Odoo.` } });
   });
   // 4. Customer and supplier days that can't be right: a balance tiny or huge against a month's sales or costs usually
   // means accounts in the wrong class (receivables booked elsewhere) or sales and costs in the wrong months.
@@ -82,7 +90,11 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
         detail: low
           ? `${who === "Customer" ? "Customers owe" : "The company owes suppliers"} ${fmt(bal)} at ${mlabel(last.period)}, about ${Math.round(d)} days of ${who === "Customer" ? "sales" : "costs"}. That is normal only when ${who === "Customer" ? "nearly every sale is paid on the spot" : "nearly every purchase is paid on the spot"}; otherwise check that the ${cls} accounts are classed as ${cls} in Chart of accounts.`
           : `${who === "Customer" ? "Customers owe" : "The company owes suppliers"} ${fmt(bal)} at ${mlabel(last.period)}, about ${Math.round(d)} days of ${who === "Customer" ? "sales" : "costs"}. Check for old balances that should have been settled or written off, and for ${who === "Customer" ? "sales" : "costs"} missing from the recent months.`,
-        actual: Math.round(d) });
+        actual: Math.round(d),
+        ar: { title: `${who === "Customer" ? "أيام تحصيل العملاء" : "أيام سداد الموردين"} ${Math.round(d)} تبدو ${low ? "منخفضة جدًا" : "مرتفعة جدًا"}`,
+          detail: `${who === "Customer" ? "على العملاء" : "على الشركة للموردين"} ${fmt(bal)} في ${ma(last.period)}، أي نحو ${Math.round(d)} يومًا من ${who === "Customer" ? "المبيعات" : "التكاليف"}. ${low
+            ? `هذا طبيعي فقط إذا كان كل ${who === "Customer" ? "بيع" : "شراء"} تقريبًا يُدفع فورًا؛ وإلا فتأكد أن حسابات ${cls === "Receivables" ? "المدينين" : "الدائنين"} مصنَّفة كذلك في دليل الحسابات.`
+            : "ابحث عن أرصدة قديمة كان يجب تسويتها أو إعدامها، أو عن حسابات مصنَّفة في الفئة الخطأ."}` } });
     };
     odd("Customer", days(last.bs.ar ?? 0, avg((m) => plCalc(m.pl).revenue)), last.bs.ar ?? 0, "Receivables");
     odd("Supplier", days(Math.abs(last.bs.ap ?? 0), avg((m) => (m.pl.cos_variable ?? 0) + (m.pl.cos_fixed ?? 0))), Math.abs(last.bs.ap ?? 0), "Payables");
@@ -97,7 +109,8 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
       const v = a.amounts[first.period] ?? 0;
       if (Math.abs(v) <= material) continue;
       out.push({ id: "review", severity: "warn", period: first.period, statement: "BS", title: "Opening stock on an interim account",
-        detail: `"${a.name}" holds ${fmt(Math.abs(v))} at the books' start (${mlabel(first.period)}). Stock brought in by the opening entry belongs on the stock account; on an interim account it shows as goods not yet billed or invoiced, and the stock checks won't agree. Move it in Odoo with one journal entry.`, actual: v });
+        detail: `"${a.name}" holds ${fmt(Math.abs(v))} at the books' start (${mlabel(first.period)}). Stock brought in by the opening entry belongs on the stock account; on an interim account it shows as goods not yet billed or invoiced, and the stock checks won't agree. Move it in Odoo with one journal entry.`, actual: v,
+        ar: { title: "مخزون افتتاحي على حساب وسيط", detail: `في "${a.name}" رصيد ${fmt(Math.abs(v))} عند بداية الدفاتر (${ma(first.period)}). المخزون الوارد بقيد الافتتاح مكانه حساب المخزون؛ على الحساب الوسيط يظهر كبضاعة لم تُفوتر، ولن تتطابق فحوص المخزون. انقله في Odoo بقيد يومية واحد.` } });
     }
   }
 
@@ -106,16 +119,17 @@ export function reviewChecks({ accounts, months = buildMonths(accounts as Accoun
   if (first) {
     for (const a of accounts) {
       if (!a.name || isPL(a.cls) || !OPENING.test(a.name)) continue;
-      const moves: string[] = [];
+      const moves: string[] = [], movesAr: string[] = [];
       let prev = a.amounts[first.period] ?? 0, lastMove = "";
       for (const m of bsMonths.slice(1)) {
         const v = a.amounts[m.period] ?? 0, d = v - prev;
-        if (Math.abs(d) > 1) { moves.push(`${mlabel(m.period)}: ${d > 0 ? "+" : "-"}${fmt(Math.abs(d))}`); lastMove = m.period; }
+        if (Math.abs(d) > 1) { moves.push(`${mlabel(m.period)}: ${d > 0 ? "+" : "-"}${fmt(Math.abs(d))}`); movesAr.push(`${ma(m.period)}: ${d > 0 ? "+" : "-"}${fmt(Math.abs(d))}`); lastMove = m.period; }
         prev = v;
       }
       if (!moves.length) continue;
       out.push({ id: "review", severity: "warn", period: lastMove, statement: "BS", title: "Entries in the opening-balance account after the start",
-        detail: `"${a.name}" changed after the books' start (${moves.join("; ")}). The opening-balance account should move only on the opening entry; ask what each entry corrects and post it to the right account.` });
+        detail: `"${a.name}" changed after the books' start (${moves.join("; ")}). The opening-balance account should move only on the opening entry; ask what each entry corrects and post it to the right account.`,
+        ar: { title: "قيود على حساب الأرصدة الافتتاحية بعد البداية", detail: `تغيّر "${a.name}" بعد بداية الدفاتر (${movesAr.join("؛ ")}). حساب الأرصدة الافتتاحية يتحرك بقيد الافتتاح فقط؛ اسأل عمّا يصححه كل قيد ورحِّله إلى الحساب الصحيح.` } });
     }
   }
   return out;

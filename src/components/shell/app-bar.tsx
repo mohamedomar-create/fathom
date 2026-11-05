@@ -6,14 +6,14 @@ import { getDict } from "@/lib/i18n/server";
 export async function AppBar({ email, orgName, isAdmin, active }: { email: string; orgName?: string; isAdmin?: boolean; active?: "companies" | "dashboard" | "admin" }) {
   const d = await getDict();
   const tab = (href: string, label: string, key: string) => (
-    <Link href={href} className={`rounded px-3 py-1 hover:text-white ${active === key ? "bg-bar-2 text-white" : ""}`}>{label}</Link>
+    <Link href={href} className={`whitespace-nowrap rounded px-2 py-1 hover:text-white sm:px-3 ${active === key ? "bg-bar-2 text-white" : ""}`}>{label}</Link>
   );
   return (
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-2 bg-bar px-4 text-[13px] text-[#ddd]">
+    <header className="sticky top-0 z-30 flex h-12 min-w-0 items-center gap-1 bg-bar px-3 sm:gap-2 sm:px-4 text-[13px] text-[#ddd]">
       <Link href="/companies" className="me-3" aria-label={d.shell.companies}><Logo tone="dark" size={22} /></Link>
       {tab("/companies", d.shell.companies, "companies")}
       {tab("/dashboard", d.shell.insights, "dashboard")}
-      <div className="ms-auto"><UserMenu email={email} orgName={orgName} isAdmin={isAdmin} /></div>
+      <div className="ms-auto min-w-0"><UserMenu email={email} orgName={orgName} isAdmin={isAdmin} /></div>
     </header>
   );
 }

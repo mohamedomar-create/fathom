@@ -35,7 +35,7 @@ export function CashWaterfall({ rows, cur }: { rows: WaterfallRow[]; cur: string
         return (
           <div key={r.label} className={`group grid grid-cols-[minmax(120px,40%)_1fr] items-center gap-3 sm:grid-cols-[minmax(240px,44%)_1fr] ${total ? "border-t border-ink pt-1 font-semibold" : ""}`}>
             <div className="flex items-center gap-2 py-[5px]">
-              <span className="hidden w-9 shrink-0 text-[10px] tracking-wider text-mute sm:inline">{total ? "" : r.sign}</span>
+              <span className="hidden w-9 shrink-0 text-[10px] tracking-wider text-mute sm:inline">{total ? "" : T.tl(r.sign)}</span>
               <span className={total ? "tracking-wide" : ""}>{T.tl(r.label)}</span>
               {r.info && !st && <Tip label={T.tl(r.info)} side="top"><button aria-label={T.tl(r.label)} className="text-mute hover:text-ink"><Info className="h-3.5 w-3.5" /></button></Tip>}
             </div>
