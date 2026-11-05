@@ -6,8 +6,8 @@ describe("saved valuation settings", () => {
     expect(valuationSettingsOf(null)).toEqual({ purpose: "owner", sector: "other" });
     expect(valuationSettingsOf({ profile: { valuation: { purpose: "bank", sector: "medical", riskFree: 0.2 } } })).toMatchObject({ purpose: "bank", sector: "medical", riskFree: 0.2 });
   });
-  it("drops anything not valid instead of trusting it", () => {
-    expect(valuationSettingsOf({ profile: { valuation: { purpose: "x", sector: "medical", riskFree: 9 } } })).toEqual({ purpose: "owner", sector: "other" });
+  it("drops only the figure that is not valid, keeping the other saved choices", () => {
+    expect(valuationSettingsOf({ profile: { valuation: { purpose: "x", sector: "medical", riskFree: 9, beta: 1.2 } } })).toEqual({ purpose: "owner", sector: "medical", beta: 1.2 });
   });
   it("refuses out-of-range figures when saving", () => {
     expect(ValuationSettingsSchema.safeParse({ purpose: "owner", sector: "other", longGrowth: 0.5 }).success).toBe(false);

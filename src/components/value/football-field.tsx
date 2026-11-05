@@ -36,9 +36,9 @@ export function FootballField({ methods, best, label, fmt, reason, weightOf }: {
           ))}
         </ul>
       </div>
-      <div className="mt-2 grid grid-cols-[11rem_1fr] text-xs text-mute num" dir="ltr">
+      <div className="mt-2 grid grid-cols-[11rem_1fr] text-xs text-mute num">
         <span />
-        <span className="flex justify-between"><span>{fmt(lo)}</span><span>{fmt(hi)}</span></span>
+        <span dir="ltr" className="flex justify-between"><span>{fmt(lo)}</span><span>{fmt(hi)}</span></span>
       </div>
     </div>
   );

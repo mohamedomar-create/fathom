@@ -16,8 +16,8 @@ export interface Quality { score: number; grade: "A" | "B" | "C" | "D"; deductio
 
 /**
  * How far the books can be relied on, 0 to 100: short history, a missing balance sheet, open checks, one large customer,
- * uneven sales and slow collection each cost points. The score sets the company-specific risk premium and the width of
- * every range, so cleaner books give a narrower, higher value.
+ * uneven sales and slow collection each cost points. The score sets how wide every range is (less reliable books, less
+ * certain value); the risk of the business itself is in the company premium (companyPremium).
  */
 export function qualityScore(q: QualityInputs): Quality {
   const d: { key: QualityKey; points: number }[] = [];
@@ -32,5 +32,17 @@ export function qualityScore(q: QualityInputs): Quality {
   return { score, grade: score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : "D", deductions: d };
 }
 
-/** The company-specific premium for a quality score: none at 100, 8 points at 0. */
-export const specificPremiumFor = (score: number) => ((100 - Math.min(100, Math.max(0, score))) / 100) * 0.08;
+/** How much wider a range gets for a quality score: ×1 at 100, ×2 at 0. */
+export const widthFor = (score: number) => 1 + (100 - Math.min(100, Math.max(0, score))) / 100;
+
+/**
+ * The company-specific risk premium from the business itself (not the books): reliance on one customer (up to 3 points),
+ * uneven sales (1 point) and losses (2 points).
+ */
+export function companyPremium(q: { topCustomerShare: number | null; revenueVolatility: number | null; loss: boolean }): number {
+  let p = 0;
+  if (q.topCustomerShare != null && q.topCustomerShare > 0.2) p += Math.min(0.03, (q.topCustomerShare - 0.2) * 0.1);
+  if (q.revenueVolatility != null && q.revenueVolatility > 0.3) p += 0.01;
+  if (q.loss) p += 0.02;
+  return p;
+}

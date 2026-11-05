@@ -28,18 +28,28 @@ describe("discounted cash flow", () => {
     near(r.years[0].discount, 1 / Math.pow(1.15, 0.5), 1e-9);
     const fcf5 = r.years[4].fcf;
     near(r.terminal, (fcf5 * 1.05) / (0.15 - 0.05), 1e-6);
-    near(r.pvTerminal, r.terminal / Math.pow(1.15, 5), 1e-6);
+    // Mid-year convention: the terminal value is discounted half a year less than the year-end, as its flows are too.
+    near(r.pvTerminal, r.terminal / Math.pow(1.15, 4.5), 1e-6);
     near(r.ev, r.years.reduce((s, y) => s + y.pv, 0) + r.pvTerminal, 1e-6);
     expect(r.terminalShare).toBeGreaterThan(0.5);
     near(r.impliedExitMultiple, r.terminal / r.years[4].ebitda, 1e-9);
+  });
+  it("a discount rate that falls to a long-run rate: each year's rate compounds, the terminal value uses the long-run one", () => {
+    const r = dcf({ ...base, wacc: 0.25, terminalWacc: 0.15 });
+    const w = [0.25, 0.225, 0.2, 0.175, 0.15];
+    let df = 1;
+    for (let t = 0; t < 5; t++) { const mid = df / Math.sqrt(1 + w[t]); near(r.years[t].discount, mid, 1e-9); df /= 1 + w[t]; }
+    near(r.terminal, (r.years[4].fcf * 1.05) / (0.15 - 0.05), 1e-6);
+    near(r.pvTerminal, r.terminal * df * Math.sqrt(1.15), 1e-6);
   });
   it("working capital grows with sales and takes cash", () => {
     const a = dcf({ ...base, wacc: 0.15 });
     const b = dcf({ ...base, nwcPct: 0.2, wacc: 0.15 });
     near(a.years[0].fcf - b.years[0].fcf, 0.2 * 10, 1e-9);
   });
-  it("refuses a growth rate at or above the discount rate", () => {
+  it("refuses a growth rate at or above the long-run discount rate", () => {
     expect(() => dcf({ ...base, wacc: 0.05 })).toThrow();
+    expect(() => dcf({ ...base, wacc: 0.3, terminalWacc: 0.05 })).toThrow();
   });
 });
 

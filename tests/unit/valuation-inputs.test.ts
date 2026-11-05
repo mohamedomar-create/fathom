@@ -20,3 +20,20 @@ describe("valuation inputs from a company's books", () => {
     expect(i.quality.topCustomerShare).toBeNull();
   });
 });
+
+describe("debt-like items from sub-classes", () => {
+  const month = (period: string, extra: Partial<import("@/lib/engine/types").MonthData> = {}) => ({
+    period, pl: { revenue: 100, cos_variable: 40, exp_fixed: 30 }, bs: { cash: 50, ar: 114, ltd: 300, other_ncl: 0, retained_earnings: -136 }, ...extra,
+  });
+  const months = Array.from({ length: 12 }, (_, i) => month(`2026-${String(i + 1).padStart(2, "0")}`));
+  it("a lease booked inside loans is marked as already in the debt", () => {
+    months[11] = month("2026-12", { sub: { lease_liability: 80 }, subOf: { ltd: 80 } });
+    const i = valuationInputs({ months, settings: { currency: "EGP", fyStartMonth: 1, taxRate: 0.225, vatRate: 0.14 }, asOf: undefined, health: undefined, assumptions: undefined }, null)!;
+    expect(i.lease).toBe(80);
+    expect(i.leaseInDebt).toBe(80);
+  });
+  it("receivables are taken net of VAT for debtor days", () => {
+    const i = valuationInputs({ months, settings: { currency: "EGP", fyStartMonth: 1, taxRate: 0.225, vatRate: 0.14 }, asOf: undefined, health: undefined, assumptions: undefined }, null)!;
+    expect(i.quality.dso).toBeCloseTo(100 / (1200 / 365), 6);
+  });
+});

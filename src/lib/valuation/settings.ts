@@ -9,6 +9,7 @@ export const ValuationSettingsSchema = z.object({
   purpose: z.enum(["owner", "sale", "bank", "partners"]),
   sector: z.enum(SECTORS),
   riskFree: pct(0, 0.6).optional(),
+  longRiskFree: pct(0, 0.6).optional(),
   equityPremium: pct(0, 0.25).optional(),
   beta: pct(0.2, 3).optional(),
   sizePremium: pct(0, 0.2).optional(),
@@ -16,6 +17,11 @@ export const ValuationSettingsSchema = z.object({
   growth: pct(-0.5, 1).optional(),
   targetMargin: pct(-0.5, 0.9).optional(),
   privateDiscount: pct(0, 0.6).optional(),
+  debtWeight: pct(0, 0.9).optional(),
+  costOfDebt: pct(0, 0.8).optional(),
+  multEbitda: z.number().finite().min(0.5).max(60).optional(),
+  multSales: z.number().finite().min(0.05).max(20).optional(),
+  multPe: z.number().finite().min(1).max(100).optional(),
   ownerPay: money.optional(),
   arOver180: money.optional(),
   slowStock: money.optional(),
@@ -29,9 +35,20 @@ export const ValuationSettingsSchema = z.object({
 
 export const DEFAULT_VALUATION: ValuationSettings = { purpose: "owner", sector: "other" };
 
-/** The saved choices (kpi_config.profile.valuation), or the defaults when none are saved or they don't read. */
+/**
+ * The saved choices (kpi_config.profile.valuation). Each one is checked on its own, so one figure that no longer reads
+ * falls back to its default without throwing away every other saved choice.
+ */
 export function valuationSettingsOf(kpiConfig: unknown): ValuationSettings {
   const raw = (kpiConfig as { profile?: { valuation?: unknown } } | null)?.profile?.valuation;
-  const p = ValuationSettingsSchema.safeParse(raw);
-  return p.success ? (p.data as ValuationSettings) : { ...DEFAULT_VALUATION };
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_VALUATION };
+  const shape = ValuationSettingsSchema.shape as Record<string, z.ZodTypeAny>;
+  const out: Record<string, unknown> = { ...DEFAULT_VALUATION };
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const f = shape[k];
+    if (!f) continue;
+    const p = f.safeParse(v);
+    if (p.success && p.data !== undefined) out[k] = p.data;
+  }
+  return out as unknown as ValuationSettings;
 }

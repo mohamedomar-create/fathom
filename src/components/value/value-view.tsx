@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useCompany } from "@/lib/company/context";
 import { useT } from "@/lib/i18n/use-t";
 import { money } from "@/lib/engine/format";
-import { BENCHMARK_AS_OF, SECTORS, valueCompany, type Adjustment, type Purpose, type Sector, type ValuationSettings } from "@/lib/engine/valuation";
+import { BENCHMARK_AS_OF, EGYPT_AS_OF, SECTORS, valueCompany, type Adjustment, type Purpose, type Sector, type ValuationSettings } from "@/lib/engine/valuation";
 import { valuationInputs } from "@/lib/valuation/inputs";
+import { plainNumber } from "@/lib/valuation/number";
 import { saveValuationSettings } from "@/app/company/[id]/value/actions";
 import { PageHeader } from "@/components/shell/page-header";
 import { Cockpit, HeroKpi, KpiTile } from "@/components/viz/kpi";
@@ -110,7 +111,7 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
             <ChartCard key={m.key} title={label(m.key)} sub={t.methods[m.key]?.[1]} testId={`method-${m.key}`}>
               {m.value ? (
                 <dl className="grid grid-cols-3 gap-2 text-sm">
-                  {(["low", "mid", "high"] as const).map((k) => <div key={k}><dt className="text-xs text-mute">{k === "low" ? "P25" : k === "mid" ? "▲" : "P75"}</dt><dd className="num">{fmt(m.value![k])}</dd></div>)}
+                  {(["low", "mid", "high"] as const).map((k) => <div key={k}><dt className="text-xs text-mute">{t[k]}</dt><dd className="num">{fmt(m.value![k])}</dd></div>)}
                 </dl>
               ) : <p className="text-sm text-mute">{reason(m.reason)}</p>}
               <p className="mt-2 text-xs text-mute">{t.weight}: {weightOf(m.key) > 0 ? pc(weightOf(m.key), 0) : t.notWeighed}</p>
@@ -119,7 +120,7 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
         </CardGrid>
         <ChartCard title={t.capital} wide testId="value-capital">
           <table className="w-full text-sm"><tbody>
-            {(["riskFree", "equityPremium", "beta", "sizePremium", "specificPremium", "costOfEquity", "costOfDebt", "afterTaxDebt", "debtWeight", "wacc", "longGrowth"] as const).map((k) => (
+            {(["riskFree", "longRiskFree", "equityPremium", "beta", "sizePremium", "specificPremium", "costOfEquity", "costOfDebt", "afterTaxDebt", "debtWeight", "wacc", "terminalWacc", "longGrowth"] as const).map((k) => (
               <tr key={k} className="border-b border-line/60"><td className="py-1.5">{t.cap[k]}</td><td className="py-1.5 text-end num">{k === "beta" ? v.capital.beta.toFixed(2) : pc(v.capital[k])}</td></tr>))}
           </tbody></table>
         </ChartCard>
@@ -136,7 +137,7 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
         {v.dcf && <ChartCard title={t.grid} sub={t.gridSub} wide testId="value-grid">
           <div className="overflow-x-auto" role="region" aria-label={t.grid} tabIndex={0}>
             <table className="w-full min-w-[480px] text-sm num" dir="ltr">
-              <thead><tr><th className="text-xs text-mute">WACC \ g</th>{v.grid.growth.map((g) => <th key={g} className="text-end text-xs text-mute">{pc(g)}</th>)}</tr></thead>
+              <thead><tr><th className="text-xs text-mute">{t.gridHead}</th>{v.grid.growth.map((g) => <th key={g} className="text-end text-xs text-mute">{pc(g)}</th>)}</tr></thead>
               <tbody>{v.grid.wacc.map((w, i) => <tr key={w}><th className="text-start text-xs text-mute">{pc(w)}</th>{v.grid.value[i].map((x, j) => <td key={j} className={cn("text-end", i === 2 && j === 2 && "font-semibold text-brand-d")}>{x == null ? "–" : fmt(x)}</td>)}</tr>)}</tbody>
             </table>
           </div>
@@ -145,7 +146,7 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
       </div>}
 
       {tab === "assumptions" && <Assumptions s={s} setS={setS} v={v} cur={cur} canEdit={canEdit} busy={busy} msg={msg}
-        onSave={() => companyId && start(async () => { const r = await saveValuationSettings(companyId, s); setMsg(r.ok ? { ok: true, text: t.saved } : { ok: false, text: r.error }); })}
+        onSave={() => companyId && start(async () => { const r = await saveValuationSettings(companyId, s); setMsg(r.ok ? { ok: true, text: t.saved } : { ok: false, text: r.error === "badField" ? t.badField : r.error }); })}
         onReset={() => setS({ purpose: s.purpose, sector: s.sector })} />}
 
       <p className="mt-8 text-xs text-mute" data-testid="value-disclaimer">{t.disclaimer}</p>
@@ -153,51 +154,79 @@ export function ValueView({ tab, companyId, demo, saved, topCustomerShare }: {
   );
 }
 
-type Num = "riskFree" | "equityPremium" | "beta" | "sizePremium" | "longGrowth" | "growth" | "targetMargin" | "privateDiscount" | "ownerPay" | "arOver180" | "slowStock" | "fx";
-const PCT: Num[] = ["riskFree", "equityPremium", "sizePremium", "longGrowth", "growth", "targetMargin", "privateDiscount"];
+type Num = "riskFree" | "longRiskFree" | "equityPremium" | "beta" | "sizePremium" | "longGrowth" | "growth" | "targetMargin" | "privateDiscount"
+  | "multEbitda" | "multSales" | "multPe" | "ownerPay" | "arOver180" | "slowStock" | "fx";
+const PCT: Num[] = ["riskFree", "longRiskFree", "equityPremium", "sizePremium", "longGrowth", "growth", "targetMargin", "privateDiscount"];
+
+const COMPLETE = /^-?\d+(\.\d+)?$/;
+
+/**
+ * A number box that keeps what is typed ("12.", "-", "٠٫٥") and passes the value on only once it is a whole number,
+ * so nothing typed is lost; on leaving the box an unfinished entry goes back to the last value.
+ */
+function NumberBox({ value, onValue, label, placeholder, testId, className }: {
+  value: number | undefined; onValue: (v: number | undefined) => void; label: string; placeholder?: string; testId?: string; className?: string;
+}) {
+  const [text, setText] = useState<string | null>(null);
+  const shown = text ?? (value == null ? "" : String(value));
+  return (
+    <input aria-label={label} inputMode="decimal" className={className} value={shown} placeholder={placeholder} data-testid={testId}
+      onChange={(e) => {
+        const raw = e.target.value;
+        setText(raw);
+        const p = plainNumber(raw);
+        if (p === "") onValue(undefined);
+        else if (COMPLETE.test(p)) onValue(Number(p));
+      }}
+      onBlur={() => setText(null)} />
+  );
+}
 
 function Assumptions({ s, setS, v, cur, canEdit, busy, msg, onSave, onReset }: {
   s: ValuationSettings; setS: (s: ValuationSettings) => void; v: NonNullable<ReturnType<typeof valueCompany>>; cur: string; canEdit: boolean; busy: boolean;
   msg: { ok: boolean; text: string } | null; onSave: () => void; onReset: () => void;
 }) {
-  const t = useT().d.val;
+  const T = useT();
+  const t = T.d.val;
   const defaults: Record<Num, string> = {
     riskFree: pc(v.capital.riskFree), equityPremium: pc(v.capital.equityPremium), beta: v.capital.beta.toFixed(2), sizePremium: pc(v.capital.sizePremium),
     longGrowth: pc(v.capital.longGrowth), growth: pc(v.assumptions.growth), targetMargin: pc(v.assumptions.targetMargin), privateDiscount: pc(v.assumptions.privateDiscount),
     ownerPay: money(0, cur), arOver180: money(0, cur), slowStock: money(0, cur), fx: "–",
+    longRiskFree: pc(v.capital.longRiskFree),
+    multEbitda: `${v.assumptions.multiples.evEbitda.mid}×`, multSales: `${v.assumptions.multiples.evSales.mid}×`, multPe: `${v.assumptions.multiples.pe.mid}×`,
   };
-  const set = (k: Num, raw: string) => {
-    const n = raw.trim() === "" ? undefined : Number(raw.replace(/,/g, ""));
+  const ORDER: Num[] = ["riskFree", "longRiskFree", "equityPremium", "beta", "sizePremium", "longGrowth", "growth", "targetMargin", "privateDiscount", "multEbitda", "multSales", "multPe", "ownerPay", "arOver180", "slowStock", "fx"];
+  const set = (k: Num, n: number | undefined) => {
     const next = { ...s } as Record<string, unknown>;
-    if (n === undefined || !Number.isFinite(n)) delete next[k]; else next[k] = PCT.includes(k) ? n / 100 : n;
+    if (n === undefined) delete next[k]; else next[k] = PCT.includes(k) ? n / 100 : n;
     setS(next as unknown as ValuationSettings);
   };
-  const shown = (k: Num) => { const x = s[k]; return x == null ? "" : String(PCT.includes(k) ? Math.round(x * 10000) / 100 : x); };
+  const shown = (k: Num) => { const x = s[k]; return x == null ? undefined : PCT.includes(k) ? Math.round(x * 10000) / 100 : x; };
   const adj = s.adjustments ?? [];
   const setAdj = (a: Adjustment[]) => setS({ ...s, adjustments: a.length ? a : undefined });
   return (
     <div data-testid="value-assumptions">
-      <p className="mb-4 max-w-3xl text-sm text-mute">{t.assumptionsIntro}</p>
+      <p className="mb-4 max-w-3xl text-sm text-mute">{t.assumptionsIntro} {t.ratesAsOf(T.ml(EGYPT_AS_OF))}</p>
       <p className="sticky top-0 z-10 mb-4 rounded-md border border-line bg-white p-3 text-sm" aria-live="polite">{t.best}: <b className="num" data-testid="va-best">{money(v.best.mid, cur, true)}</b> <span className="text-mute">({t.range(money(v.best.low, cur, true), money(v.best.high, cur, true))})</span></p>
       {!canEdit && <p className="mb-4 text-sm text-mute" role="status">{t.viewOnly}</p>}
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {(Object.keys(defaults) as Num[]).map((k) => (
-          <label key={k} className="grid gap-1 text-sm"><span>{t.fields[k]}</span>
-            <input inputMode="decimal" className="rounded-md border border-line px-2 py-1.5 num" value={shown(k)} placeholder={defaults[k]} onChange={(e) => set(k, e.target.value)} data-testid={`va-${k}`} />
+        {ORDER.map((k) => (
+          <div key={k} className="grid gap-1 text-sm"><span aria-hidden>{t.fields[k]}</span>
+            <NumberBox label={t.fields[k]} className="rounded-md border border-line px-2 py-1.5 num" value={shown(k)} placeholder={defaults[k]} onValue={(n) => set(k, n)} testId={`va-${k}`} />
             <span className="text-xs text-mute">{t.defaultIs(defaults[k])}</span>
-          </label>))}
+          </div>))}
       </div>
       <section className="mb-6" aria-labelledby="va-adj-h">
         <h2 id="va-adj-h" className="text-lg">{t.adjustmentsTitle}</h2>
         <p className="mb-3 text-sm text-mute">{t.adjustmentsHint}</p>
         <ul className="space-y-2">{adj.map((a, i) => (
           <li key={i} className="flex flex-wrap items-end gap-2" data-testid={`va-adj-${i}`}>
-            <select aria-label={t.adjustmentsTitle} className="rounded-md border border-line px-2 py-1.5 text-sm" value={a.key} onChange={(e) => setAdj(adj.map((x, j) => (j === i ? { ...x, key: e.target.value as Adjustment["key"] } : x)))}>
+            <select aria-label={`${t.adjN(i + 1)}: ${t.adjustmentsTitle}`} className="rounded-md border border-line px-2 py-1.5 text-sm" value={a.key} onChange={(e) => setAdj(adj.map((x, j) => (j === i ? { ...x, key: e.target.value as Adjustment["key"] } : x)))}>
               {Object.entries(t.adjKinds).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
             </select>
-            <input aria-label={t.label} className="min-w-40 flex-1 rounded-md border border-line px-2 py-1.5 text-sm" value={a.label} onChange={(e) => setAdj(adj.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
-            <input aria-label={t.amount} inputMode="decimal" className="w-40 rounded-md border border-line px-2 py-1.5 text-sm num" value={String(a.amount)} onChange={(e) => { const n = Number(e.target.value.replace(/,/g, "")); if (Number.isFinite(n)) setAdj(adj.map((x, j) => (j === i ? { ...x, amount: n } : x))); }} />
-            <button type="button" className="text-sm text-red underline" onClick={() => setAdj(adj.filter((_, j) => j !== i))}>{t.remove}</button>
+            <input aria-label={`${t.adjN(i + 1)}: ${t.label}`} className="min-w-40 flex-1 rounded-md border border-line px-2 py-1.5 text-sm" value={a.label} onChange={(e) => setAdj(adj.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)))} />
+            <NumberBox label={`${t.adjN(i + 1)}: ${t.amount}`} className="w-40 rounded-md border border-line px-2 py-1.5 text-sm num" value={a.amount} onValue={(n) => setAdj(adj.map((x, j) => (j === i ? { ...x, amount: n ?? 0 } : x)))} />
+            <button type="button" className="text-sm text-red underline" aria-label={`${t.remove}: ${t.adjN(i + 1)}`} onClick={() => setAdj(adj.filter((_, j) => j !== i))}>{t.remove}</button>
           </li>))}</ul>
         <button type="button" className="mt-2 text-sm text-brand-d underline" onClick={() => setAdj([...adj, { key: "oneoff", label: t.adjKinds.oneoff, amount: 0 }])} data-testid="va-add-adj">{t.addAdj}</button>
         <p className="mt-2 text-sm">{t.normalised}: <span className="num">{money(v.normalised.ebitda, cur, true)}</span></p>

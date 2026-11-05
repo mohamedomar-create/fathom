@@ -11,7 +11,8 @@ import { PROFILE_KEY } from "@/lib/company/config-keys";
 export async function saveValuationSettings(companyId: string, input: unknown): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!z.string().uuid().safeParse(companyId).success) return { ok: false, error: "Invalid company." };
   const v = ValuationSettingsSchema.safeParse(input);
-  if (!v.success) return { ok: false, error: "One of the figures is outside what a valuation can use. Check the highlighted box." };
+  // The page shows its own words for this one, in the person's language.
+  if (!v.success) return { ok: false, error: "badField" };
   const { supabase, user } = await getUser();
   if (!user) return { ok: false, error: "Please sign in again." };
   const role = await companyRole(supabase, companyId);
