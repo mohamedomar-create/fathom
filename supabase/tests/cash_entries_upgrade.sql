@@ -19,5 +19,7 @@ select pg_temp.check('the kind rule is back', (select count(*)::text from pg_con
 -- tests after this one see the database as it really is (an owner re-running them in order gets the same).
 \ir ../migrations/0048_cash_category_rules.sql
 \ir ../migrations/0049_cash_rules_scale.sql
+-- 0059 replaced 0037's upload start with one that takes the file's fingerprint; the old one 0037 brought back goes.
+drop function if exists public.cash_upload_begin(uuid, text, text[], text, integer, text[]);
 select pg_temp.check('saving an entry learns again after the re-run', (select (prosrc like '%cash_learn%')::text from pg_proc where oid = 'public.cash_entry_add(uuid, jsonb)'::regprocedure), 'true');
 delete from public.organizations where name = 'Upgrade Org';

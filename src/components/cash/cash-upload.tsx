@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { readInWorker } from "@/lib/imports/worker-client";
+import { filesFingerprint } from "@/lib/ingest/file-hash";
 import { cashHeadingKey, readCashBook, type CashField, type CashSheet, type CashSheetOptions } from "@/lib/cash/read";
 import { cashAdvice, unreadRows, type Advice } from "@/lib/cash/advice";
 import type { Grid } from "@/lib/ingest/extract";
@@ -30,6 +31,7 @@ export function CashUpload({ uploads }: { uploads: Upload[] }) {
   const t = T.d.cash;
   const router = useRouter();
   const [names, setNames] = useState<string[]>([]);
+  const [fileHash, setFileHash] = useState<string | null>(null);
   const [grids, setGrids] = useState<Grid[] | null>(null);
   const [map, setMap] = useState<Record<string, CashField | "">>(company.columns);
   const [opts, setOpts] = useState<Record<string, CashSheetOptions>>({});
@@ -59,7 +61,10 @@ export function CashUpload({ uploads }: { uploads: Upload[] }) {
     try {
       const list = [...files];
       setNames(list.map((f) => f.name));
-      setGrids(await readInWorker(await Promise.all(list.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })))));
+      const read = await Promise.all(list.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() })));
+      // The files' fingerprint goes with the upload, so the same file is never added twice (acceptance test 2).
+      setFileHash(await filesFingerprint(read.map((r) => r.data)));
+      setGrids(await readInWorker(read));
     } catch (e) { setError((e as Error).message || "The file could not be read."); setGrids(null); }
     setBusy(null);
   };
@@ -72,7 +77,7 @@ export function CashUpload({ uploads }: { uploads: Upload[] }) {
     try {
       const list = keptEntries.map((e) => ({ day: e.day, direction: e.direction, amount: e.amount, category: e.category, party: e.party, note: e.note, paid: e.paid, paidOn: e.paidOn, kind: detectKind(e.direction, [e.category, e.note, e.party].join(" ")) }));
       const skipped = kept.reduce((n, s) => n + s.skipped.length, 0);
-      const begin = await uploadBegin(company.id, names.join(" + ").slice(0, 300), months, overlap.length ? chosenMode : "add", skipped, directions);
+      const begin = await uploadBegin(company.id, names.join(" + ").slice(0, 300), months, overlap.length ? chosenMode : "add", skipped, directions, fileHash);
       if (!begin.ok) return setError(begin.error);
       for (let i = 0; i < list.length; i += PART) {
         setBusy(t.saving(Math.min(i + PART, list.length), list.length));

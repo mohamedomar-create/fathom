@@ -29,7 +29,8 @@ const FIELDS = ["date", "in", "out", "amount", "qty", "price", "balance", "type"
 
 /** The database's own reason when it refuses a value ("a date is needed"), else the safe message. */
 const said = (e: { code?: string; message: string }, ctx: string) =>
-  e.code === "22023" && e.message.length < 200 ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + "." : e.code === "PGRST202" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : dbError(e, ctx);
+  e.code === "23505" && e.message.startsWith("This file was already saved") && e.message.length < 400 ? e.message
+  : e.code === "22023" && e.message.length < 200 ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + "." : e.code === "PGRST202" ? "The cash book needs the latest database update (migration 0037). Ask the site owner to run it." : dbError(e, ctx);
 const refresh = (id: string) => revalidatePath(`/cash/${id}`, "layout");
 async function editor(scope: "sales" | "cash_entry" | "cash_suggest" = "sales") {
   const { supabase, user } = await getUser();
@@ -39,16 +40,16 @@ async function editor(scope: "sales" | "cash_entry" | "cash_suggest" = "sales") 
 }
 
 /** Opens an upload; its entries go in parts (uploadPart) and show only when it is finished (uploadFinish). */
-export async function uploadBegin(companyId: string, filename: string, months: string[], mode: "add" | "replace_months", skipped: number, directions: ("in" | "out")[] = ["in", "out"]): Promise<Result<{ upload: string }>> {
+export async function uploadBegin(companyId: string, filename: string, months: string[], mode: "add" | "replace_months", skipped: number, directions: ("in" | "out")[] = ["in", "out"], fileHash: string | null = null): Promise<Result<{ upload: string }>> {
   const v = z.object({ companyId: Id, filename: z.string().max(300), months: z.array(z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)).max(600), mode: z.enum(["add", "replace_months"]), skipped: z.number().int().min(0),
-    directions: z.array(z.enum(["in", "out"])).min(1).max(2) })
-    .safeParse({ companyId, filename, months, mode, skipped, directions });
+    directions: z.array(z.enum(["in", "out"])).min(1).max(2), fileHash: z.string().regex(/^[0-9a-f]{64}$/).nullable() })
+    .safeParse({ companyId, filename, months, mode, skipped, directions, fileHash });
   if (!v.success) return { ok: false, error: "The upload is not valid: " + v.error.issues[0]?.message };
   const s = await editor();
   if ("error" in s) return { ok: false, error: s.error! };
   // Closed months (0043) are never replaced; their entries are left out when the parts arrive.
   const open = openPeriods(v.data.months, await closedThroughOf(s.supabase, v.data.companyId));
-  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: open, p_mode: v.data.mode, p_skipped: v.data.skipped, p_directions: v.data.directions });
+  const { data, error } = await s.supabase.rpc("cash_upload_begin", { p_company: v.data.companyId, p_filename: v.data.filename, p_months: open, p_mode: v.data.mode, p_skipped: v.data.skipped, p_directions: v.data.directions, p_file_hash: v.data.fileHash });
   if (error) return { ok: false, error: said(error, "uploadBegin") };
   return { ok: true, upload: data as string };
 }

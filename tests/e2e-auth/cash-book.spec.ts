@@ -193,3 +193,28 @@ test("a messy shop workbook: what to fix is named by cell, a sheet that can't be
   await expect(page.getByTestId("cash-in")).toContainText("1,200");
   await expect(page.getByTestId("cash-out")).toContainText("300");
 });
+
+test("the same file added twice is refused, not counted twice (acceptance test 2)", async ({ page }) => {
+  test.setTimeout(180_000);
+  await signUp(page, { name: "Twice Owner", org: "Twice Advisory", email: newEmail("twice") });
+  await page.goto("/companies");
+  await page.getByTestId("add-company").click();
+  await page.getByTestId("tile-simple").click();
+  await page.getByLabel("Company name").fill("Twice Kiosk");
+  await page.getByRole("button", { name: "Create company" }).click();
+  await expect(page).toHaveURL(/\/cash\/[0-9a-f-]{36}$/);
+  const id = page.url().match(/\/cash\/([0-9a-f-]{36})/)![1];
+  const file = { name: "kiosk.xlsx", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", buffer: kioskBook() };
+  await page.goto(`/cash/${id}/upload`);
+  await page.getByTestId("cash-file").setInputFiles(file);
+  await expect(page.getByTestId("cash-read-count")).toContainText("7 entries read", { timeout: 15_000 });
+  await page.getByTestId("cash-save").click();
+  await expect(page.getByTestId("cash-saved")).toContainText("Saved 7 entries", { timeout: 30_000 });
+
+  await page.getByTestId("cash-file").setInputFiles({ ...file, name: "kiosk (copy).xlsx" });
+  await expect(page.getByTestId("cash-read-count")).toContainText("7 entries read", { timeout: 15_000 });
+  await page.getByTestId("cash-mode-add").check();
+  await page.getByTestId("cash-save").click();
+  await expect(page.getByTestId("cash-upload-error")).toContainText("This file was already saved (kiosk.xlsx", { timeout: 30_000 });
+  await expect(page.getByTestId("cash-history").locator("tr")).toHaveCount(1);
+});
