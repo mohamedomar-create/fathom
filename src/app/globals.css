@@ -140,3 +140,41 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .legal ul { list-style: disc; padding-inline-start: 20px; margin: 0 0 12px; }
 .legal li { margin-bottom: 4px; }
 .legal a { text-decoration: underline; color: var(--color-brand-d); }
+
+/* ---- Landing page: dark hero with a moving gradient mesh, glass cards and gentle float. Motion stops for people who
+   ask for less motion. */
+.lp-hero { position: relative; isolation: isolate; overflow: hidden; background: #061718; color: #fff; }
+.lp-hero::before { content: ""; position: absolute; inset: -20%; z-index: -2;
+  background:
+    radial-gradient(40% 50% at 15% 20%, rgba(15,139,141,.55), transparent 60%),
+    radial-gradient(35% 45% at 85% 15%, rgba(42,120,214,.45), transparent 60%),
+    radial-gradient(40% 50% at 70% 85%, rgba(98,80,214,.40), transparent 60%),
+    radial-gradient(30% 40% at 20% 90%, rgba(27,175,122,.30), transparent 60%);
+  filter: blur(20px); animation: lp-drift 22s ease-in-out infinite alternate; }
+.lp-hero::after { content: ""; position: absolute; inset: 0; z-index: -1; opacity: .35;
+  background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
+  background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 30%, black 30%, transparent 75%); }
+@keyframes lp-drift { from { transform: translate3d(-2%, -1%, 0) scale(1); } to { transform: translate3d(2%, 2%, 0) scale(1.08); } }
+.lp-glass { background: linear-gradient(135deg, rgba(255,255,255,.14), rgba(255,255,255,.05)); border: 1px solid rgba(255,255,255,.18);
+  box-shadow: 0 20px 60px -20px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.18); backdrop-filter: blur(18px) saturate(140%); -webkit-backdrop-filter: blur(18px) saturate(140%); }
+.lp-glass-strong { background: linear-gradient(135deg, rgba(16,52,55,.88), rgba(10,30,40,.82)); }
+.lp-glass-light { background: rgba(255,255,255,.72); border: 1px solid rgba(255,255,255,.9); box-shadow: 0 20px 50px -25px rgba(13,53,54,.35);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.lp-mute { color: rgba(255,255,255,.82); }
+.lp-gradient-text { background: linear-gradient(90deg, #7ff0e0, #8fb8ff 55%, #c9b8ff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lp-float { animation: lp-float 7s ease-in-out infinite; }
+.lp-float-2 { animation: lp-float 9s ease-in-out infinite reverse; }
+@keyframes lp-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.lp-shine { overflow: hidden; }
+.lp-shine::after { content: ""; position: absolute; inset: 0; background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,.25) 50%, transparent 65%);
+  transform: translateX(-100%); animation: lp-shine 5s ease-in-out infinite; }
+@keyframes lp-shine { 0%, 60% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+.lp-section-mesh { background:
+    radial-gradient(50% 60% at 0% 0%, rgba(15,139,141,.10), transparent 60%),
+    radial-gradient(50% 60% at 100% 100%, rgba(98,80,214,.08), transparent 60%), #f6f8f8; }
+.lp-draw { stroke-dasharray: 1200; stroke-dashoffset: 1200; animation: lp-draw 2.2s ease forwards .3s; }
+@keyframes lp-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .lp-hero::before, .lp-float, .lp-float-2, .lp-shine::after { animation: none; }
+  .lp-draw { animation: none; stroke-dashoffset: 0; }
+}
