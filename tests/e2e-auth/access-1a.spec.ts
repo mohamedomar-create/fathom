@@ -56,8 +56,11 @@ test("two-step sign-in: an admin turns it on, signs in with the code, and confir
   test.slow();
   const email = newEmail("mfa");
   await signUp(page, { name: "Maha Mfa", org: "Mfa Advisory", email });
-  await expect(page.getByTestId("mfa-banner")).toContainText("Admins need two-step sign-in");
+  // No company yet: nothing to protect, so the reminder waits (it is not the first thing a new user sees).
+  await expect(page.getByTestId("mfa-banner")).toHaveCount(0);
   const id = await createCompany(page, "Mfa Co");
+  await page.goto("/companies");
+  await expect(page.getByTestId("mfa-banner")).toContainText("Admins need two-step sign-in");
 
   await page.goto("/account");
   await page.getByTestId("mfa-start").click();
