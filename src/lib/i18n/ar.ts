@@ -12,6 +12,7 @@ import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
+import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
 import { bank } from "./areas/bank";
@@ -50,7 +51,7 @@ export const ar: Dict = {
   },
   navGroups: { overview: "نظرة عامة", performance: "الأداء", cash: "النقدية والقوائم", plan: "التخطيط" },
   bottom: { home: "الرئيسية", pages: "الصفحات", more: "المزيد", sectionPages: "صفحات هذا القسم", everything: "كل الأقسام" },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط", doctor: "الطبيب" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط", doctor: "الطبيب", valuation: "التقييم" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -64,6 +65,9 @@ export const ar: Dict = {
     planning: ["خطة العمل", "خطة العمل"],
     "planning/budget": ["الموازنة", "الموازنة"],
     doctor: ["طبيب النظام", "طبيب النظام الذكي"],
+    valuation: ["التقييم", "التقييم"],
+    "valuation/methods": ["طرق التقييم", "طرق التقييم"],
+    "valuation/assumptions": ["الافتراضات", "افتراضات التقييم"],
     "analysis/forecast": ["التوقعات", "التوقعات"],
     "analysis/financials": ["القوائم", "القوائم المالية"],
     "analysis/real-profit": ["الربح الحقيقي", "الربح الحقيقي"],
@@ -79,7 +83,7 @@ export const ar: Dict = {
     inventory: ["نظرة عامة", "نظرة عامة على المخزون"],
     "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
     "inventory/movements": ["الحركات", "حركات المخزون"],
-    "inventory/valuation": ["التقييم", "التقييم والمطابقة"],
+    "inventory/valuation": ["تقييم المخزون", "تقييم المخزون والمطابقة"],
     payments: ["نظرة عامة", "المدفوعات والمستحقات"],
     "payments/receivables": ["المستحقات", "مستحقات العملاء"],
     "payments/payables": ["الموردون", "مستحقات الموردين"],
@@ -143,6 +147,7 @@ export const ar: Dict = {
   hl: hl.ar,
   bud: bud.ar,
   doc: doc.ar,
+  val: val.ar,
   bp: bp.ar,
   viz: viz.ar,
   bank: bank.ar,

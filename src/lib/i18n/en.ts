@@ -12,6 +12,7 @@ import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
+import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
 import { bank } from "./areas/bank";
@@ -52,7 +53,7 @@ export const en = {
   },
   navGroups: { overview: "Overview", performance: "Performance", cash: "Cash & statements", plan: "Plan" },
   bottom: { home: "Home", pages: "Pages", more: "More", sectionPages: "Pages in this section", everything: "All sections" },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", planning: "Planning", doctor: "Doctor" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", planning: "Planning", doctor: "Doctor", valuation: "Valuation" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -67,6 +68,9 @@ export const en = {
     planning: ["Business plan", "Business Plan"],
     "planning/budget": ["Budget", "Budget"],
     doctor: ["System doctor", "AI System Doctor"],
+    valuation: ["Valuation", "Valuation"],
+    "valuation/methods": ["Methods", "Valuation methods"],
+    "valuation/assumptions": ["Assumptions", "Valuation assumptions"],
     "analysis/forecast": ["Forecast", "Forecast"],
     "analysis/financials": ["Financials", "Financials"],
     "analysis/real-profit": ["Real Profit", "Real Profit"],
@@ -82,7 +86,7 @@ export const en = {
     inventory: ["Overview", "Inventory Overview"],
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
-    "inventory/valuation": ["Valuation", "Valuation and Checks"],
+    "inventory/valuation": ["Stock valuation", "Stock valuation and checks"],
     payments: ["Overview", "Payments Overview"],
     "payments/receivables": ["Receivables", "Receivables"],
     "payments/payables": ["Payables", "Payables"],
@@ -146,6 +150,7 @@ export const en = {
   hl: hl.en,
   bud: bud.en,
   doc: doc.en,
+  val: val.en,
   bp: bp.en,
   viz: viz.en,
   bank: bank.en,
