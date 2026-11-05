@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 test("the landing page shows the product: hero with live figures, glass dashboards, real screenshots, every feature", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-  for (const id of ["hero-stats", "hero-dashboard", "showcase", "bento", "how", "final-cta"]) await expect(page.getByTestId(id)).toBeVisible();
+  for (const id of ["hero-stats", "hero-dashboard", "showcase", "checks", "bento", "how", "final-cta"]) await expect(page.getByTestId(id)).toBeVisible();
   // The floating cards are real figures from the demo company, not placeholders.
   for (const id of ["glass-revenue", "glass-cash", "glass-value", "glass-doctor"]) await expect(page.getByTestId(id)).toContainText(/\d/);
   // Screenshots of the real product, each described for screen readers.

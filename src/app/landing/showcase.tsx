@@ -30,12 +30,12 @@ export function Showcase({ lang, shots }: { lang: "en" | "ar"; shots: Record<str
       <div role="tablist" aria-label={shots[active][0]} className="mb-6 flex flex-wrap justify-center gap-2">
         {ORDER.map((k) => (
           <button key={k} type="button" role="tab" aria-selected={active === k} onClick={() => setActive(k)} data-testid={`showcase-tab-${k}`}
-            className={cn("rounded-full px-4 py-2 text-sm font-medium transition", active === k ? "bg-bar text-white shadow-lg" : "lp-glass-light text-ink hover:bg-white")}>
+            className={cn("rounded-full px-4 py-2 text-sm font-medium transition", active === k ? "bg-bar text-white shadow-lg" : "lp-glass text-ink hover:bg-white")}>
             {shots[k][0]}
           </button>
         ))}
       </div>
-      <div className="lp-glass-light mx-auto max-w-5xl rounded-2xl p-2 sm:p-3" data-testid="showcase-active" data-shot={active}>
+      <div className="lp-glass mx-auto max-w-5xl rounded-2xl p-2 sm:p-3" data-testid="showcase-active" data-shot={active}>
         <div className="mb-2 flex items-center gap-1.5 px-2 pt-1" aria-hidden>
           <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f57]" /><span className="h-2.5 w-2.5 rounded-full bg-[#febc2e]" /><span className="h-2.5 w-2.5 rounded-full bg-[#28c840]" />
         </div>
