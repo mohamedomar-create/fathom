@@ -20,7 +20,7 @@ export function AreasPicker() {
       <legend className="label px-1">{t.pick}</legend>
       <p className="mb-2 text-xs text-mute">{t.pickSub}</p>
       <div className="grid gap-1.5 sm:grid-cols-2">
-        {CORE.map((k) => box(k, (t.areas as Record<string, string>)[k], k !== "purchasing"))}
+        {CORE.map((k) => box(k, (t.areas as Record<string, string>)[k], true))}
         {CATALOG.map((m) => box(m.key, lang === "ar" ? m.name.ar : m.name.en, false))}
       </div>
     </fieldset>

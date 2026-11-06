@@ -70,3 +70,13 @@ describe("the catalog recognises real ERP exports", () => {
     expect(out.proof.ok).toBe(true);
   });
 });
+
+describe("headings with SAP-style dots", () => {
+  it("matches Org. Unit and Personnel No. as their plain words", async () => {
+    const { wordsRx } = await import("@/lib/modules/spec");
+    const rx = wordsRx(["org unit", "personnel number"]);
+    for (const h of ["org unit", "org. unit", "org.unit", "personnel number"]) expect(rx.test(h), h).toBe(true);
+    expect(rx.test("organisation unit")).toBe(false);
+    expect(fieldOf(moduleByKey("hr")!, "Org. Unit")).toBe("department");
+  });
+});

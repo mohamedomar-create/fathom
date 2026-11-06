@@ -53,7 +53,9 @@ export type ModuleSpec = z.input<typeof ModuleSpecSchema>;
 const esc = (w: string) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** A heading list as the whole-heading match the intake uses: case-insensitive, Arabic letters normalised. */
 export function wordsRx(words: string[], whole = true): RegExp {
-  const alts = [...new Set(words.map((w) => normAr(w.trim().replace(/\s+/g, " ").toLowerCase())).filter(Boolean))].map(esc);
+  // SAP and Odoo abbreviate with dots ("Org. Unit", "Personnel No."): a dot may follow any word, and words may be joined.
+  const alts = [...new Set(words.map((w) => normAr(w.trim().replace(/\./g, "").replace(/\s+/g, " ").toLowerCase())).filter(Boolean))]
+    .map((w) => w.split(" ").map(esc).join("\\.?\\s*") + "\\.?");
   return new RegExp(whole ? `^(${alts.join("|")})$` : `(${alts.join("|")})`, "i");
 }
 
