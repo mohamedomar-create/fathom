@@ -35,7 +35,7 @@ import { msg } from "./areas/msg";
 export const en = {
   lang: { name: "English", switchTo: "العربية", switchLabel: "Language" },
   shell: {
-    backToCompanies: "Back to companies",
+    backToCompanies: "Back to companies", moreModules: "More",
     companies: "Companies",
     allCompanies: "All companies →",
     demoCompany: "Demo company",

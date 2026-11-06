@@ -33,7 +33,7 @@ import { msg } from "./areas/msg";
 export const ar: Dict = {
   lang: { name: "العربية", switchTo: "English", switchLabel: "اللغة" },
   shell: {
-    backToCompanies: "العودة إلى الشركات",
+    backToCompanies: "العودة إلى الشركات", moreModules: "المزيد",
     companies: "الشركات",
     allCompanies: "كل الشركات ←",
     demoCompany: "شركة تجريبية",

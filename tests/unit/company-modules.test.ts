@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { accessEditable, customDefs, isOn, mayView, openExtras } from "@/lib/modules/company";
-import { sectorsFor } from "@/components/shell/nav";
+import { sectorOf, sectorsFor } from "@/components/shell/nav";
 
 const row = (key: string, kind: "builtin" | "catalog" | "custom", enabled = true, extra: Record<string, unknown> = {}) => ({ key, kind, enabled, name: null, min_role: "viewer" as const, members: [], spec: null, ...extra });
 
@@ -29,16 +29,27 @@ describe("which modules a company has open", () => {
 });
 
 describe("navigation follows the company's modules", () => {
-  it("hides a turned-off sector and shows a Modules sector for opened catalog and custom modules", () => {
+  it("hides a turned-off sector and gives each opened catalog and custom module a tab of its own", () => {
     const s = sectorsFor([row("inventory", "builtin", false), row("hr", "catalog"), row("c_visits", "custom", true, { name: "Visits" })], "admin", "u1");
     const keys = s.map((x) => x.key);
     expect(keys).not.toContain("inventory");
     expect(keys).toContain("sales");
-    const mods = s.find((x) => x.key === "modules")!;
-    expect(mods.items.map((i) => i.href)).toEqual(["modules/hr", "modules/c_visits"]);
+    expect(keys).not.toContain("modules");
+    expect(keys.slice(-2)).toEqual(["mod_hr", "mod_c_visits"]);
+    expect(s.find((x) => x.key === "mod_hr")).toMatchObject({ label: "HR (employees)", items: [{ href: "modules/hr" }] });
+    expect(s.find((x) => x.key === "mod_c_visits")!.label).toBe("Visits");
   });
-  it("a module the person can't see is left off; with nothing opened there is no Modules sector", () => {
-    expect(sectorsFor([row("hr", "catalog", true, { min_role: "admin" })], "editor", "u1").find((x) => x.key === "modules")).toBeUndefined();
+  it("a module page belongs to its own tab", () => {
+    expect(sectorOf("/modules/hr").key).toBe("mod_hr");
+    expect(sectorOf("modules/c_visits").key).toBe("mod_c_visits");
+    expect(sectorOf("/modules/purchasing").key).toBe("expenses");
+  });
+  it("Purchasing with Expenses off gets its own tab", () => {
+    const s = sectorsFor([row("expenses", "builtin", false)], "admin", "u1");
+    expect(s.find((x) => x.key === "mod_purchasing")?.items.map((i) => i.href)).toEqual(["modules/purchasing"]);
+  });
+  it("a module the person can't see has no tab", () => {
+    expect(sectorsFor([row("hr", "catalog", true, { min_role: "admin" })], "editor", "u1").find((x) => x.key === "mod_hr")).toBeUndefined();
     expect(sectorsFor([], "admin", "u1").map((x) => x.key)).toEqual(["financials", "sales", "expenses", "inventory", "payments", "banking", "planning", "doctor", "valuation"]);
   });
   it("turning off Financials hides the pages that need the books", () => {
@@ -69,7 +80,7 @@ describe("accessEditable: who-sees-it is offered only where the database enforce
 describe("module names in the navigation follow the language", () => {
   it("a catalog module and a custom module read in Arabic on an Arabic page", () => {
     const s = sectorsFor([row("hr", "catalog"), row("c_visits", "custom", true, { name: "Visits", spec: { name: { en: "Visits", ar: "الزيارات" } } })], "admin", "u1", "ar");
-    const labels = s.find((x) => x.key === "modules")!.items.map((i) => i.label);
+    const labels = s.filter((x) => x.key.startsWith("mod_")).map((x) => x.label);
     expect(labels).toContain("الموارد البشرية (الموظفون)");
     expect(labels).toContain("الزيارات");
   });

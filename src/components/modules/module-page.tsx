@@ -19,6 +19,7 @@ import { PeriodPicker } from "@/components/shell/period-picker";
 import { PageHeader } from "@/components/shell/page-header";
 import { moduleWindow, snapshotRange } from "@/lib/modules/view";
 import { AgreesStrip } from "./agrees-strip";
+import { ModuleGuide } from "./module-guide";
 
 export interface ModuleSummary {
   rows: number; docs: number; amount: number;
@@ -60,7 +61,7 @@ export function ModulePage({ module, spec, summary, rows, base, opened = true, f
   if (!summary || (!summary.rows && !summary.periods.length && !Object.keys(filters).length)) return head(<>
     {!opened && <p className="mb-3 text-sm text-mute" data-testid="module-closed">{t.closed}</p>}
     <p className="mb-4">{t.empty}</p>
-    {!c.readOnly && <Link prefetch={false} href={`${base}/data/intake`} className="rounded-md bg-brand-d px-5 py-2 font-medium text-white">{t.upload}</Link>}
+    <ModuleGuide module={module} />
   </>);
   const w = moduleWindow(summary.periods, sel, c.settings.fyStartMonth, m.nature ?? "flow");
   const extra = [...new Set(rows.flatMap((r) => Object.keys(r.data ?? {})))].slice(0, 6);
@@ -86,6 +87,7 @@ export function ModulePage({ module, spec, summary, rows, base, opened = true, f
         </div>
       )}
       <AgreesStrip input={{ generic: [{ key: module, periods: summary.periods }] }} />
+      <ModuleGuide module={module} open={false} />
       <Cockpit hero={<HeroKpi label={t.total} value={money(w.amount, cur)} delta={w.growth} deltaLabel={t.vsLastYear} now={summary.periods.map((p) => p.amount)} testId="module-total" />}>
         <KpiTile label={m.nature === "snapshot" ? t.held : t.rows} value={w.rows.toLocaleString("en-US")} testId="module-rows" />
         {w.qty !== null && <KpiTile label={t.qty} value={w.qty.toLocaleString("en-US")} testId="module-qty" />}

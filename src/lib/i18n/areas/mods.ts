@@ -20,6 +20,9 @@ export const mods = area(
     built: (m: string) => `${m} is ready. Its rows are read below.`,
     missed: (names: string) => `These areas could not be set up when the company was created: ${names}. Set them in Settings ▸ Modules.`,
     missedLink: "Open Settings ▸ Modules",
+    stepsTitle: "Your other modules", stepsSub: "Each module you opened has the same three moves: export it from your system, or fill its template, then upload.", howTo: "How to export it", uploadShort: "Upload",
+    guide: { title: "Bring this module's data", show: "Show", hide: "Hide", from: "Where the data comes from", template: "Download the template", upload: "Upload with Smart upload",
+      systems: { odoo: "Odoo", sap: "SAP", dynamics: "Microsoft Dynamics", excel: "Excel / other" } as Record<string, string> },
   },
   {
     title: "الوحدات", sub: "كل مجال تضيفه وحدة لها الخطوات والفحوص ولوحة المتابعة نفسها. فعّل ما لديك؛ ويعرض ملف من نوع جديد فتح وحدته.",
@@ -39,5 +42,8 @@ export const mods = area(
     built: (m: string) => `${m} جاهزة. صفوفها مقروءة أدناه.`,
     missed: (names: string) => `تعذر ضبط هذه المجالات عند إنشاء الشركة: ${names}. اضبطها من الإعدادات ▸ الوحدات.`,
     missedLink: "افتح الإعدادات ▸ الوحدات",
+    stepsTitle: "وحداتك الأخرى", stepsSub: "لكل وحدة فتحتها الخطوات الثلاث نفسها: صدّرها من نظامك أو املأ قالبها، ثم ارفعها.", howTo: "كيف تصدّرها", uploadShort: "ارفع",
+    guide: { title: "أضف بيانات هذه الوحدة", show: "عرض", hide: "إخفاء", from: "مصدر البيانات", template: "نزّل القالب", upload: "ارفع بالرفع الذكي",
+      systems: { odoo: "أودو (Odoo)", sap: "ساب (SAP)", dynamics: "مايكروسوفت داينامكس", excel: "إكسل / أخرى" } },
   },
 );

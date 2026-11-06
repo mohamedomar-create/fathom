@@ -6,7 +6,7 @@ import { Database, FileDown, LayoutDashboard, LayoutList, Menu, Receipt, Setting
 import { useCompany } from "@/lib/company/context";
 import { useDict } from "@/lib/i18n/context";
 import { cn } from "@/lib/cn";
-import { bottomTab, navGroups, type BottomTab } from "./nav";
+import { bottomTab, navGroups, sectorLabel, type BottomTab } from "./nav";
 import { useSectors } from "./use-sectors";
 
 /** A sheet that slides up from the bottom of a phone screen. */
@@ -57,7 +57,7 @@ export function BottomBar() {
       <Link prefetch={false} href={href("expenses") + q} className={tabCls("expenses")} aria-current={on === "expenses" ? "page" : undefined} data-testid="sector-expenses">
         <Receipt className="h-5 w-5" strokeWidth={1.7} />{d.sectors.expenses}
       </Link>
-      {inSector && <Sheet title={inSector ? `${d.sectors[sector.key]}: ${d.bottom.sectionPages}` : d.bottom.sectionPages}
+      {inSector && <Sheet title={inSector ? `${sectorLabel(sector, d.sectors)}: ${d.bottom.sectionPages}` : d.bottom.sectionPages}
         trigger={<button type="button" className={tabCls("pages")} data-testid="bottom-pages"><LayoutList className="h-5 w-5" strokeWidth={1.7} />{d.bottom.pages}</button>}>
         {navGroups(sector).map((g) => (
           <div key={g.key ?? "all"} className="mb-2">
@@ -82,7 +82,7 @@ export function BottomBar() {
           return (
             <D.Close asChild key={s.key}>
               <Link prefetch={false} href={href(s.items[0].href) + q} className={rowCls} data-testid={`more-sector-${s.key}`}>
-                <Icon className="h-4 w-4" />{d.sectors[s.key]}
+                <Icon className="h-4 w-4" />{sectorLabel(s, d.sectors)}
               </Link>
             </D.Close>
           );

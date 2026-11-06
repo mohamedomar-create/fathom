@@ -54,11 +54,23 @@ test("modules follow the company: setup picks the areas, HR is admins-only, CRM 
   const tabs = page.locator("header");
   await expect(tabs.getByRole("link", { name: "Sales", exact: true })).toBeVisible();
   await expect(tabs.getByRole("link", { name: "Inventory", exact: true })).toBeVisible();
-  await expect(tabs.getByRole("link", { name: "Modules", exact: true })).toBeVisible();
+  // HR, picked at setup, is a tab of its own (not tucked under one "Modules" tab).
+  await expect(tabs.getByTestId("tab-mod_hr")).toHaveText("HR (employees)");
+  await expect(tabs.getByRole("link", { name: "Modules", exact: true })).toHaveCount(0);
   await expect(tabs.getByRole("link", { name: "Expenses", exact: true })).toHaveCount(0);
   await expect(tabs.getByRole("link", { name: "Payments", exact: true })).toHaveCount(0);
   // Without the books, the home lists the modules on their own (none holds data yet).
   await expect(page.getByTestId("modules-home")).toBeVisible();
+  // Every module guides the person like the built-in areas: steps per system, its own template, and the upload.
+  await page.goto(`/company/${id}/modules/hr`);
+  await expect(page.getByTestId("module-guide")).toBeVisible();
+  await page.getByTestId("guide-sap").click();
+  await expect(page.getByTestId("guide-steps")).toContainText("Spreadsheet");
+  const tpl = await page.request.get(`/api/templates/module/hr?lang=en`);
+  expect(tpl.status()).toBe(200);
+  expect(tpl.headers()["content-type"]).toContain("spreadsheetml");
+  await page.goto(`/company/${id}/data`);
+  await expect(page.getByTestId("module-step-hr")).toBeVisible();
 
   // An SAP employee list: HR, waits for its as-of day, never dated by the hire date.
   await upload(page, id, await book("Staff.xlsx", { Employees: [
@@ -99,7 +111,7 @@ test("modules follow the company: setup picks the areas, HR is admins-only, CRM 
   await page.getByTestId("module-offer-open").click();
   await expect(page.getByTestId("module-offer")).toHaveCount(0, { timeout: 20_000 });
   await saveAll(page);
-  await expect(page.locator("header").getByRole("link", { name: "Modules", exact: true })).toBeVisible();
+  await expect(page.locator("header").getByTestId("tab-mod_crm")).toHaveText("CRM (opportunities)");
   expect(sql(`select string_agg(key || ':' || enabled, ',' order by key) from public.company_modules where company_id = '${id}' and kind = 'catalog'`)).toBe("crm:true,hr:true,purchasing:false");
 
   // A table no module knows: built into a module of its own, then saved into it.
@@ -128,7 +140,8 @@ test("modules follow the company: setup picks the areas, HR is admins-only, CRM 
   await expect(page.getByTestId("module-denied")).toBeVisible();
   await page.goto(`/company/${id}/modules/crm`);
   await expect(page.getByTestId("module-page")).toBeVisible();
-  await expect(page.locator("header").getByRole("link", { name: "Modules", exact: true })).toBeVisible();
+  await expect(page.locator("header").getByTestId("tab-mod_crm")).toHaveAttribute("aria-current", "page");
+  await expect(page.locator("header").getByTestId("tab-mod_hr")).toHaveCount(0);
 
   // The owner gives HR to the viewer by name; now it opens.
   await signOut(page);
