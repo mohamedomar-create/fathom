@@ -1,7 +1,8 @@
 import {
-  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Stethoscope, Hospital, Target, BriefcaseBusiness, Gem, Layers, SlidersHorizontal,
+  CalendarRange, ChartNoAxesCombined, ClipboardCheck, FileSpreadsheet, Gauge, Landmark, LayoutDashboard, Receipt, Scale, ShoppingBag, Sprout, Telescope, TrendingUp, Truck, Users, Package, Waves, ListTree, Boxes, ArrowLeftRight, ShieldCheck, HandCoins, Stethoscope, Hospital, Target, BriefcaseBusiness, Gem, Layers, SlidersHorizontal, ShoppingCart,
   type LucideIcon,
 } from "lucide-react";
+import { MODULE_SECTOR } from "@/lib/modules/sectors";
 
 export type NavGroupKey = "overview" | "performance" | "cash" | "plan";
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Financials only: the heading this page sits under. */ group?: NavGroupKey }
@@ -41,6 +42,7 @@ export const SECTORS: Sector[] = [
       { href: "expenses/accounts", label: "Accounts", title: "Expenses by Account", icon: ListTree },
       { href: "expenses/suppliers", label: "Suppliers", title: "Suppliers", icon: Truck },
       { href: "expenses/trend", label: "Trend", title: "Expenses Trend", icon: TrendingUp },
+      { href: "modules/purchasing", label: "Purchasing", title: "Purchasing", icon: ShoppingCart },
     ],
   },
   {
@@ -87,7 +89,9 @@ export const SECTORS: Sector[] = [
 /** The sector a page belongs to, from its path relative to the company (e.g. "sales/products"). */
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
-  const first = r.split("/")[0];
+  const parts = r.split("/");
+  // A module added by definition sits in its own sector ("modules/purchasing" is under Expenses).
+  const first = parts[0] === "modules" ? (MODULE_SECTOR[parts[1] ?? ""] ?? "financials") : parts[0];
   const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" || first === "planning" || first === "doctor" || first === "valuation" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }

@@ -88,6 +88,7 @@ export const setx = area(
         stock: ["Stock (valuation, moves, on hand, products)", "The General Ledger, its stock accounts and its stock postings stay. Remembered column layouts and location types stay."],
         payments: ["Receivables, payables and payments", "The General Ledger and its receivable and payable accounts stay."],
         end_users: ["End users and agency statement", "Sales lines, their amounts and the end user Odoo links give stay; your agency list, order register, joined names and the agency statement go."],
+        modules: ["Other modules (Purchasing and modules added later)", "The General Ledger, sales, expenses, stock and payments stay."],
       } as Record<string, readonly [string, string]>,
       tables: {
         accounts: "accounts", balances: "monthly balances", versions: "saved versions", sales_lines_from_ledger: "sales lines taken from the ledger",
@@ -243,6 +244,7 @@ export const setx = area(
         stock: ["المخزون (التقييم، الحركات، الرصيد الفعلي، الأصناف)", "يبقى دفتر الأستاذ العام وحسابات المخزون فيه وقيود المخزون. تبقى تنسيقات الأعمدة المحفوظة وأنواع المواقع."],
         payments: ["المدينون والدائنون والمدفوعات", "يبقى دفتر الأستاذ العام وحسابات المدينين والدائنين فيه."],
         end_users: ["المستخدمون النهائيون وكشف الوكالة", "تبقى بنود المبيعات ومبالغها وروابط المستخدمين النهائيين من أودو (Odoo)؛ وتُحذف قائمة الوكالات وسجل الطلبات والأسماء المربوطة وكشف الوكالة."],
+        modules: ["وحدات أخرى (المشتريات والوحدات المضافة لاحقاً)", "يبقى دفتر الأستاذ العام والمبيعات والمصروفات والمخزون والمدفوعات."],
       },
       tables: {
         accounts: "حسابات", balances: "أرصدة شهرية", versions: "نسخ محفوظة", sales_lines_from_ledger: "بنود مبيعات مأخوذة من دفتر الأستاذ",

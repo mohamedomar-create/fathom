@@ -13,6 +13,7 @@ import { fromWire } from "@/lib/company/inventory-wire";
 import { subLedgerStatus } from "@/lib/company/data-status";
 import { DataSteps, type DataFacts } from "@/components/data/data-steps";
 import { SystemPicker } from "@/components/data/system-picker";
+import { IntakeCard } from "@/components/intake/intake-card";
 
 /** The sub-ledger checks need every summary: they arrive after the steps, which show at once. */
 async function WithSubLedgers({ id, facts }: { id: string; facts: DataFacts }) {
@@ -32,6 +33,6 @@ export default async function DataStepsPage({ params }: { params: Promise<{ id: 
   const { supabase } = await getUser();
   const meta = await loadCompanyMeta(id);
   const facts = await loadDataFacts(supabase, id, meta.dataVersion);
-  return <><SystemPicker /><Suspense fallback={<DataSteps facts={facts} sub={null} />}><WithSubLedgers id={id} facts={facts} /></Suspense></>;
+  return <><SystemPicker /><IntakeCard /><Suspense fallback={<DataSteps facts={facts} sub={null} />}><WithSubLedgers id={id} facts={facts} /></Suspense></>;
 }
 export const maxDuration = 60;

@@ -1,7 +1,7 @@
 // What a company holds per module, read from data_reset_preview (migration 0031), for the screens that clear data or
 // delete the company. Pure: no database calls.
 
-export type ResetModule = "financials" | "sales" | "expenses" | "stock" | "payments" | "end_users";
+export type ResetModule = "financials" | "sales" | "expenses" | "stock" | "payments" | "end_users" | "modules";
 export type ResetScope = ResetModule | "all";
 
 export const RESET_MODULES: Record<ResetModule, { label: string; keeps: string }> = {
@@ -11,6 +11,7 @@ export const RESET_MODULES: Record<ResetModule, { label: string; keeps: string }
   stock: { label: "Stock (valuation, moves, on hand, products)", keeps: "The General Ledger, its stock accounts and its stock postings stay. Remembered column layouts and location types stay." },
   payments: { label: "Receivables, payables and payments", keeps: "The General Ledger and its receivable and payable accounts stay." },
   end_users: { label: "End users and agency statement", keeps: "Sales lines, their amounts and the end user Odoo links give stay; your agency list, order register, joined names and the agency statement go." },
+  modules: { label: "Other modules (Purchasing and modules added later)", keeps: "The General Ledger, sales, expenses, stock and payments stay." },
 };
 const ORDER = Object.keys(RESET_MODULES) as ResetModule[];
 
@@ -19,7 +20,7 @@ const TABLE_LABEL: Record<string, string> = {
   expense_lines_from_ledger: "expense lines taken from the ledger", stock_postings: "stock postings from the ledger", payments_from_ledger: "payments taken from the ledger",
   commentary: "commentary notes", reports: "reports", sales_lines: "sales lines", expense_lines: "expense lines", valuation_layers: "valuation records",
   stock_moves: "stock moves", on_hand: "on-hand rows", products: "products", import_jobs: "import jobs", ageing_items: "ageing items",
-  payment_lines: "payments", end_user_choices: "end-user choices", statement_lines: "statement lines",
+  payment_lines: "payments", end_user_choices: "end-user choices", statement_lines: "statement lines", module_rows: "module rows",
 };
 
 export interface ResetUpload { name: string; at: string; kind: string }

@@ -11,7 +11,7 @@ export function NoDataGate({ children }: { children: React.ReactNode }) {
   const d = useDict();
   const path = usePathname();
   // The Sales, Expenses, Inventory and Payments pages explain for themselves what to upload.
-  if (c.months.length || path.includes("/settings") || path.includes("/reports") || /\/(data|sales|expenses|inventory|payments)(\/|$)/.test(path) || /\/planning\/?$/.test(path)) return <>{children}</>;
+  if (c.months.length || path.includes("/settings") || path.includes("/reports") || /\/(data|sales|expenses|inventory|payments|modules)(\/|$)/.test(path) || /\/planning\/?$/.test(path)) return <>{children}</>;
   // Say what this page will show, so an empty page still explains itself.
   const seg = path.split("/").filter(Boolean)[2] ?? "summary";
   const page = d.noData.pages[seg];

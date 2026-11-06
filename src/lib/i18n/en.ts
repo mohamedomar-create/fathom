@@ -12,6 +12,7 @@ import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
+import { ink } from "./areas/ink";
 import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
@@ -83,6 +84,7 @@ export const en = {
     "expenses/accounts": ["Accounts", "Expenses by Account"],
     "expenses/suppliers": ["Suppliers", "Suppliers"],
     "expenses/trend": ["Trend", "Expenses Trend"],
+    "modules/purchasing": ["Purchasing", "Purchasing"],
     inventory: ["Overview", "Inventory Overview"],
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
@@ -97,7 +99,7 @@ export const en = {
     title: "Data",
     sub: "The General Ledger is your book of record. Everything else adds detail or checks it, in this order.",
     tabs: { steps: "Steps", checks: "Checks & history", connections: "Connections" },
-    sub2: { steps: "Steps", readiness: "Readiness by sector", upload: "Upload a file", odoo: "Odoo live", endUsers: "End users" },
+    sub2: { steps: "Steps", intake: "Smart upload", readiness: "Readiness by sector", upload: "Upload a file", odoo: "Odoo live", endUsers: "End users" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `${n} months loaded`,
@@ -153,6 +155,7 @@ export const en = {
   hl: hl.en,
   bud: bud.en,
   doc: doc.en,
+  ink: ink.en,
   val: val.en,
   bp: bp.en,
   viz: viz.en,

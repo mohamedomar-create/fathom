@@ -16,7 +16,7 @@ export function DataNav() {
   const tabs = dataTabs(path, base, demo);
   const active = tabs.find((t) => t.active)?.key;
   const sub = active === "steps"
-    ? [{ href: base, label: d.sub2.steps, id: "steps" }, { href: `${base}/readiness`, label: d.sub2.readiness, id: "readiness" }, { href: `${base}/upload`, label: d.sub2.upload, id: "upload" }]
+    ? [{ href: base, label: d.sub2.steps, id: "steps" }, ...(demo ? [] : [{ href: `${base}/intake`, label: d.sub2.intake, id: "intake" }]), { href: `${base}/readiness`, label: d.sub2.readiness, id: "readiness" }, { href: `${base}/upload`, label: d.sub2.upload, id: "upload" }]
     : active === "connections"
       ? [{ href: `${base}/odoo`, label: d.sub2.odoo, id: "odoo" }, { href: `${base}/end-users`, label: d.sub2.endUsers, id: "end-users" }]
       : [];

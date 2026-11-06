@@ -12,6 +12,7 @@ import { cash } from "./areas/cash";
 import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
+import { ink } from "./areas/ink";
 import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
@@ -80,6 +81,7 @@ export const ar: Dict = {
     "expenses/accounts": ["الحسابات", "المصروفات حسب الحساب"],
     "expenses/suppliers": ["الموردون", "الموردون"],
     "expenses/trend": ["الاتجاه", "اتجاه المصروفات"],
+    "modules/purchasing": ["المشتريات", "المشتريات"],
     inventory: ["نظرة عامة", "نظرة عامة على المخزون"],
     "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
     "inventory/movements": ["الحركات", "حركات المخزون"],
@@ -94,7 +96,7 @@ export const ar: Dict = {
     title: "البيانات",
     sub: "دفتر الأستاذ العام هو سجلك الأساسي. كل ما عداه يضيف تفاصيل أو يتحقق منه، بهذا الترتيب.",
     tabs: { steps: "الخطوات", checks: "الفحوص والسجل", connections: "الاتصالات" },
-    sub2: { steps: "الخطوات", readiness: "الجاهزية حسب القسم", upload: "رفع ملف", odoo: "Odoo المباشر", endUsers: "المستخدمون النهائيون" },
+    sub2: { steps: "الخطوات", intake: "الرفع الذكي", readiness: "الجاهزية حسب القسم", upload: "رفع ملف", odoo: "Odoo المباشر", endUsers: "المستخدمون النهائيون" },
   },
   settingsNav: {
     monthsLoaded: (n: number) => `عدد الأشهر المحمّلة: ${n}`,
@@ -149,6 +151,7 @@ export const ar: Dict = {
   hl: hl.ar,
   bud: bud.ar,
   doc: doc.ar,
+  ink: ink.ar,
   val: val.ar,
   bp: bp.ar,
   viz: viz.ar,

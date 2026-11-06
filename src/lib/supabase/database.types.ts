@@ -15,6 +15,8 @@ export type BudgetVersionRow = {
 }
 export type BudgetLineRow = { version_id: string; company_id: string; key: string; cls: string; label: string | null; month: string; amount: number }
 export type CompanyRoleRow = { company_id: string; user_id: string; role: "none" | "viewer" | "editor"; set_by: string | null; set_at: string }
+export type ModuleBatchRow = { id: string; company_id: string; module: string; filename: string | null; periods: string[]; rows: number; status: "open" | "live"; report: Json; created_by: string | null; created_at: string }
+export type ModuleRowRow = { id: number; batch_id: string; company_id: string; module: string; period: string; day: string | null; doc: string; partner: string; amount: number; qty: number | null; data: Json }
 export type DoctorDecisionRow = { id: string; company_id: string; finding_key: string; title: string; reason: string; amount: number | null; created_by: string | null; created_at: string; undone_at: string | null; undone_by: string | null }
 export type BusinessPlanRow = { company_id: string; id: string; data: Json; created_by: string | null; created_at: string; updated_by: string | null; updated_at: string }
 export type BudgetSetupRow = { company_id: string; setup: Json; updated_at: string; updated_by: string | null }
@@ -109,6 +111,8 @@ export type Database = {
       business_plans: Table<BusinessPlanRow, "company_id" | "id" | "data">;
       company_roles: Table<CompanyRoleRow, "company_id" | "user_id" | "role">;
       doctor_decisions: Table<DoctorDecisionRow, "company_id" | "finding_key" | "reason">;
+      module_batches: Table<ModuleBatchRow, "company_id" | "module">;
+      module_rows: Table<ModuleRowRow, "batch_id" | "company_id" | "module" | "period">;
       budget_rows: Table<BudgetRowRow, "version_id" | "company_id" | "view" | "key" | "mode" | "months">;
       payment_batches: Table<PaymentBatchRow, "company_id">;
       aged_reports: Table<AgedReportRow, "company_id" | "side" | "as_of" | "buckets">;
@@ -160,6 +164,12 @@ export type Database = {
       plan_delete: { Args: { p_company: string; p_id: string }; Returns: undefined };
       doctor_accept: { Args: { p_company: string; p_key: string; p_title: string; p_reason: string; p_amount?: number | null }; Returns: string };
       doctor_undo: { Args: { p_company: string; p_id: string }; Returns: undefined };
+      module_batch_begin: { Args: { p_company: string; p_module: string; p_periods: string[]; p_filename?: string | null; p_report?: Json }; Returns: string };
+      module_rows_add: { Args: { p_batch: string; p_rows: Json }; Returns: number };
+      module_batch_finish: { Args: { p_batch: string }; Returns: number };
+      module_batch_cancel: { Args: { p_batch: string }; Returns: undefined };
+      module_summary: { Args: { p_company: string; p_module: string }; Returns: Json };
+      module_rows_page: { Args: { p_company: string; p_module: string; p_offset?: number; p_limit?: number }; Returns: Json };
       my_company_role: { Args: { p_company: string }; Returns: string | null };
       set_company_role: { Args: { p_company: string; p_user: string; p_role: string | null }; Returns: undefined };
       budget_rows_save: { Args: { p_version: string; p_rows: Json; p_views: string[]; p_lines?: Json | null; p_setup?: Json | null }; Returns: undefined };
