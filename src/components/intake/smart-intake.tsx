@@ -7,7 +7,7 @@ import Link from "next/link";
 import type { Grid } from "@/lib/ingest/extract";
 import { readForUpload } from "@/lib/imports/worker-client";
 import { supportedFile } from "@/lib/preflight/export";
-import { MODULES, moduleByKey } from "@/lib/modules/registry";
+import { modulesNow, moduleByKey } from "@/lib/modules/registry";
 import { planIntake, placePiece, type PlannedPiece } from "@/lib/intake/plan";
 import { reconcile } from "@/lib/intake/reconcile";
 import { templateOf } from "@/lib/intake/adapters";
@@ -212,7 +212,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
                   <span className="me-2">{t.module}</span>
                   <select className="rounded border border-line px-2 py-1" data-testid="intake-module" value={out ? "" : p.module ?? "?"} onChange={(e) => set(p.id, { module: e.target.value === "" ? null : e.target.value, override: undefined, headerRow: undefined, anyway: false })}>
                     {!p.module && <option value="?" disabled>{t.pick}</option>}
-                    {MODULES.map((x) => <option key={x.key} value={x.key}>{lang === "ar" ? x.name.ar : x.name.en}</option>)}
+                    {modulesNow().map((x) => <option key={x.key} value={x.key}>{lang === "ar" ? x.name.ar : x.name.en}</option>)}
                     <option value="">{t.none}</option>
                   </select>
                 </label>
@@ -250,7 +250,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
                   </table>
                 </div>
                 {p.map.missing.length > 0 && <p className="mt-2 text-sm text-red" data-testid="intake-missing">{t.missing(p.map.missing.join(", "))}</p>}
-                {(m.key === "ar_open" || m.key === "ap_open") && (
+                {(m.key === "ar_open" || m.key === "ap_open" || (m.nature === "snapshot" && !(m.date && m.date in p.map.cols))) && (
                   <label className="mt-3 block text-sm">{t.asOf} <input type="date" className="ms-2 rounded border border-line px-2 py-1" data-testid="intake-asof" value={c.asOf ?? p.aged?.asOf ?? ""} onChange={(e) => set(p.id, { asOf: e.target.value || undefined })} />
                     {p.needs?.includes("as-of day") && <span className="ms-2 text-red">{t.asOfNeeded}</span>}
                     {p.needs?.includes("as-of day") && p.suggestedAsOf && <button type="button" className="ms-2 rounded border border-line px-2 py-0.5" data-testid="intake-asof-suggested" onClick={() => set(p.id, { asOf: p.suggestedAsOf! })}>{t.useDay(p.suggestedAsOf)}</button>}</label>

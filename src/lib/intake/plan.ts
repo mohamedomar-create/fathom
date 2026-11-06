@@ -14,7 +14,7 @@ import { splitGrid, pieceOf, type Piece } from "./split";
 import { understand, type Band, type Guess } from "./understand";
 import { latestDocDay, openItemsReport, titleAsOf } from "./open-items";
 import { reconcile, type Reconciliation } from "./reconcile";
-import { MODULES } from "@/lib/modules/registry";
+import { modulesNow } from "@/lib/modules/registry";
 import { layoutKey, type SavedLayouts } from "./memory";
 
 /** Layouts read whole by their own reader (an Odoo report, a ledger, a cash book), not as a list. */
@@ -63,8 +63,12 @@ export function placePiece(piece: Piece, module: string | null, extra: Partial<P
   const base: PlannedPiece = { id: piece.id, sheet: piece.sheet, title: piece.title, module: m?.key ?? null, band: u.band, why: u.best?.why ?? "No module fits this table well.", candidates: u.ranked, piece, ...extra };
   if (!m) return base;
   const map = mapPiece(piece, m, opts);
-  const read = readRecords(piece, m, map);
+  // A snapshot list (staff, assets) without its own as-of column stands at the day the person gives, or a day above it.
+  const undated = m.nature === "snapshot" && !(m.date && m.date in map.cols);
+  const snapDay = undated ? opts.asOf ?? titleAsOf(piece.title, (s) => parseDay(s)) : null;
+  const read = readRecords(piece, m, map, snapDay);
   const out: PlannedPiece = { ...base, map, read, why: u.ranked.find((g) => g.module === m.key)?.why ?? base.why };
+  if (undated && !snapDay) { out.needs = ["as-of day"]; out.suggestedAsOf = null; }
   if (m.key === "ar_open" || m.key === "ap_open") {
     // The person's day first, then a day written above the list; a day guessed from the documents is only suggested.
     const asOf = opts.asOf ?? titleAsOf(piece.title, (s) => parseDay(s));
@@ -77,7 +81,7 @@ export function placePiece(piece: Piece, module: string | null, extra: Partial<P
 /** A layout the person mapped before: the module and the mapping they chose, when one matches this table's headings. */
 function rememberedFor(p: Piece, saved: SavedLayouts | undefined): { module: string; mapping: Record<string, string> } | null {
   if (!saved) return null;
-  for (const m of MODULES) {
+  for (const m of modulesNow()) {
     const map = mapPiece(p, m, {});
     const heads = (p.rows[map.headerRow] ?? []).map((v) => (v === null || v === undefined ? "" : String(v))).filter((h) => h.trim());
     const hit = saved[layoutKey(m.key, heads)];
@@ -87,7 +91,7 @@ function rememberedFor(p: Piece, saved: SavedLayouts | undefined): { module: str
   for (let r = 0; r < Math.min(p.rows.length, 30); r++) {
     const heads = (p.rows[r] ?? []).map((v) => (v === null || v === undefined ? "" : String(v))).filter((h) => h.trim());
     if (heads.length < 2) continue;
-    for (const m of MODULES) { const hit = saved[layoutKey(m.key, heads)]; if (hit) return { module: m.key, mapping: hit }; }
+    for (const m of modulesNow()) { const hit = saved[layoutKey(m.key, heads)]; if (hit) return { module: m.key, mapping: hit }; }
   }
   return null;
 }

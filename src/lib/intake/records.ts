@@ -50,7 +50,8 @@ function parse(v: Cell, type: string, order: DateOrder, date1904?: boolean): { v
   }
 }
 
-export function readRecords(p: Piece, m: ModuleDef, map: Mapping): ReadOut {
+/** asOf: the day a list without its own date stands at (a snapshot the person dated), used only when a row has no date. */
+export function readRecords(p: Piece, m: ModuleDef, map: Mapping, asOf?: string | null): ReadOut {
   const base = p.gridOrigin.r + p.origin.r + 1;
   const body = p.rows.slice(map.headerRow + 1);
   const orders: Record<string, DateOrder> = {};
@@ -99,7 +100,10 @@ export function readRecords(p: Piece, m: ModuleDef, map: Mapping): ReadOut {
     const rule = m.rowRule?.(rec);
     if (rule) bad.push(rule);
     if (bad.length) { rejected.push({ row: spreadsheetRow, reason: bad.join("; "), amount, cells: shown }); return; }
-    const day = (m.date && typeof rec[m.date] === "string" ? (rec[m.date] as string) : null) ?? (Object.entries(rec).find(([k, v]) => m.fields.find((f) => f.key === k)?.type === "date" && typeof v === "string")?.[1] as string | undefined) ?? null;
+    // A snapshot (a headcount, an asset register) is dated only by its own as-of column: a hire date is not the list's date.
+    const own = m.date && typeof rec[m.date] === "string" ? (rec[m.date] as string) : null;
+    const anyDate = m.nature === "snapshot" ? undefined : (Object.entries(rec).find(([k, v]) => m.fields.find((f) => f.key === k)?.type === "date" && typeof v === "string")?.[1] as string | undefined);
+    const day = own ?? anyDate ?? asOf ?? null;
     // The day's month when there is a day (a Month column can only agree with it); else the Month column.
     const period = day ? day.slice(0, 7) : typeof rec.period === "string" ? rec.period : null;
     records.push({ ...rec, __row: spreadsheetRow, __period: period });

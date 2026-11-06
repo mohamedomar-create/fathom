@@ -2,7 +2,7 @@
 // for open items, a product for sales), the tab's name, and the document numbers (BILL/… is the supplier side). The best
 // score decides; how sure it is decides what the person is asked.
 import { cleanNum, normAr, type Cell } from "@/lib/ingest/parse";
-import { MODULES, fieldOf } from "@/lib/modules/registry";
+import { modulesNow, fieldOf } from "@/lib/modules/registry";
 import type { ModuleDef } from "@/lib/modules/types";
 import { mapPiece, type Mapping } from "./map";
 import type { Piece } from "./split";
@@ -79,11 +79,11 @@ export function recognise(m: ModuleDef, p: Piece): Guess {
 }
 
 /** Every module's score for a table, best first. */
-export function bestModules(p: Piece, modules: readonly ModuleDef[] = MODULES): Guess[] {
+export function bestModules(p: Piece, modules: readonly ModuleDef[] = modulesNow()): Guess[] {
   return modules.map((m) => recognise(m, p)).sort((a, b) => b.score - a.score);
 }
 
-export function understand(p: Piece, modules: readonly ModuleDef[] = MODULES): Understanding {
+export function understand(p: Piece, modules: readonly ModuleDef[] = modulesNow()): Understanding {
   const ranked = bestModules(p, modules);
   const best = ranked[0] ?? null;
   // Two modules close together are never "sure": the person picks.

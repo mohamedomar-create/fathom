@@ -65,11 +65,21 @@ describe("I5 a month number is not a date serial", () => {
 });
 
 describe("I6 every module kept in the shared store needs a date or month", () => {
-  it("in its required fields", () => {
-    for (const m of MODULES.filter((x) => x.storage === "generic")) {
+  it("in its required fields (a snapshot is dated by its as-of column or the day the person gives)", () => {
+    for (const m of MODULES.filter((x) => x.storage === "generic" && x.nature !== "snapshot")) {
       const dates = m.fields.filter((f) => f.type === "date" || f.type === "month").map((f) => f.key);
       expect(m.required.some((grp) => grp.every((k) => dates.includes(k))), m.key).toBe(true);
     }
+  });
+  it("a snapshot without its own date waits for the person's as-of day, and is then dated by it", () => {
+    const hr = MODULES.find((m) => m.key === "hr")!;
+    const piece = pieceOf({ name: "Staff", rows: [["Employee", "Department", "Monthly Wage"], ["Mona", "Sales", 100]] });
+    const waiting = placePiece(piece, "hr");
+    expect(waiting.needs).toEqual(["as-of day"]);
+    const dated = placePiece(piece, "hr", {}, { asOf: "2026-10-31" });
+    expect(dated.needs).toBeUndefined();
+    expect(dated.read!.records[0].__period).toBe("2026-10");
+    expect(hr.nature).toBe("snapshot");
   });
 });
 

@@ -29,7 +29,7 @@ describe("checking what comes back", () => {
   it("drops fields that aren't the module's, columns outside the table, and a module that doesn't exist", () => {
     const bad = checkSuggestion({ module: "ar_open", headerRow: 0, columns: [{ column: 0, field: "party", confidence: 0.9 }, { column: 9, field: "doc", confidence: 1 }, { column: 1, field: "salary", confidence: 1 }], reason: "x" }, piece);
     expect(bad?.override).toEqual({ 0: "party" });
-    expect(checkSuggestion({ module: "payroll", headerRow: 0, columns: [], reason: "x" }, piece)).toBeNull();
+    expect(checkSuggestion({ module: "no_such_module", headerRow: 0, columns: [], reason: "x" }, piece)).toBeNull();
     expect(checkSuggestion({ module: "ar_open", headerRow: 99, columns: [], reason: "x" }, piece)).toBeNull();
   });
 

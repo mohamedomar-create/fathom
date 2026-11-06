@@ -35,6 +35,9 @@ export interface ModuleDef {
   key: string;
   /** "snapshot": a list held at each month end (headcount, assets), never added up across months. Default "flow". */
   nature?: "flow" | "snapshot";
+  /** Numeric fields its dashboard totals by month, and text fields it filters and groups by. */
+  measures?: string[];
+  dimensions?: string[];
   name: Bi;
   /** What the module owns: one owner per record, so nothing is counted twice. */
   owns: Bi;

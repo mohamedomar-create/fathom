@@ -3,7 +3,7 @@
 // for some columns, and only modules and fields that exist and columns that are in the table survive the check.
 import { z } from "zod";
 import type { Cell } from "@/lib/ingest/parse";
-import { MODULES, moduleByKey } from "@/lib/modules/registry";
+import { modulesNow, moduleByKey } from "@/lib/modules/registry";
 import type { Piece } from "./split";
 
 export const SAMPLE_ROWS = 20;
@@ -53,4 +53,4 @@ export function checkSuggestion(s: Suggestion, p: Piece): CheckedSuggestion | nu
 }
 
 /** The modules described to the model: keys, names and fields (no company data). */
-export const moduleCatalogue = () => MODULES.map((m) => ({ key: m.key, name: m.name.en, fields: m.fields.map((f) => ({ key: f.key, label: f.label.en, type: f.type })), required: m.required }));
+export const moduleCatalogue = () => modulesNow().map((m) => ({ key: m.key, name: m.name.en, fields: m.fields.map((f) => ({ key: f.key, label: f.label.en, type: f.type })), required: m.required }));
