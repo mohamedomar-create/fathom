@@ -6,7 +6,8 @@ import { useCompany } from "@/lib/company/context";
 import { cn } from "@/lib/cn";
 import { Tip } from "@/components/ui/tooltip";
 import { useDict } from "@/lib/i18n/context";
-import { navGroups, sectorOf } from "./nav";
+import { navGroups } from "./nav";
+import { useSectors } from "./use-sectors";
 
 export function IconRail() {
   const c = useCompany();
@@ -14,6 +15,7 @@ export function IconRail() {
   const pathname = usePathname();
   const qs = useSearchParams().toString();
   const q = qs ? `?${qs}` : "";
+  const { sectorOf } = useSectors();
   if (pathname.includes("/settings") || pathname.includes("/reports") || /\/data(\/|$)/.test(pathname)) return null;
   const sector = sectorOf(pathname.slice(c.basePath.length));
   return (

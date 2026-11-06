@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import { createCompany, createDemoCompany } from "./actions";
 import { useDict } from "@/lib/i18n/context";
+import { AreasPicker } from "@/components/settings/areas-picker";
 import { suggestSystem, systemFlow, type AcctSystem } from "@/lib/company/system";
 
 type Step = "pick" | "odoo" | "notsure" | "form";
@@ -76,6 +77,7 @@ export function AddCompany({ orgs }: { orgs: { id: string; name: string }[] }) {
               <input name="currency" defaultValue="EGP" maxLength={6} className="w-full rounded border border-line px-3 py-2 uppercase outline-none focus:border-brand" /></label>
             <label><span className="label mb-1 block">{t.fyStarts}</span>
               <select name="fy_start_month" defaultValue="1" className="w-full rounded border border-line px-3 py-2">{t.months.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}</select></label>
+            {flow.mode !== "simple" && <AreasPicker />}
             <label><span className="label mb-1 block">{t.tax}</span>
               <input name="tax_rate" type="number" step="0.1" defaultValue="22.5" className="w-full rounded border border-line px-3 py-2 outline-none focus:border-brand" /></label>
             <div className="flex items-end justify-end gap-2 sm:col-span-2">

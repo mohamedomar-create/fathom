@@ -6,7 +6,7 @@ import { getUser } from "@/lib/supabase/server";
 import { accessFrom, AccessError } from "./access";
 import type { CompanyRow } from "@/lib/supabase/database.types";
 
-export interface CompanyMeta { id: string; orgId: string; role: "admin" | "editor" | "viewer"; dataVersion: number; source: string; kpiConfig: unknown; readOnly: boolean; row: CompanyRow }
+export interface CompanyMeta { id: string; userId: string; orgId: string; role: "admin" | "editor" | "viewer"; dataVersion: number; source: string; kpiConfig: unknown; readOnly: boolean; row: CompanyRow }
 
 /**
  * What most Data pages need to know about the company: that the person is a member, their role, and which version of
@@ -28,6 +28,6 @@ export const loadCompanyMeta = cache(async (id: string): Promise<CompanyMeta> =>
   if (!c) notFound();
   const access = accessFrom(rErr ? null : role ? { role } : null, rErr);
   if (access === "none") notFound();
-  return { id: c.id, orgId: c.org_id, role: access.role, readOnly: access.readOnly, dataVersion: c.data_version, source: c.source, kpiConfig: c.kpi_config, row: c };
+  return { id: c.id, userId: user.id, orgId: c.org_id, role: access.role, readOnly: access.readOnly, dataVersion: c.data_version, source: c.source, kpiConfig: c.kpi_config, row: c };
 });
 

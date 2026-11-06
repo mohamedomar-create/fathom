@@ -12,6 +12,7 @@ const ITEMS = [
   { n: 4, href: "targets", label: "Targets", sub: "Monthly targets" },
   { n: 5, href: "alerts", label: "Alerts", sub: "Thresholds" },
   { n: 6, href: "close", label: "Month close", sub: "Close and reopen months" },
+  { n: 7, href: "modules", label: "Modules", sub: "Which areas you bring, who sees each" },
 ];
 
 export function SettingsNav() {

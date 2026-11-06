@@ -8,6 +8,8 @@ import type { Grid } from "@/lib/ingest/extract";
 import { readForUpload } from "@/lib/imports/worker-client";
 import { supportedFile } from "@/lib/preflight/export";
 import { modulesNow, moduleByKey } from "@/lib/modules/registry";
+import { ModuleBuilder, ModuleOffer, useNeedsOpening } from "./module-offers";
+import { useCompany } from "@/lib/company/context";
 import { planIntake, placePiece, type PlannedPiece } from "@/lib/intake/plan";
 import { reconcile } from "@/lib/intake/reconcile";
 import { templateOf } from "@/lib/intake/adapters";
@@ -54,11 +56,14 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
+  const needsOpening = useNeedsOpening();
+  // A module opened or built here changes what tables can be placed in: the plan is read again with it.
+  const companyModules = useCompany().modules;
   const [asking, setAsking] = useState<string | null>(null);
   const [saving, setSaving] = useState<{ done: Record<string, number>; current: string | null; failed: { id: string; error: string } | null }>({ done: {}, current: null, failed: null });
   const mname = (k: string | null | undefined) => (k ? (lang === "ar" ? moduleByKey(k)?.name.ar : moduleByKey(k)?.name.en) ?? k : "");
 
-  const base0 = useMemo(() => (grids ? planIntake(grids, { saved }) : null), [grids, saved]);
+  const base0 = useMemo(() => (grids ? planIntake(grids, { saved }) : null), [grids, saved, companyModules]); // eslint-disable-line react-hooks/exhaustive-deps
   // The plan with the person's choices: a module picked, a column pointed at a field, an as-of day.
   const pieces = useMemo<PlannedPiece[]>(() => (base0?.pieces ?? []).map((p) => {
     const c = choices[p.id];
@@ -68,7 +73,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
     const same = mod === p.module;
     // A remembered table keeps its remembered mapping and headings row when only something else (the as-of day) changes.
     return { ...placePiece(p.piece, mod, { remembered: same && p.remembered, savedMapping: same ? p.savedMapping : undefined }, { override: c.override, saved: same && !c.override ? p.savedMapping : undefined, headerRow: c.headerRow ?? (same ? p.map?.headerRow : undefined), asOf: c.asOf }), band: same ? p.band : "sure", why: same ? p.why : `${t.module}: ${mname(mod)}` };
-  }), [base0, choices]); // eslint-disable-line react-hooks/exhaustive-deps
+  }), [base0, choices, companyModules]); // eslint-disable-line react-hooks/exhaustive-deps
   const included = pieces.filter((p) => choices[p.id]?.module !== null && p.module && (p.layout ? p.layout === "odoo_aged" && !!p.aged : !!p.read));
   const checks = useMemo(() => reconcile(included.filter((p) => p.read).map((p) => ({ id: p.id, module: p.module!, records: p.read!.records }))), [included]);
   const groups = useMemo(() => saveOrder(combineForSave(included)), [included]);
@@ -76,6 +81,8 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
   const blocked = pieces.some((p) => {
     if (choices[p.id]?.module === null || p.layout) return false;
     if (!p.module) return true;
+    // A table of an area the company hasn't opened waits until it is (never saved into another module).
+    if (needsOpening(p.module)) return true;
     // "Please confirm" means confirm: the table is not saved on a guess.
     if (p.band === "likely" && !choices[p.id]?.confirmed && choices[p.id]?.module === undefined) return true;
     return (p.map?.missing.length ?? 0) > 0 || (p.needs?.length ?? 0) > 0 || (!p.read?.proof.ok && !choices[p.id]?.anyway);
@@ -221,6 +228,8 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
             {p.layout && (
               <p className="mt-3 text-sm">{p.layout === "odoo_aged" ? p.why : t.layout} {p.layout !== "odoo_aged" && <Link prefetch={false} className="text-brand-d underline" href={`${base}/data/upload?step=${LAYOUT_STEP[p.layout] ?? "financials"}`}>{t.layoutGo}</Link>}</p>
             )}
+            {!out && !p.layout && p.module && needsOpening(p.module) && <ModuleOffer module={p.module} />}
+            {!out && !p.layout && !p.module && <ModuleBuilder piece={p.piece} onBuilt={(k) => set(p.id, { module: k, override: undefined, headerRow: undefined })} />}
             {!out && !p.layout && p.band === "likely" && c.module === undefined && (
               <label className="mt-2 block text-sm"><input type="checkbox" className="me-2" data-testid="intake-confirm" checked={!!c.confirmed} onChange={(e) => set(p.id, { confirmed: e.target.checked })} />{t.confirm(mname(p.module))}</label>
             )}

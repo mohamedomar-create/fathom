@@ -3,11 +3,13 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { MODULE_SECTOR } from "@/lib/modules/sectors";
+import { isOn, openExtras, type CompanyModule } from "@/lib/modules/company";
+import { moduleByKey } from "@/lib/modules/registry";
 
 export type NavGroupKey = "overview" | "performance" | "cash" | "plan";
 export interface NavItem { href: string; label: string; icon: LucideIcon; title: string; /** Financials only: the heading this page sits under. */ group?: NavGroupKey }
 
-export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "planning" | "doctor" | "valuation";
+export type SectorKey = "financials" | "sales" | "expenses" | "inventory" | "payments" | "banking" | "planning" | "doctor" | "valuation" | "modules";
 export interface Sector { key: SectorKey; label: string; items: NavItem[] }
 
 /** The app's sectors: each is a tab in the top bar, and its pages fill the side rail. */
@@ -86,12 +88,39 @@ export const SECTORS: Sector[] = [
   },
 ];
 
+/** Catalog and custom modules the company opened: one sector, filled per company. */
+const MODULES_SECTOR: Sector = { key: "modules", label: "Modules", items: [] };
+/** Sectors that read the books: hidden when the company turned Financials off. */
+const BOOKS = new Set<SectorKey>(["financials", "banking", "planning", "doctor", "valuation"]);
+const OWNER: Partial<Record<SectorKey, string>> = { sales: "sales", expenses: "expenses", inventory: "inventory", payments: "payments" };
+
+/** The sectors this company shows, from the modules it has on: turned-off ones go, opened catalog and custom ones join. */
+export function sectorsFor(rows: CompanyModule[], role: string, userId: string | null | undefined): Sector[] {
+  const out: Sector[] = [];
+  const purchasing = isOn("purchasing", rows);
+  for (const s of SECTORS) {
+    if (BOOKS.has(s.key) && !isOn("financials", rows)) continue;
+    const owner = OWNER[s.key];
+    if (owner && !isOn(owner, rows)) continue;
+    out.push(s.key === "expenses" && !purchasing ? { ...s, items: s.items.filter((i) => i.href !== "modules/purchasing") } : s);
+  }
+  const extras = openExtras(rows, role, userId);
+  const items: NavItem[] = extras.map((r) => {
+    const name = r.name ?? moduleByKey(r.key)?.name.en ?? r.key;
+    return { href: `modules/${r.key}`, label: name, title: name, icon: Layers };
+  });
+  if (purchasing && !isOn("expenses", rows)) items.unshift({ href: "modules/purchasing", label: "Purchasing", title: "Purchasing", icon: ShoppingCart });
+  if (items.length) out.push({ ...MODULES_SECTOR, items });
+  return out;
+}
+
 /** The sector a page belongs to, from its path relative to the company (e.g. "sales/products"). */
 export function sectorOf(rel: string): Sector {
   const r = rel.replace(/^\/+/, "");
   const parts = r.split("/");
   // A module added by definition sits in its own sector ("modules/purchasing" is under Expenses).
-  const first = parts[0] === "modules" ? (MODULE_SECTOR[parts[1] ?? ""] ?? "financials") : parts[0];
+  const first = parts[0] === "modules" ? (MODULE_SECTOR[parts[1] ?? ""] ?? ((parts[1] ?? "").startsWith("c_") ? "modules" : "financials")) : parts[0];
+  if (first === "modules") return MODULES_SECTOR;
   const key: SectorKey = first === "sales" || first === "expenses" || first === "inventory" || first === "payments" || first === "banking" || first === "planning" || first === "doctor" || first === "valuation" ? first : "financials";
   return SECTORS.find((s) => s.key === key)!;
 }

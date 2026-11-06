@@ -13,6 +13,7 @@ import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
 import { ink } from "./areas/ink";
+import { mods } from "./areas/mods";
 import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
@@ -54,7 +55,7 @@ export const en = {
   },
   navGroups: { overview: "Overview", performance: "Performance", cash: "Cash & statements", plan: "Plan" },
   bottom: { home: "Home", pages: "Pages", more: "More", sectionPages: "Pages in this section", everything: "All sections" },
-  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", planning: "Planning", doctor: "Doctor", valuation: "Valuation" },
+  sectors: { financials: "Financials", sales: "Sales", expenses: "Expenses", inventory: "Inventory", payments: "Payments", banking: "Banking", planning: "Planning", doctor: "Doctor", valuation: "Valuation", modules: "Modules" },
   /** Side menu, by page address: the short label and the page title. */
   nav: {
     summary: ["Summary", "Executive Summary"],
@@ -85,6 +86,15 @@ export const en = {
     "expenses/suppliers": ["Suppliers", "Suppliers"],
     "expenses/trend": ["Trend", "Expenses Trend"],
     "modules/purchasing": ["Purchasing", "Purchasing"],
+    "modules/hr": ["HR", "HR"],
+    "modules/payroll": ["Payroll", "Payroll"],
+    "modules/crm": ["CRM", "CRM"],
+    "modules/manufacturing": ["Manufacturing", "Manufacturing"],
+    "modules/projects": ["Projects", "Projects"],
+    "modules/pos": ["Point of sale", "Point of sale"],
+    "modules/assets": ["Fixed assets", "Fixed assets"],
+    "modules/fleet": ["Fleet", "Fleet"],
+    "modules/service": ["Service", "Service"],
     inventory: ["Overview", "Inventory Overview"],
     "inventory/products": ["Products", "Stock by Product"],
     "inventory/movements": ["Movements", "Stock Movements"],
@@ -114,6 +124,7 @@ export const en = {
       targets: ["Targets", "Monthly targets"],
       alerts: ["Alerts", "Thresholds"],
       close: ["Month close", "Close and reopen months"],
+      modules: ["Modules", "Which areas you bring, who sees each"],
     } as Record<string, readonly [string, string]>,
   },
   period: {
@@ -163,6 +174,7 @@ export const en = {
   bud: bud.en,
   doc: doc.en,
   ink: ink.en,
+  mods: mods.en,
   val: val.en,
   bp: bp.en,
   viz: viz.en,

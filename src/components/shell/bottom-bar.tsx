@@ -6,7 +6,8 @@ import { Database, FileDown, LayoutDashboard, LayoutList, Menu, Receipt, Setting
 import { useCompany } from "@/lib/company/context";
 import { useDict } from "@/lib/i18n/context";
 import { cn } from "@/lib/cn";
-import { SECTORS, bottomTab, navGroups, sectorOf, type BottomTab } from "./nav";
+import { bottomTab, navGroups, type BottomTab } from "./nav";
+import { useSectors } from "./use-sectors";
 
 /** A sheet that slides up from the bottom of a phone screen. */
 function Sheet({ trigger, title, children }: { trigger: React.ReactNode; title: string; children: React.ReactNode }) {
@@ -40,6 +41,7 @@ export function BottomBar() {
   const q = qs ? `?${qs}` : "";
   const rel = pathname.slice(c.basePath.length);
   const on = bottomTab(rel);
+  const { sectors, sectorOf } = useSectors();
   const sector = sectorOf(rel);
   const inSector = on !== "more";
   const href = (h: string) => `${c.basePath}/${h}`;
@@ -75,7 +77,7 @@ export function BottomBar() {
       </Sheet>}
       <Sheet title={d.bottom.everything}
         trigger={<button type="button" className={tabCls("more")} data-testid="bottom-more"><Menu className="h-5 w-5" strokeWidth={1.7} />{d.bottom.more}</button>}>
-        {SECTORS.map((s) => {
+        {sectors.map((s) => {
           const Icon = s.items[0].icon;
           return (
             <D.Close asChild key={s.key}>

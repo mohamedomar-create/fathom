@@ -11,6 +11,7 @@ import { buildMonths, naturalAccounts, type StoredAccount } from "./build";
 import { loadSubMap } from "./account-map";
 import { withSubClasses } from "@/lib/ingest/subclass";
 import type { AlertSetting, CompanyBundle } from "./types";
+import type { CompanyModule } from "@/lib/modules/company";
 
 export interface KpiConfigEntry { active?: boolean; importance?: Importance; target?: number | null; alert_active?: boolean; alert_threshold?: number | null }
 export type KpiConfig = Record<string, KpiConfigEntry>;
@@ -97,7 +98,7 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
   const c = meta.row;
   // Everything else in one round, the accounts and the budget targets included.
   const useBudget = budgetTargetsOf(c.kpi_config);
-  const [{ data: org }, { data: list }, { data: comm }, { data: imp, error: impErr }, stored, subMap, budgets] = await Promise.all([
+  const [{ data: org }, { data: list }, { data: comm }, { data: imp, error: impErr }, stored, subMap, budgets, { data: mods }] = await Promise.all([
     supabase.from("organizations").select("name").eq("id", c.org_id).maybeSingle(),
     supabase.from("companies").select("id, name").eq("org_id", c.org_id).order("name"),
     supabase.from("commentary").select("period_key, section, body").eq("company_id", id),
@@ -106,6 +107,8 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     loadSubMap(supabase, id),
     // The approved budget, only when the company uses it as KPI targets (a read failure: no budget targets, never an error).
     useBudget ? loadYearBudgets(supabase, id) : Promise.resolve([]),
+    // The modules the company opened or closed, and custom ones (none before 0063, or a read failure: the built-in set).
+    supabase.from("company_modules").select("key, kind, enabled, name, min_role, members, spec").eq("company_id", id),
   ]);
   const access = { role: meta.role, readOnly: meta.readOnly };
   // Each account's sub-class (the company's choice, else its name), for the cash flow statement.
@@ -134,5 +137,6 @@ export const loadCompanyBundle = cache(async (id: string): Promise<CompanyBundle
     companies: list ?? [], aiEnabled: Boolean(process.env.ANTHROPIC_API_KEY),
     role: access.role, orgId: c.org_id, dataVersion: c.data_version,
     accepted: accepted.map((a) => ({ title: a.title, period: a.period, reason: a.reason })), health, booksBasis, asOf, unit, assumptions: assumptionsFromRow(c), forecast: forecastFromRow(c), inventorySettings: inventorySettingsFromRow(c), timeZone: timeZoneOf(c.kpi_config), booksFromZero: booksFromZeroOf(c.kpi_config), budgetTargets: useBudget, budgets, system: systemOf(c.kpi_config, c.source), closedThrough: c.closed_through ?? null,
+    modules: (mods ?? []) as CompanyModule[], userId: meta.userId,
   };
 });

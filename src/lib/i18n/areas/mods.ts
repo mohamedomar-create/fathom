@@ -1,0 +1,39 @@
+import { area } from "../types";
+
+/** Settings ▸ Modules: the areas a company brings, the modules it built, and who sees each. */
+export const mods = area(
+  {
+    title: "Modules", sub: "Each area you bring is a module with the same steps, checks and dashboard. Turn on the ones you have; a file of a new kind offers to open its module.",
+    adminOnly: "An admin chooses the modules and who sees each one.",
+    core: "Core areas", catalog: "More areas (open the ones you have)", yours: "Modules you built",
+    noneYours: "None yet. Upload any table with Smart upload: a table no module knows can become a module of its own.",
+    howNew: "A new kind of data (HR from SAP, a CRM pipeline, your own register) opens its module from Smart upload, with your confirmation.",
+    youSee: (n: number) => `You can open ${n} of the extra modules turned on.`,
+    on: "On", off: "Off", save: "Save", who: "Who sees it", named: "Named people",
+    seenBy: { viewer: "Everyone in the company", editor: "Editors and admins", admin: "Admins only" } as Record<string, string>,
+    areas: { financials: "Financials (the books)", sales: "Sales", expenses: "Expenses", purchasing: "Purchasing", inventory: "Warehouse and inventory", payments: "Payments, receivables and payables" } as Record<string, string>,
+    pick: "What data will you bring?", pickSub: "Pick every area you have. You can change this later in Settings ▸ Modules.",
+    offer: (m: string) => `This looks like ${m} data. Open the ${m} module?`, open: "Open the module", askAdmin: "Ask an admin to open this module.",
+    build: "Make a module from this table", buildSub: "No module knows this table. Name it and confirm its fields: it gets the same steps, checks and dashboard.",
+    name: "Module name", nameAr: "Arabic name", fieldType: "Type", measure: "Total it", dimension: "Group by", requiredField: "Required", create: "Create the module",
+    types: { text: "Text", code: "Code", date: "Date", month: "Month", money: "Money", qty: "Quantity", percent: "Percent" } as Record<string, string>,
+    built: (m: string) => `${m} is ready. Its rows are read below.`,
+  },
+  {
+    title: "الوحدات", sub: "كل مجال تضيفه وحدة لها الخطوات والفحوص ولوحة المتابعة نفسها. فعّل ما لديك؛ ويعرض ملف من نوع جديد فتح وحدته.",
+    adminOnly: "يختار المدير الوحدات ومن يرى كلًا منها.",
+    core: "المجالات الأساسية", catalog: "مجالات أخرى (افتح ما لديك)", yours: "وحدات أنشأتها",
+    noneYours: "لا يوجد بعد. ارفع أي جدول بالرفع الذكي: الجدول الذي لا تعرفه أي وحدة يمكن أن يصبح وحدة مستقلة.",
+    howNew: "نوع بيانات جديد (الموارد البشرية من SAP، أو فرص المبيعات، أو سجلك الخاص) يفتح وحدته من الرفع الذكي بعد تأكيدك.",
+    youSee: (n: number) => `يمكنك فتح ${n} من الوحدات الإضافية المفعلة.`,
+    on: "مفعّل", off: "متوقف", save: "حفظ", who: "من يراها", named: "أشخاص محددون",
+    seenBy: { viewer: "كل من في الشركة", editor: "المحررون والمديرون", admin: "المديرون فقط" },
+    areas: { financials: "القوائم المالية (الدفاتر)", sales: "المبيعات", expenses: "المصروفات", purchasing: "المشتريات", inventory: "المخازن والمخزون", payments: "المدفوعات والمدينون والدائنون" },
+    pick: "ما البيانات التي ستضيفها؟", pickSub: "اختر كل المجالات التي لديك. يمكنك تغيير ذلك لاحقًا من الإعدادات ▸ الوحدات.",
+    offer: (m: string) => `يبدو أن هذه بيانات ${m}. هل تفتح وحدة ${m}؟`, open: "افتح الوحدة", askAdmin: "اطلب من المدير فتح هذه الوحدة.",
+    build: "أنشئ وحدة من هذا الجدول", buildSub: "لا تعرف أي وحدة هذا الجدول. سمّه وأكد حقوله: يحصل على الخطوات والفحوص ولوحة المتابعة نفسها.",
+    name: "اسم الوحدة", nameAr: "الاسم بالعربية", fieldType: "النوع", measure: "اجمعه", dimension: "جمّع حسبه", requiredField: "مطلوب", create: "أنشئ الوحدة",
+    types: { text: "نص", code: "رمز", date: "تاريخ", month: "شهر", money: "مبلغ", qty: "كمية", percent: "نسبة" },
+    built: (m: string) => `${m} جاهزة. صفوفها مقروءة أدناه.`,
+  },
+);

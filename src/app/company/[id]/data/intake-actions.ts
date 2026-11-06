@@ -11,7 +11,8 @@ const Id = z.string().uuid();
 const Period = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
 const Day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const Amount = z.number().finite().refine((v) => Math.abs(v) < 1e15, "amount out of range");
-const Module = z.string().refine((k) => MODULE_KEYS.includes(k), "unknown module");
+// Catalog keys, or a company's own (c_...): the database checks the company opened it and the person may see it.
+const Module = z.string().refine((k) => MODULE_KEYS.includes(k) || /^c_[a-z0-9_]{1,37}$/.test(k), "unknown module");
 const Value = z.union([z.string().max(300), Amount]);
 const Row = z.object({ period: Period, day: Day.nullable(), doc: z.string().max(120), partner: z.string().max(200), amount: Amount, qty: Amount.nullable(), data: z.record(z.string().max(40), Value) });
 

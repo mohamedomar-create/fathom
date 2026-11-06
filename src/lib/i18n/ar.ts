@@ -13,6 +13,7 @@ import { hl } from "./areas/hl";
 import { bud } from "./areas/bud";
 import { doc } from "./areas/doc";
 import { ink } from "./areas/ink";
+import { mods } from "./areas/mods";
 import { val } from "./areas/val";
 import { bp } from "./areas/bp";
 import { viz } from "./areas/viz";
@@ -52,7 +53,7 @@ export const ar: Dict = {
   },
   navGroups: { overview: "نظرة عامة", performance: "الأداء", cash: "النقدية والقوائم", plan: "التخطيط" },
   bottom: { home: "الرئيسية", pages: "الصفحات", more: "المزيد", sectionPages: "صفحات هذا القسم", everything: "كل الأقسام" },
-  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط", doctor: "الطبيب", valuation: "التقييم" },
+  sectors: { financials: "القوائم المالية", sales: "المبيعات", expenses: "المصروفات", inventory: "المخزون", payments: "المدفوعات", banking: "البنوك", planning: "التخطيط", doctor: "الطبيب", valuation: "التقييم", modules: "الوحدات" },
   nav: {
     summary: ["الملخص", "الملخص التنفيذي"],
     "analysis/kpis": ["المؤشرات", "مؤشرات الأداء"],
@@ -82,6 +83,15 @@ export const ar: Dict = {
     "expenses/suppliers": ["الموردون", "الموردون"],
     "expenses/trend": ["الاتجاه", "اتجاه المصروفات"],
     "modules/purchasing": ["المشتريات", "المشتريات"],
+    "modules/hr": ["الموارد البشرية", "الموارد البشرية"],
+    "modules/payroll": ["الرواتب", "الرواتب"],
+    "modules/crm": ["إدارة العملاء", "إدارة العملاء"],
+    "modules/manufacturing": ["التصنيع", "التصنيع"],
+    "modules/projects": ["المشاريع", "المشاريع"],
+    "modules/pos": ["نقاط البيع", "نقاط البيع"],
+    "modules/assets": ["الأصول الثابتة", "الأصول الثابتة"],
+    "modules/fleet": ["الأسطول", "الأسطول"],
+    "modules/service": ["الخدمة", "الخدمة"],
     inventory: ["نظرة عامة", "نظرة عامة على المخزون"],
     "inventory/products": ["الأصناف", "المخزون حسب الصنف"],
     "inventory/movements": ["الحركات", "حركات المخزون"],
@@ -111,6 +121,7 @@ export const ar: Dict = {
       targets: ["المستهدفات", "المستهدفات الشهرية"],
       alerts: ["التنبيهات", "الحدود"],
       close: ["إقفال الشهر", "إقفال الأشهر وإعادة فتحها"],
+      modules: ["الوحدات", "المجالات التي تضيفها ومن يرى كلًا منها"],
     },
   },
   period: {
@@ -159,6 +170,7 @@ export const ar: Dict = {
   bud: bud.ar,
   doc: doc.ar,
   ink: ink.ar,
+  mods: mods.ar,
   val: val.ar,
   bp: bp.ar,
   viz: viz.ar,

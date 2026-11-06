@@ -16,6 +16,8 @@ export interface AccountLine {
 export interface AlertSetting { active: boolean; threshold: number | null }
 
 export interface CompanyBundle {
+  /** The modules the company opened or closed, and the ones it built (company_modules). */
+  modules?: import("@/lib/modules/company").CompanyModule[];
   id: string;
   name: string;
   basePath: string;
@@ -28,6 +30,8 @@ export interface CompanyBundle {
   readOnly: boolean;
   /** The signed-in person's role in the company's organisation (absent in the demo). */
   role?: string;
+  /** The signed-in person (for modules shared with named people). */
+  userId?: string;
   lastUpdated?: string | null;
   orgName?: string;
   notes?: string[];
