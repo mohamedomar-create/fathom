@@ -14,6 +14,7 @@ import { subLedgerStatus } from "@/lib/company/data-status";
 import { DataSteps, type DataFacts } from "@/components/data/data-steps";
 import { SystemPicker } from "@/components/data/system-picker";
 import { IntakeCard } from "@/components/intake/intake-card";
+import { AreasMissed } from "@/components/data/areas-missed";
 
 /** The sub-ledger checks need every summary: they arrive after the steps, which show at once. */
 async function WithSubLedgers({ id, facts }: { id: string; facts: DataFacts }) {
@@ -28,11 +29,13 @@ async function WithSubLedgers({ id, facts }: { id: string; facts: DataFacts }) {
   return <DataSteps facts={facts} sub={{ ...sub, unread, pending }} />;
 }
 
-export default async function DataStepsPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function DataStepsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ areas_missed?: string }> }) {
   const { id } = await params;
+  const { areas_missed } = await searchParams;
+  const missed = (areas_missed ?? "").split(",").filter((k) => /^[a-z][a-z0-9_]{1,39}$/.test(k)).slice(0, 20);
   const { supabase } = await getUser();
   const meta = await loadCompanyMeta(id);
   const facts = await loadDataFacts(supabase, id, meta.dataVersion);
-  return <><SystemPicker /><IntakeCard /><Suspense fallback={<DataSteps facts={facts} sub={null} />}><WithSubLedgers id={id} facts={facts} /></Suspense></>;
+  return <>{missed.length > 0 && <AreasMissed id={id} keys={missed} />}<SystemPicker /><IntakeCard /><Suspense fallback={<DataSteps facts={facts} sub={null} />}><WithSubLedgers id={id} facts={facts} /></Suspense></>;
 }
 export const maxDuration = 60;

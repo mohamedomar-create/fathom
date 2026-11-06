@@ -81,6 +81,12 @@ test("modules follow the company: setup picks the areas, HR is admins-only, CRM 
   await expect(page.getByTestId("module-filters")).toContainText("Sales");
   await expect(page.getByTestId("module-total")).toContainText("37,000");
   await expect(page.getByTestId("module-table").locator("tbody tr")).toHaveCount(2);
+  // A year of a snapshot list is the list at its latest month, never added up; a foreign ?end= opens its own latest month.
+  await page.goto(`/company/${id}/modules/hr?type=year&end=2026-10`);
+  await expect(page.getByTestId("module-rows")).toContainText("3");
+  await page.goto(`/company/${id}/modules/hr?end=2019-01`);
+  await expect(page.getByTestId("period-end")).toContainText("Oct");
+  await expect(page.getByTestId("module-rows")).toContainText("3");
 
   // A CRM pipeline: its module isn't open, so the file offers to open it, and waits.
   await upload(page, id, await book("Pipeline.xlsx", { Pipeline: [

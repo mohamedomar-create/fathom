@@ -29,31 +29,15 @@ export async function setModuleOn(companyId: string, key: string, on: boolean): 
   return done(companyId);
 }
 
-/** Every area at once, from the setup picker: the ones picked are opened, the built-in ones not picked are closed. */
-export async function chooseModules(companyId: string, picked: string[]): Promise<Result> {
-  const v = z.object({ c: Id, p: z.array(Key).max(40) }).safeParse({ c: companyId, p: picked });
-  if (!v.success) return { ok: false, error: "Unknown module." };
-  const supabase = await session();
-  if (!supabase) return { ok: false, error: "Please sign in again." };
-  const want = new Set(v.data.p);
-  for (const k of [...BUILTIN, "purchasing", ...MODULE_KEYS.filter((k) => !["sales", "expenses", "ar_open", "ap_open", "payments", "purchasing"].includes(k))]) {
-    const catalog = !(BUILTIN as readonly string[]).includes(k) && k !== "purchasing";
-    // A catalog module not picked is simply left closed (no row); a built-in one not picked is turned off.
-    if (catalog && !want.has(k)) continue;
-    const { error } = await supabase.rpc("module_enable", { p_company: companyId, p_key: k, p_enabled: want.has(k) });
-    if (error) return { ok: false, error: dbError(error, "module_enable") };
-  }
-  return done(companyId);
-}
-
-export async function saveCustomModule(companyId: string, spec: unknown): Promise<Result> {
+/** isNew: a module being built (its key must be free); false when an existing module's definition is edited. */
+export async function saveCustomModule(companyId: string, spec: unknown, isNew = false): Promise<Result> {
   if (!Id.safeParse(companyId).success) return { ok: false, error: "Unknown company." };
   const v = ModuleSpecSchema.safeParse(spec);
   if (!v.success) return { ok: false, error: "The module is not complete: " + (v.error.issues[0]?.message ?? "check its fields") };
   if (!/^c_[a-z0-9_]{1,37}$/.test(v.data.key)) return { ok: false, error: "A module you build gets a key starting with c_." };
   const supabase = await session();
   if (!supabase) return { ok: false, error: "Please sign in again." };
-  const { error } = await supabase.rpc("module_save_custom", { p_company: companyId, p_key: v.data.key, p_name: v.data.name.en, p_spec: v.data as unknown as Json });
+  const { error } = await supabase.rpc("module_save_custom", { p_company: companyId, p_key: v.data.key, p_name: v.data.name.en, p_spec: v.data as unknown as Json, p_new: isNew === true });
   if (error) return { ok: false, error: dbError(error, "module_save_custom") };
   return done(companyId);
 }

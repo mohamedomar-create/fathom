@@ -16,6 +16,12 @@ const OPEN_BY_DEFAULT = new Set<string>([...BUILTIN, "purchasing"]);
 const ADMIN_ONLY = new Set(["hr", "payroll"]);
 const RANK: Record<string, number> = { viewer: 1, editor: 2, admin: 3, owner: 4 };
 
+/** Whether "who sees it" can be set: only for modules kept in the shared store, where the database enforces it. The
+ *  built-in areas live in their own tables with company-level access, so a limit there would only hide the page. */
+export function accessEditable(key: string): boolean {
+  return !(BUILTIN as readonly string[]).includes(key);
+}
+
 export function isOn(key: string, rows: CompanyModule[]): boolean {
   const r = rows.find((x) => x.key === key);
   return r ? r.enabled : OPEN_BY_DEFAULT.has(key);

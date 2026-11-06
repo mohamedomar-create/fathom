@@ -9,6 +9,7 @@ import type { PeriodType } from "@/lib/engine";
 import type { ModuleSpec } from "@/lib/modules/spec";
 import { specToDef } from "@/lib/modules/spec";
 import { isOn } from "@/lib/modules/company";
+import { moduleEnd, snapshotRange } from "@/lib/modules/view";
 
 const FIELD = /^[a-z][a-z0-9_]{0,39}$/;
 
@@ -36,18 +37,19 @@ export default async function ModuleRoute({ params, searchParams }: { params: Pr
   }
   const q = typeof sp.q === "string" ? sp.q.slice(0, 80) : "";
   const { supabase } = await getUser();
-  // The period in the URL; without one, the module's latest month (what its own period picker opens on).
-  let end = typeof sp.end === "string" && /^\d{4}-\d{2}$/.test(sp.end) ? sp.end : null;
-  if (!end) {
-    const first = await supabase.rpc("module_summary", { p_company: id, p_module: m.key, p_filters: filters });
-    const ps = ((first.data as { periods?: { period: string }[] } | null)?.periods ?? []).map((p) => p.period).sort();
-    end = ps[ps.length - 1] ?? null;
-  }
+  // The period: the URL's month when the module holds it, else its latest month, exactly as the page's own period picker
+  // reads it (a foreign or bad ?end= never gives the server one window and the page another).
+  const first = await supabase.rpc("module_summary", { p_company: id, p_module: m.key, p_filters: filters });
+  if (first.error?.code === "42501") return <ModulePage module={m.key} spec={spec} summary={null} rows={[]} base={`/company/${id}`} opened={opened} filters={filters} q={q} denied />;
+  const own = ((first.data as { periods?: { period: string }[] } | null)?.periods ?? []).map((p) => p.period);
+  const end = moduleEnd(own, typeof sp.end === "string" ? sp.end : null);
   const type = (["month", "quarter", "year"].includes(String(sp.type)) ? sp.type : "month") as PeriodType;
-  const w = end ? windowFor({ type, end }, c.settings.fyStartMonth) : null;
+  const win = end ? windowFor({ type, end }, c.settings.fyStartMonth) : null;
+  // A snapshot (headcount, asset register) is read at the latest month it holds in the window, never added up.
+  const w = win ? snapshotRange(win.periods, own, m.nature ?? "flow") : null;
   const [sum, page] = await Promise.all([
-    supabase.rpc("module_summary", { p_company: id, p_module: m.key, p_from: w?.start ?? null, p_to: w?.end ?? null, p_filters: filters, p_dims: dims, p_measures: (m.measures ?? []).filter((k) => FIELD.test(k)) }),
-    supabase.rpc("module_rows_page", { p_company: id, p_module: m.key, p_offset: 0, p_limit: 200, p_from: w?.start ?? null, p_to: w?.end ?? null, p_filters: filters, p_search: q || null }),
+    supabase.rpc("module_summary", { p_company: id, p_module: m.key, p_from: w?.from ?? null, p_to: w?.to ?? null, p_filters: filters, p_dims: dims, p_measures: (m.measures ?? []).filter((k) => FIELD.test(k)) }),
+    supabase.rpc("module_rows_page", { p_company: id, p_module: m.key, p_offset: 0, p_limit: 200, p_from: w?.from ?? null, p_to: w?.to ?? null, p_filters: filters, p_search: q || null }),
   ]);
   // A module the person may not see answers "not allowed": said so, never shown as empty.
   if (sum.error?.code === "42501") return <ModulePage module={m.key} spec={spec} summary={null} rows={[]} base={`/company/${id}`} opened={opened} filters={filters} q={q} denied />;

@@ -8,7 +8,8 @@ import { useT } from "@/lib/i18n/use-t";
 import { CATALOG_KEYS } from "@/lib/modules/catalog";
 import { isOn } from "@/lib/modules/company";
 import { moduleByKey } from "@/lib/modules/registry";
-import { suggestSpec } from "@/lib/modules/suggest";
+import { moduleKey, suggestSpec } from "@/lib/modules/suggest";
+import { MODULE_KEYS } from "@/lib/modules/registry";
 import type { ModuleSpec } from "@/lib/modules/spec";
 import type { Piece } from "@/lib/intake/split";
 import { saveCustomModule, setModuleOn } from "@/app/company/[id]/settings/modules-actions";
@@ -45,7 +46,9 @@ export function ModuleBuilder({ piece, onBuilt }: { piece: Piece; onBuilt: (key:
   const { d } = useT();
   const t = d.mods;
   const router = useRouter();
-  const draft = useMemo(() => suggestSpec(piece), [piece]);
+  // Keys already used by this company's modules and the built-in ones: a new module never overwrites one of them.
+  const taken = useMemo(() => [...MODULE_KEYS, ...(c.modules ?? []).map((m) => m.key)], [c.modules]);
+  const draft = useMemo(() => suggestSpec(piece, taken), [piece, taken]);
   const [open, setOpen] = useState(false);
   const [spec, setSpec] = useState<ModuleSpec>(draft);
   const [pending, start] = useTransition();
@@ -60,7 +63,7 @@ export function ModuleBuilder({ piece, onBuilt }: { piece: Piece; onBuilt: (key:
       <p className="mb-2 text-mute">{t.buildSub}</p>
       <div className="mb-3 flex flex-wrap gap-3">
         <label>{t.name} <input className="ms-1 rounded border border-line px-2 py-1" value={spec.name.en} maxLength={60} data-testid="module-build-name"
-          onChange={(e) => { const en = e.target.value; setSpec((s) => ({ ...s, name: { ...s.name, en }, key: `c_${en.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30) || "module"}` })); }} /></label>
+          onChange={(e) => { const en = e.target.value; setSpec((s) => ({ ...s, name: { ...s.name, en }, key: moduleKey(en, taken) })); }} /></label>
         <label>{t.nameAr} <input className="ms-1 rounded border border-line px-2 py-1" value={spec.name.ar} maxLength={60} dir="rtl" onChange={(e) => setSpec((s) => ({ ...s, name: { ...s.name, ar: e.target.value } }))} /></label>
       </div>
       <div className="overflow-x-auto">
@@ -84,7 +87,7 @@ export function ModuleBuilder({ piece, onBuilt }: { piece: Piece; onBuilt: (key:
           const date = spec.fields.find((f) => f.type === "date")?.key;
           const amount = spec.fields.find((f) => f.key === spec.amount && f.type === "money") ? spec.amount : spec.fields.find((f) => f.type === "money")?.key ?? spec.amount;
           const final: ModuleSpec = { ...spec, amount, ...(date ? { date } : {}), required: spec.required.length ? spec.required : [[spec.fields[0].key]] };
-          const r = await saveCustomModule(c.id, final);
+          const r = await saveCustomModule(c.id, final, true);
           if (!r.ok) { setError(r.error); return; }
           router.refresh();
           onBuilt(final.key);

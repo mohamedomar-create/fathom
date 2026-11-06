@@ -8,6 +8,7 @@ import { loadInventory } from "@/lib/company/inventory-load";
 import { fromWire } from "@/lib/company/inventory-wire";
 import { moduleOverview } from "@/lib/company/module-overview";
 import { MODULES } from "@/lib/modules/registry";
+import { customDefs, isOn, mayView } from "@/lib/modules/company";
 import type { PeriodTotal } from "@/lib/modules/view";
 import { ModulesHome } from "@/components/modules/modules-home";
 
@@ -15,9 +16,12 @@ import { ModulesHome } from "@/components/modules/modules-home";
 export default async function Page({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const c = await loadCompanyBundle(id);
-  if (c.months.length) redirect(`/company/${id}/summary`);
+  const rows = c.modules ?? [];
+  // Financials turned off: the home is the modules, even when books are stored.
+  if (c.months.length && isOn("financials", rows)) redirect(`/company/${id}/summary`);
   const { supabase } = await getUser();
-  const generic = MODULES.filter((m) => m.storage === "generic");
+  // Only the modules the company has open and the person may see are read.
+  const generic = [...MODULES, ...customDefs(rows)].filter((m) => m.storage === "generic" && isOn(m.key, rows) && mayView(m.key, rows, c.role ?? "viewer", c.userId));
   const [sales, expenses, payments, inventory, ...sums] = await Promise.all([
     loadSales(id), loadExpenses(id), loadPayments(id), loadInventory(id),
     ...generic.map((m) => supabase.rpc("module_summary", { p_company: id, p_module: m.key })),

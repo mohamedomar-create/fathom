@@ -17,7 +17,7 @@ import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { PageHeader } from "@/components/shell/page-header";
-import { moduleWindow } from "@/lib/modules/view";
+import { moduleWindow, snapshotRange } from "@/lib/modules/view";
 import { AgreesStrip } from "./agrees-strip";
 
 export interface ModuleSummary {
@@ -65,7 +65,9 @@ export function ModulePage({ module, spec, summary, rows, base, opened = true, f
   const w = moduleWindow(summary.periods, sel, c.settings.fyStartMonth, m.nature ?? "flow");
   const extra = [...new Set(rows.flatMap((r) => Object.keys(r.data ?? {})))].slice(0, 6);
   const measures = Object.entries(summary.measures ?? {});
-  const inWindow = (byMonth: Record<string, number>) => w.periods.reduce((s, p) => s + (byMonth[p] ?? 0), 0);
+  // A snapshot's measure is its latest month in the window (a headcount's salaries, not twelve months of them).
+  const range = snapshotRange(w.periods, own, m.nature ?? "flow");
+  const inWindow = (byMonth: Record<string, number>) => w.periods.filter((p) => p >= range.from && p <= range.to).reduce((s, p) => s + (byMonth[p] ?? 0), 0);
   const active = Object.entries(filters).flatMap(([k, vs]) => vs.map((v) => ({ k, v })));
   return (
     <div data-testid="module-page" data-module={module}>

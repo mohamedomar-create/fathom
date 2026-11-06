@@ -26,20 +26,27 @@ import { unknownState } from "@/lib/company/loaded";
 import { DependencyNote } from "@/components/shell/module-state";
 import { getDict } from "@/lib/i18n/server";
 import { loadSales } from "@/lib/company/sales-load";
-import { crossChecks, expenseTotals, salesTotals } from "@/lib/crosscheck";
+import { agedTotals, crossChecks, expenseTotals, salesTotals } from "@/lib/crosscheck";
+import { customDefs, isOn, mayView } from "@/lib/modules/company";
+import { loadPayments } from "@/lib/company/payments-load";
 import { MODULES } from "@/lib/modules/registry";
 import type { PeriodTotal } from "@/lib/modules/view";
 import { CrossChecks } from "@/components/modules/cross-checks";
 
-/** Every module checked against the books and each other, from each module's own summary. */
+/** Every module checked against the books and each other, from each module's own summary. Only the modules the company
+ *  has open and the person may see are read (a summary for every store module would be ten calls for nothing). */
 async function CrossSection({ id }: { id: string }) {
   const { supabase } = await getUser();
-  const generic = MODULES.filter((m) => m.storage === "generic");
-  const [c, sales, expenses, ...sums] = await Promise.all([loadCompanyBundle(id), loadSales(id), loadExpenses(id), ...generic.map((m) => supabase.rpc("module_summary", { p_company: id, p_module: m.key }))]);
+  const c = await loadCompanyBundle(id);
+  const rows = c.modules ?? [];
+  const seen = (k: string) => isOn(k, rows) && mayView(k, rows, c.role ?? "viewer", c.userId);
+  const defs = [...MODULES, ...customDefs(rows)];
+  const generic = defs.filter((m) => m.storage === "generic" && seen(m.key));
+  const [sales, expenses, payments, ...sums] = await Promise.all([loadSales(id), loadExpenses(id), loadPayments(id), ...generic.map((m) => supabase.rpc("module_summary", { p_company: id, p_module: m.key }))]);
   const checks = crossChecks({
-    accounts: c.accounts, sales: salesTotals(sales.data), expenses: expenseTotals(expenses.data),
-    generic: generic.map((m, i) => ({ key: m.key, periods: ((sums[i].data as { periods?: PeriodTotal[] } | null)?.periods) ?? [] })),
-  });
+    accounts: c.accounts, sales: salesTotals(sales.data), expenses: expenseTotals(expenses.data), defs,
+    generic: [...generic.map((m, i) => ({ key: m.key, periods: ((sums[i].data as { periods?: PeriodTotal[] } | null)?.periods) ?? [] })), ...agedTotals(payments.data.data)],
+  }, seen);
   return <CrossChecks checks={checks} />;
 }
 

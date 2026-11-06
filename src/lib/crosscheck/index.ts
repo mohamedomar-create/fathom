@@ -1,9 +1,10 @@
 // One place where every module is checked against the others and against the books. The books are the master for money:
 // a difference is shown on both sides with its months (and documents where both hold them), never adjusted away. A check
 // whose other side isn't loaded is "not checked", never red; a module with no data has no check at all.
-import type { ClassKey } from "@/lib/engine";
+import { BS_KEYS, type ClassKey } from "@/lib/engine/types";
 import { tieOut, type TieOut } from "@/lib/engine/tieout";
 import { DEFS } from "@/lib/modules/defs";
+import { modulesNow } from "@/lib/modules/registry";
 import type { Bi, ModuleDef, TieDef } from "@/lib/modules/types";
 import type { PeriodTotal } from "@/lib/modules/view";
 
@@ -36,7 +37,11 @@ function check(tie: TieDef, a: string, totals: Record<string, number>, x: CrossI
   if (!months.length) return null;
   const base = { key: tie.key, label: tie.label, a, b: "ledger" };
   const cls = new Set<string>(tie.classes);
-  const held = new Set(x.accounts.flatMap((acc) => Object.keys(acc.amounts)));
+  // The months the books cover for this tie: P&L months for a movement, balance-sheet months for a balance. A month the
+  // books hold only on the other statement (an opening balance sheet, a P&L-only upload) is not checked, never red.
+  const bs = new Set<string>(BS_KEYS);
+  const side = (c: string) => (tie.basis === "balance" ? bs.has(c) : !bs.has(c));
+  const held = new Set(x.accounts.filter((acc) => side(acc.cls)).flatMap((acc) => Object.keys(acc.amounts)));
   if (!held.size) return { ...base, status: "not_checked", reason: "no_books", months: [], worst: null };
   const both = months.filter((p) => held.has(p));
   if (!both.length) return { ...base, status: "not_checked", reason: "no_overlap", months: [], worst: null };
@@ -56,7 +61,8 @@ export function crossChecks(x: CrossInput, visible: (module: string) => boolean 
     totals[g.key] = t;
   }
   const out: CrossCheck[] = [];
-  for (const def of x.defs ?? DEFS) {
+  // Every module the app knows now: the built-in ones, the catalog, and (in the browser) the company's own.
+  for (const def of x.defs ?? modulesNow()) {
     const t = totals[def.key];
     if (!t || !Object.keys(t).length || !visible(def.key)) continue;
     for (const tie of def.ties ?? []) { const c = check(tie, def.key, t, x); if (c) out.push(c); }
@@ -73,3 +79,13 @@ const byMonth = <T,>(rows: T[], p: (r: T) => string, a: (r: T) => number) => { c
 export const salesTotals = (d: { customers: { p: string; a: number }[] }) => byMonth(d.customers, (r) => r.p, (r) => r.a);
 /** Expense lines in cost classes totalled by month (stock purchases and unclassed lines are not costs). */
 export const expenseTotals = (d: { accounts: { p: string; c: string | null; a: number }[] }) => byMonth(d.accounts.filter((r) => r.c && COST_CLASSES.has(r.c)), (r) => r.p, (r) => r.a);
+
+/** The ageing reports as the open-items modules' totals at their as-of month, for the control-account checks. */
+export function agedTotals(d: { aged: Partial<Record<"receivable" | "payable", { asOf: string; total: { total: number } }>> }): CrossInput["generic"] {
+  const out: CrossInput["generic"] = [];
+  for (const [side, key] of [["receivable", "ar_open"], ["payable", "ap_open"]] as const) {
+    const a = d.aged[side];
+    if (a?.asOf) out.push({ key, periods: [{ period: a.asOf.slice(0, 7), amount: a.total.total, qty: null, rows: 0 }] });
+  }
+  return out;
+}

@@ -18,6 +18,8 @@ export const mods = area(
     name: "Module name", nameAr: "Arabic name", fieldType: "Type", measure: "Total it", dimension: "Group by", requiredField: "Required", create: "Create the module",
     types: { text: "Text", code: "Code", date: "Date", month: "Month", money: "Money", qty: "Quantity", percent: "Percent" } as Record<string, string>,
     built: (m: string) => `${m} is ready. Its rows are read below.`,
+    missed: (names: string) => `These areas could not be set up when the company was created: ${names}. Set them in Settings ▸ Modules.`,
+    missedLink: "Open Settings ▸ Modules",
   },
   {
     title: "الوحدات", sub: "كل مجال تضيفه وحدة لها الخطوات والفحوص ولوحة المتابعة نفسها. فعّل ما لديك؛ ويعرض ملف من نوع جديد فتح وحدته.",
@@ -35,5 +37,7 @@ export const mods = area(
     name: "اسم الوحدة", nameAr: "الاسم بالعربية", fieldType: "النوع", measure: "اجمعه", dimension: "جمّع حسبه", requiredField: "مطلوب", create: "أنشئ الوحدة",
     types: { text: "نص", code: "رمز", date: "تاريخ", month: "شهر", money: "مبلغ", qty: "كمية", percent: "نسبة" },
     built: (m: string) => `${m} جاهزة. صفوفها مقروءة أدناه.`,
+    missed: (names: string) => `تعذر ضبط هذه المجالات عند إنشاء الشركة: ${names}. اضبطها من الإعدادات ▸ الوحدات.`,
+    missedLink: "افتح الإعدادات ▸ الوحدات",
   },
 );

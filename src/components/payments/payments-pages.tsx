@@ -11,6 +11,8 @@ import { useLang } from "@/lib/i18n/context";
 import { useT } from "@/lib/i18n/use-t";
 import { useMsg } from "@/lib/i18n/msg";
 import { PageHeader } from "@/components/shell/page-header";
+import { AgreesStrip } from "@/components/modules/agrees-strip";
+import { agedTotals } from "@/lib/crosscheck";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { BarList } from "@/components/charts/bar-list";
 import { saveControlAccounts } from "@/app/company/[id]/settings/payments-actions";
@@ -207,6 +209,7 @@ export function PaymentsOverview() {
   return (
     <>
       <PageHeader title={t.title} right={<PeriodPicker own={months} />} />
+      <PaymentsAgrees />
       <Cockpit hero={
         <HeroKpi label={t.customersOwe} testId="tile-owed" value={rec ? money(rec.owed, cur) : "–"} deltaLabel={rec ? t.netCredits(money(rec.total, cur)) : t.noAgeing}
           story={<span data-testid="payments-headline">{headline}</span>}>
@@ -372,4 +375,11 @@ export function PaymentsFlows() {
       </div>
     </>
   );
+}
+
+/** The ageing reports checked against the customers' and suppliers' control accounts at their as-of month. */
+function PaymentsAgrees() {
+  const { data } = usePayments();
+  const input = useMemo(() => ({ generic: agedTotals(data) }), [data]);
+  return <AgreesStrip input={input} />;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { suggestSpec } from "@/lib/modules/suggest";
+import { moduleKey, suggestSpec } from "@/lib/modules/suggest";
 import { ModuleSpecSchema, specToDef } from "@/lib/modules/spec";
 import { pieceOf } from "@/lib/intake/split";
 import { mapPiece } from "@/lib/intake/map";
@@ -42,5 +42,34 @@ describe("suggestSpec: a table no module knows becomes a draft module the person
     const s = suggestSpec(pieceOf({ name: "Tickets", rows: [["Date", "Team", "Ticket"], ["2026-10-01", "A", "T1"], ["2026-10-02", "B", "T2"]] }));
     expect(ModuleSpecSchema.safeParse(s).success).toBe(true);
     expect(s.fields.find((f) => f.key === s.amount)?.type).toBe("money");
+  });
+});
+
+describe("moduleKey: a new module never takes a key already in use", () => {
+  it("adds a number when the name's key is taken", () => {
+    expect(moduleKey("Clinic visits", ["c_clinic_visits"])).toBe("c_clinic_visits_2");
+    expect(moduleKey("Clinic visits", ["c_clinic_visits", "c_clinic_visits_2"])).toBe("c_clinic_visits_3");
+  });
+  it("a name with no Latin letters gets c_module_<n>, unique too", () => {
+    expect(moduleKey("زيارات", [])).toBe("c_module_1");
+    expect(moduleKey("زيارات", ["c_module_1"])).toBe("c_module_2");
+  });
+  it("suggestSpec takes the keys already in use", () => {
+    expect(suggestSpec(visits, ["c_clinic_visits"]).key).toBe("c_clinic_visits_2");
+  });
+});
+
+describe("suggestSpec field keys stay apart from the stored columns", () => {
+  it("a text column called Amount and no money column: the added amount field gets its own key", () => {
+    const s = suggestSpec(pieceOf({ name: "T", rows: [["Date", "Amount", "Team"], ["2026-10-01", "high", "A"], ["2026-10-02", "low", "B"]] }));
+    const keys = s.fields.map((f) => f.key);
+    expect(new Set(keys).size).toBe(keys.length);
+    expect(ModuleSpecSchema.safeParse(s).success).toBe(true);
+    expect(s.fields.find((f) => f.key === s.amount)?.type).toBe("money");
+  });
+  it("columns called Partner or Doc don't take the filter names of the stored party and document", () => {
+    const s = suggestSpec(pieceOf({ name: "T", rows: [["Date", "Partner", "Doc", "Fee"], ["2026-10-01", "A", "X", 1], ["2026-10-02", "B", "Y", 2]] }));
+    expect(s.fields.map((f) => f.key)).not.toContain("partner");
+    expect(s.fields.map((f) => f.key)).not.toContain("doc");
   });
 });

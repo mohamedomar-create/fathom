@@ -95,7 +95,7 @@ const BOOKS = new Set<SectorKey>(["financials", "banking", "planning", "doctor",
 const OWNER: Partial<Record<SectorKey, string>> = { sales: "sales", expenses: "expenses", inventory: "inventory", payments: "payments" };
 
 /** The sectors this company shows, from the modules it has on: turned-off ones go, opened catalog and custom ones join. */
-export function sectorsFor(rows: CompanyModule[], role: string, userId: string | null | undefined): Sector[] {
+export function sectorsFor(rows: CompanyModule[], role: string, userId: string | null | undefined, lang: "en" | "ar" = "en"): Sector[] {
   const out: Sector[] = [];
   const purchasing = isOn("purchasing", rows);
   for (const s of SECTORS) {
@@ -106,7 +106,9 @@ export function sectorsFor(rows: CompanyModule[], role: string, userId: string |
   }
   const extras = openExtras(rows, role, userId);
   const items: NavItem[] = extras.map((r) => {
-    const name = r.name ?? moduleByKey(r.key)?.name.en ?? r.key;
+    // A catalog module's name in the page's language; a custom one's from its definition, else the name it was saved under.
+    const own = (r.spec as { name?: { en?: string; ar?: string } } | null)?.name;
+    const name = moduleByKey(r.key)?.name[lang] ?? own?.[lang] ?? r.name ?? r.key;
     return { href: `modules/${r.key}`, label: name, title: name, icon: Layers };
   });
   if (purchasing && !isOn("expenses", rows)) items.unshift({ href: "modules/purchasing", label: "Purchasing", title: "Purchasing", icon: ShoppingCart });

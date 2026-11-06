@@ -41,7 +41,21 @@ function typeOf(heading: string, values: Cell[]): FieldType {
   return "text";
 }
 
-export function suggestSpec(p: Piece): ModuleSpec {
+/** The store keeps a row's party and document in their own columns, and filters name them "partner" and "doc". */
+const RESERVED = new Set(["partner", "doc"]);
+
+/** A key for a new module from its name, never one already in use (c_name, c_name_2…; c_module_<n> with no Latin letters). */
+export function moduleKey(name: string, taken: readonly string[] = []): string {
+  const used = new Set(taken);
+  const base = name.toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 30);
+  if (!/^[a-z]/.test(base)) {
+    for (let n = 1; ; n++) if (!used.has(`c_module_${n}`)) return `c_module_${n}`;
+  }
+  if (!used.has(`c_${base}`)) return `c_${base}`;
+  for (let n = 2; ; n++) if (!used.has(`c_${base}_${n}`)) return `c_${base}_${n}`;
+}
+
+export function suggestSpec(p: Piece, taken: readonly string[] = []): ModuleSpec {
   const hr = headerRowOf(p.rows);
   const heads = (p.rows[hr] ?? []).map(text);
   const body = p.rows.slice(hr + 1).filter((r) => (r ?? []).some(filled));
@@ -50,6 +64,7 @@ export function suggestSpec(p: Piece): ModuleSpec {
   heads.forEach((h, c) => {
     if (!h) return;
     let key = slug(h, c);
+    if (RESERVED.has(key)) key = `${key}_name`;
     while (used.has(key)) key = `${key}_${c + 1}`;
     used.add(key);
     fields.push({ key, label: { en: h.slice(0, 80), ar: h.slice(0, 80) }, type: typeOf(h, body.map((r) => r?.[c] ?? null)), heading: h.slice(0, 80), headings: [h.slice(0, 80)] });
@@ -57,8 +72,12 @@ export function suggestSpec(p: Piece): ModuleSpec {
   let amount = fields.find((f) => f.type === "money")?.key;
   if (!amount) {
     // Nothing to total in money: an empty Amount field the file can add later, so the module is complete.
-    fields.push({ key: "amount", label: { en: "Amount", ar: "المبلغ" }, type: "money", heading: "Amount", headings: ["amount", "المبلغ"] });
-    amount = "amount";
+    let key = "amount";
+    while (used.has(key)) key = `${key}_value`;
+    used.add(key);
+    const heading = key === "amount" ? "Amount" : "Amount value";
+    fields.push({ key, label: { en: "Amount", ar: "المبلغ" }, type: "money", heading, headings: key === "amount" ? ["amount", "المبلغ"] : ["amount value"] });
+    amount = key;
   }
   const col = (k: string) => heads.findIndex((h, c) => h && fields.find((f) => f.key === k)?.heading === h.slice(0, 80) && c >= 0);
   const date = fields.find((f) => f.type === "date")?.key;
@@ -72,7 +91,7 @@ export function suggestSpec(p: Piece): ModuleSpec {
   const first = textFields[0]?.key ?? fields.find((f) => f.type === "code")?.key ?? fields[0].key;
   const name = (p.sheet || p.id || "My module").slice(0, 60);
   return {
-    key: `c_${slug(name, 0).replace(/^field_1$/, "module").slice(0, 30)}`,
+    key: moduleKey(name, taken),
     name: { en: name, ar: name },
     owns: { en: `Rows of ${name}`, ar: `صفوف ${name}` },
     fields,

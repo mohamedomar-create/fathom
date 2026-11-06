@@ -108,6 +108,14 @@ select public.module_save_custom((select co from ids), 'c_visits', 'Clinic visit
 insert into b select public.module_batch_begin((select co from ids), 'c_visits', array['2026-10']);
 select pg_temp.check('saves into its own custom module', (select count(*)::text from b), '1');
 select public.module_batch_cancel((select id from b));
+select pg_temp.check('a custom module can be closed', pg_temp.fails($$select public.module_enable((select co from ids), 'c_visits', false)$$), 'ran');
+select pg_temp.check('and opened again', pg_temp.fails($$select public.module_enable((select co from ids), 'c_visits', true)$$), 'ran');
+select pg_temp.check('it stays a custom module', (select kind || ':' || enabled from public.company_modules where company_id = (select co from ids) and key = 'c_visits'), 'custom:true');
+select pg_temp.check('a new module never overwrites one with the same key', pg_temp.fails($$select public.module_save_custom((select co from ids), 'c_visits', 'Other', '{"fields":[{"key":"x"}]}', true)$$), 'refused');
+select pg_temp.check('the first definition stays', (select name from public.company_modules where company_id = (select co from ids) and key = 'c_visits'), 'Clinic visits');
+select pg_temp.check('editing an existing one still saves', pg_temp.fails($$select public.module_save_custom((select co from ids), 'c_visits', 'Clinic visits', '{"fields":[{"key":"clinic"}]}')$$), 'ran');
+select pg_temp.check('access is set only on an opened module', pg_temp.fails($$select public.module_set_access((select co from ids), 'fleet', 'viewer')$$), 'refused');
+select pg_temp.check('setting access never opens a module', (select count(*)::text from public.company_modules where company_id = (select co from ids) and key = 'fleet'), '0');
 select pg_temp.login('cmo@x.test');
 select pg_temp.check('another company can''t use that key', pg_temp.fails($$select public.module_batch_begin((select other from ids), 'c_visits', array['2026-10'])$$), 'refused');
 select pg_temp.check('another company can''t read the modules list', (select count(*)::text from public.company_modules where company_id = (select co from ids)), '0');
@@ -124,6 +132,18 @@ select public.module_enable((select co from ids), 'purchasing', false);
 select pg_temp.login('cme@x.test');
 select pg_temp.check('a closed Purchasing refuses saves', pg_temp.fails($$select public.module_batch_begin((select co from ids), 'purchasing', array['2026-10'])$$), 'refused');
 select pg_temp.check('signed-out visitors can''t open modules', (select has_function_privilege('anon', 'public.module_enable(uuid, text, boolean)', 'execute'))::text, 'false');
+
+-- Clearing data respects who may see a module: an editor without HR access sees no HR file or count, and clearing the
+-- module store removes only what they may see.
+select pg_temp.login('cma@x.test');
+select public.module_set_access((select co from ids), 'hr', 'admin', '{}');
+select pg_temp.login('cme@x.test');
+select pg_temp.check('the preview names no HR file', (select count(*)::text from jsonb_array_elements(public.data_reset_preview((select co from ids)) #> '{modules,modules,uploads}') x where x ->> 'kind' = 'hr' or x ->> 'name' = 'staff.xlsx'), '0');
+select pg_temp.check('the preview counts only what the editor sees', (public.data_reset_preview((select co from ids)) #>> '{modules,modules,records}'), '3');
+select public.clear_company_data((select co from ids), 'modules', 3);
+select pg_temp.login('cma@x.test');
+select pg_temp.check('the editor''s clear left HR alone', (select count(*)::text from public.module_rows where module = 'hr'), '1');
+select pg_temp.check('and cleared what they could see', (select count(*)::text from public.module_rows where module = 'crm'), '0');
 reset role;
 -- Later tests re-run older migrations whose audit check doesn't know these actions.
 delete from public.company_data_audit where action like 'module\_%';

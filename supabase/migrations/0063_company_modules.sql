@@ -99,18 +99,28 @@ begin
   if p_company is null or not private.company_can(p_company, 'admin') then raise exception 'not allowed' using errcode = '42501'; end if;
   if not public.rate_limit_hit('module_admin', (select auth.uid())::text) then raise exception 'too many changes; try again later' using errcode = '53400'; end if;
   select case when k.kind = 'builtin' then 'builtin' else 'catalog' end, k.default_role into v_kind, v_role from private.module_keys k where k.key = p_key;
-  if v_kind is null and not exists (select 1 from public.company_modules where company_id = p_company and key = p_key and kind = 'custom') then
-    raise exception 'unknown module' using errcode = '22023';
+  -- A module the company built: its row (and definition) exists already; closing and opening it again only flips enabled.
+  if v_kind is null and exists (select 1 from public.company_modules where company_id = p_company and key = p_key and kind = 'custom') then
+    v_kind := 'custom';
   end if;
+  if v_kind is null then raise exception 'unknown module' using errcode = '22023'; end if;
+  if v_kind = 'custom' then
+    update public.company_modules set enabled = coalesce(p_enabled, true), updated_by = (select auth.uid()), updated_at = now()
+     where company_id = p_company and key = p_key;
+  else
   insert into public.company_modules (company_id, key, kind, enabled, min_role)
   values (p_company, p_key, v_kind, coalesce(p_enabled, true), coalesce(v_role, 'viewer'))
   on conflict (company_id, key) do update set enabled = excluded.enabled, updated_by = (select auth.uid()), updated_at = now();
+  end if;
   perform private.modules_audit(p_company, case when coalesce(p_enabled, true) then 'module_enable' else 'module_disable' end, p_key, '{}'::jsonb);
 end $$;
 
 -- A module the company builds from its own file. The definition is checked in the app (its schema) and here (key, size,
 -- at most 30 per company). Saving again updates it; the rows already saved stay.
-create or replace function public.module_save_custom(p_company uuid, p_key text, p_name text, p_spec jsonb)
+-- p_new: a module being built, never an edit, so a key already used (by any module of the company) is refused instead
+-- of overwriting that module's definition.
+drop function if exists public.module_save_custom(uuid, text, text, jsonb);
+create or replace function public.module_save_custom(p_company uuid, p_key text, p_name text, p_spec jsonb, p_new boolean default false)
 returns void language plpgsql security definer set search_path = '' as $$
 begin
   if p_company is null or not private.company_can(p_company, 'admin') then raise exception 'not allowed' using errcode = '42501'; end if;
@@ -118,6 +128,9 @@ begin
   if p_key !~ '^c_[a-z0-9_]{1,37}$' then raise exception 'a custom module key starts with c_' using errcode = '22023'; end if;
   if p_spec is null or jsonb_typeof(p_spec) <> 'object' or pg_column_size(p_spec) > 60000 then raise exception 'bad definition' using errcode = '22023'; end if;
   if coalesce(length(trim(p_name)), 0) = 0 or length(p_name) > 80 then raise exception 'name required (80 characters at most)' using errcode = '22023'; end if;
+  if coalesce(p_new, false) and exists (select 1 from public.company_modules where company_id = p_company and key = p_key) then
+    raise exception 'a module with this key exists already; choose another name' using errcode = '23505';
+  end if;
   if not exists (select 1 from public.company_modules where company_id = p_company and key = p_key)
      and (select count(*) from public.company_modules where company_id = p_company and kind = 'custom') >= 30 then
     raise exception 'at most 30 custom modules per company' using errcode = '22023';
@@ -139,18 +152,23 @@ begin
   if exists (select 1 from unnest(coalesce(p_members, '{}')) u where not exists (select 1 from public.memberships m where m.org_id = v_org and m.user_id = u)) then
     raise exception 'everyone named must be a member of this organisation' using errcode = '22023';
   end if;
-  if not exists (select 1 from public.company_modules where company_id = p_company and key = p_key) then
-    perform public.module_enable(p_company, p_key, true);
+  -- Access is set on a module the company has open; it never opens one. A module open by default (Purchasing) gets its
+  -- row here, as it is.
+  if not private.module_open(p_company, p_key) or exists (select 1 from private.module_keys where key = p_key and kind = 'builtin') then
+    raise exception 'open the module first' using errcode = '22023';
   end if;
+  insert into public.company_modules (company_id, key, kind, enabled, min_role)
+  select p_company, p_key, 'catalog', true, k.default_role from private.module_keys k where k.key = p_key
+  on conflict (company_id, key) do nothing;
   update public.company_modules set min_role = p_min_role, members = (select coalesce(array_agg(distinct u), '{}') from unnest(coalesce(p_members, '{}')) u),
          updated_by = (select auth.uid()), updated_at = now()
    where company_id = p_company and key = p_key;
   perform private.modules_audit(p_company, 'module_access', p_key, jsonb_build_object('min_role', p_min_role, 'members', coalesce(array_length(p_members, 1), 0)));
 end $$;
 
-revoke execute on function public.module_enable(uuid, text, boolean), public.module_save_custom(uuid, text, text, jsonb),
+revoke execute on function public.module_enable(uuid, text, boolean), public.module_save_custom(uuid, text, text, jsonb, boolean),
   public.module_set_access(uuid, text, public.member_role, uuid[]) from public, anon;
-grant execute on function public.module_enable(uuid, text, boolean), public.module_save_custom(uuid, text, text, jsonb),
+grant execute on function public.module_enable(uuid, text, boolean), public.module_save_custom(uuid, text, text, jsonb, boolean),
   public.module_set_access(uuid, text, public.member_role, uuid[]) to authenticated;
 
 -- ---------------------------------------------------------------- saving: only into an opened module the person may see
@@ -250,6 +268,139 @@ revoke execute on function public.module_summary(uuid, text, text, text, jsonb, 
   public.module_rows_page(uuid, text, integer, integer, text, text, jsonb, text) from public, anon;
 grant execute on function public.module_summary(uuid, text, text, text, jsonb, text[], text[]),
   public.module_rows_page(uuid, text, integer, integer, text, text, jsonb, text) to authenticated;
+
+-- ---------------------------------------------------------------- clearing data respects who may see a module
+-- 0062's preview and clear counted, listed and removed every module's rows; they now see only the modules the person may
+-- see (module_visible), so HR's file names and counts never reach someone without HR access, and their clear leaves HR.
+create or replace function private.reset_counts(p_company uuid, p_scope text)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  r jsonb := '{}'::jsonb;
+  n bigint;
+begin
+  if p_scope = 'financials' then
+    select count(*) into n from public.source_accounts where company_id = p_company; r := r || jsonb_build_object('accounts', n);
+    select count(*) into n from public.account_balances where company_id = p_company; r := r || jsonb_build_object('balances', n);
+    select count(*) into n from public.imports where company_id = p_company; r := r || jsonb_build_object('versions', n);
+    select count(*) into n from public.sales_lines where company_id = p_company and source = 'ledger'; r := r || jsonb_build_object('sales_lines_from_ledger', n);
+    select count(*) into n from public.expense_lines where company_id = p_company and source = 'ledger'; r := r || jsonb_build_object('expense_lines_from_ledger', n);
+    select count(*) into n from public.stock_ledger_lines where company_id = p_company; r := r || jsonb_build_object('stock_postings', n);
+    select count(*) into n from public.payment_lines l join public.payment_batches b on b.id = l.batch_id where b.company_id = p_company and b.source = 'ledger'; r := r || jsonb_build_object('payments_from_ledger', n);
+    select count(*) into n from public.commentary where company_id = p_company; r := r || jsonb_build_object('commentary', n);
+    select count(*) into n from public.reports where company_id = p_company; r := r || jsonb_build_object('reports', n);
+  elsif p_scope = 'sales' then
+    select count(*) into n from public.sales_lines where company_id = p_company; r := r || jsonb_build_object('sales_lines', n);
+  elsif p_scope = 'expenses' then
+    select count(*) into n from public.expense_lines where company_id = p_company; r := r || jsonb_build_object('expense_lines', n);
+  elsif p_scope = 'stock' then
+    select count(*) into n from public.stock_layers where company_id = p_company; r := r || jsonb_build_object('valuation_layers', n);
+    select count(*) into n from public.stock_moves where company_id = p_company; r := r || jsonb_build_object('stock_moves', n);
+    select count(*) into n from public.stock_onhand where company_id = p_company; r := r || jsonb_build_object('on_hand', n);
+    select count(*) into n from public.inventory_products where company_id = p_company; r := r || jsonb_build_object('products', n);
+    select count(*) into n from public.import_jobs where company_id = p_company; r := r || jsonb_build_object('import_jobs', n);
+  elsif p_scope = 'payments' then
+    select count(*) into n from public.aged_items where company_id = p_company; r := r || jsonb_build_object('ageing_items', n);
+    select count(*) into n from public.payment_lines where company_id = p_company; r := r || jsonb_build_object('payment_lines', n);
+  elsif p_scope = 'end_users' then
+    select count(*) into n from public.end_user_map where company_id = p_company; r := r || jsonb_build_object('end_user_choices', n);
+    select count(*) into n from public.agency_statement_lines where company_id = p_company; r := r || jsonb_build_object('statement_lines', n);
+  elsif p_scope = 'modules' then
+    select count(*) into n from public.module_rows x join public.module_batches b on b.id = x.batch_id and b.status = 'live' where x.company_id = p_company and private.module_visible(p_company, x.module); r := r || jsonb_build_object('module_rows', n);
+  else
+    raise exception 'unknown scope %', p_scope;
+  end if;
+  return r;
+end $$;
+revoke execute on function private.reset_counts(uuid, text) from public, anon, authenticated;
+
+create or replace function private.reset_uploads(p_company uuid, p_scope text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(jsonb_agg(u order by u ->> 'at' desc), '[]'::jsonb) from (select u from (
+    select jsonb_build_object('name', coalesce(filename, kind), 'at', created_at, 'kind', kind) u from public.imports where p_scope = 'financials' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, 'Sales lines'), 'at', created_at, 'kind', source) from public.sales_batches where p_scope = 'sales' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, 'Expense lines'), 'at', created_at, 'kind', source) from public.expense_batches where p_scope = 'expenses' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, kind), 'at', created_at, 'kind', kind) from public.inventory_batches where p_scope = 'stock' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, side), 'at', created_at, 'kind', side) from public.aged_reports where p_scope = 'payments' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, 'Payments'), 'at', created_at, 'kind', source) from public.payment_batches where p_scope = 'payments' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, 'Agency statement'), 'at', created_at, 'kind', 'statement') from public.agency_statement_batches where p_scope = 'end_users' and company_id = p_company
+    union all select jsonb_build_object('name', coalesce(filename, module), 'at', created_at, 'kind', module) from public.module_batches where p_scope = 'modules' and company_id = p_company and status = 'live' and private.module_visible(p_company, module)
+  ) a(u) order by u ->> 'at' desc limit 50) x
+$$;
+revoke execute on function private.reset_uploads(uuid, text) from public, anon, authenticated;
+
+create or replace function private.clear_scope(p_company uuid, p_scope text)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_cfg jsonb;
+begin
+  if p_scope = 'financials' then
+    delete from public.sales_batches where company_id = p_company and source = 'ledger';
+    delete from public.expense_batches where company_id = p_company and source = 'ledger';
+    delete from public.stock_ledger_batches where company_id = p_company;
+    delete from public.payment_batches where company_id = p_company and source = 'ledger';
+    delete from public.account_balances where company_id = p_company;
+    delete from public.source_accounts where company_id = p_company;
+    delete from public.imports where company_id = p_company;
+    delete from public.commentary where company_id = p_company;
+    delete from public.reports where company_id = p_company;
+    -- No figures left: the books read as empty, and the opening and Trial Balance check that described them go too.
+    select kpi_config into v_cfg from public.companies where id = p_company;
+    update public.companies set data_version = 0, last_synced_at = null,
+      kpi_config = case when v_cfg ? 'profile' then jsonb_set(v_cfg, '{profile}', (v_cfg -> 'profile') - 'openingAsAt' - 'tbCheck') else v_cfg end
+     where id = p_company;
+  elsif p_scope = 'sales' then
+    delete from public.sales_batches where company_id = p_company;
+  elsif p_scope = 'expenses' then
+    delete from public.expense_batches where company_id = p_company;
+  elsif p_scope = 'stock' then
+    -- An import the background runner is saving holds its job row: wait for nobody, refuse instead. Jobs still waiting or
+    -- being prepared are stopped and removed with the stock (D18).
+    begin
+      perform 1 from public.import_jobs where company_id = p_company for update nowait;
+    exception when lock_not_available then
+      raise exception 'A stock import is being saved right now; clear stock again once it has finished';
+    end;
+    if exists (select 1 from public.import_jobs where company_id = p_company and status in ('checking', 'saving')) then
+      raise exception 'A stock import is being saved right now; clear stock again once it has finished';
+    end if;
+    delete from public.import_jobs where company_id = p_company;
+    delete from public.stock_layers where company_id = p_company;
+    delete from public.stock_moves where company_id = p_company;
+    delete from public.stock_onhand where company_id = p_company;
+    delete from public.inventory_products where company_id = p_company;
+    delete from public.inventory_batches where company_id = p_company;
+    delete from public.inventory_rollups where company_id = p_company;
+    delete from private.inventory_marks where company_id = p_company;
+  elsif p_scope = 'payments' then
+    delete from public.aged_reports where company_id = p_company;
+    delete from public.payment_batches where company_id = p_company;
+    select kpi_config into v_cfg from public.companies where id = p_company;
+    update public.companies set kpi_config = jsonb_set(v_cfg, '{profile}', (v_cfg -> 'profile') - 'controlAccounts') where id = p_company and v_cfg ? 'profile';
+  elsif p_scope = 'end_users' then
+    delete from public.end_user_map where company_id = p_company;
+    delete from public.agency_statement_batches where company_id = p_company;
+  elsif p_scope = 'modules' then
+    -- Only the modules this person may see: an editor without HR access never removes (or learns of) HR rows.
+    delete from public.module_batches where company_id = p_company and private.module_visible(p_company, module);
+  else
+    raise exception 'unknown scope %', p_scope;
+  end if;
+end $$;
+revoke execute on function private.clear_scope(uuid, text) from public, anon, authenticated;
 
 insert into private.rate_scopes (scope, subject_kind, window_s, max_hits) values ('module_admin', 'user', 3600, 120)
 on conflict (scope) do update set subject_kind = excluded.subject_kind, window_s = excluded.window_s, max_hits = excluded.max_hits;

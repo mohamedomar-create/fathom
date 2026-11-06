@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { customDefs, isOn, mayView, openExtras } from "@/lib/modules/company";
+import { accessEditable, customDefs, isOn, mayView, openExtras } from "@/lib/modules/company";
 import { sectorsFor } from "@/components/shell/nav";
 
 const row = (key: string, kind: "builtin" | "catalog" | "custom", enabled = true, extra: Record<string, unknown> = {}) => ({ key, kind, enabled, name: null, min_role: "viewer" as const, members: [], spec: null, ...extra });
@@ -51,5 +51,26 @@ describe("navigation follows the company's modules", () => {
   });
   it("opened extras in order", () => {
     expect(openExtras([row("crm", "catalog"), row("hr", "catalog", false)], "admin", "u").map((m) => m.key)).toEqual(["crm"]);
+  });
+});
+
+describe("accessEditable: who-sees-it is offered only where the database enforces it", () => {
+  it("the shared-store modules (catalog, custom, Purchasing) can be limited", () => {
+    expect(accessEditable("hr")).toBe(true);
+    expect(accessEditable("crm")).toBe(true);
+    expect(accessEditable("c_visits")).toBe(true);
+    expect(accessEditable("purchasing")).toBe(true);
+  });
+  it("built-in areas keep company-level access, so no control is shown for them", () => {
+    for (const k of ["financials", "sales", "expenses", "inventory", "payments"]) expect(accessEditable(k)).toBe(false);
+  });
+});
+
+describe("module names in the navigation follow the language", () => {
+  it("a catalog module and a custom module read in Arabic on an Arabic page", () => {
+    const s = sectorsFor([row("hr", "catalog"), row("c_visits", "custom", true, { name: "Visits", spec: { name: { en: "Visits", ar: "الزيارات" } } })], "admin", "u1", "ar");
+    const labels = s.find((x) => x.key === "modules")!.items.map((i) => i.label);
+    expect(labels).toContain("الموارد البشرية (الموظفون)");
+    expect(labels).toContain("الزيارات");
   });
 });

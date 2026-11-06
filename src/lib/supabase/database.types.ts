@@ -173,7 +173,7 @@ export type Database = {
       module_summary: { Args: { p_company: string; p_module: string; p_from?: string | null; p_to?: string | null; p_filters?: Json; p_dims?: string[]; p_measures?: string[] }; Returns: Json };
       module_rows_page: { Args: { p_company: string; p_module: string; p_offset?: number; p_limit?: number; p_from?: string | null; p_to?: string | null; p_filters?: Json; p_search?: string | null }; Returns: Json };
       module_enable: { Args: { p_company: string; p_key: string; p_enabled?: boolean }; Returns: undefined };
-      module_save_custom: { Args: { p_company: string; p_key: string; p_name: string; p_spec: Json }; Returns: undefined };
+      module_save_custom: { Args: { p_company: string; p_key: string; p_name: string; p_spec: Json; p_new?: boolean }; Returns: undefined };
       module_set_access: { Args: { p_company: string; p_key: string; p_min_role: string; p_members?: string[] }; Returns: undefined };
       my_company_role: { Args: { p_company: string }; Returns: string | null };
       set_company_role: { Args: { p_company: string; p_user: string; p_role: string | null }; Returns: undefined };

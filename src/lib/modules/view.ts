@@ -24,3 +24,21 @@ export function moduleWindow(periods: PeriodTotal[], sel: PeriodSel, fyStart: nu
   const prior = before ? before.amount : null;
   return { ...now, prior, growth: prior ? (now.amount - prior) / Math.abs(prior) : null, periods: w.periods, label: w.label };
 }
+
+/** The month a module's page opens on: the one asked for when the module holds it, else the module's latest month (as
+ *  its own period picker does), so the server and the page always read the same window. */
+export function moduleEnd(own: string[], end: string | null | undefined): string | null {
+  const ps = [...own].sort();
+  if (end && /^\d{4}-(0[1-9]|1[0-2])$/.test(end) && ps.includes(end)) return end;
+  return ps[ps.length - 1] ?? null;
+}
+
+/** The months to read for a window: all of them for a flow module; for a snapshot, only the latest month it holds in the
+ *  window (a quarter of headcounts is the quarter's last headcount). With no month held, the window's end, which is empty. */
+export function snapshotRange(windowPeriods: string[], own: string[], nature: Nature = "flow"): { from: string; to: string } {
+  const w = [...windowPeriods].sort();
+  if (nature !== "snapshot") return { from: w[0], to: w[w.length - 1] };
+  const held = new Set(own);
+  const last = [...w].reverse().find((p) => held.has(p)) ?? w[w.length - 1];
+  return { from: last, to: last };
+}

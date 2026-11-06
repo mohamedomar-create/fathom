@@ -51,9 +51,11 @@ export async function createCompany(formData: FormData): Promise<{ error: string
   if (error) return { error: dbError(error, "createCompany") };
   // The areas picked at setup: built-in ones not picked are turned off, catalog ones picked are opened. Only admins can
   // choose modules; for anyone else (or before 0063) the company keeps the built-in set and an admin chooses later.
-  if (formData.has("areas_set") && v.mode !== "simple") await chooseAreas(supabase, data.id, formData.getAll("areas").map(String));
+  const missed = formData.has("areas_set") && v.mode !== "simple" ? await chooseAreas(supabase, data.id, formData.getAll("areas").map(String)) : [];
   revalidatePath("/companies");
-  redirect(v.mode === "simple" ? `/cash/${data.id}` : `/company/${data.id}/data${v.source === "odoo" ? "/odoo" : ""}`);
+  // Areas whose choice couldn't be saved are named on the Data page (Settings ▸ Modules sets them), never dropped silently.
+  const note = missed.length ? `?areas_missed=${encodeURIComponent(missed.join(","))}` : "";
+  redirect(v.mode === "simple" ? `/cash/${data.id}` : `/company/${data.id}/data${v.source === "odoo" ? "/odoo" : ""}${note}`);
 }
 
 export async function createDemoCompany(): Promise<{ error: string } | void> {
@@ -78,11 +80,14 @@ export async function createDemoCompany(): Promise<{ error: string } | void> {
 }
 
 const BUILTIN_AREAS = ["financials", "sales", "expenses", "purchasing", "inventory", "payments"];
-async function chooseAreas(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, picked: string[]) {
+/** Opens the areas picked and closes the core ones not picked; returns the ones whose choice could not be saved. */
+async function chooseAreas(supabase: Awaited<ReturnType<typeof getUser>>["supabase"], companyId: string, picked: string[]): Promise<string[]> {
   const want = new Set(picked.filter((k) => /^[a-z][a-z0-9_]{1,39}$/.test(k)));
   const calls = [...BUILTIN_AREAS.filter((k) => !want.has(k)).map((k) => [k, false] as const), ...[...want].filter((k) => !BUILTIN_AREAS.includes(k)).map((k) => [k, true] as const)];
+  const missed: string[] = [];
   for (const [k, on] of calls) {
     const { error } = await supabase.rpc("module_enable", { p_company: companyId, p_key: k, p_enabled: on });
-    if (error) { console.warn("createCompany: module choice not saved", k, error.code); return; }
+    if (error) { console.warn("createCompany: module choice not saved", k, error.code); missed.push(k); }
   }
+  return missed;
 }

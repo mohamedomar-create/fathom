@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useCompany } from "@/lib/company/context";
 import { useT } from "@/lib/i18n/use-t";
 import { CATALOG } from "@/lib/modules/catalog";
-import { isOn, mayView, type CompanyModule } from "@/lib/modules/company";
+import { accessEditable, isOn, mayView, type CompanyModule } from "@/lib/modules/company";
 import { setModuleAccess, setModuleOn } from "@/app/company/[id]/settings/modules-actions";
 
 const AREAS = ["financials", "sales", "expenses", "purchasing", "inventory", "payments"] as const;
@@ -30,7 +30,7 @@ export function ModulesSettings({ people }: { people: { userId: string; label: s
       <li key={key} className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 first:border-t-0" data-testid={`mod-${key}`} data-on={on}>
         <span><b className="font-medium">{nameOf(key)}</b>{sub && <span className="block text-sm text-mute">{sub}</span>}</span>
         <span className="flex items-center gap-3">
-          {on && <Access row={rows.find((r) => r.key === key)} k={key} people={people} admin={admin} onSave={(role, members) => run(() => setModuleAccess(c.id, key, role, members))} />}
+          {on && accessEditable(key) && <Access row={rows.find((r) => r.key === key)} k={key} people={people} admin={admin} onSave={(role, members) => run(() => setModuleAccess(c.id, key, role, members))} />}
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={on} disabled={!admin || pending} onChange={(e) => toggle(key, e.target.checked)} data-testid={`mod-toggle-${key}`} />{on ? t.on : t.off}
           </label>
