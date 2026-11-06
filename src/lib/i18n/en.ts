@@ -135,6 +135,13 @@ export const en = {
     body: (name: string) => `Upload an Odoo export or connect your Odoo database to see KPIs, breakeven, cash flow and more for ${name}.`,
     bodyOther: (name: string) => `Upload your General Ledger or Trial Balance (Excel or CSV) to see KPIs, breakeven, cash flow and more for ${name}.`,
     add: "Add financial data",
+    home: "Your modules",
+    homeBody: (name: string) => `What ${name} has loaded so far. Each module works on its own; add the books to see profit, cash and KPIs too.`,
+    homeNone: "No module holds data yet. Start with any file: sales, expenses, stock, payments, or the books.",
+    seeModules: "See your modules",
+    latest: (m: string) => `Latest month ${m}`,
+    monthsLoaded: (n: number) => `${n} month${n === 1 ? "" : "s"} loaded`,
+    open: "Open",
     /** What each page will show once the books are in. */
     pages: { summary: "The executive summary: profit, cash and what needs attention, in one page.", kpis: "Your KPIs scored against your targets.", banking: "How a bank reads your company: repayment cover, leverage and room to borrow.", valuation: "What your company is worth, from the quick-sale floor to what an investor could pay.", doctor: "The AI system doctor: what is wrong in the books, ranked by money at stake.", planning: "Your budget and business plan, built from your own figures.", analysis: "Statements, profitability, growth, trends and forecast." } as Record<string, string>,
   },

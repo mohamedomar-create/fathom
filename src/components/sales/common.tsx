@@ -5,6 +5,7 @@ import { ShoppingBag } from "lucide-react";
 import { hasPL, money, pct, salesAnalysis, salesFromAccounts, salesMonths, type SalesFinding, type SalesRow } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
+import { ownMonths } from "@/lib/company/own-months";
 import { useSales } from "@/lib/company/sales-context";
 import { Delta } from "@/components/ui/status";
 import { PeriodPicker } from "@/components/shell/period-picker";
@@ -21,25 +22,28 @@ import { KpiTile } from "@/components/viz/kpi";
 export function useSalesAnalysis() {
   const c = useCompany();
   const lines = useSales();
-  const { sel, cmp } = usePeriod();
-  const lang = useLang();
-  return useMemo(() => {
+  const base = useMemo(() => {
     const fromAccounts = !salesMonths(lines).length;
     const data = fromAccounts ? salesFromAccounts(c.accounts) : lines;
-    const months = salesMonths(data);
+    return { fromAccounts, data, months: salesMonths(data) };
+  }, [lines, c.accounts]);
+  const own = useMemo(() => ownMonths(c.months.length, base.months), [c.months.length, base.months]);
+  const { sel, cmp } = usePeriod(own);
+  const lang = useLang();
+  return useMemo(() => {
+    const { fromAccounts, data, months } = base;
     if (!months.length) return null;
     const end = sel.end && months.includes(sel.end) ? sel.end : sel.end && sel.end <= months[months.length - 1] && sel.end >= months[0] ? sel.end : months[months.length - 1];
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return { ...salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, lang, asOf: c.asOf }), fromAccounts };
-  }, [lines, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang, c.asOf]);
+    return { ...salesAnalysis(data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, lang, asOf: c.asOf }), fromAccounts, own };
+  }, [base, own, sel.type, sel.end, cmp, c.months, c.settings.fyStartMonth, lang, c.asOf]);
 }
 
-/** The period picker, which reads the financial months; with sales only, the latest sales month is shown instead. */
-export function SalesPicker({ s, mode }: { s: { window: { label: string } } | null; mode?: "for" | "upto" }) {
+/** The period picker: the financial months when the books are loaded, else the sales' own months (never a fixed label). */
+export function SalesPicker({ s, mode }: { s: { own?: string[] } | null; mode?: "for" | "upto" }) {
   const c = useCompany();
-  const T = useT();
   if (c.months.length) return <PeriodPicker mode={mode} />;
-  return s ? <span className="text-[15px]" data-testid="sales-period">{T.d.sales.salesFor} <b>{T.pl(s.window.label)}</b> <span className="text-xs text-mute">{T.d.sales.addGl}</span></span> : null;
+  return s?.own ? <PeriodPicker mode={mode} own={s.own} /> : null;
 }
 
 export function NoSales() {

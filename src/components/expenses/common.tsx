@@ -6,6 +6,7 @@ import { accountsFromLines, bridgeAxis, expenseMonths, expensesAnalysis, hasPL, 
 import { useCustomerNames } from "@/lib/company/sales-context";
 import { useCompany } from "@/lib/company/context";
 import { usePeriod } from "@/lib/company/use-period";
+import { ownMonths } from "@/lib/company/own-months";
 import { useExpenses } from "@/lib/company/expenses-context";
 import { Delta } from "@/components/ui/status";
 import { Sparkline } from "@/components/charts/spark";
@@ -29,25 +30,25 @@ export function useExpensesAnalysis() {
   const c = useCompany();
   const data = useExpenses();
   const names = useCustomerNames();
-  const { sel, cmp } = usePeriod();
+  const lineMonths = useMemo(() => expenseMonths(data), [data]);
+  const fromPL = useMemo(() => c.accounts.some((a) => isExpenseClass(a.cls)), [c.accounts]);
+  const own = useMemo(() => (fromPL ? undefined : ownMonths(c.months.length, lineMonths)), [fromPL, c.months.length, lineMonths]);
+  const { sel, cmp } = usePeriod(own);
   const lang = useLang();
   return useMemo(() => {
-    const fromPL = c.accounts.some((a) => isExpenseClass(a.cls));
-    const lineMonths = expenseMonths(data);
     if (!fromPL && !lineMonths.length) return null;
     const end = fromPL ? sel.end : sel.end && lineMonths.includes(sel.end) ? sel.end : lineMonths[lineMonths.length - 1];
     if (!end) return null;
     const revenue = Object.fromEntries(c.months.filter(hasPL).map((m) => [m.period, m.pl.revenue ?? 0]));
-    return expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang, fromLines: !fromPL, asOf: c.asOf });
-  }, [data, names, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang, c.asOf]);
+    return { ...expensesAnalysis(fromPL ? c.accounts : accountsFromLines(data), data, { type: sel.type, end }, c.settings.fyStartMonth, { comparison: cmp === "ly" ? "ly" : "prior", revenue, customers: new Set(names), lang, fromLines: !fromPL, asOf: c.asOf }), own };
+  }, [data, names, fromPL, lineMonths, own, sel.type, sel.end, cmp, c.accounts, c.months, c.settings.fyStartMonth, lang, c.asOf]);
 }
 
-/** The period picker, which reads the financial months; with an expenses file only, the latest month is shown instead. */
-export function ExpensesPicker({ s, mode }: { s: { window: { label: string } } | null; mode?: "for" | "upto" }) {
+/** The period picker: the financial months when the books are loaded, else the expense lines' own months. */
+export function ExpensesPicker({ s, mode }: { s: { own?: string[] } | null; mode?: "for" | "upto" }) {
   const c = useCompany();
-  const T = useT();
   if (c.months.length) return <PeriodPicker mode={mode} />;
-  return s ? <span className="text-[15px]" data-testid="expenses-period">{T.d.sales.salesFor} <b>{T.pl(s.window.label)}</b> <span className="text-xs text-mute">{T.d.sales.addGl}</span></span> : null;
+  return s?.own ? <PeriodPicker mode={mode} own={s.own} /> : null;
 }
 export type ExpensesView = NonNullable<ReturnType<typeof useExpensesAnalysis>>;
 

@@ -33,6 +33,8 @@ export interface TieDef {
 
 export interface ModuleDef {
   key: string;
+  /** "snapshot": a list held at each month end (headcount, assets), never added up across months. Default "flow". */
+  nature?: "flow" | "snapshot";
   name: Bi;
   /** What the module owns: one owner per record, so nothing is counted twice. */
   owns: Bi;

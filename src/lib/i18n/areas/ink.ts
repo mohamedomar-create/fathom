@@ -43,7 +43,7 @@ export const ink = area(
       total: "Total", rows: "Rows", docs: "Documents", partners: "Partners", byMonth: "By month", top: "Top partners", detail: "Rows",
       empty: "Nothing here yet. Upload a workbook with Smart upload: a table of this kind goes here.", upload: "Smart upload",
       month: "Month", doc: "Document", partner: "Partner", amount: "Amount", qty: "Quantity", day: "Date", more: "Show more",
-      owns: (x: string) => `This module holds ${String(x).toLowerCase()}.`, files: (n: number) => `${n} upload${s(n)}`,
+      owns: (x: string) => `This module holds ${String(x).toLowerCase()}.`, allTime: "all months", vsLastYear: "vs the same period last year", files: (n: number) => `${n} upload${s(n)}`,
     },
   },
   {
@@ -82,7 +82,7 @@ export const ink = area(
       total: "الإجمالي", rows: "الصفوف", docs: "المستندات", partners: "الأطراف", byMonth: "حسب الشهر", top: "أكبر الأطراف", detail: "الصفوف",
       empty: "لا شيء هنا بعد. ارفع ملفًا بالرفع الذكي: الجداول من هذا النوع تأتي هنا.", upload: "الرفع الذكي",
       month: "الشهر", doc: "المستند", partner: "الطرف", amount: "المبلغ", qty: "الكمية", day: "التاريخ", more: "عرض المزيد",
-      owns: (x: string) => `تضم هذه الوحدة ${x}.`, files: (n: number) => `${n} رفع`,
+      owns: (x: string) => `تضم هذه الوحدة ${x}.`, allTime: "كل الشهور", vsLastYear: "مقارنة بالفترة نفسها من العام الماضي", files: (n: number) => `${n} رفع`,
     },
   },
 );
