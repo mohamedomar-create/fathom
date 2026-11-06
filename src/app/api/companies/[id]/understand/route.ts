@@ -22,7 +22,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const { id } = await ctx.params;
   if (!z.string().uuid().safeParse(id).success) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (Number(req.headers.get("content-length") ?? 0) > 64_000) return NextResponse.json({ error: "Send a sample of the table, not the file." }, { status: 413 });
-  const body = await req.json().catch(() => null);
+  const raw = await req.text().catch(() => "");
+  if (raw.length > 64_000) return NextResponse.json({ error: "Send a sample of the table, not the file." }, { status: 413 });
+  let body: unknown = null;
+  try { body = JSON.parse(raw); } catch { /* answered below */ }
   const parsed = z.object({ sample: Sample }).safeParse(body);
   if (!parsed.success) return NextResponse.json({ error: "Send a sample of the table (at most 30 rows and 30 columns)." }, { status: 400 });
   const { supabase, user } = await getUser();

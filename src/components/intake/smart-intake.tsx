@@ -12,13 +12,15 @@ import { planIntake, placePiece, type PlannedPiece } from "@/lib/intake/plan";
 import { reconcile } from "@/lib/intake/reconcile";
 import { templateOf } from "@/lib/intake/adapters";
 import { checkSuggestion, sampleOf, type CheckedSuggestion, type Suggestion } from "@/lib/intake/ai-sample";
-import { savePiece, saveOrder } from "@/lib/intake/save";
+import { saveGroup, saveOrder } from "@/lib/intake/save";
+import { combineForSave, type SaveGroup } from "@/lib/intake/combine";
+import { prepareGroup } from "@/lib/intake/prepare";
 import type { SavedLayouts } from "@/lib/intake/memory";
 import { useT } from "@/lib/i18n/use-t";
 import { cn } from "@/lib/cn";
 
 type Phase = "upload" | "review" | "preview" | "save" | "done";
-interface Choice { module?: string | null; override?: Record<number, string | null>; headerRow?: number; asOf?: string; anyway?: boolean; ai?: CheckedSuggestion | null }
+interface Choice { module?: string | null; override?: Record<number, string | null>; headerRow?: number; asOf?: string; anyway?: boolean; confirmed?: boolean; ai?: CheckedSuggestion | null }
 
 const STEPS = ["read", "split", "understand", "map", "check", "preview", "save", "done"] as const;
 const at: Record<Phase, number> = { upload: 0, review: 4, preview: 5, save: 6, done: 7 };
@@ -48,6 +50,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
   const t = d.ink;
   const [phase, setPhase] = useState<Phase>("upload");
   const [grids, setGrids] = useState<Grid[] | null>(null);
+  const [workbook, setWorkbook] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [choices, setChoices] = useState<Record<string, Choice>>({});
@@ -62,15 +65,22 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
     if (!c || (c.module === undefined && !c.override && c.headerRow === undefined && !c.asOf)) return p;
     const mod = c.module === undefined ? p.module : c.module;
     if (p.layout && c.module === undefined) return p;
-    return { ...placePiece(p.piece, mod, { remembered: p.remembered }, { override: c.override, headerRow: c.headerRow, asOf: c.asOf }), band: mod === p.module ? p.band : "sure", why: mod === p.module ? p.why : `${t.module}: ${mname(mod)}` };
+    const same = mod === p.module;
+    // A remembered table keeps its remembered mapping and headings row when only something else (the as-of day) changes.
+    return { ...placePiece(p.piece, mod, { remembered: same && p.remembered, savedMapping: same ? p.savedMapping : undefined }, { override: c.override, saved: same && !c.override ? p.savedMapping : undefined, headerRow: c.headerRow ?? (same ? p.map?.headerRow : undefined), asOf: c.asOf }), band: same ? p.band : "sure", why: same ? p.why : `${t.module}: ${mname(mod)}` };
   }), [base0, choices]); // eslint-disable-line react-hooks/exhaustive-deps
   const included = pieces.filter((p) => choices[p.id]?.module !== null && p.module && (p.layout ? p.layout === "odoo_aged" && !!p.aged : !!p.read));
   const checks = useMemo(() => reconcile(included.filter((p) => p.read).map((p) => ({ id: p.id, module: p.module!, records: p.read!.records }))), [included]);
+  const groups = useMemo(() => saveOrder(combineForSave(included)), [included]);
+  const prepared = useMemo(() => groups.map((g) => prepareGroup(g, currency, workbook)), [groups, currency, workbook]);
   const blocked = pieces.some((p) => {
     if (choices[p.id]?.module === null || p.layout) return false;
     if (!p.module) return true;
+    // "Please confirm" means confirm: the table is not saved on a guess.
+    if (p.band === "likely" && !choices[p.id]?.confirmed && choices[p.id]?.module === undefined) return true;
     return (p.map?.missing.length ?? 0) > 0 || (p.needs?.length ?? 0) > 0 || (!p.read?.proof.ok && !choices[p.id]?.anyway);
   });
+  const gkey = (g: SaveGroup) => `${g.module}|${g.aged?.asOf ?? ""}|${g.pieces.map((p) => p.id).join(",")}`;
   const set = (id: string, c: Partial<Choice>) => setChoices((x) => ({ ...x, [id]: { ...x[id], ...c } }));
 
   async function read(files: FileList | null) {
@@ -80,7 +90,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
       const ok = [...files].filter((f) => supportedFile(f.name) && f.size <= 25 * 1024 * 1024);
       if (!ok.length) throw new Error(t.dropHint);
       const { grids } = await readForUpload(await Promise.all(ok.map(async (f) => ({ name: f.name, data: await f.arrayBuffer() }))));
-      setGrids(grids); setChoices({}); setPhase("review");
+      setGrids(grids); setWorkbook(ok.map((f) => f.name).join(", ").slice(0, 150)); setChoices({}); setPhase("review");
     } catch (e) { setErr((e as Error).message || t.readFail); }
     finally { setBusy(false); }
   }
@@ -99,12 +109,13 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
   async function save() {
     setPhase("save"); setErr(null);
     const done = { ...saving.done };
-    for (const p of saveOrder(included)) {
-      if (p.id in done) continue;
-      setSaving({ done, current: p.id, failed: null });
-      const r = await savePiece(companyId, p, currency);
-      if (!r.ok) { setSaving({ done, current: null, failed: { id: p.id, error: r.error } }); return; }
-      done[p.id] = r.saved;
+    for (const g of groups) {
+      const k = gkey(g);
+      if (k in done) continue;
+      setSaving({ done, current: g.pieces.map((p) => p.id).join(", "), failed: null });
+      const r = await saveGroup(companyId, g, currency, workbook);
+      if (!r.ok) { setSaving({ done, current: null, failed: { id: g.pieces.map((p) => p.id).join(", "), error: r.error } }); return; }
+      done[k] = r.saved;
     }
     setSaving({ done, current: null, failed: null });
     setPhase("done");
@@ -129,12 +140,16 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
       <Rail phase={phase} />
       <h2 className="mb-3 text-xl font-semibold">{t.done}</h2>
       <ul className="space-y-2">
-        {saveOrder(included).map((p) => (
-          <li key={p.id} className="flex flex-wrap items-center justify-between gap-2 rounded border border-line px-4 py-3" data-testid="intake-done-row">
-            <span>{t.doneRow(p.id, mname(p.module), saving.done[p.id] ?? 0)}</span>
-            <Link prefetch={false} className="text-brand-d underline" href={`${base}/${moduleByKey(p.module!)?.sector === "payments" ? "payments" : moduleByKey(p.module!)?.key === "purchasing" ? "expenses/purchasing" : moduleByKey(p.module!)?.sector}`}>{t.see}</Link>
-          </li>
-        ))}
+        {groups.map((g) => {
+          const m = moduleByKey(g.module)!;
+          const href = m.storage === "generic" ? `modules/${m.key}` : m.sector;
+          return (
+            <li key={gkey(g)} className="flex flex-wrap items-center justify-between gap-2 rounded border border-line px-4 py-3" data-testid="intake-done-row">
+              <span>{t.doneRow(g.pieces.map((p) => p.id).join(", "), mname(g.module), saving.done[gkey(g)] ?? 0)}</span>
+              <Link prefetch={false} className="text-brand-d underline" href={`${base}/${href}`}>{t.see}</Link>
+            </li>
+          );
+        })}
       </ul>
       <button type="button" className="mt-6 rounded-md border border-line px-4 py-2" onClick={() => { setGrids(null); setPhase("upload"); setSaving({ done: {}, current: null, failed: null }); }}>{t.start}</button>
     </div>
@@ -161,7 +176,10 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
           </section>
         );
       })}
-      <p className="mb-3 text-sm text-mute">{t.replaces}</p>
+      <section className="mb-4 rounded border border-line bg-band px-4 py-3 text-sm" data-testid="intake-replaces">
+        <p className="mb-1 font-medium">{t.replaces}</p>
+        <ul>{prepared.map((p) => <li key={p.name}>{mname(p.module)}: {p.kind === "aged" ? t.asOf + " " + p.aged.asOf : p.months.join(", ")}{p.unsaved.length > 0 && <span className="text-red"> · {p.unsaved.length} ✗</span>}</li>)}</ul>
+      </section>
       {saving.current && <p className="mb-3" role="status" data-testid="intake-saving">{t.saving(saving.current)}</p>}
       {saving.failed && <p className="mb-3 text-red" role="alert" data-testid="intake-save-error">{t.saveFail(saving.failed.id, saving.failed.error)}</p>}
       <div className="flex flex-wrap gap-3">
@@ -192,7 +210,7 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
               {!p.layout && (
                 <label className="text-sm">
                   <span className="me-2">{t.module}</span>
-                  <select className="rounded border border-line px-2 py-1" data-testid="intake-module" value={out ? "" : p.module ?? "?"} onChange={(e) => set(p.id, { module: e.target.value === "" ? null : e.target.value, override: undefined, headerRow: undefined })}>
+                  <select className="rounded border border-line px-2 py-1" data-testid="intake-module" value={out ? "" : p.module ?? "?"} onChange={(e) => set(p.id, { module: e.target.value === "" ? null : e.target.value, override: undefined, headerRow: undefined, anyway: false })}>
                     {!p.module && <option value="?" disabled>{t.pick}</option>}
                     {MODULES.map((x) => <option key={x.key} value={x.key}>{lang === "ar" ? x.name.ar : x.name.en}</option>)}
                     <option value="">{t.none}</option>
@@ -202,6 +220,9 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
             </div>
             {p.layout && (
               <p className="mt-3 text-sm">{p.layout === "odoo_aged" ? p.why : t.layout} {p.layout !== "odoo_aged" && <Link prefetch={false} className="text-brand-d underline" href={`${base}/data/upload?step=${LAYOUT_STEP[p.layout] ?? "financials"}`}>{t.layoutGo}</Link>}</p>
+            )}
+            {!out && !p.layout && p.band === "likely" && c.module === undefined && (
+              <label className="mt-2 block text-sm"><input type="checkbox" className="me-2" data-testid="intake-confirm" checked={!!c.confirmed} onChange={(e) => set(p.id, { confirmed: e.target.checked })} />{t.confirm(mname(p.module))}</label>
             )}
             {!out && !p.layout && p.band !== "sure" && (
               <div className="mt-3 rounded bg-band px-3 py-2 text-sm">
@@ -231,7 +252,8 @@ export function SmartIntake({ companyId, currency, saved, base }: { companyId: s
                 {p.map.missing.length > 0 && <p className="mt-2 text-sm text-red" data-testid="intake-missing">{t.missing(p.map.missing.join(", "))}</p>}
                 {(m.key === "ar_open" || m.key === "ap_open") && (
                   <label className="mt-3 block text-sm">{t.asOf} <input type="date" className="ms-2 rounded border border-line px-2 py-1" data-testid="intake-asof" value={c.asOf ?? p.aged?.asOf ?? ""} onChange={(e) => set(p.id, { asOf: e.target.value || undefined })} />
-                    {p.needs?.includes("as-of day") && <span className="ms-2 text-red">{t.asOfNeeded}</span>}</label>
+                    {p.needs?.includes("as-of day") && <span className="ms-2 text-red">{t.asOfNeeded}</span>}
+                    {p.needs?.includes("as-of day") && p.suggestedAsOf && <button type="button" className="ms-2 rounded border border-line px-2 py-0.5" data-testid="intake-asof-suggested" onClick={() => set(p.id, { asOf: p.suggestedAsOf! })}>{t.useDay(p.suggestedAsOf)}</button>}</label>
                 )}
                 <p className="mt-3 text-sm" data-testid="intake-rows">{t.rows(p.read.records.length, p.read.rejected.length, p.read.skipped.length)}</p>
                 <p className={cn("text-sm", p.read.proof.ok ? "text-green-d" : "text-red")} data-testid="intake-proof">

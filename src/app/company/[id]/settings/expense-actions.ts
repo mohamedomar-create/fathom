@@ -92,7 +92,7 @@ export async function finishExpenseBatch(input: z.input<typeof Start>, stage: st
 
 /** A file saved again in place of its earlier upload ("replace", or saved as new), never "add only new months". */
 const sameFile = (d: { source: "ledger" | "file"; filename?: string; report?: Record<string, unknown> }) =>
-  d.source === "file" && d.filename && !["add", "new", "changed"].includes(String(d.report?.mode)) ? d.filename.slice(0, 300) : null;
+  d.source === "file" && d.filename && !["add", "new", "changed", "intake"].includes(String(d.report?.mode)) ? d.filename.slice(0, 300) : null;
 
 /**
  * Uploads left with no lines (every month replaced by a later upload) are removed, so Data health lists only uploads

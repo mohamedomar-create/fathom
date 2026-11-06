@@ -190,7 +190,7 @@ begin
     select count(*) into n from public.end_user_map where company_id = p_company; r := r || jsonb_build_object('end_user_choices', n);
     select count(*) into n from public.agency_statement_lines where company_id = p_company; r := r || jsonb_build_object('statement_lines', n);
   elsif p_scope = 'modules' then
-    select count(*) into n from public.module_rows where company_id = p_company; r := r || jsonb_build_object('module_rows', n);
+    select count(*) into n from public.module_rows x join public.module_batches b on b.id = x.batch_id and b.status = 'live' where x.company_id = p_company; r := r || jsonb_build_object('module_rows', n);
   else
     raise exception 'unknown scope %', p_scope;
   end if;

@@ -43,11 +43,14 @@ export function openItemsReport(records: Rec[], side: "receivable" | "payable", 
   return { side, asOf, buckets: [...OPEN_BUCKETS], partners, items, total: { amounts, total }, errors: [], findings };
 }
 
-/** An as-of day written above a list ("As of 31/10/2026", "حتى 31/10/2026"), else the latest document date. */
-export function asOfOf(title: string | undefined, records: Rec[], parse: (s: string) => string | null): string | null {
+/** An as-of day written above a list ("As of 31/10/2026", "حتى 31/10/2026"), or null. */
+export function titleAsOf(title: string | undefined, parse: (s: string) => string | null): string | null {
   const m = title?.match(/(?:as of|as at|at|بتاريخ|حتى|في)\s*:?\s*([\d/.\-]+)/i);
-  const day = m ? parse(m[1]) : null;
-  if (day) return day;
+  return m ? parse(m[1]) : null;
+}
+
+/** A day to suggest when the list says none: its latest document date. Only a suggestion: the person confirms it. */
+export function latestDocDay(records: Rec[]): string | null {
   const days = records.map((r) => (typeof r.date === "string" ? r.date : null)).filter((d): d is string => !!d).sort();
   return days[days.length - 1] ?? null;
 }

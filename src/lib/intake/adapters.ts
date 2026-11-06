@@ -41,17 +41,17 @@ export function toExpenseLines(records: Rec[], sheet: string): ExpenseLine[] {
   });
 }
 
-const IN = /^(in|inbound|receive|received|customer|collection|receipt|وارد|استلام|تحصيل|مقبوض)/i;
-const OUT = /^(out|outbound|send|sent|paid|vendor|supplier|payment|صادر|دفع|سداد|مدفوع)/i;
+const IN = /^(in|inbound|receive|received|incoming|customer payment|وارد|استلام|تحصيل|مقبوض)/i;
+const OUT = /^(out|outbound|send|sent|outgoing|vendor payment|supplier payment|صادر|إرسال|ارسال|دفع|سداد)/i;
 const PROCESS = /process|pending|in transit|cheque|check|قيد|تحت التحصيل/i;
-/** Signed in the company's currency: positive received, negative paid (a "type" or status column can say which). */
+/** Signed in the company's currency: positive received, negative paid. The payment type says which; else the sign. */
 export function toPaymentLines(records: Rec[], currency: string): PaymentLine[] {
   return records.map((r) => {
     const raw = n(r.amount) ?? 0;
-    const hint = s(r.method) + " " + s(r.state);
-    const dir: "in" | "out" = raw < 0 ? "out" : OUT.test(s(r.state)) && !IN.test(s(r.state)) ? "out" : "in";
+    const type = s(r.type);
+    const dir: "in" | "out" = IN.test(type) ? "in" : OUT.test(type) ? "out" : raw < 0 ? "out" : "in";
     const amount = dir === "out" ? -Math.abs(raw) : Math.abs(raw);
-    return { day: day(r) ?? "", period: period(r), number: s(r.number), journal: s(r.journal), method: s(r.method), partner: s(r.partner), direction: dir, amount, currency, amountCurrency: amount, state: PROCESS.test(hint) ? "in_process" : "paid", row: r.__row };
+    return { day: day(r) ?? "", period: period(r), number: s(r.number), journal: s(r.journal), method: s(r.method), partner: s(r.partner), direction: dir, amount, currency, amountCurrency: amount, state: PROCESS.test(`${s(r.method)} ${s(r.state)}`) ? "in_process" : "paid", row: r.__row };
   });
 }
 

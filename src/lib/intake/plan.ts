@@ -12,7 +12,7 @@ import { headingKey, mapPiece, type Mapping } from "./map";
 import { readRecords, type ReadOut } from "./records";
 import { splitGrid, pieceOf, type Piece } from "./split";
 import { understand, type Band, type Guess } from "./understand";
-import { asOfOf, openItemsReport } from "./open-items";
+import { latestDocDay, openItemsReport, titleAsOf } from "./open-items";
 import { reconcile, type Reconciliation } from "./reconcile";
 import { MODULES } from "@/lib/modules/registry";
 import { layoutKey, type SavedLayouts } from "./memory";
@@ -39,8 +39,12 @@ export interface PlannedPiece {
   aged?: AgedReport;
   /** What the person must give before the piece can be saved ("as-of day" for open items with no date above them). */
   needs?: string[];
+  /** For open items with no as-of day: the latest document date, offered for the person to confirm. */
+  suggestedAsOf?: string | null;
   /** Placed and mapped the way the person did before for this layout. */
   remembered?: boolean;
+  /** The remembered mapping (heading → field), kept when the person changes something else on the table. */
+  savedMapping?: Record<string, string>;
   piece: Piece;
 }
 export interface IntakePlan {
@@ -62,9 +66,10 @@ export function placePiece(piece: Piece, module: string | null, extra: Partial<P
   const read = readRecords(piece, m, map);
   const out: PlannedPiece = { ...base, map, read, why: u.ranked.find((g) => g.module === m.key)?.why ?? base.why };
   if (m.key === "ar_open" || m.key === "ap_open") {
-    const asOf = asOfOf(piece.title, read.records, (s) => parseDay(s)) ?? opts.asOf ?? null;
+    // The person's day first, then a day written above the list; a day guessed from the documents is only suggested.
+    const asOf = opts.asOf ?? titleAsOf(piece.title, (s) => parseDay(s));
     if (asOf) out.aged = openItemsReport(read.records, m.key === "ar_open" ? "receivable" : "payable", asOf);
-    else out.needs = ["as-of day"];
+    else { out.needs = ["as-of day"]; out.suggestedAsOf = latestDocDay(read.records); }
   }
   return out;
 }
@@ -115,7 +120,7 @@ export function planIntake(grids: Grid[], opts: { vat?: number; asOf?: string; s
     const parts = splitGrid(g);
     const known = parts.map((p) => ({ p, r: rememberedFor(p, opts.saved) }));
     if (known.some((k) => k.r)) {
-      for (const { p, r } of known) pieces.push(r ? { ...placePiece(p, r.module, {}, { saved: r.mapping, asOf: opts.asOf, headerRow: headerRowFor(p, r.mapping) }), band: "sure", why: "Placed the way you placed this layout before.", remembered: true } : placePiece(p, null));
+      for (const { p, r } of known) pieces.push(r ? { ...placePiece(p, r.module, {}, { saved: r.mapping, asOf: opts.asOf, headerRow: headerRowFor(p, r.mapping) }), band: "sure", why: "Placed the way you placed this layout before.", remembered: true, savedMapping: r.mapping } : placePiece(p, null));
       continue;
     }
     const understood = parts.map((p) => ({ p, u: understand(p) }));

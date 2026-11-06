@@ -1,7 +1,7 @@
 // Reading a mapped table row by row. Every row with something in it ends in one of three lists: kept (a record), rejected
 // (with the reason, e.g. a date that can't be read), or skipped on purpose (a total row, a section title). Then the
 // proof: the money read from the file equals the money kept plus the money rejected, and the file's own total agrees.
-import { cleanNum, detectDateOrder, parseDay, parsePeriod, TOTAL_LABEL, type Cell, type DateOrder } from "@/lib/ingest/parse";
+import { cleanNum, detectDateOrder, normAr, parseDay, parsePeriod, TOTAL_LABEL, type Cell, type DateOrder } from "@/lib/ingest/parse";
 import type { ModuleDef } from "@/lib/modules/types";
 import { groupLabel, type Mapping } from "./map";
 import type { Piece } from "./split";
@@ -24,6 +24,8 @@ const r2 = (n: number) => Math.round(n * 100) / 100 || 0;
 const filled = (v: Cell) => v !== null && v !== undefined && !(typeof v === "string" && !v.trim());
 const text = (v: Cell) => (v === null || v === undefined ? "" : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).replace(/\s+/g, " ").trim());
 const pad = (n: number) => String(n).padStart(2, "0");
+/** A total label with nothing after it but a word or two ("Total", "Grand total", "Total for October"). */
+const TOTAL_ONLY = /^\S+(\s+\S+){0,3}$/;
 
 /** An Excel date serial (days from 1899-12-30, or from 1904 in old Mac workbooks). */
 function serialDay(n: number, date1904?: boolean): string | null {
@@ -41,7 +43,8 @@ function parse(v: Cell, type: string, order: DateOrder, date1904?: boolean): { v
   if (!filled(v)) return { value: null, bad: false };
   switch (type) {
     case "date": { const d = dayOf(v, order, date1904); return { value: d, bad: d === null }; }
-    case "month": { const p = typeof v === "number" ? serialDay(v, date1904)?.slice(0, 7) ?? null : parsePeriod(v, order); return { value: p, bad: p === null }; }
+    // A small number in a Month column is a month number (10), not a date serial: it says nothing the Date doesn't.
+    case "month": { if (typeof v === "number") { const p = v > 20000 ? serialDay(v, date1904)?.slice(0, 7) ?? null : null; return { value: p, bad: v > 20000 && p === null }; } const p = parsePeriod(v, order); return { value: p, bad: p === null }; }
     case "money": case "qty": case "percent": { const n = cleanNum(v); return { value: n === null ? null : r2(n), bad: n === null }; }
     default: return { value: text(v), bad: false };
   }
@@ -72,10 +75,11 @@ export function readRecords(p: Piece, m: ModuleDef, map: Mapping): ReadOut {
     const spreadsheetRow = base + map.headerRow + 1 + i;
     const shown = row.map(text);
     const amount = amountOf(row);
-    // A total row: its label in one of the text columns, or in the first filled cell.
-    const labels = Object.entries(map.cols).filter(([k]) => { const t = m.fields.find((f) => f.key === k)?.type; return t === "text" || t === "code"; }).map(([, c]) => text(row[c]));
-    const firstText = text(cells.find((v) => typeof v === "string") ?? "");
-    if ([...labels, firstText].some((t) => t && TOTAL_LABEL.test(t))) {
+    // A total row: the label is the row's first filled cell and its only text ("Total", "الإجمالي"). A customer called
+    // "Total Egypt" or a product "Total Care Kit" is a row, not a total.
+    const texts = row.filter((v) => typeof v === "string" && v.trim() && cleanNum(v) === null);
+    const firstText = typeof cells[0] === "string" ? normAr(text(cells[0])) : "";
+    if (texts.length === 1 && firstText && TOTAL_LABEL.test(firstText) && TOTAL_ONLY.test(firstText)) {
       skipped.push({ row: spreadsheetRow, reason: "total row", amount, cells: shown });
       if (amount !== null) totals.push(amount);
       return;
@@ -92,9 +96,12 @@ export function readRecords(p: Piece, m: ModuleDef, map: Mapping): ReadOut {
       if (value !== null) rec[f.key] = value;
     }
     for (const g of m.required) if (!g.some((k) => rec[k] !== null && rec[k] !== undefined && rec[k] !== "")) bad.push(`${groupLabel(m, g)} is empty`);
+    const rule = m.rowRule?.(rec);
+    if (rule) bad.push(rule);
     if (bad.length) { rejected.push({ row: spreadsheetRow, reason: bad.join("; "), amount, cells: shown }); return; }
     const day = (m.date && typeof rec[m.date] === "string" ? (rec[m.date] as string) : null) ?? (Object.entries(rec).find(([k, v]) => m.fields.find((f) => f.key === k)?.type === "date" && typeof v === "string")?.[1] as string | undefined) ?? null;
-    const period = typeof rec.period === "string" ? rec.period : day ? day.slice(0, 7) : null;
+    // The day's month when there is a day (a Month column can only agree with it); else the Month column.
+    const period = day ? day.slice(0, 7) : typeof rec.period === "string" ? rec.period : null;
     records.push({ ...rec, __row: spreadsheetRow, __period: period });
   });
   const sum = (xs: (number | null)[]) => r2(xs.reduce<number>((s, x) => s + (x ?? 0), 0));

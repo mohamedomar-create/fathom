@@ -1,7 +1,7 @@
 // What a table is: each module scores it from its headings (the required ones most), the fields only it has (a due date
 // for open items, a product for sales), the tab's name, and the document numbers (BILL/… is the supplier side). The best
 // score decides; how sure it is decides what the person is asked.
-import type { Cell } from "@/lib/ingest/parse";
+import { cleanNum, normAr, type Cell } from "@/lib/ingest/parse";
 import { MODULES, fieldOf } from "@/lib/modules/registry";
 import type { ModuleDef } from "@/lib/modules/types";
 import { mapPiece, type Mapping } from "./map";
@@ -22,6 +22,23 @@ const INV = /^(inv|rinv|out\/|s\d|so\/)/i;
 const DEBIT = /^(debit|dr|مدين|المدين)$/i;
 const CREDIT = /^(credit|cr|دائن|الدائن)$/i;
 
+/** Two number columns where one is the running total of the other, over at least three rows. */
+export function runningBalance(rows: Cell[][]): boolean {
+  const nums = rows.map((r) => (r ?? []).map((v) => (typeof v === "number" ? v : typeof v === "string" ? cleanNum(v) : null)));
+  const width = Math.max(0, ...nums.map((r) => r.length));
+  for (let b = 0; b < width; b++) for (let a = 0; a < width; a++) {
+    if (a === b) continue;
+    let hits = 0, ok = true;
+    for (let i = 1; i < nums.length && ok; i++) {
+      const pb = nums[i - 1][b], cb = nums[i][b], ca = nums[i][a];
+      if (pb == null || cb == null || ca == null) continue;
+      if (Math.abs(pb + ca - cb) <= 0.01) hits++; else ok = false;
+    }
+    if (ok && hits >= 2) return true;
+  }
+  return false;
+}
+
 /** How well a module fits a table, 0 to 1, with the reasons. */
 export function recognise(m: ModuleDef, p: Piece): Guess {
   const map = mapPiece(p, m);
@@ -30,7 +47,7 @@ export function recognise(m: ModuleDef, p: Piece): Guess {
   const req = m.required.length ? m.required.filter((g) => g.some((k) => k in map.cols)).length / m.required.length : 1;
   const sig = m.signature?.length ? m.signature.filter((g) => g.some((k) => k in map.cols)).length / m.signature.length : 1;
   const opt = m.fields.length ? Object.keys(map.cols).length / m.fields.length : 0;
-  const name = m.sheetWords && (m.sheetWords.test(p.sheet) || (p.title ? m.sheetWords.test(p.title) : false)) ? 1 : 0;
+  const name = m.sheetWords && (m.sheetWords.test(normAr(p.sheet)) || (p.title ? m.sheetWords.test(normAr(p.title)) : false)) ? 1 : 0;
   let score = 0.55 * req + 0.25 * sig + 0.1 * opt + 0.1 * name;
   if (req === 1) why.push(`has ${m.required.map((g) => g.map((k) => m.fields.find((f) => f.key === k)!.label.en).join(" or ")).join(", ")}`);
   else why.push(`missing ${map.missing.join(", ")}`);
@@ -41,7 +58,9 @@ export function recognise(m: ModuleDef, p: Piece): Guess {
   if (unexplained) score -= Math.min(0.15, 0.05 * unexplained);
   // Debit and credit columns make a ledger or a trial balance, not a list of documents.
   if (heads.some((h) => DEBIT.test(h)) && heads.some((h) => CREDIT.test(h))) { score -= 0.5; why.push("but it has debit and credit columns (a ledger)"); }
-  const against = m.excludes ? heads.filter((h) => m.excludes!.test(h) && !fieldOf(m, h)) : [];
+  const against = m.excludes ? heads.filter((h) => m.excludes!.test(normAr(h)) && !fieldOf(m, h)) : [];
+  // A running balance (each row's balance = the one above plus its amount) is a statement of account, not open items.
+  if (m.amount === "open" && runningBalance(p.rows.slice(map.headerRow + 1))) { score -= 0.5; why.push("but its balance column runs on from row to row (a statement)"); }
   if (against.length) { score -= 0.4; why.push(`but has "${against[0]}"`); }
   // Document numbers: mostly vendor bills or mostly invoices.
   if (m.docSide && m.doc && m.doc in map.cols) {

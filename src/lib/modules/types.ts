@@ -56,6 +56,8 @@ export interface ModuleDef {
   /** Field matching shared with an existing reader (so the intake and the reader never disagree); else from `headings`. */
   fieldOf?: (heading: string) => string | null;
   ties?: TieDef[];
+  /** A rule a row must pass to be kept (a cancelled payment is not money moved): the reason, or null. */
+  rowRule?: (rec: Record<string, string | number | null>) => string | null;
   /** The party and document fields, for the cross-tab checks. */
   party?: string;
   doc?: string;
