@@ -25,6 +25,23 @@ import { loadExpenses, noExpenses } from "@/lib/company/expenses-load";
 import { unknownState } from "@/lib/company/loaded";
 import { DependencyNote } from "@/components/shell/module-state";
 import { getDict } from "@/lib/i18n/server";
+import { loadSales } from "@/lib/company/sales-load";
+import { crossChecks, expenseTotals, salesTotals } from "@/lib/crosscheck";
+import { MODULES } from "@/lib/modules/registry";
+import type { PeriodTotal } from "@/lib/modules/view";
+import { CrossChecks } from "@/components/modules/cross-checks";
+
+/** Every module checked against the books and each other, from each module's own summary. */
+async function CrossSection({ id }: { id: string }) {
+  const { supabase } = await getUser();
+  const generic = MODULES.filter((m) => m.storage === "generic");
+  const [c, sales, expenses, ...sums] = await Promise.all([loadCompanyBundle(id), loadSales(id), loadExpenses(id), ...generic.map((m) => supabase.rpc("module_summary", { p_company: id, p_module: m.key }))]);
+  const checks = crossChecks({
+    accounts: c.accounts, sales: salesTotals(sales.data), expenses: expenseTotals(expenses.data),
+    generic: generic.map((m, i) => ({ key: m.key, periods: ((sums[i].data as { periods?: PeriodTotal[] } | null)?.periods) ?? [] })),
+  });
+  return <CrossChecks checks={checks} />;
+}
 
 /** The stock checks need the stock and expense summaries: they arrive after the rest of the page. */
 async function StockSection({ id }: { id: string }) {
@@ -157,6 +174,7 @@ export default async function DataChecksPage({ params, searchParams }: { params:
       </section>
       <section className="mt-10"><ImportJobs companyId={id} /></section>
       <Suspense fallback={<div className="mt-10 h-40 animate-pulse rounded-lg bg-band" aria-busy="true" />}><StockSection id={id} /></Suspense>
+      <Suspense fallback={<div className="mt-10 h-24 animate-pulse rounded-lg bg-band" aria-busy="true" />}><CrossSection id={id} /></Suspense>
     </div>
   );
 }

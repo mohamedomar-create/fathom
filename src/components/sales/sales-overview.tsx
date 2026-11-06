@@ -15,10 +15,16 @@ import { HeatCalendar } from "@/components/viz/heat-calendar";
 import { DataNotes, Findings, FromAccountsNote, NoSales, SalesTile, useSalesAnalysis, SalesPicker } from "./common";
 import { ReadinessCard } from "@/components/setup/readiness-view";
 import { useT } from "@/lib/i18n/use-t";
+import { useMemo } from "react";
+import { useSales } from "@/lib/company/sales-context";
+import { salesTotals } from "@/lib/crosscheck";
+import { AgreesStrip } from "@/components/modules/agrees-strip";
 
 export function SalesOverview() {
   const c = useCompany();
   const s = useSalesAnalysis();
+  const lines = useSales();
+  const agree = useMemo(() => ({ sales: salesTotals(lines), generic: [] }), [lines]);
   const T = useT();
   const t = T.d.sales;
   const V = T.d.viz;
@@ -37,6 +43,7 @@ export function SalesOverview() {
     <>
       <PageHeader title={title} right={<SalesPicker s={s} />} />
       <ReadinessCard sector="sales" />
+      {!s.fromAccounts && <AgreesStrip input={agree} />}
       {s.fromAccounts && <FromAccountsNote />}
       <Cockpit hero={
         <HeroKpi label={t.netSales} testId="tile-sales" value={money(s.total, cur)} neg={s.total < 0}

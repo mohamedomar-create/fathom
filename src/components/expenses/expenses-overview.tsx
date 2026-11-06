@@ -1,4 +1,8 @@
 "use client";
+import { useMemo } from "react";
+import { useExpenses } from "@/lib/company/expenses-context";
+import { expenseTotals } from "@/lib/crosscheck";
+import { AgreesStrip } from "@/components/modules/agrees-strip";
 import { CheckCircle2, TriangleAlert } from "lucide-react";
 import { isLender, lenderName, money, notSupplier, pct, type ExpenseFlag } from "@/lib/engine";
 import { useCompany } from "@/lib/company/context";
@@ -42,6 +46,7 @@ export function ExpensesOverview() {
     <>
       <PageHeader title={title} right={<ExpensesPicker s={s} />} />
       <ReadinessCard sector="expenses" />
+      <ExpensesAgree />
       <Cockpit hero={
         <HeroKpi label={t.totalCosts} testId="tile-costs" value={money(s.total, cur)} cost
           delta={s.growth} deltaLabel={s.compareLabel ? T.d.sales.vs(T.d.sales.word[s.compareLabel] ?? s.compareLabel) : T.d.sales.noComparison}
@@ -152,4 +157,11 @@ export function CheckThese({ s, cur }: { s: ExpensesView; cur: string }) {
       </ul>
     </div>
   );
+}
+
+/** The expense lines checked against the cost accounts, by month. */
+function ExpensesAgree() {
+  const data = useExpenses();
+  const input = useMemo(() => ({ expenses: expenseTotals(data), generic: [] }), [data]);
+  return <AgreesStrip input={input} />;
 }

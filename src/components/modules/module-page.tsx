@@ -14,6 +14,7 @@ import { usePeriod } from "@/lib/company/use-period";
 import { PeriodPicker } from "@/components/shell/period-picker";
 import { PageHeader } from "@/components/shell/page-header";
 import { moduleWindow } from "@/lib/modules/view";
+import { AgreesStrip } from "./agrees-strip";
 
 export interface ModuleSummary {
   rows: number; docs: number; amount: number;
@@ -49,6 +50,7 @@ export function ModulePage({ module, summary, rows, cur, base }: { module: strin
     <div data-testid="module-page" data-module={module}>
       <PageHeader title={name} right={<PeriodPicker own={own} />} />
       <p className="mb-5 text-mute">{t.owns(lang === "ar" ? m.owns.ar : m.owns.en)} {t.files(summary.batches.length)}.</p>
+      <AgreesStrip input={{ generic: [{ key: module, periods: summary.periods }] }} />
       <Cockpit hero={<HeroKpi label={t.total} value={money(w.amount, cur)} delta={w.growth} deltaLabel={t.vsLastYear} now={summary.periods.map((p) => p.amount)} testId="module-total" />}>
         <KpiTile label={t.rows} value={w.rows.toLocaleString("en-US")} testId="module-rows" />
         {w.qty !== null && <KpiTile label={t.qty} value={w.qty.toLocaleString("en-US")} testId="module-qty" />}
