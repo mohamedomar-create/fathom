@@ -4,6 +4,7 @@
 \set ON_ERROR_STOP on
 \set QUIET on
 \i supabase/migrations/0062_module_store.sql
+\i supabase/migrations/0063_company_modules.sql
 set client_min_messages = notice;
 
 insert into auth.users (email, raw_user_meta_data, email_confirmed_at) values
@@ -39,7 +40,7 @@ grant select on ids to authenticated;
 create temp table b (id uuid, n int);
 grant all on b to authenticated;
 
-select pg_temp.check('schema version 62', public.schema_version()::text, '62');
+select pg_temp.check('schema version 63', public.schema_version()::text, '63');
 select pg_temp.check('row security is on (rows)', (select relrowsecurity from pg_class where oid = 'public.module_rows'::regclass)::text, 'true');
 select pg_temp.check('row security is on (batches)', (select relrowsecurity from pg_class where oid = 'public.module_batches'::regclass)::text, 'true');
 
@@ -84,4 +85,4 @@ select pg_temp.check('clearing removes them', (select count(*)::text from public
 reset role;
 -- Rows are written only by the functions, which take the company from the batch; a client write is checked by the guard.
 select pg_temp.check('a row is guarded against another company''s batch', (select count(*)::text from pg_trigger where tgrelid = 'public.module_rows'::regclass and tgname in ('tenant_parent_batch_id', 'tenant_guard', 'period_lock')), '3');
-select pg_temp.check('signed-out visitors can''t call the store', (select has_function_privilege('anon', 'public.module_summary(uuid, text)', 'execute'))::text, 'false');
+select pg_temp.check('signed-out visitors can''t call the store', (select has_function_privilege('anon', 'public.module_summary(uuid, text, text, text, jsonb, text[], text[])', 'execute'))::text, 'false');
